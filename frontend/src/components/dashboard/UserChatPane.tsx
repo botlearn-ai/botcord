@@ -374,6 +374,8 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           agentId={ownedAgent.agent_id}
           displayName={ownedAgent.display_name}
           bio={ownedAgent.bio ?? null}
+          avatarUrl={ownedAgent.avatar_url ?? null}
+          hostingKind={ownedAgent.hosting_kind ?? null}
           onClose={() => setAgentSettingsOpen(false)}
         />
       )}

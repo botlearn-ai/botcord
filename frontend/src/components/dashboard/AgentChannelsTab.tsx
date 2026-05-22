@@ -37,6 +37,7 @@ import {
 
 interface Props {
   agentId: string;
+  hostingKind?: string | null;
 }
 
 type AddMode = null | "telegram" | "wechat" | "feishu";
@@ -124,12 +125,14 @@ function StepSection({
 // useSyncExternalStore infinite-render guard (React #185).
 const EMPTY_LIST: AgentGatewayConnection[] = [];
 
-export default function AgentChannelsTab({ agentId }: Props) {
+export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
   const list = useAgentGatewayStore((s) => s.byAgent[agentId]) ?? EMPTY_LIST;
   const loading = useAgentGatewayStore((s) => Boolean(s.loading[agentId]));
   const daemonOffline = useAgentGatewayStore((s) =>
     Boolean(s.daemonOffline[agentId]),
   );
+  const isCloudAgent = hostingKind === "cloud";
+  const blockedByOffline = daemonOffline && !isCloudAgent;
   const lastError = useAgentGatewayStore((s) => s.lastError[agentId]) ?? null;
   const load = useAgentGatewayStore((s) => s.load);
   const enable = useAgentGatewayStore((s) => s.enable);
@@ -168,7 +171,7 @@ export default function AgentChannelsTab({ agentId }: Props) {
   }, []);
 
   async function handleToggle(g: AgentGatewayConnection) {
-    if (daemonOffline) return;
+    if (blockedByOffline) return;
     setBusyId(g.id);
     setErr(g.id, null);
     setOk(g.id, null);
@@ -207,9 +210,13 @@ export default function AgentChannelsTab({ agentId }: Props) {
         <div className="flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2.5 text-xs text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            <div className="font-semibold">Daemon 离线</div>
+            <div className="font-semibold">
+              {isCloudAgent ? "云端运行环境暂不可用" : "Daemon 离线"}
+            </div>
             <div className="text-amber-200/80">
-              本地 daemon 当前不在线，已连接列表仍可读，但无法创建、扫码、编辑、启用、停用或删除接入。
+              {isCloudAgent
+                ? "已连接列表仍可读。云端环境会在操作时尝试自动恢复；如果刚刚恢复超时，请稍后重试。"
+                : "本地 daemon 当前不在线，已连接列表仍可读，但无法创建、扫码、编辑、启用、停用或删除接入。"}
             </div>
           </div>
         </div>
@@ -223,7 +230,7 @@ export default function AgentChannelsTab({ agentId }: Props) {
             <button
               type="button"
               onClick={() => setAddMode("telegram")}
-              disabled={daemonOffline}
+              disabled={blockedByOffline}
               className="inline-flex items-center gap-1 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus className="h-3 w-3" />
@@ -297,7 +304,7 @@ export default function AgentChannelsTab({ agentId }: Props) {
                       <button
                         type="button"
                         onClick={() => handleToggle(g)}
-                        disabled={daemonOffline || busyId === g.id}
+                        disabled={blockedByOffline || busyId === g.id}
                         className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                       >
                         {g.enabled ? "停用" : "启用"}
@@ -309,7 +316,7 @@ export default function AgentChannelsTab({ agentId }: Props) {
                           setErr(g.id, null);
                           setOk(g.id, null);
                         }}
-                        disabled={daemonOffline || busyId === g.id}
+                        disabled={blockedByOffline || busyId === g.id}
                         className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                       >
                         <SquarePen className="h-3 w-3" />
@@ -318,7 +325,7 @@ export default function AgentChannelsTab({ agentId }: Props) {
                       <button
                         type="button"
                         onClick={() => setPendingDelete(g)}
-                        disabled={daemonOffline || busyId === g.id}
+                        disabled={blockedByOffline || busyId === g.id}
                         className="rounded-md border border-red-400/40 bg-red-500/10 p-1 text-red-300 transition-colors hover:bg-red-500/20 disabled:opacity-50"
                         title="删除"
                       >
@@ -330,7 +337,7 @@ export default function AgentChannelsTab({ agentId }: Props) {
                     <GatewayEditForm
                       agentId={agentId}
                       gateway={g}
-                      daemonOffline={daemonOffline}
+                      daemonOffline={blockedByOffline}
                       onCancel={() => setEditingId(null)}
                       onSaved={() => {
                         setEditingId(null);
@@ -345,7 +352,7 @@ export default function AgentChannelsTab({ agentId }: Props) {
           </ul>
         )}
 
-        {!addMode && lastError && !daemonOffline && (
+        {!addMode && lastError && !blockedByOffline && (
           <div className="text-[11px] text-red-300">{lastError}</div>
         )}
       </section>
@@ -383,21 +390,21 @@ export default function AgentChannelsTab({ agentId }: Props) {
           {addMode === "telegram" ? (
             <TelegramAddForm
               agentId={agentId}
-              daemonOffline={daemonOffline}
+              daemonOffline={blockedByOffline}
               onCancel={() => setAddMode(null)}
               onCreated={() => setAddMode(null)}
             />
           ) : addMode === "wechat" ? (
             <WechatAddForm
               agentId={agentId}
-              daemonOffline={daemonOffline}
+              daemonOffline={blockedByOffline}
               onCancel={() => setAddMode(null)}
               onCreated={() => setAddMode(null)}
             />
           ) : (
             <FeishuAddForm
               agentId={agentId}
-              daemonOffline={daemonOffline}
+              daemonOffline={blockedByOffline}
               onCancel={() => setAddMode(null)}
               onCreated={() => setAddMode(null)}
             />
