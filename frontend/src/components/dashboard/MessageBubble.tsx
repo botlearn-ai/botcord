@@ -3,7 +3,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, MoreHorizontal, User } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, Forward, MoreHorizontal, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import type { DashboardMessage, Attachment } from "@/lib/types";
@@ -502,6 +502,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
             onMouseDown={(e) => { e.preventDefault(); handleForwardClick(); }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
           >
+            <Forward className="h-3.5 w-3.5 text-zinc-500" />
             转发
           </button>
           <button
