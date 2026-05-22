@@ -43,7 +43,8 @@ type InboxDrainTrigger =
   | "ws_auth_ok"
   | "ws_inbox_update"
   | "coalesced_inbox_update"
-  | "has_more_continue";
+  | "has_more_continue"
+  | "poll_interval";
 
 /** Minimal surface the adapter needs from `BotCordClient`. Matches the subset used at runtime. */
 export interface BotCordChannelClient {
@@ -90,7 +91,7 @@ export interface BotCordChannelOptions {
   credentialsPath?: string;
   /** Override the Hub base URL. Defaults to the `hubUrl` stored in credentials. */
   hubBaseUrl?: string;
-  /** Not used by the WS-only loop today; kept for future polling fallback. */
+  /** Periodic inbox polling fallback. Set to 0 to disable. Defaults to 30s. */
   pollIntervalMs?: number;
   /** Test hook: supply a pre-built client instead of loading credentials from disk. */
   client?: BotCordChannelClient;
@@ -493,6 +494,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     let ws: WebSocket | null = null;
     let reconnectTimer: NodeJS.Timeout | null = null;
     let keepaliveTimer: NodeJS.Timeout | null = null;
+    let pollTimer: NodeJS.Timeout | null = null;
     let reconnectAttempt = 0;
     let connectionSeq = 0;
     let consecutiveAuthFailures = 0;
@@ -517,6 +519,10 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       if (keepaliveTimer) {
         clearInterval(keepaliveTimer);
         keepaliveTimer = null;
+      }
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
       }
     }
 
@@ -720,6 +726,16 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           });
           log.info("botcord ws authenticated", { agentId: msg.agent_id });
           void fireInbox("ws_auth_ok");
+          const pollIntervalMs = options.pollIntervalMs ?? 30_000;
+          if (pollTimer) clearInterval(pollTimer);
+          if (pollIntervalMs > 0) {
+            pollTimer = setInterval(() => {
+              if (ws === socket && socket.readyState === WebSocket.OPEN) {
+                void fireInbox("poll_interval");
+              }
+            }, pollIntervalMs);
+            pollTimer.unref?.();
+          }
           if (keepaliveTimer) clearInterval(keepaliveTimer);
           keepaliveTimer = setInterval(() => {
             if (ws === socket && socket.readyState === WebSocket.OPEN) {
