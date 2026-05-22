@@ -737,14 +737,23 @@ class CloudAgentService:
         *,
         cloud_daemon_instance_id: str,
     ) -> list[CloudAgentView]:
-        """Dispatch ``provision_agent`` for every provisioning Cloud Agent on this daemon.
+        """Dispatch ``provision_agent`` for agents missing from a connected daemon.
 
-        Called from the ``/cloud/daemon/ws`` hello handler once the daemon
-        is registered. Each successful dispatch transitions the agent to
-        ``ready`` and scrubs the temporary private key from metadata.
-        Failures leave the agent in ``provisioning`` with ``error_code`` /
-        ``error_message`` set so the dashboard can surface the cause.
+        Called from the ``/cloud/daemon/ws`` hello handler once the daemon is
+        registered. A cloud daemon process always boots with an empty in-memory
+        config, so a sandbox/process restart must re-provision ready agents
+        before their BotCord inbox channels can drain queued messages. A plain
+        control-WS reconnect, however, may still have live channels; we avoid
+        duplicate installs by asking the daemon for ``list_agents`` first.
         """
+        live_agent_ids = await self._list_cloud_daemon_agent_ids(
+            cloud_daemon_instance_id
+        )
+        statuses = (
+            ("provisioning", "ready")
+            if live_agent_ids is not None
+            else ("provisioning",)
+        )
         rows = (
             await db.execute(
                 select(CloudAgentInstance, Agent, CloudDaemonInstance)
@@ -755,7 +764,7 @@ class CloudAgentService:
                 )
                 .where(
                     CloudAgentInstance.cloud_daemon_instance_id == cloud_daemon_instance_id,
-                    CloudAgentInstance.status == "provisioning",
+                    CloudAgentInstance.status.in_(statuses),
                 )
             )
         ).all()
@@ -764,6 +773,29 @@ class CloudAgentService:
 
         results: list[CloudAgentView] = []
         for cai, agent, cdi in rows:
+            if live_agent_ids is not None and cai.agent_id in live_agent_ids:
+                cai.status = "ready"
+                cai.error_code = None
+                cai.error_message = None
+                _scrub_provisioning_metadata(cai)
+                if cdi.status != "ready":
+                    cdi.status = "ready"
+                    cdi.last_started_at = _now()
+                    cdi.last_seen_at = _now()
+                await db.commit()
+                await db.refresh(cai)
+                await db.refresh(cdi)
+                await db.refresh(agent)
+                results.append(_make_view(agent, cai, cdi))
+                continue
+
+            if cai.status == "ready":
+                _ensure_provisioning_metadata(db, cai, agent)
+                cai.status = "provisioning"
+                cai.error_code = None
+                cai.error_message = None
+                await db.flush()
+
             await self._provision_one(db, cai, agent, cdi)
             # Columns with ``onupdate=func.now()`` get marked as needing
             # a refresh after commit even with expire_on_commit=False.
@@ -772,6 +804,56 @@ class CloudAgentService:
             await db.refresh(agent)
             results.append(_make_view(agent, cai, cdi))
         return results
+
+    async def _list_cloud_daemon_agent_ids(
+        self,
+        cloud_daemon_instance_id: str,
+    ) -> set[str] | None:
+        """Return agent ids currently loaded in the connected cloud daemon.
+
+        ``None`` means the probe failed; callers should avoid re-provisioning
+        already-ready agents in that case because a transient control-plane
+        failure is more likely than a clean process restart with no channels.
+        """
+        try:
+            ack = await send_cloud_control_frame(
+                cloud_daemon_instance_id,
+                "list_agents",
+                {},
+                timeout_ms=10000,
+            )
+        except CloudDaemonDispatchError as exc:
+            logger.warning(
+                "cloud daemon list_agents failed: cloud=%s code=%s err=%s",
+                cloud_daemon_instance_id,
+                exc.code,
+                exc.message,
+            )
+            return None
+
+        if not ack.get("ok"):
+            err = ack.get("error") or {}
+            logger.warning(
+                "cloud daemon list_agents rejected: cloud=%s code=%s err=%s",
+                cloud_daemon_instance_id,
+                err.get("code"),
+                err.get("message"),
+            )
+            return None
+
+        result = ack.get("result")
+        agents = result.get("agents") if isinstance(result, dict) else None
+        if not isinstance(agents, list):
+            return set()
+
+        out: set[str] = set()
+        for entry in agents:
+            if not isinstance(entry, dict):
+                continue
+            raw_id = entry.get("id") or entry.get("agentId")
+            if isinstance(raw_id, str) and raw_id:
+                out.add(raw_id)
+        return out
 
     async def create_run(
         self,
