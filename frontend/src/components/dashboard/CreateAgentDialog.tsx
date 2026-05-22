@@ -346,7 +346,7 @@ export default function CreateAgentDialog({
   // Auto-select first online daemon once the list arrives.
   // If a preselectedDaemonId was provided, use that instead.
   useEffect(() => {
-    if (preselectedDaemonId && daemons.some((d) => d.id === preselectedDaemonId)) {
+    if (preselectedDaemonId && onlineDaemons.some((d) => d.id === preselectedDaemonId)) {
       setSelectedDaemonId(preselectedDaemonId);
       return;
     }
@@ -366,7 +366,7 @@ export default function CreateAgentDialog({
   const selectedDaemon = useMemo(() => {
     if (isCloudAgentSelected) return null;
     const d = daemons.find((d) => d.id === selectedDaemonId) ?? null;
-    if (!d) return d;
+    if (!d || d.status !== "online") return null;
     return { ...d, runtimes: applyRuntimeSupport(d.runtimes, t.runtimeNotSupported) };
   }, [daemons, isCloudAgentSelected, selectedDaemonId, t.runtimeNotSupported]);
 
