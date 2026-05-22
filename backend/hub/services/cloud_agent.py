@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from nacl.signing import SigningKey as NaClSigningKey
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy.orm.attributes import flag_modified
@@ -366,7 +366,7 @@ class CloudAgentService:
                 cloud_daemon_instance_id=cloud_daemon.id,
                 daemon_instance_id=daemon_row.id,
                 user_id=str(user_id),
-                runtime=runtime,
+                runtime=cloud_daemon.runtime,
                 provider_sandbox_id=cloud_daemon.provider_sandbox_id,
             )
         except Exception as exc:  # noqa: BLE001
@@ -1328,25 +1328,34 @@ class CloudAgentService:
         user_id: uuid.UUID,
         runtime: str,
     ) -> tuple[CloudDaemonInstance, DaemonInstance]:
-        """Find a cloud daemon owned by ``user_id`` that has spare capacity.
+        """Find or create the user's single active cloud daemon sandbox.
 
-        Per §5.2 schema is multi-tenant within a single sandbox; allocation
-        picks the oldest ready slot first to keep cost down. When no slot
-        is available we create a fresh cloud daemon + underlying
-        ``daemon_instances`` row.
+        The product model is one cloud sandbox per user, with multiple Cloud
+        Agents provisioned inside that sandbox. Future runtimes should share
+        this sandbox instead of creating a second per-runtime sandbox; the
+        per-agent runtime is still recorded on ``cloud_agent_instances``.
         """
-        # Prefer a ready (or starting) cloud daemon with room.
-        candidate = await db.scalar(
+        if db.bind is not None and db.bind.dialect.name == "postgresql":
+            await db.execute(
+                sa_text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                {"lock_key": f"cloud_agent_sandbox:{user_id}"},
+            )
+        await self._enforce_per_user_quota(db, user_id)
+
+        stmt = (
             select(CloudDaemonInstance)
             .where(
                 CloudDaemonInstance.user_id == user_id,
-                CloudDaemonInstance.runtime == runtime,
-                CloudDaemonInstance.status.in_(("ready", "starting", "paused")),
-                CloudDaemonInstance.active_agent_count < CloudDaemonInstance.max_agents,
+                CloudDaemonInstance.status.in_(
+                    ("creating", "starting", "ready", "paused")
+                ),
             )
             .order_by(CloudDaemonInstance.created_at.asc())
             .limit(1)
         )
+        if db.bind is not None and db.bind.dialect.name == "postgresql":
+            stmt = stmt.with_for_update()
+        candidate = await db.scalar(stmt)
         if candidate is not None:
             daemon_row = await db.scalar(
                 select(DaemonInstance).where(
@@ -1361,6 +1370,12 @@ class CloudAgentService:
                     candidate.id,
                 )
             else:
+                if (candidate.active_agent_count or 0) >= candidate.max_agents:
+                    raise CloudAgentError(
+                        "sandbox_capacity_exceeded",
+                        f"Cloud sandbox capacity exceeded (max {candidate.max_agents})",
+                        http_status=400,
+                    )
                 return candidate, daemon_row
 
         daemon_row = DaemonInstance(

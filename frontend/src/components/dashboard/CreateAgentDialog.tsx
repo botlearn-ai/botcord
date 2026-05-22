@@ -245,7 +245,7 @@ export default function CreateAgentDialog({
   const provisionAgent = useDaemonStore((s) => s.provisionAgent);
 
   const onlineDaemons = useMemo(
-    () => daemons.filter((d) => d.status === "online"),
+    () => daemons.filter((d) => d.status === "online" && d.kind !== "cloud"),
     [daemons],
   );
   const deviceOptions = useMemo(

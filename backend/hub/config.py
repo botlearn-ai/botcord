@@ -304,7 +304,7 @@ CLOUD_AGENT_DEFAULT_PROVIDER: str = os.getenv("CLOUD_AGENT_DEFAULT_PROVIDER", "e
 # Slot capacity per cloud daemon — schema allows >1 to keep the per-agent
 # sandbox cost down. Conservative default while we observe real load.
 CLOUD_AGENT_DEFAULT_MAX_AGENTS_PER_DAEMON: int = int(
-    os.getenv("CLOUD_AGENT_DEFAULT_MAX_AGENTS_PER_DAEMON", "2")
+    os.getenv("CLOUD_AGENT_DEFAULT_MAX_AGENTS_PER_DAEMON", str(CLOUD_AGENT_MAX_PER_USER))
 )
 
 CLOUD_AGENT_IDLE_PAUSE_SECONDS: float = float(

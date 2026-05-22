@@ -174,16 +174,42 @@ async def test_two_agents_share_a_cloud_daemon(db_session):
 
 
 @pytest.mark.asyncio
-async def test_create_allocates_new_daemon_when_existing_is_full(db_session):
+async def test_create_rejects_when_single_user_sandbox_is_full(db_session):
     user_id = uuid.uuid4()
     svc, _ = _make_service(max_per_user=3, max_agents_per_daemon=1)
     a = await svc.create_cloud_agent(
         db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
     )
-    b = await svc.create_cloud_agent(
-        db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
+    with pytest.raises(CloudAgentError) as excinfo:
+        await svc.create_cloud_agent(
+            db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
+        )
+    assert excinfo.value.code == "sandbox_capacity_exceeded"
+
+    rows = (
+        await db_session.execute(
+            select(CloudDaemonInstance).where(CloudDaemonInstance.user_id == user_id)
+        )
+    ).scalars().all()
+    assert [row.id for row in rows] == [a.cloud_daemon_instance_id]
+
+
+@pytest.mark.asyncio
+async def test_different_runtimes_share_single_user_sandbox(db_session):
+    user_id = uuid.uuid4()
+    svc, _ = _make_service(max_per_user=3, max_agents_per_daemon=3)
+    a = await svc.create_cloud_agent(
+        db_session,
+        user_id=user_id,
+        body=CreateCloudAgentInput(name="A", runtime="deepseek-tui"),
     )
-    assert a.cloud_daemon_instance_id != b.cloud_daemon_instance_id
+    b = await svc.create_cloud_agent(
+        db_session,
+        user_id=user_id,
+        body=CreateCloudAgentInput(name="B", runtime="codex"),
+    )
+    assert a.cloud_daemon_instance_id == b.cloud_daemon_instance_id
+    assert b.runtime == "codex"
 
 
 @pytest.mark.asyncio
