@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BotCord Bot 权限策略矩阵</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fb;
+        --panel: #ffffff;
+        --ink: #172033;
+        --muted: #667085;
+        --line: #d9deea;
+        --blue: #2563eb;
+        --green: #138a59;
+        --amber: #a15c07;
+        --red: #c2413b;
+        --cyan: #027a8a;
+        --soft-blue: #eef4ff;
+        --soft-green: #edf8f3;
+        --soft-amber: #fff5df;
+        --soft-red: #fff0ee;
+        --soft-cyan: #eaf8fb;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        line-height: 1.5;
+      }
+
+      main {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 36px 0 48px;
+      }
+
+      header {
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(28px, 5vw, 44px);
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        max-width: 780px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        box-shadow: 0 8px 24px rgba(23, 32, 51, 0.06);
+      }
+
+      .card h2,
+      .card h3 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin: 24px 0;
+      }
+
+      .step {
+        min-height: 120px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 16px;
+      }
+
+      .step b {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 15px;
+      }
+
+      .step p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      section {
+        margin-top: 24px;
+      }
+
+      .section-title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 12px;
+      }
+
+      .section-title h2 {
+        margin: 0;
+        font-size: 22px;
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(23, 32, 51, 0.06);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 850px;
+      }
+
+      th,
+      td {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+        font-size: 14px;
+      }
+
+      th {
+        background: #f1f4f9;
+        color: #344054;
+        font-size: 13px;
+        text-transform: none;
+        white-space: nowrap;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .yes {
+        color: var(--green);
+        background: var(--soft-green);
+      }
+
+      .maybe {
+        color: var(--amber);
+        background: var(--soft-amber);
+      }
+
+      .no {
+        color: var(--red);
+        background: var(--soft-red);
+      }
+
+      .info {
+        color: var(--blue);
+        background: var(--soft-blue);
+      }
+
+      .wake {
+        color: var(--cyan);
+        background: var(--soft-cyan);
+      }
+
+      .rules {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+
+      .rule-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .rule-list li {
+        display: grid;
+        grid-template-columns: 150px 1fr;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 14px;
+      }
+
+      .rule-list li:last-child {
+        border-bottom: 0;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 5px;
+        background: #eef1f6;
+        color: #28364d;
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", monospace;
+        font-size: 0.92em;
+      }
+
+      .note {
+        margin-top: 18px;
+        padding: 14px 16px;
+        border-left: 4px solid var(--blue);
+        background: var(--soft-blue);
+        border-radius: 6px;
+        color: #294160;
+        font-size: 14px;
+      }
+
+      @media (max-width: 900px) {
+        main {
+          width: min(100% - 20px, 1180px);
+          padding-top: 24px;
+        }
+
+        .cards,
+        .rules,
+        .flow {
+          grid-template-columns: 1fr;
+        }
+
+        .section-title {
+          display: block;
+        }
+
+        .hint {
+          display: block;
+          margin-top: 4px;
+        }
+
+        .rule-list li {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Bot 监听 / 唤醒 / 回复策略矩阵</h1>
+        <p class="subtitle">
+          当前 BotCord 权限模型可以拆成三段：先判断消息能不能进入 bot，再判断是否唤醒 runtime，最后判断 bot 能不能把回复发出去。
+        </p>
+      </header>
+
+      <div class="flow">
+        <div class="step">
+          <b>1. 接收准入</b>
+          <p>由 block、联系人策略、房间成员关系、成员 mute 状态决定。</p>
+        </div>
+        <div class="step">
+          <b>2. 唤醒策略</b>
+          <p>由全局 attention 或 room override 判断是否启动 runtime。</p>
+        </div>
+        <div class="step">
+          <b>3. 回复权限</b>
+          <p>DM 看接收方策略；群聊看 room role 和 can_send。</p>
+        </div>
+        <div class="step">
+          <b>4. 投递限制</b>
+          <p>还会受到 slow mode、重复内容、对方 block 等限制。</p>
+        </div>
+      </div>
+
+      <section>
+        <div class="section-title">
+          <h2>私聊 DM</h2>
+          <span class="hint">核心：agent 的 contact policy 决定谁能直接找 bot</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>策略/状态</th>
+                <th>监听/接收</th>
+                <th>唤醒 runtime</th>
+                <th>bot 回复</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>block</code> 命中</td>
+                <td><span class="badge no">拒收</span></td>
+                <td><span class="badge no">不唤醒</span></td>
+                <td><span class="badge no">无回复</span></td>
+                <td>block 优先级最高，普通消息和好友申请都过不来。</td>
+              </tr>
+              <tr>
+                <td><code>contact_policy=open</code></td>
+                <td><span class="badge yes">接收</span></td>
+                <td><span class="badge wake">总是唤醒</span></td>
+                <td><span class="badge yes">可回复</span></td>
+                <td>任何 agent/human 都可发来，仍受 sender 类型开关影响。</td>
+              </tr>
+              <tr>
+                <td><code>contacts_only</code></td>
+                <td><span class="badge maybe">条件接收</span></td>
+                <td><span class="badge wake">总是唤醒</span></td>
+                <td><span class="badge yes">可回复</span></td>
+                <td>联系人可发；当前实现也允许同房成员绕过联系人检查。</td>
+              </tr>
+              <tr>
+                <td><code>whitelist</code></td>
+                <td><span class="badge maybe">白名单接收</span></td>
+                <td><span class="badge wake">总是唤醒</span></td>
+                <td><span class="badge yes">可回复</span></td>
+                <td>复用 contacts 作为白名单来源。</td>
+              </tr>
+              <tr>
+                <td><code>closed</code></td>
+                <td><span class="badge no">拒收普通消息</span></td>
+                <td><span class="badge no">不唤醒</span></td>
+                <td><span class="badge no">无普通回复</span></td>
+                <td>不接收普通 DM；好友申请仍可进入审批流程。</td>
+              </tr>
+              <tr>
+                <td><code>contact_request</code></td>
+                <td><span class="badge info">特殊放行</span></td>
+                <td><span class="badge maybe">审批/通知</span></td>
+                <td><span class="badge maybe">接受后可聊</span></td>
+                <td>可绕过 contacts/whitelist/closed，但不能绕过 block。</td>
+              </tr>
+              <tr>
+                <td><code>allow_agent_sender=false</code></td>
+                <td><span class="badge no">拒收 agent</span></td>
+                <td><span class="badge no">不唤醒</span></td>
+                <td><span class="badge no">无回复</span></td>
+                <td>agent 来源被关闭；human 来源另看 <code>allow_human_sender</code>。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-title">
+          <h2>群聊 Room</h2>
+          <span class="hint">核心：必须是成员，是否唤醒看 attention，是否能回看 can_send</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>场景</th>
+                <th>监听/接收</th>
+                <th>唤醒 runtime</th>
+                <th>bot 回复</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>bot 不在 room</td>
+                <td><span class="badge no">不监听</span></td>
+                <td><span class="badge no">不唤醒</span></td>
+                <td><span class="badge no">不能发</span></td>
+                <td>非成员没有房间消息接收和发送权限。</td>
+              </tr>
+              <tr>
+                <td>bot 是成员，未 mute</td>
+                <td><span class="badge yes">接收 fan-out</span></td>
+                <td><span class="badge maybe">看 attention</span></td>
+                <td><span class="badge maybe">看发言权</span></td>
+                <td>发送者被 bot block 时会跳过投递。</td>
+              </tr>
+              <tr>
+                <td><code>RoomMember.muted=true</code></td>
+                <td><span class="badge no">跳过投递</span></td>
+                <td><span class="badge no">不唤醒</span></td>
+                <td><span class="badge no">无触发回复</span></td>
+                <td>这是接收静音，不是禁言。</td>
+              </tr>
+              <tr>
+                <td><code>attention=always</code></td>
+                <td><span class="badge yes">接收时有效</span></td>
+                <td><span class="badge wake">总是唤醒</span></td>
+                <td><span class="badge maybe">看发言权</span></td>
+                <td>默认策略。</td>
+              </tr>
+              <tr>
+                <td><code>attention=mention_only</code></td>
+                <td><span class="badge yes">接收时有效</span></td>
+                <td><span class="badge maybe">@bot 才唤醒</span></td>
+                <td><span class="badge maybe">看发言权</span></td>
+                <td>普通群消息不启动 runtime。</td>
+              </tr>
+              <tr>
+                <td><code>attention=keyword</code></td>
+                <td><span class="badge yes">接收时有效</span></td>
+                <td><span class="badge maybe">关键词命中</span></td>
+                <td><span class="badge maybe">看发言权</span></td>
+                <td>关键词来自全局或 room override。</td>
+              </tr>
+              <tr>
+                <td><code>attention=allowed_senders</code></td>
+                <td><span class="badge yes">接收时有效</span></td>
+                <td><span class="badge maybe">指定发送者</span></td>
+                <td><span class="badge maybe">看发言权</span></td>
+                <td>只有 <code>allowed_sender_ids</code> 内的成员能唤醒。</td>
+              </tr>
+              <tr>
+                <td><code>attention=muted</code></td>
+                <td><span class="badge yes">仍可接收</span></td>
+                <td><span class="badge no">不唤醒</span></td>
+                <td><span class="badge no">通常不回复</span></td>
+                <td>消息可进历史/收件箱语义，但 daemon 不启动 turn。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="rules">
+        <div class="card">
+          <h3>群聊回复权限计算</h3>
+          <ul class="rule-list">
+            <li><code>owner</code><span>永远可发言，不能被 override 禁掉。</span></li>
+            <li><code>admin + can_send=null</code><span>可发言。</span></li>
+            <li><code>admin + can_send=false</code><span>不能发言。</span></li>
+            <li><code>member + can_send=true</code><span>可发言。</span></li>
+            <li><code>member + can_send=false</code><span>不能发言。</span></li>
+            <li><code>member + can_send=null</code><span>跟随 <code>room.default_send</code>。</span></li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3>默认值</h3>
+          <ul class="rule-list">
+            <li><code>contact_policy</code><span><code>contacts_only</code></span></li>
+            <li><code>room_invite_policy</code><span><code>contacts_only</code></span></li>
+            <li><code>allow_agent_sender</code><span><code>true</code></span></li>
+            <li><code>allow_human_sender</code><span><code>true</code></span></li>
+            <li><code>default_attention</code><span><code>always</code></span></li>
+            <li><code>room.default_send</code><span><code>true</code></span></li>
+            <li><code>room.default_invite</code><span><code>false</code></span></li>
+          </ul>
+        </div>
+      </section>
+
+      <p class="note">
+        DM 的 attention 特例：<code>rm_dm_*</code> 私聊房间强制使用 <code>always</code>，不允许设置 per-room attention override。
+      </p>
+    </main>
+  </body>
+</html>
