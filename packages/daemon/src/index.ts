@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, statSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, readdirSync, statSync, rmSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import path from "node:path";
 import { augmentProcessPath } from "./path-env.js";
@@ -9,7 +9,6 @@ import {
   saveConfig,
   initDefaultConfig,
   resolveConfiguredAgentIds,
-  PID_PATH,
   SNAPSHOT_PATH,
   CONFIG_FILE_PATH,
   CONFIG_MISSING,
@@ -17,6 +16,14 @@ import {
   type RouteRule,
   type RouteRuleMatch,
 } from "./config.js";
+import {
+  ensureNoOtherDaemonFromPidFile,
+  pidAlive,
+  readPid,
+  removePidFile,
+  stopDaemonFromPidFileForRestart,
+  writeCurrentPid,
+} from "./daemon-singleton.js";
 import { resolveBootAgents } from "./agent-discovery.js";
 import {
   defaultTranscriptRoot,
@@ -226,60 +233,6 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
   }
   return { cmd: cmd ?? "", sub, flags, lists };
-}
-
-function readPid(): number | null {
-  if (!existsSync(PID_PATH)) return null;
-  const raw = readFileSync(PID_PATH, "utf8").trim();
-  const pid = Number(raw);
-  return Number.isFinite(pid) && pid > 0 ? pid : null;
-}
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForPidExit(pid: number, timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (!pidAlive(pid)) return true;
-    await delay(100);
-  }
-  return !pidAlive(pid);
-}
-
-async function stopExistingDaemonForRestart(pid: number): Promise<void> {
-  if (pid === process.pid) return;
-  log.info("existing daemon found; restarting", { pid });
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    try {
-      unlinkSync(PID_PATH);
-    } catch {
-      // ignore
-    }
-    return;
-  }
-  if (!(await waitForPidExit(pid, 5_000))) {
-    log.warn("existing daemon did not stop after SIGTERM; sending SIGKILL", { pid });
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {
-      // ignore
-    }
-    await waitForPidExit(pid, 2_000);
-  }
-  try {
-    unlinkSync(PID_PATH);
-  } catch {
-    // ignore
-  }
 }
 
 /**
@@ -628,13 +581,10 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
   // var so we don't try to re-prompt for credentials it already has.
   if (process.env.BOTCORD_DAEMON_CHILD !== "1") {
     await ensureUserAuthForStart(args);
-    const existing = readPid();
-    if (existing && pidAlive(existing)) {
-      await stopExistingDaemonForRestart(existing);
-    }
+    await stopDaemonFromPidFileForRestart({ logger: log });
   } else {
-    const existing = readPid();
-    if (existing && existing !== process.pid && pidAlive(existing)) {
+    const existing = ensureNoOtherDaemonFromPidFile();
+    if (existing) {
       console.error(`daemon already running (pid ${existing})`);
       process.exit(1);
     }
@@ -669,17 +619,13 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
   }
 
   // Foreground: we ARE the daemon.
-  writeFileSync(PID_PATH, String(process.pid), { mode: 0o600 });
+  writeCurrentPid();
   const handle = await startDaemon({ config: cfg, configPath: CONFIG_FILE_PATH });
 
   const shutdown = async (sig: string) => {
     log.info("signal received", { sig });
     await handle.stop(sig);
-    try {
-      unlinkSync(PID_PATH);
-    } catch {
-      // ignore
-    }
+    removePidFile();
     process.exit(0);
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
@@ -695,10 +641,9 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
 /**
  * Cloud-mode start: launched by the Hub-managed E2B sandbox provider.
  *
- * No login flow, no on-disk credentials at boot, no PID-file dance
- * (the sandbox is the lifecycle manager). The cloud daemon stays in the
- * foreground until killed; agents arrive via `provision_agent` frames
- * over `/cloud/daemon/ws`.
+ * No login flow and no on-disk credentials at boot. The daemon still uses
+ * the same PID-file singleton guard as local foreground starts because E2B
+ * resume hooks can run the startup command more than once in one sandbox.
  *
  * Always foreground — `--background` / `-d` is silently ignored because
  * E2B sandboxes don't have a meaningful detach concept.
@@ -710,6 +655,8 @@ async function cmdStartCloud(_args: ParsedArgs): Promise<void> {
     daemonInstanceId: cloudConfig.daemonInstanceId,
     hubUrl: cloudConfig.hubUrl,
   });
+  await stopDaemonFromPidFileForRestart({ logger: log });
+  writeCurrentPid();
 
   // Cloud daemons always start with an empty in-memory config — every
   // agent + route arrives over the control plane. We synthesize the
@@ -731,6 +678,7 @@ async function cmdStartCloud(_args: ParsedArgs): Promise<void> {
   const shutdown = async (sig: string): Promise<void> => {
     log.info("signal received", { sig });
     await handle.stop(sig);
+    removePidFile();
     process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
@@ -750,11 +698,7 @@ async function cmdStop(): Promise<void> {
   }
   if (!pidAlive(pid)) {
     console.error(`pid ${pid} not alive; removing stale pid file`);
-    try {
-      unlinkSync(PID_PATH);
-    } catch {
-      // ignore
-    }
+    removePidFile();
     process.exit(1);
   }
   process.kill(pid, "SIGTERM");

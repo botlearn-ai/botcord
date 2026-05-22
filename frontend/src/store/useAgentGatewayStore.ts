@@ -149,8 +149,22 @@ async function readErr(res: Response): Promise<GatewayApiError> {
       error?: unknown;
       code?: unknown;
     };
-    if (typeof json.detail === "string") detail = json.detail;
-    else if (typeof json.message === "string") detail = json.message;
+    if (typeof json.detail === "string") {
+      detail = json.detail;
+    } else if (json.detail && typeof json.detail === "object") {
+      const nested = json.detail as {
+        code?: unknown;
+        daemon_code?: unknown;
+        daemon_message?: unknown;
+        message?: unknown;
+      };
+      if (typeof nested.daemon_message === "string") detail = nested.daemon_message;
+      else if (typeof nested.message === "string") detail = nested.message;
+      if (typeof nested.daemon_code === "string") code = nested.daemon_code;
+      else if (typeof nested.code === "string") code = nested.code;
+    } else if (typeof json.message === "string") {
+      detail = json.message;
+    }
     if (typeof json.error === "string") code = json.error;
     else if (typeof json.code === "string") code = json.code;
   } catch {
