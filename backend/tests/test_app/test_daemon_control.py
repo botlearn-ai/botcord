@@ -23,6 +23,7 @@ from hub.enums import MessagePolicy
 from hub.models import (
     Agent,
     Base,
+    CloudDaemonInstance,
     DaemonDeviceCode,
     DaemonInstallTicket,
     DaemonInstance,
@@ -417,6 +418,42 @@ async def test_list_instances(client: AsyncClient, seed_user):
     for entry in data["instances"]:
         assert entry["id"].startswith("dm_")
         assert entry["online"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_instances_hides_cloud_daemons(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    local_bundle = await _provision_instance_via_device_code(client, seed_user)
+    cloud_daemon_row = DaemonInstance(
+        id="dm_cloudhidden",
+        user_id=seed_user["user_id"],
+        label="cloud-deepseek-tui",
+        kind="cloud",
+        refresh_token_hash="z" * 64,
+    )
+    db_session.add(cloud_daemon_row)
+    db_session.add(
+        CloudDaemonInstance(
+            id="cloud_dm_hidden",
+            user_id=seed_user["user_id"],
+            daemon_instance_id=cloud_daemon_row.id,
+            provider="fake",
+            runtime="deepseek-tui",
+            status="ready",
+            max_agents=3,
+            active_agent_count=1,
+        )
+    )
+    await db_session.commit()
+
+    r = await client.get(
+        "/daemon/instances",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200, r.text
+    ids = [entry["id"] for entry in r.json()["instances"]]
+    assert ids == [local_bundle["daemon_instance_id"]]
 
 
 # ---------------------------------------------------------------------------

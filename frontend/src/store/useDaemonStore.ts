@@ -64,6 +64,7 @@ export interface DaemonRuntime {
 export interface DaemonInstance {
   id: string;
   label: string | null;
+  kind?: "local" | "cloud" | string;
   status: "online" | "offline" | "revoked" | "removal_pending";
   created_at: string | null;
   last_seen_at: string | null;
@@ -342,6 +343,7 @@ function normalizeDaemon(raw: Record<string, unknown>): DaemonInstance {
   return {
     id: String(raw.id ?? ""),
     label: (raw.label as string | null) ?? null,
+    kind: typeof raw.kind === "string" ? raw.kind : undefined,
     status,
     created_at: (raw.created_at as string | null) ?? null,
     last_seen_at: (raw.last_seen_at as string | null) ?? null,

@@ -547,6 +547,7 @@ async def refresh_daemon_token(
 class _InstanceView(BaseModel):
     id: str
     label: str | None = None
+    kind: str
     created_at: datetime.datetime
     last_seen_at: datetime.datetime | None = None
     revoked_at: datetime.datetime | None = None
@@ -589,6 +590,7 @@ def _instance_to_view(instance: DaemonInstance) -> _InstanceView:
     return _InstanceView(
         id=instance.id,
         label=instance.label,
+        kind=instance.kind,
         created_at=instance.created_at,
         last_seen_at=instance.last_seen_at,
         revoked_at=instance.revoked_at,
@@ -612,7 +614,10 @@ async def list_instances(
 ) -> _InstancesResponse:
     result = await db.execute(
         select(DaemonInstance)
-        .where(DaemonInstance.user_id == ctx.user_id)
+        .where(
+            DaemonInstance.user_id == ctx.user_id,
+            DaemonInstance.kind == "local",
+        )
         .order_by(DaemonInstance.created_at.desc())
     )
     rows = result.scalars().all()
