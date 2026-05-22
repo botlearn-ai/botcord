@@ -201,9 +201,14 @@ def _as_aware_utc(value: datetime.datetime | None) -> datetime.datetime | None:
 def _cloud_agent_last_activity_at(
     cai: CloudAgentInstance, cdi: CloudDaemonInstance
 ) -> datetime.datetime:
+    # NB: deliberately exclude ``cai.updated_at`` — the SQLAlchemy
+    # ``onupdate`` hook flips it for unrelated status writes (provisioning
+    # → ready → paused), so the sweep saw every cloud agent as active. The
+    # explicit, event-driven signal lives on ``cai.last_active_at`` (owned
+    # by hub.services.cloud_agent_activity).
     candidates = [
         _as_aware_utc(cai.last_run_at),
-        _as_aware_utc(cai.updated_at),
+        _as_aware_utc(cai.last_active_at),
         _as_aware_utc(cai.created_at),
         _as_aware_utc(cdi.last_started_at),
         _as_aware_utc(cdi.created_at),

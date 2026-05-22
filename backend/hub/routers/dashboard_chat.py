@@ -32,6 +32,7 @@ from hub.models import (
     User,
 )
 from hub.routers.hub import notify_inbox
+from hub.services.cloud_agent_activity import bump_if_cloud_agent
 from hub.i18n import I18nHTTPException
 
 logger = logging.getLogger(__name__)
@@ -293,6 +294,11 @@ async def send_chat_message(
             await db.flush()
     except IntegrityError:
         raise I18nHTTPException(status_code=409, message_key="duplicate_message")
+
+    # Event 3: owner-chat send. The user is actively driving this agent
+    # from the dashboard right now — count it as activity unconditionally
+    # (attention policy doesn't apply: this is the owner's own room).
+    await bump_if_cloud_agent(db, agent_id)
 
     await db.commit()
 
