@@ -2,7 +2,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ClaudeCodeAdapter } from "../runtimes/claude-code.js";
+import { ClaudeCodeAdapter, probeClaudeAuth } from "../runtimes/claude-code.js";
+import type { RuntimeRunOptions } from "../types.js";
 
 // The adapter spawns whatever binary we point it at; we point it at a small
 // Node script so we control stdout/stderr/exit precisely without needing the
@@ -31,6 +32,20 @@ function runAdapter(script: string, sessionId: string | null = null) {
     signal: ctrl.signal,
     trustLevel: "owner",
   });
+}
+
+class EnvProbeClaudeCodeAdapter extends ClaudeCodeAdapter {
+  env(opts: Partial<RuntimeRunOptions> = {}) {
+    return this.spawnEnv({
+      text: "hi",
+      sessionId: null,
+      accountId: "ag_test",
+      cwd: tmpRoot,
+      signal: new AbortController().signal,
+      trustLevel: "owner",
+      ...opts,
+    } as RuntimeRunOptions);
+  }
 }
 
 describe("ClaudeCodeAdapter", () => {
@@ -148,6 +163,91 @@ process.exit(2);
     expect(res.error).toBeDefined();
     expect(res.error).toMatch(/code 2/);
     expect(res.error).toMatch(/auth failure/);
+  });
+
+  it("treats Claude Code auth failures emitted as success results as runtime errors", async () => {
+    const script = makeScript(
+      "auth-success.js",
+      `
+process.stdout.write(JSON.stringify({type:"system", subtype:"init", session_id:"sid-auth"}) + "\\n");
+process.stdout.write(JSON.stringify({type:"assistant", message:{content:[{type:"text", text:"partial"}]}}) + "\\n");
+process.stdout.write(JSON.stringify({
+  type:"result",
+  subtype:"success",
+  session_id:"sid-bad",
+  total_cost_usd:0,
+  result:"Failed to authenticate. API Error: 403 Request not allowed"
+}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script);
+    expect(res.text).toBe("");
+    expect(res.newSessionId).toBe("");
+    expect(res.error).toContain("Failed to authenticate");
+    expect(res.costUsd).toBe(0);
+  });
+
+  it("scrubs Claude Code auth env that can override stored login credentials", () => {
+    const previous = {
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
+      ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+      ANTHROPIC_CUSTOM_HEADERS: process.env.ANTHROPIC_CUSTOM_HEADERS,
+      CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+    };
+    try {
+      process.env.ANTHROPIC_API_KEY = "stale-key";
+      process.env.ANTHROPIC_AUTH_TOKEN = "stale-token";
+      process.env.ANTHROPIC_BASE_URL = "https://wrong.example";
+      process.env.ANTHROPIC_CUSTOM_HEADERS = "Authorization: Bearer stale";
+      process.env.CLAUDE_CODE_OAUTH_TOKEN = "stale-oauth";
+
+      const env = new EnvProbeClaudeCodeAdapter().env();
+      expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+      expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+      expect(env.ANTHROPIC_BASE_URL).toBeUndefined();
+      expect(env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined();
+      expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it("auth probe recognizes success-shaped Claude Code auth failures", () => {
+    const res = probeClaudeAuth({
+      execFileSyncFn: ((command: string, args: string[]) => {
+        if (command === "which") return "/usr/bin/claude\n";
+        expect(args).toEqual(["-p", "ping", "--output-format", "stream-json"]);
+        return `${JSON.stringify({
+          type: "result",
+          subtype: "success",
+          total_cost_usd: 0,
+          result: "Failed to authenticate. API Error: 403 Request not allowed",
+        })}\n`;
+      }) as never,
+    });
+    expect(res.checked).toBe(true);
+    expect(res.ok).toBe(false);
+    expect(res.message).toContain("Failed to authenticate");
+  });
+
+  it("auth probe reports ok when Claude Code returns a normal result", () => {
+    const res = probeClaudeAuth({
+      execFileSyncFn: ((command: string, args: string[]) => {
+        if (command === "which") return "/usr/bin/claude\n";
+        expect(args).toEqual(["-p", "ping", "--output-format", "stream-json"]);
+        return `${JSON.stringify({
+          type: "result",
+          subtype: "success",
+          total_cost_usd: 0.001,
+          result: "pong",
+        })}\n`;
+      }) as never,
+    });
+    expect(res).toEqual({ checked: true, ok: true, message: "claude-code auth ok" });
   });
 
   it("wipes newSessionId on non-success result so dispatcher can drop the stale entry", async () => {

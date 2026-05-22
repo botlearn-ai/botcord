@@ -8,6 +8,7 @@ function snapshot(
   return {
     channels: overrides.channels ?? {},
     turns: overrides.turns ?? {},
+    runtimeCircuitBreakers: overrides.runtimeCircuitBreakers,
   };
 }
 
@@ -69,6 +70,7 @@ describe("renderStatus", () => {
     expect(out).toContain("rm_oc_abc");
     expect(out).toContain("claude-code");
     expect(out).toMatch(/12s ago/);
+    expect(out).toContain("Runtime circuit breakers:");
     expect(out).not.toContain("⚠ stale");
   });
 
@@ -133,5 +135,37 @@ describe("renderStatus", () => {
     );
     expect(out).toContain("Channels:");
     expect(out).toContain("(none)");
+  });
+
+  it("renders open runtime auth circuit breakers", () => {
+    const now = 1_700_000_000_000;
+    const out = renderStatus(
+      {
+        pid: 1,
+        alive: true,
+        snapshot: snapshot({
+          runtimeCircuitBreakers: {
+            "claude-code:botcord:ag_1:rm_oc_a:": {
+              key: "claude-code:botcord:ag_1:rm_oc_a:",
+              runtime: "claude-code",
+              channel: "botcord",
+              accountId: "ag_1",
+              conversationId: "rm_oc_a",
+              failures: 3,
+              openedAt: now - 1000,
+              blockedUntil: now + 60_000,
+              lastFailureAt: now - 1000,
+              lastError: "Failed to authenticate",
+            },
+          },
+        }),
+        snapshotAgeMs: 100,
+      },
+      now,
+    );
+    expect(out).toContain("Runtime circuit breakers:");
+    expect(out).toContain("claude-code");
+    expect(out).toContain("rm_oc_a");
+    expect(out).toContain("Failed to authenticate");
   });
 });

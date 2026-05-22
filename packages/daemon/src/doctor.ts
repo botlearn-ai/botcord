@@ -1,6 +1,7 @@
 import type { RuntimeProbeEntry } from "./adapters/runtimes.js";
 import type { DaemonConfig } from "./config.js";
 import { resolveBootAgents } from "./agent-discovery.js";
+import { probeClaudeAuth, type ClaudeAuthProbeResult } from "./gateway/runtimes/claude-code.js";
 
 /** Summary of a single channel's readiness, printable by the doctor command. */
 export interface ChannelProbeResult {
@@ -54,6 +55,7 @@ export interface DoctorRuntimeEndpoint {
 /** Augmented runtime entry that may carry endpoint probe results. */
 export interface DoctorRuntimeEntry extends RuntimeProbeEntry {
   endpoints?: DoctorRuntimeEndpoint[];
+  auth?: ClaudeAuthProbeResult;
 }
 
 /** Input for the rendered doctor output. */
@@ -167,12 +169,11 @@ export async function probeChannel(
     return result;
   }
 
-  // Probe `/` — the hub is ASGI and responds 2xx/3xx/404 which is fine for
-  // "reachable". We treat any response as reachable; network errors fall
-  // through to hubOk=false.
+  // Probe `/` — the hub is ASGI and may answer 404 when the host is still
+  // reachable. Network errors fall through to hubOk=false.
   const probeUrl = `${result.hubUrl.replace(/\/+$/, "")}/`;
   const http = await opts.fetcher(probeUrl, opts.timeoutMs);
-  if (http.ok) {
+  if (http.ok || http.status === 404) {
     result.hubOk = true;
     result.hubMessage = `reachable (HTTP ${http.status})`;
   } else if (http.status !== undefined) {
@@ -260,6 +261,10 @@ export function renderDoctor(input: DoctorInput): string {
     if (!e.result.available && e.installHint) {
       lines.push(`    → ${e.installHint}`);
     }
+    if (e.auth) {
+      const authStatus = e.auth.checked ? (e.auth.ok ? "ok" : "failed") : "skipped";
+      lines.push(`    auth ${authStatus}: ${e.auth.message}`);
+    }
     if (e.endpoints && e.endpoints.length > 0) {
       for (const ep of e.endpoints) {
         const mark = ep.reachable ? "✓" : "✗";
@@ -312,15 +317,23 @@ export function renderDoctor(input: DoctorInput): string {
  * text. Keeps `index.ts` free of probe wiring.
  */
 export async function runDoctor(
-  runtimes: RuntimeProbeEntry[],
+  runtimes: DoctorRuntimeEntry[],
   channels: ChannelProbeConfig[],
   opts: {
     credentialsPath: (accountId: string) => string;
     fileReader: DoctorFileReader;
     fetcher: DoctorHttpFetcher;
     timeoutMs?: number;
+    authCheck?: boolean;
   },
 ): Promise<DoctorInput> {
+  if (opts.authCheck) {
+    for (const runtime of runtimes) {
+      if (runtime.id === "claude-code" && runtime.result.available) {
+        runtime.auth = probeClaudeAuth();
+      }
+    }
+  }
   const channelResults = await probeChannels({
     channels,
     credentialsPath: opts.credentialsPath,

@@ -337,7 +337,10 @@ export function createProvisioner(opts: ProvisionerOptions): (
         } catch {
           cfgForProbe = undefined;
         }
-        const snapshot = await collectRuntimeSnapshotAsync({ cfg: cfgForProbe });
+        const snapshot = attachRuntimeHealth(
+          await collectRuntimeSnapshotAsync({ cfg: cfgForProbe }),
+          gateway.snapshot(),
+        );
         daemonLog.debug("list_runtimes", { count: snapshot.runtimes.length });
         return { ok: true, result: snapshot };
       }
@@ -1793,6 +1796,47 @@ export function collectRuntimeSnapshot(opts: { force?: boolean } = {}): ListRunt
   const value: ListRuntimesResult = { runtimes, probedAt: Date.now() };
   _runtimeProbeCache = { at: Date.now(), value };
   return value;
+}
+
+export function attachRuntimeHealth(
+  snapshot: ListRuntimesResult,
+  live: GatewayRuntimeSnapshot,
+): ListRuntimesResult {
+  const breakers = Object.values(live.runtimeCircuitBreakers ?? {});
+  if (breakers.length === 0) return snapshot;
+
+  const byRuntime = new Map<string, typeof breakers>();
+  for (const breaker of breakers) {
+    const list = byRuntime.get(breaker.runtime) ?? [];
+    if (list.length < 32) list.push(breaker);
+    byRuntime.set(breaker.runtime, list);
+  }
+
+  return {
+    ...snapshot,
+    runtimes: snapshot.runtimes.map((runtime) => {
+      const runtimeBreakers = byRuntime.get(runtime.id);
+      if (!runtimeBreakers?.length) return runtime;
+      return {
+        ...runtime,
+        health: {
+          ...((runtime as { health?: Record<string, unknown> }).health ?? {}),
+          circuitBreakers: runtimeBreakers.map((b) => ({
+            key: b.key,
+            channel: b.channel,
+            accountId: b.accountId,
+            conversationId: b.conversationId,
+            threadId: b.threadId ?? null,
+            failures: b.failures,
+            openedAt: b.openedAt,
+            blockedUntil: b.blockedUntil,
+            lastFailureAt: b.lastFailureAt,
+            lastError: b.lastError,
+          })),
+        },
+      };
+    }),
+  };
 }
 
 /** Maximum number of `endpoints[]` entries persisted per runtime (RFC §3.8.2). */

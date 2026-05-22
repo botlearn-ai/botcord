@@ -85,6 +85,28 @@ function renderTurns(
   return out;
 }
 
+function renderRuntimeCircuitBreakers(
+  snap: GatewayRuntimeSnapshot,
+  now: number,
+): string[] {
+  const entries = Object.values(snap.runtimeCircuitBreakers ?? {});
+  if (entries.length === 0) return ["Runtime circuit breakers:", "  (none)"];
+  const out: string[] = ["Runtime circuit breakers:"];
+  const keyW = Math.max(3, ...entries.map((b) => b.key.length));
+  const rtW = Math.max(7, ...entries.map((b) => b.runtime.length));
+  const convW = Math.max(12, ...entries.map((b) => b.conversationId.length));
+  out.push(
+    `  ${pad("KEY", keyW)}  ${pad("RUNTIME", rtW)}  ${pad("CONVERSATION", convW)}  FAILS  BLOCKED FOR  LAST ERROR`,
+  );
+  for (const b of entries) {
+    const blockedFor = relTime(b.blockedUntil - now).replace(" ago", "");
+    out.push(
+      `  ${pad(b.key, keyW)}  ${pad(b.runtime, rtW)}  ${pad(b.conversationId, convW)}  ${pad(String(b.failures), 5)}  ${pad(blockedFor, 11)}  ${b.lastError}`,
+    );
+  }
+  return out;
+}
+
 /**
  * Format a human-readable status block. Kept pure so it can be unit-tested
  * without touching disk or spawning a daemon.
@@ -125,6 +147,8 @@ export function renderStatus(input: StatusRenderInput, now: number = Date.now())
     lines.push(...renderChannels(input.snapshot));
     lines.push("");
     lines.push(...renderTurns(input.snapshot, now));
+    lines.push("");
+    lines.push(...renderRuntimeCircuitBreakers(input.snapshot, now));
   } else if (input.alive) {
     lines.push("snapshot: unavailable (daemon running but no snapshot file found)");
   }

@@ -240,10 +240,26 @@ export interface TurnStatusSnapshot {
   startedAt: number;
 }
 
+/** Per-runtime auth circuit breaker state exposed through daemon snapshots. */
+export interface RuntimeCircuitBreakerSnapshot {
+  key: string;
+  runtime: string;
+  channel: string;
+  accountId: string;
+  conversationId: string;
+  threadId?: string | null;
+  failures: number;
+  openedAt: number;
+  blockedUntil: number;
+  lastFailureAt: number;
+  lastError: string;
+}
+
 /** Aggregate gateway state combining channel and turn snapshots. */
 export interface GatewayRuntimeSnapshot {
   channels: Record<string, ChannelStatusSnapshot>;
   turns: Record<string, TurnStatusSnapshot>;
+  runtimeCircuitBreakers?: Record<string, RuntimeCircuitBreakerSnapshot>;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { GatewayLogger } from "./log.js";
+import { looksLikeRuntimeAuthFailure } from "./runtime-errors.js";
 import { resolveRoute } from "./router.js";
 import { sessionKey, type SessionStore } from "./session-store.js";
 import {
@@ -23,6 +24,7 @@ import type {
   QueueMode,
   RuntimeAdapter,
   RuntimeRunResult,
+  RuntimeCircuitBreakerSnapshot,
   RuntimeStatusEvent,
   StreamBlock,
   SystemContextBuilder,
@@ -31,6 +33,8 @@ import type {
 } from "./types.js";
 
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_RUNTIME_AUTH_FAILURE_THRESHOLD = 3;
+const DEFAULT_RUNTIME_AUTH_FAILURE_COOLDOWN_MS = 10 * 60 * 1000;
 
 /**
  * Owner-chat room prefix. Reply-text gating: only rooms with this prefix get
@@ -192,6 +196,8 @@ export interface DispatcherOptions {
   sessionStore: SessionStore;
   log: GatewayLogger;
   turnTimeoutMs?: number;
+  runtimeAuthFailureThreshold?: number;
+  runtimeAuthFailureCooldownMs?: number;
   /**
    * Live reference to the Gateway's managed-route map. Dispatcher reads
    * `values()` on every `resolveRoute` call so hot-add/remove take effect
@@ -230,6 +236,7 @@ export interface DispatcherOptions {
    * and suppressed so observer failures never break the turn.
    */
   onOutbound?: OutboundObserver;
+  onRuntimeCircuitBreakerChange?: () => void;
   /**
    * Optional observer fired exactly once per turn after ``runtime.run``
    * resolves (or throws / times out). Receives the inbound message, the
@@ -351,6 +358,8 @@ interface DeferredMultimodalEntry extends BufferedSerialEntry {
   queuedAt: number;
 }
 
+interface RuntimeAuthFailureState extends RuntimeCircuitBreakerSnapshot {}
+
 /**
  * Gateway dispatcher: consumes `GatewayInboundEnvelope` and drives a runtime
  * turn per message, respecting queue mode, trust level, streaming, and
@@ -368,11 +377,14 @@ export class Dispatcher {
   private readonly sessionStore: SessionStore;
   private readonly log: GatewayLogger;
   private readonly turnTimeoutMs: number;
+  private readonly runtimeAuthFailureThreshold: number;
+  private readonly runtimeAuthFailureCooldownMs: number;
   private readonly buildSystemContext?: SystemContextBuilder;
   private readonly buildMemoryContext?: MemoryContextBuilder;
   private readonly onInbound?: InboundObserver;
   private readonly onOutbound?: OutboundObserver;
   private readonly onTurnComplete?: DispatcherOptions["onTurnComplete"];
+  private readonly onRuntimeCircuitBreakerChange?: () => void;
   private readonly composeUserTurn?: UserTurnBuilder;
   private readonly managedRoutes?: Map<string, GatewayRoute>;
   private readonly attentionGate?: (
@@ -382,6 +394,7 @@ export class Dispatcher {
   private readonly transcript: TranscriptWriter;
   private readonly queues: Map<string, QueueState> = new Map();
   private readonly deferredMultimodal: Map<string, DeferredMultimodalEntry[]> = new Map();
+  private readonly runtimeAuthFailures: Map<string, RuntimeAuthFailureState> = new Map();
   /**
    * Last `/hub/typing` ping timestamp per (accountId, conversationId).
    * Used to debounce cancel-previous bursts so we don't trip Hub's 20/min
@@ -396,11 +409,16 @@ export class Dispatcher {
     this.sessionStore = opts.sessionStore;
     this.log = opts.log;
     this.turnTimeoutMs = opts.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
+    this.runtimeAuthFailureThreshold =
+      opts.runtimeAuthFailureThreshold ?? DEFAULT_RUNTIME_AUTH_FAILURE_THRESHOLD;
+    this.runtimeAuthFailureCooldownMs =
+      opts.runtimeAuthFailureCooldownMs ?? DEFAULT_RUNTIME_AUTH_FAILURE_COOLDOWN_MS;
     this.buildSystemContext = opts.buildSystemContext;
     this.buildMemoryContext = opts.buildMemoryContext;
     this.onInbound = opts.onInbound;
     this.onOutbound = opts.onOutbound;
     this.onTurnComplete = opts.onTurnComplete;
+    this.onRuntimeCircuitBreakerChange = opts.onRuntimeCircuitBreakerChange;
     this.composeUserTurn = opts.composeUserTurn;
     this.managedRoutes = opts.managedRoutes;
     this.attentionGate = opts.attentionGate;
@@ -620,6 +638,18 @@ export class Dispatcher {
       });
     }
 
+    const openAuthBreaker = this.openRuntimeAuthBreaker(dispatchRoute, dispatchMsg);
+    if (openAuthBreaker) {
+      await this.skipRuntimeForAuthBreaker(
+        openAuthBreaker,
+        dispatchRoute,
+        dispatchMsg,
+        dispatchChannel,
+        dispatchTurnId,
+      );
+      return;
+    }
+
     if (mode === "cancel-previous") {
       await this.runCancelPrevious(
         queueKey,
@@ -648,6 +678,15 @@ export class Dispatcher {
     const out: Record<string, TurnStatusSnapshot> = {};
     for (const [key, q] of this.queues) {
       if (q.current) out[key] = { ...q.current.snapshot };
+    }
+    return out;
+  }
+
+  runtimeCircuitBreakers(): Record<string, RuntimeCircuitBreakerSnapshot> {
+    this.pruneExpiredRuntimeAuthBreakers();
+    const out: Record<string, RuntimeCircuitBreakerSnapshot> = {};
+    for (const [key, state] of this.runtimeAuthFailures) {
+      if (state.blockedUntil > Date.now()) out[key] = { ...state };
     }
     return out;
   }
@@ -712,6 +751,166 @@ export class Dispatcher {
     if (!list || list.length === 0) return [];
     this.deferredMultimodal.delete(queueKey);
     return list;
+  }
+
+  private runtimeAuthBreakerKey(route: GatewayRoute, msg: GatewayInboundMessage): string {
+    const thread = msg.conversation.threadId ?? "";
+    return `${route.runtime}:${msg.channel}:${msg.accountId}:${msg.conversation.id}:${thread}`;
+  }
+
+  private openRuntimeAuthBreaker(
+    route: GatewayRoute,
+    msg: GatewayInboundMessage,
+  ): RuntimeAuthFailureState | null {
+    const key = this.runtimeAuthBreakerKey(route, msg);
+    const state = this.runtimeAuthFailures.get(key);
+    if (!state) return null;
+    if (state.blockedUntil > 0 && state.blockedUntil <= Date.now()) {
+      this.runtimeAuthFailures.delete(key);
+      return null;
+    }
+    return state.blockedUntil > Date.now() ? state : null;
+  }
+
+  private pruneExpiredRuntimeAuthBreakers(): void {
+    const now = Date.now();
+    for (const [key, state] of this.runtimeAuthFailures) {
+      if (state.blockedUntil > 0 && state.blockedUntil <= now) this.runtimeAuthFailures.delete(key);
+    }
+  }
+
+  private recordRuntimeAuthFailure(
+    route: GatewayRoute,
+    msg: GatewayInboundMessage,
+    error: string,
+  ): RuntimeAuthFailureState | null {
+    const now = Date.now();
+    const key = this.runtimeAuthBreakerKey(route, msg);
+    const prev = this.runtimeAuthFailures.get(key);
+    const failures = (prev?.failures ?? 0) + 1;
+    const openedAt = prev?.openedAt ?? now;
+    const state: RuntimeAuthFailureState = {
+      key,
+      runtime: route.runtime,
+      channel: msg.channel,
+      accountId: msg.accountId,
+      conversationId: msg.conversation.id,
+      threadId: msg.conversation.threadId ?? null,
+      failures,
+      openedAt,
+      blockedUntil:
+        failures >= this.runtimeAuthFailureThreshold
+          ? now + this.runtimeAuthFailureCooldownMs
+          : 0,
+      lastFailureAt: now,
+      lastError: error,
+    };
+    this.runtimeAuthFailures.set(key, state);
+    if (state.blockedUntil > now) {
+      this.log.error("dispatcher: runtime auth circuit breaker opened", {
+        key,
+        runtime: route.runtime,
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        failures,
+        blockedUntil: state.blockedUntil,
+        error,
+      });
+      this.notifyRuntimeCircuitBreakerChange();
+      return state;
+    }
+    this.log.warn("dispatcher: runtime authentication failure recorded", {
+      key,
+      runtime: route.runtime,
+      agentId: msg.accountId,
+      roomId: msg.conversation.id,
+      topicId: msg.conversation.threadId ?? null,
+      failures,
+      threshold: this.runtimeAuthFailureThreshold,
+      error,
+    });
+    return null;
+  }
+
+  private clearRuntimeAuthFailures(route: GatewayRoute, msg: GatewayInboundMessage): void {
+    const key = this.runtimeAuthBreakerKey(route, msg);
+    if (!this.runtimeAuthFailures.delete(key)) return;
+    this.log.info("dispatcher: runtime auth circuit breaker cleared", {
+      key,
+      runtime: route.runtime,
+      agentId: msg.accountId,
+      roomId: msg.conversation.id,
+      topicId: msg.conversation.threadId ?? null,
+    });
+    this.notifyRuntimeCircuitBreakerChange();
+  }
+
+  private notifyRuntimeCircuitBreakerChange(): void {
+    try {
+      this.onRuntimeCircuitBreakerChange?.();
+    } catch (err) {
+      this.log.warn("dispatcher: onRuntimeCircuitBreakerChange threw", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private async skipRuntimeForAuthBreaker(
+    state: RuntimeAuthFailureState,
+    route: GatewayRoute,
+    msg: GatewayInboundMessage,
+    channel: ChannelAdapter,
+    turnId: string,
+  ): Promise<void> {
+    const error =
+      `runtime authentication failed repeatedly; dispatch paused until ${new Date(state.blockedUntil).toISOString()}`;
+    this.log.warn("dispatcher: runtime auth circuit breaker blocking turn", {
+      key: state.key,
+      runtime: route.runtime,
+      agentId: msg.accountId,
+      roomId: msg.conversation.id,
+      topicId: msg.conversation.threadId ?? null,
+      turnId,
+      blockedUntil: state.blockedUntil,
+    });
+    this.transcript.write({
+      ts: nowIso(),
+      kind: "turn_error",
+      turnId,
+      agentId: msg.accountId,
+      roomId: msg.conversation.id,
+      topicId: msg.conversation.threadId ?? null,
+      phase: "runtime",
+      error,
+      durationMs: 0,
+    });
+
+    const canDeliverRuntimeText = isOwnerChatRoom(msg) || !isBotCordChannel(channel);
+    const canDeliverRuntimeDiagnostics = canDeliverRuntimeText || isBotCordChannel(channel);
+    if (canDeliverRuntimeDiagnostics) {
+      const sendResult = await this.sendReply(channel, {
+        channel: msg.channel,
+        accountId: msg.accountId,
+        conversationId: msg.conversation.id,
+        threadId: msg.conversation.threadId ?? null,
+        type: "error",
+        text: `⚠️ Runtime error: ${truncate(error, 500)}`,
+        replyTo: this.providerReplyTo(msg),
+        traceId: msg.trace?.id ?? null,
+      }, turnId);
+      this.emitOutbound({
+        turnId,
+        msg,
+        runtime: route.runtime,
+        runtimeSessionId: null,
+        startedAt: Date.now(),
+        finalText: truncateTextField(""),
+        deliveryStatus: sendResult.ok ? "delivered" : "send_failed",
+        deliveryReason: sendResult.ok ? null : sendResult.error,
+        blocks: [],
+      });
+    }
   }
 
   private async runCancelPrevious(
@@ -1583,8 +1782,28 @@ export class Dispatcher {
 
       if (!result) return;
 
-      const replyText = (result.text || "").trim();
-      const finalTextField = truncateTextField(result.text || "");
+      const rawReplyText = (result.text || "").trim();
+      const replyLooksLikeAuthFailure = looksLikeRuntimeAuthFailure(rawReplyText);
+      const replyText = replyLooksLikeAuthFailure ? "" : rawReplyText;
+      const effectiveError = result.error ?? (replyLooksLikeAuthFailure ? rawReplyText : undefined);
+      const authFailureError =
+        effectiveError && looksLikeRuntimeAuthFailure(effectiveError) ? effectiveError : undefined;
+      const finalTextField = truncateTextField(replyLooksLikeAuthFailure ? "" : result.text || "");
+      if (replyLooksLikeAuthFailure) {
+        this.log.error("dispatcher: runtime text looked like authentication failure; treating as error", {
+          agentId: msg.accountId,
+          roomId: msg.conversation.id,
+          topicId: msg.conversation.threadId ?? null,
+          turnId,
+          runtime: route.runtime,
+          error: rawReplyText,
+        });
+      }
+      if (authFailureError) {
+        this.recordRuntimeAuthFailure(route, msg, authFailureError);
+      } else if (!effectiveError) {
+        this.clearRuntimeAuthFailures(route, msg);
+      }
 
       // Persist session before reply so next turn sees the new id even if send fails.
       //
@@ -1595,14 +1814,14 @@ export class Dispatcher {
       //                                 even when the adapter echoes that id back
       //   result.newSessionId truthy  → upsert the entry
       //   otherwise                   → no-op (e.g. codex intentionally never persists)
-      if (sessionId && result.error && !replyText) {
+      if (sessionId && effectiveError && !replyText) {
         try {
           await this.sessionStore.delete(key);
           this.log.info("dispatcher: dropped stale runtime session", {
             key,
             prevRuntimeSessionId: sessionId,
             nextRuntimeSessionId: result.newSessionId || null,
-            error: result.error,
+            error: effectiveError,
           });
         } catch (err) {
           this.log.warn("dispatcher: session-store.delete failed", {
@@ -1610,7 +1829,7 @@ export class Dispatcher {
             error: err instanceof Error ? err.message : String(err),
           });
         }
-      } else if (result.newSessionId) {
+      } else if (result.newSessionId && !authFailureError) {
         const session: GatewaySessionEntry = {
           key,
           runtime: route.runtime,
@@ -1638,13 +1857,13 @@ export class Dispatcher {
             error: err instanceof Error ? err.message : String(err),
           });
         }
-      } else if (sessionId && result.error) {
+      } else if (sessionId && effectiveError) {
         try {
           await this.sessionStore.delete(key);
           this.log.info("dispatcher: dropped stale runtime session", {
             key,
             prevRuntimeSessionId: sessionId,
-            error: result.error,
+            error: effectiveError,
           });
         } catch (err) {
           this.log.warn("dispatcher: session-store.delete failed", {
@@ -1655,14 +1874,14 @@ export class Dispatcher {
       }
 
       if (!replyText) {
-        if (result.error) {
+        if (effectiveError) {
           this.log.warn("dispatcher: runtime returned error without reply text", {
             agentId: msg.accountId,
             roomId: msg.conversation.id,
             topicId: msg.conversation.threadId ?? null,
             turnId,
             runtime: route.runtime,
-            error: result.error,
+            error: effectiveError,
           });
           if (canDeliverRuntimeDiagnostics) {
             const sendResult = await this.sendReply(channel, {
@@ -1671,7 +1890,7 @@ export class Dispatcher {
               conversationId: msg.conversation.id,
               threadId: msg.conversation.threadId ?? null,
               type: "error",
-              text: `⚠️ Runtime error: ${truncate(result.error, 500)}`,
+              text: `⚠️ Runtime error: ${truncate(effectiveError, 500)}`,
               replyTo: this.providerReplyTo(msg),
               traceId: msg.trace?.id ?? null,
             }, turnId);
@@ -1699,7 +1918,7 @@ export class Dispatcher {
           costUsd: result.costUsd,
           finalText: finalTextField,
           deliveryStatus: "empty_text",
-          deliveryReason: result.error ?? null,
+          deliveryReason: effectiveError ?? null,
           blocks: slot.blocks,
         });
         return;
