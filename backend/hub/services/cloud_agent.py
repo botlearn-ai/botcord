@@ -1433,6 +1433,49 @@ async def _notify_inbox(agent_id: str, db: AsyncSession) -> int:
     return await notify_inbox(agent_id, db=db)
 
 
+async def resume_cloud_agent_for_inbox(
+    db: AsyncSession,
+    agent_id: str,
+) -> bool:
+    """Best-effort wakeup for a cloud-hosted agent with queued inbox work.
+
+    Returns ``True`` when ``agent_id`` is a cloud agent and the resume call
+    completed. Non-cloud agents and failed resume attempts return ``False`` so
+    callers can decide whether to retry on a later notification pass.
+    """
+    try:
+        agent = await db.scalar(select(Agent).where(Agent.agent_id == agent_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("cloud inbox resume lookup failed: agent=%s err=%s", agent_id, exc)
+        return False
+
+    if agent is None or agent.hosting_kind != "cloud" or agent.user_id is None:
+        return False
+
+    try:
+        await CloudAgentService().resume_cloud_agent(
+            db,
+            user_id=agent.user_id,
+            agent_id=agent_id,
+        )
+        return True
+    except CloudAgentError as exc:
+        logger.warning(
+            "cloud inbox resume skipped: agent=%s code=%s err=%s",
+            agent_id,
+            exc.code,
+            exc.message,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "cloud inbox resume failed: agent=%s err=%s",
+            agent_id,
+            exc,
+            exc_info=True,
+        )
+    return False
+
+
 def _scrub_provisioning_metadata(cai: CloudAgentInstance) -> None:
     """Remove the temporary private key from ``metadata_json``.
 

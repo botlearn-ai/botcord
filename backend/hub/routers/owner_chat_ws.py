@@ -35,6 +35,7 @@ from hub.routers.hub import (
     notify_inbox,
     build_message_realtime_event,
 )
+from hub.services.cloud_agent import resume_cloud_agent_for_inbox
 from hub.validators import normalize_file_url
 
 import jwt as pyjwt
@@ -153,7 +154,8 @@ async def _notify_inbox_with_retry(agent_id: str) -> None:
     """Background task: retry notify_inbox until the agent's WS reconnects or retries exhaust."""
     for delay in _NOTIFY_RETRY_DELAYS:
         await asyncio.sleep(delay)
-        notified = await notify_inbox(agent_id)
+        async with async_session() as db:
+            notified = await notify_inbox(agent_id, db=db)
         if notified > 0:
             logger.info("Owner-chat notify retry succeeded: agent=%s after %.0fs", agent_id, delay)
             return
@@ -400,6 +402,8 @@ async def owner_chat_ws(ws: WebSocket):
 
                 logger.info("Owner-chat WS recv: user=%s agent=%s text_len=%d attachments=%d", user_id, agent_id, len(text), len(attachments))
 
+                cloud_resume_ok = False
+
                 # Create MessageRecord (same logic as dashboard_chat.send_chat_message)
                 msg_id = str(uuid.uuid4())
                 ts = int(time.time())
@@ -438,6 +442,8 @@ async def owner_chat_ws(ws: WebSocket):
                 )
 
                 async with async_session() as db:
+                    cloud_resume_ok = await resume_cloud_agent_for_inbox(db, agent_id)
+
                     try:
                         async with db.begin_nested():
                             db.add(record)
@@ -473,6 +479,7 @@ async def owner_chat_ws(ws: WebSocket):
                             payload=payload,
                             sender_name=display_name,
                         ),
+                        resume_cloud=not cloud_resume_ok,
                     )
                     logger.info(
                         "Owner-chat WS forwarded: hub_msg_id=%s agent=%s room=%s ws_notified=%d",

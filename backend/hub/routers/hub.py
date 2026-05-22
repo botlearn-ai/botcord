@@ -449,13 +449,16 @@ async def notify_inbox(
     *,
     db: AsyncSession | None = None,
     realtime_event: dict[str, Any] | None = None,
+    resume_cloud: bool = True,
 ) -> int:
     """Wake up any long-polling readers and WebSocket connections waiting on this agent's inbox.
 
     Returns the number of WebSocket connections that were successfully notified.
     """
-    if db is not None:
-        await _resume_cloud_agent_for_inbox(agent_id, db)
+    if db is not None and resume_cloud:
+        from hub.services.cloud_agent import resume_cloud_agent_for_inbox
+
+        await resume_cloud_agent_for_inbox(db, agent_id)
 
     # Wake long-polling readers
     cond = _inbox_conditions.get(agent_id)
@@ -525,41 +528,6 @@ async def notify_inbox(
         await _publish_agent_realtime_event(db, realtime_event)
 
     return notified
-
-
-async def _resume_cloud_agent_for_inbox(agent_id: str, db: AsyncSession) -> None:
-    """Best-effort wakeup for cloud-hosted agents when new inbox work arrives."""
-    try:
-        agent = await db.scalar(select(Agent).where(Agent.agent_id == agent_id))
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("cloud inbox resume lookup failed: agent=%s err=%s", agent_id, exc)
-        return
-
-    if agent is None or agent.hosting_kind != "cloud" or agent.user_id is None:
-        return
-
-    try:
-        from hub.services.cloud_agent import CloudAgentError, CloudAgentService
-
-        await CloudAgentService().resume_cloud_agent(
-            db,
-            user_id=agent.user_id,
-            agent_id=agent_id,
-        )
-    except CloudAgentError as exc:
-        logger.warning(
-            "cloud inbox resume skipped: agent=%s code=%s err=%s",
-            agent_id,
-            exc.code,
-            exc.message,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.error(
-            "cloud inbox resume failed: agent=%s err=%s",
-            agent_id,
-            exc,
-            exc_info=True,
-        )
 
 
 # ---------------------------------------------------------------------------

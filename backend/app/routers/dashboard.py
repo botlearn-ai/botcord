@@ -3405,6 +3405,7 @@ async def send_chat_message(
         build_message_realtime_event,
         notify_inbox,
     )
+    from hub.services.cloud_agent import resume_cloud_agent_for_inbox
 
     user_id = str(ctx.user_id)
     agent_id, agent_display_name = await _resolve_owner_chat_agent(db, ctx, body.agent_id)
@@ -3426,6 +3427,8 @@ async def send_chat_message(
             dumped = att.model_dump(exclude_none=True)
             dumped["url"] = normalized
             normalized_attachments.append(dumped)
+
+    cloud_resume_ok = await resume_cloud_agent_for_inbox(db, agent_id)
 
     # Ensure room exists
     room_id = await _ensure_owner_chat_room(db, user_id, agent_id, agent_display_name)
@@ -3491,6 +3494,7 @@ async def send_chat_message(
             payload=payload,
             sender_name=agent_display_name,
         ),
+        resume_cloud=not cloud_resume_ok,
     )
 
     return {"hub_msg_id": hub_msg_id, "room_id": room_id, "status": "queued"}
