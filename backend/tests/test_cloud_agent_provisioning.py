@@ -92,24 +92,42 @@ async def _ack_frame_when_sent(
     *,
     ack_ok: bool = True,
     error: dict | None = None,
+    result: dict | None = None,
     expected_type: str | None = None,
 ) -> dict:
-    """Wait for a frame to land on the fake WS, then resolve its ack future."""
-    for _ in range(100):
-        if ws.sent:
-            break
+    """Wait for a frame to land on the fake WS, then resolve its ack future.
+
+    Provision drains probe live daemon state with ``list_agents`` before
+    dispatching ``provision_agent``. Most tests care about the later frame, so
+    acknowledge the probe and keep waiting for the requested type.
+    """
+    seen: set[str] = set()
+    for _ in range(200):
         await asyncio.sleep(0.01)
-    assert ws.sent, "no frame was dispatched"
-    sent = json.loads(ws.sent[-1])
-    if expected_type:
-        assert sent["type"] == expected_type
-    fut = conn.pending_acks.get(sent["id"])
-    assert fut is not None, "frame has no pending ack future"
-    payload: dict = {"id": sent["id"], "ok": ack_ok}
-    if not ack_ok and error is not None:
-        payload["error"] = error
-    fut.set_result(payload)
-    return sent
+        for raw in ws.sent:
+            sent = json.loads(raw)
+            frame_id = sent["id"]
+            if frame_id in seen:
+                continue
+            seen.add(frame_id)
+            fut = conn.pending_acks.get(frame_id)
+            if fut is None or fut.done():
+                continue
+            if expected_type and sent["type"] != expected_type:
+                if sent["type"] == "list_agents":
+                    fut.set_result(
+                        {"id": frame_id, "ok": True, "result": {"agents": []}}
+                    )
+                    continue
+                assert sent["type"] == expected_type
+            payload: dict = {"id": frame_id, "ok": ack_ok}
+            if ack_ok and result is not None:
+                payload["result"] = result
+            if not ack_ok and error is not None:
+                payload["error"] = error
+            fut.set_result(payload)
+            return sent
+    raise AssertionError("no frame was dispatched")
 
 
 def _make_e2b_service(*, max_agents_per_daemon: int = 2) -> CloudAgentService:
@@ -373,23 +391,10 @@ async def test_provision_pending_multi_agent_round_trip(db_session):
     conn, ws = await _register_fake_conn(a.cloud_daemon_instance_id, "dm_y")
     try:
         async def _ack_two():
-            seen: set[str] = set()
             for _ in range(2):
-                for _ in range(100):
-                    pending = [
-                        f for f in ws.sent if json.loads(f)["id"] not in seen
-                    ]
-                    if pending:
-                        break
-                    await asyncio.sleep(0.01)
-                else:
-                    raise AssertionError("expected a second provision_agent frame")
-                sent = json.loads(pending[0])
-                assert sent["type"] == "provision_agent"
-                seen.add(sent["id"])
-                fut = conn.pending_acks.get(sent["id"])
-                assert fut is not None
-                fut.set_result({"id": sent["id"], "ok": True})
+                await _ack_frame_when_sent(
+                    conn, ws, expected_type="provision_agent"
+                )
 
         task = asyncio.create_task(_ack_two())
         await service.provision_pending_for_cloud_daemon(
@@ -430,12 +435,23 @@ async def test_provision_drain_is_noop_when_nothing_pending(db_session):
         await t
         ws.sent.clear()
 
-        # Second drain should send nothing.
+        # Second drain should only probe the daemon; no provision_agent is
+        # needed because list_agents reports the agent as already loaded.
+        probe = asyncio.create_task(
+            _ack_frame_when_sent(
+                conn,
+                ws,
+                expected_type="list_agents",
+                result={"agents": [{"agentId": view.agent_id}]},
+            )
+        )
         results = await service.provision_pending_for_cloud_daemon(
             db_session, cloud_daemon_instance_id=view.cloud_daemon_instance_id
         )
-        assert results == []
-        assert ws.sent == []
+        await probe
+        assert [r.agent_id for r in results] == [view.agent_id]
+        assert results[0].status == "ready"
+        assert [json.loads(raw)["type"] for raw in ws.sent] == ["list_agents"]
     finally:
         await _registry_for_tests().unregister(conn)
 
