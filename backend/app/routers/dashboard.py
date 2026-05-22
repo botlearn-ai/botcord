@@ -65,7 +65,7 @@ from hub.routers.hub import (
     is_agent_ws_online,
     notify_inbox,
 )
-from hub.share_payloads import share_create_payload
+from hub.share_payloads import SHARE_MESSAGE_PREVIEW_LIMIT, share_create_payload
 from hub.validators import normalize_file_url
 
 _logger = logging.getLogger(__name__)
@@ -3074,7 +3074,7 @@ async def create_share(
     if body and body.expires_in_hours:
         expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=body.expires_in_hours)
 
-    # Fetch latest 200 messages (deduplicated)
+    # Snapshot the latest public preview window only.
     dedup_sub = (
         select(
             MessageRecord.msg_id,
@@ -3088,7 +3088,7 @@ async def create_share(
         select(MessageRecord)
         .where(MessageRecord.id.in_(select(dedup_sub.c.min_id)))
         .order_by(MessageRecord.id.desc())
-        .limit(200)
+        .limit(SHARE_MESSAGE_PREVIEW_LIMIT)
     )
     records = list(reversed(msg_result.scalars().all()))
 

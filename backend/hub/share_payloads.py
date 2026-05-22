@@ -11,6 +11,8 @@ from hub.config import FRONTEND_BASE_URL
 from hub.enums import RoomVisibility
 from hub.models import Room
 
+SHARE_MESSAGE_PREVIEW_LIMIT = 30
+
 
 def frontend_url(path: str) -> str:
     return f"{FRONTEND_BASE_URL.rstrip('/')}{path}"

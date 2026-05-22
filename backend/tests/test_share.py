@@ -1,6 +1,7 @@
 """Tests for Share Room Chat feature (snapshot freeze strategy)."""
 
 import base64
+import datetime
 import hashlib
 import json
 import time
@@ -16,7 +17,7 @@ from unittest.mock import AsyncMock
 
 from sqlalchemy import select
 
-from hub.models import Agent, Base, MessagePolicy
+from hub.models import Agent, Base, MessagePolicy, MessageRecord
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -317,6 +318,46 @@ class TestGetSharedRoom:
         sender_names = {m["sender_name"] for m in data["messages"]}
         assert "Alice" in sender_names
         assert "Bob" in sender_names
+
+    @pytest.mark.asyncio
+    async def test_share_preview_keeps_latest_30_messages(self, client, db_session):
+        ctx = await _setup_room_with_messages(client, db_session)
+
+        for i in range(35):
+            env = _build_envelope(
+                ctx["sk_a"],
+                ctx["key_a"],
+                ctx["agent_a"],
+                ctx["room_id"],
+                payload={"text": f"Bulk message {i}"},
+            )
+            db_session.add(
+                MessageRecord(
+                    hub_msg_id=f"hub_bulk_{i}_{uuid.uuid4().hex[:8]}",
+                    msg_id=env["msg_id"],
+                    sender_id=ctx["agent_a"],
+                    receiver_id=ctx["agent_b"],
+                    room_id=ctx["room_id"],
+                    envelope_json=json.dumps(env),
+                    ttl_sec=3600,
+                    created_at=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=i),
+                )
+            )
+        await db_session.commit()
+
+        resp = await client.post(
+            f"/dashboard/rooms/{ctx['room_id']}/share",
+            headers=_auth_header(ctx["token_a"]),
+        )
+        assert resp.status_code == 201
+
+        resp = await client.get(f"/share/{resp.json()['share_id']}")
+        assert resp.status_code == 200
+        messages = resp.json()["messages"]
+
+        assert len(messages) == 30
+        assert messages[0]["text"] == "Bulk message 5"
+        assert messages[-1]["text"] == "Bulk message 34"
 
     @pytest.mark.asyncio
     async def test_empty_room_share(self, client, db_session):
