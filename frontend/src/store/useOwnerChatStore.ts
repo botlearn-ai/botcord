@@ -91,6 +91,15 @@ function hasVisibleOwnerChatContent(msg: OwnerChatMessage): boolean {
   return msg.streamBlocks.length > 0;
 }
 
+function isTerminalStreamBlock(entry: StreamBlockEntry): boolean {
+  const payload = entry.block.payload;
+  return entry.block.kind === "other" && payload?.terminal === true;
+}
+
+function visibleExecutionBlocks(blocks: StreamBlockEntry[]): StreamBlockEntry[] {
+  return blocks.filter((b) => b.block.kind !== "assistant" && b.block.kind !== "assistant_text");
+}
+
 /** In-flight guard + request token to prevent stale loadInitial responses. */
 let loadInFlight = false;
 let loadRequestId = 0;
@@ -423,10 +432,11 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
   appendStreamBlock: (entry) => {
     set((state) => {
       const traceId = entry.trace_id;
+      const terminal = isTerminalStreamBlock(entry);
 
       // Find existing streaming message for this trace
       const idx = state.messages.findIndex(
-        (m) => m.traceId === traceId && m.status === "streaming"
+        (m) => m.traceId === traceId && (m.status === "streaming" || (m.sender === "agent" && !m.hubMsgId))
       );
 
       if (idx === -1) {
@@ -436,8 +446,8 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           hubMsgId: null,
           sender: "agent",
           text: extractAssistantText([entry]),
-          streamBlocks: [entry],
-          status: "streaming",
+          streamBlocks: terminal ? visibleExecutionBlocks([entry]) : [entry],
+          status: terminal ? "delivered" : "streaming",
           createdAt: entry.created_at,
           senderName: state.agentName,
           type: "message",
@@ -445,7 +455,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         };
         return {
           messages: [...state.messages, streamingMsg],
-          activeTraceId: traceId,
+          activeTraceId: terminal ? null : traceId,
           agentTyping: false,
         };
       }
@@ -456,10 +466,13 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       if (existing.streamBlocks.some((b) => b.seq === entry.seq)) return state;
 
       const updatedBlocks = [...existing.streamBlocks, entry].sort((a, b) => a.seq - b.seq);
+      const updatedText = extractAssistantText(updatedBlocks);
+      const finalized = terminal || existing.status === "delivered";
       const updatedMsg: OwnerChatMessage = {
         ...existing,
-        streamBlocks: updatedBlocks,
-        text: extractAssistantText(updatedBlocks),
+        streamBlocks: finalized ? visibleExecutionBlocks(updatedBlocks) : updatedBlocks,
+        text: updatedText || existing.text,
+        status: terminal ? "delivered" : existing.status,
       };
 
       const newMessages = [...state.messages];
@@ -467,7 +480,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
       return {
         messages: newMessages,
-        activeTraceId: traceId,
+        activeTraceId: terminal ? null : traceId,
         agentTyping: false,
       };
     });
@@ -477,7 +490,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
   finalizeStream: (traceId, finalData) => {
     set((state) => {
       const idx = state.messages.findIndex(
-        (m) => m.traceId === traceId && m.status === "streaming"
+        (m) => m.traceId === traceId && (m.status === "streaming" || m.sender === "agent")
       );
 
       if (idx === -1) {
@@ -516,7 +529,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       // Preserve the streamed assistant text if it is richer than the final
       // `message` text (e.g. Codex streams long intermediate reasoning/answer
       // segments but only sends a short summary via botcord_send).
-      const streamedText = extractAssistantText(existing.streamBlocks);
+      const streamedText = extractAssistantText(existing.streamBlocks) || existing.text;
       const finalText = finalData.text || "";
       let mergedText: string;
       if (streamedText.length > finalText.length) {
@@ -527,9 +540,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       } else {
         mergedText = finalText;
       }
-      const visibleStreamBlocks = existing.streamBlocks.filter(
-        (b) => b.block.kind !== "assistant" && b.block.kind !== "assistant_text",
-      );
+      const visibleStreamBlocks = visibleExecutionBlocks(existing.streamBlocks);
       if (!mergedText.trim() && (finalData.attachments?.length ?? 0) === 0 && visibleStreamBlocks.length === 0) {
         const newMessages = state.messages.filter((_, i) => i !== idx);
         return {
@@ -589,7 +600,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
             text: partialText,
             status: "delivered" as const,
             // Keep streamBlocks for display (execution blocks, etc.)
-            streamBlocks: m.streamBlocks.filter((b) => b.block.kind !== "assistant" && b.block.kind !== "assistant_text"),
+            streamBlocks: visibleExecutionBlocks(m.streamBlocks),
           };
         }
         return m;

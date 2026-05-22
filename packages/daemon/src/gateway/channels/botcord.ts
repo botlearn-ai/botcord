@@ -1053,12 +1053,32 @@ function normalizeBlockForHub(
   }
 
   // "other" — e.g. Claude Code `type:"result"` end-of-turn summary.
+  if (isTerminalRuntimeBlock(raw)) {
+    payload.terminal = true;
+    payload.details = formatBlockDetails(raw);
+    const event = typeof raw?.event === "string" ? raw.event : undefined;
+    const embedded = typeof raw?.payload?.event === "string" ? raw.payload.event : undefined;
+    if (event || embedded) payload.event = event ?? embedded;
+    return { kind: "other", seq, payload };
+  }
   if (raw?.type === "result") {
     if (typeof raw.result === "string") payload.text = raw.result;
     if (typeof raw.subtype === "string") payload.subtype = raw.subtype;
     if (typeof raw.total_cost_usd === "number") payload.total_cost_usd = raw.total_cost_usd;
   }
   return { kind: "other", seq, payload };
+}
+
+function isTerminalRuntimeBlock(raw: any): boolean {
+  const event = typeof raw?.event === "string" ? raw.event : undefined;
+  const embedded = typeof raw?.payload?.event === "string" ? raw.payload.event : undefined;
+  const terminal = event ?? embedded;
+  return (
+    terminal === "turn.completed" ||
+    terminal === "turn.finished" ||
+    terminal === "turn.done" ||
+    terminal === "done"
+  );
 }
 
 function formatBlockDetails(raw: unknown): string {

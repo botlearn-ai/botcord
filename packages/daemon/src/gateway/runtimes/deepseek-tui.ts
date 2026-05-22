@@ -379,12 +379,12 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
         } else if (eventName === "item.delta" && payload?.payload?.kind === "agent_message") {
           append(stringField(payload.payload, "delta") ?? "");
         }
-        if (eventName === "turn.started") {
+        if (eventName === "turn.started" || embeddedDeepseekEvent(payload) === "turn.started") {
           opts.onStatus?.({ kind: "thinking", phase: "started", label: "Thinking" });
         } else if (eventName === "tool.started" || isToolStarted(payload)) {
           const label = stringField(payload, "name") ?? stringField(payload?.payload?.tool, "name") ?? "tool";
           opts.onStatus?.({ kind: "thinking", phase: "updated", label });
-        } else if (eventName === "turn.completed" || eventName === "done") {
+        } else if (isDeepseekTerminalEvent(eventName, payload)) {
           opts.onStatus?.({ kind: "thinking", phase: "stopped" });
           return true;
         }
@@ -451,13 +451,31 @@ function normalizeDeepseekEvent(eventName: string, payload: any, seq: number): S
   if (eventName === "item.delta" && payload?.payload?.kind === "agent_message") {
     return { raw: { event: eventName, payload }, kind: "assistant_text", seq };
   }
-  if (eventName === "turn.started" || eventName === "status") {
+  if (eventName === "turn.started" || eventName === "status" || embeddedDeepseekEvent(payload) === "turn.started") {
     return { raw: { event: eventName, payload }, kind: "system", seq };
   }
-  if (eventName === "error" || eventName === "turn.completed" || eventName === "done") {
+  if (eventName === "error" || isDeepseekTerminalEvent(eventName, payload)) {
     return { raw: { event: eventName, payload }, kind: "other", seq };
   }
   return null;
+}
+
+function embeddedDeepseekEvent(payload: any): string | undefined {
+  return stringField(payload, "event") ?? stringField(payload?.payload, "event");
+}
+
+function isDeepseekTerminalEvent(eventName: string, payload: any): boolean {
+  const embedded = embeddedDeepseekEvent(payload);
+  return (
+    eventName === "turn.completed" ||
+    eventName === "turn.finished" ||
+    eventName === "turn.done" ||
+    eventName === "done" ||
+    embedded === "turn.completed" ||
+    embedded === "turn.finished" ||
+    embedded === "turn.done" ||
+    embedded === "done"
+  );
 }
 
 function isToolStarted(payload: any): boolean {
@@ -488,7 +506,7 @@ function extractDeepseekError(eventName: string, payload: any): string | undefin
       stringField(payload?.payload, "error")
     );
   }
-  if (eventName === "turn.completed") {
+  if (isDeepseekTerminalEvent(eventName, payload)) {
     const turn = payload?.payload?.turn ?? payload?.turn;
     const status = stringField(turn, "status");
     const err = stringField(turn, "error");

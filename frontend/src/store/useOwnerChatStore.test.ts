@@ -186,3 +186,70 @@ describe("useOwnerChatStore empty message handling", () => {
     expect(useOwnerChatStore.getState().messages).toHaveLength(1);
   });
 });
+
+describe("useOwnerChatStore stream terminal handling", () => {
+  beforeEach(() => {
+    mocks.getRoomMessages.mockReset();
+    useOwnerChatStore.getState().reset();
+    useDashboardChatStore.setState({
+      ownedAgentRooms: [makeOwnedAgentRoom()],
+      optimisticOwnerChatRooms: {},
+    });
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+  });
+
+  it("settles a streaming placeholder when a terminal block arrives before the final message", () => {
+    useOwnerChatStore.getState().appendStreamBlock({
+      trace_id: "msg_trace",
+      seq: 1,
+      created_at: "2026-05-19T09:00:00.000Z",
+      block: { kind: "assistant", payload: { text: "done" } },
+    });
+    useOwnerChatStore.getState().appendStreamBlock({
+      trace_id: "msg_trace",
+      seq: 2,
+      created_at: "2026-05-19T09:00:01.000Z",
+      block: { kind: "other", payload: { terminal: true, event: "turn.completed" } },
+    });
+
+    expect(useOwnerChatStore.getState().messages).toMatchObject([
+      {
+        traceId: "msg_trace",
+        text: "done",
+        status: "delivered",
+        hubMsgId: null,
+        streamBlocks: [{ block: { kind: "other" } }],
+      },
+    ]);
+    expect(useOwnerChatStore.getState().activeTraceId).toBeNull();
+  });
+
+  it("upgrades a terminal-settled placeholder when the final traced message arrives", () => {
+    useOwnerChatStore.getState().appendStreamBlock({
+      trace_id: "msg_trace",
+      seq: 1,
+      created_at: "2026-05-19T09:00:00.000Z",
+      block: { kind: "assistant", payload: { text: "streamed answer" } },
+    });
+    useOwnerChatStore.getState().appendStreamBlock({
+      trace_id: "msg_trace",
+      seq: 2,
+      created_at: "2026-05-19T09:00:01.000Z",
+      block: { kind: "other", payload: { terminal: true, event: "turn.completed" } },
+    });
+
+    useOwnerChatStore.getState().finalizeStream("msg_trace", {
+      hubMsgId: "msg_final",
+      text: "answer",
+      senderName: "Owned bot",
+      createdAt: "2026-05-19T09:00:02.000Z",
+    });
+
+    expect(useOwnerChatStore.getState().messages).toHaveLength(1);
+    expect(useOwnerChatStore.getState().messages[0]).toMatchObject({
+      hubMsgId: "msg_final",
+      text: "streamed answer",
+      status: "delivered",
+    });
+  });
+});
