@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { api } from "@/lib/api";
 import type { ActivityStats } from "@/lib/types";
+import { sortOwnedAgentsNewestFirst } from "@/lib/owned-agents";
 import BotAvatar from "./BotAvatar";
 import { BotEmptyHero } from "./HomePanel";
 import MyDevicesView from "./MyDevicesView";
@@ -116,9 +117,13 @@ function BotsView({
   const t = myBotsPanelI18n[useLanguage()];
   const setBotDetailAgentId = useDashboardUIStore((s) => s.setBotDetailAgentId);
   const [statsById, setStatsById] = useState<Record<string, ActivityStats>>({});
+  const orderedAgents = useMemo(
+    () => sortOwnedAgentsNewestFirst(ownedAgents),
+    [ownedAgents],
+  );
 
   useEffect(() => {
-    const agentIds = ownedAgents.map((agent) => agent.agent_id);
+    const agentIds = orderedAgents.map((agent) => agent.agent_id);
     if (agentIds.length === 0) {
       setStatsById({});
       return;
@@ -134,7 +139,7 @@ function BotsView({
     return () => {
       cancelled = true;
     };
-  }, [ownedAgents]);
+  }, [orderedAgents]);
 
   return (
     <>
@@ -142,7 +147,7 @@ function BotsView({
         <BotEmptyHero onCreateBot={onCreateBot} />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {ownedAgents.map((agent) => {
+          {orderedAgents.map((agent) => {
             const stats = statsById[agent.agent_id] ?? null;
             const online = agent.ws_online;
             return (

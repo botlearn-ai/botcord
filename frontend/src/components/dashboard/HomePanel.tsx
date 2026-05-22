@@ -27,6 +27,7 @@ import { useLanguage } from "@/lib/i18n";
 import { homePanel as homePanelI18n } from "@/lib/i18n/translations/dashboard";
 import { api } from "@/lib/api";
 import type { ActivityStats, PublicRoom, UserAgent } from "@/lib/types";
+import { sortOwnedAgentsNewestFirst } from "@/lib/owned-agents";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -788,7 +789,10 @@ export default function HomePanel() {
     return () => window.clearInterval(id);
   }, []);
 
-  const previewOwnedAgents = useMemo(() => ownedAgents.slice(0, 5), [ownedAgents]);
+  const previewOwnedAgents = useMemo(
+    () => sortOwnedAgentsNewestFirst(ownedAgents).slice(0, 5),
+    [ownedAgents],
+  );
 
   useEffect(() => {
     const agentIds = previewOwnedAgents.map((agent) => agent.agent_id);
