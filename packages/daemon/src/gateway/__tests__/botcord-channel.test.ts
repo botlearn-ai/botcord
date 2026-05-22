@@ -269,6 +269,39 @@ describe("createBotCordChannel — inbox normalization", () => {
     }
   });
 
+  it("polls inbox periodically as a fallback after websocket auth", async () => {
+    const server = await startAuthOkServer();
+    const pollInbox = vi.fn().mockResolvedValue({ messages: [], count: 0, has_more: false });
+    const client = makeClient({
+      pollInbox,
+      getHubUrl: vi.fn().mockReturnValue(server.url),
+    });
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+      hubBaseUrl: server.url,
+      pollIntervalMs: 10,
+    });
+    const abort = new AbortController();
+    const startPromise = channel.start({
+      config: stubConfig,
+      accountId: "ag_self",
+      abortSignal: abort.signal,
+      log: silentLog,
+      emit: async () => {},
+      setStatus: () => {},
+    });
+    try {
+      await vi.waitFor(() => expect(pollInbox.mock.calls.length).toBeGreaterThanOrEqual(2));
+    } finally {
+      abort.abort();
+      await startPromise;
+      await server.close();
+    }
+  });
+
   it("maps a group-room InboxMessage to a GatewayInboundMessage", async () => {
     const { emits, server } = await startWithInbox([
       makeInbox({
