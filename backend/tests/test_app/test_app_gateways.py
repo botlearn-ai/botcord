@@ -19,6 +19,8 @@ from hub.models import (
     Agent,
     AgentGatewayConnection,
     Base,
+    CloudAgentInstance,
+    CloudDaemonInstance,
     DaemonInstance,
     Role,
     User,
@@ -114,7 +116,14 @@ async def seed(db_session: AsyncSession):
         label="laptop",
         refresh_token_hash="hash",
     )
-    db_session.add(daemon)
+    cloud_daemon_row = DaemonInstance(
+        id="dm_cloud123456",
+        user_id=user_id,
+        label="cloud-codex",
+        kind="cloud",
+        refresh_token_hash="cloud-hash",
+    )
+    db_session.add_all([daemon, cloud_daemon_row])
 
     other_user_id = uuid.uuid4()
     other_user = User(
@@ -153,6 +162,16 @@ async def seed(db_session: AsyncSession):
         claimed_at=now,
         hosting_kind="openclaw",
     )
+    cloud_agent = Agent(
+        agent_id="ag_cloud",
+        display_name="Cloud Agent",
+        bio="b",
+        message_policy=MessagePolicy.contacts_only,
+        user_id=user_id,
+        claimed_at=now,
+        hosting_kind="cloud",
+        daemon_instance_id="dm_cloud123456",
+    )
     other_agent = Agent(
         agent_id="ag_other",
         display_name="Other Daemon",
@@ -163,12 +182,43 @@ async def seed(db_session: AsyncSession):
         hosting_kind="daemon",
         daemon_instance_id="dm_otherbeefcafe",
     )
-    db_session.add_all([daemon_agent, openclaw_agent, other_agent])
+    cloud_daemon = CloudDaemonInstance(
+        id="cloud_dm_abcdef123456",
+        user_id=user_id,
+        daemon_instance_id="dm_cloud123456",
+        provider="e2b",
+        status="ready",
+        runtime="codex",
+        max_agents=1,
+        active_agent_count=1,
+    )
+    cloud_binding = CloudAgentInstance(
+        id="cloud_ag_abcdef123456",
+        user_id=user_id,
+        agent_id="ag_cloud",
+        cloud_daemon_instance_id="cloud_dm_abcdef123456",
+        daemon_instance_id="dm_cloud123456",
+        runtime="codex",
+        model_profile="default",
+        status="ready",
+    )
+    db_session.add_all(
+        [
+            daemon_agent,
+            openclaw_agent,
+            cloud_agent,
+            other_agent,
+            cloud_daemon,
+            cloud_binding,
+        ]
+    )
     await db_session.commit()
     return {
         "token": _token(str(supabase_uuid)),
         "user_id": user_id,
         "daemon_id": "dm_abcdef123456",
+        "cloud_daemon_row_id": "dm_cloud123456",
+        "cloud_daemon_id": "cloud_dm_abcdef123456",
     }
 
 
@@ -179,6 +229,15 @@ def _patch_daemon(monkeypatch, *, online: bool, send=None):
     monkeypatch.setattr(gw, "is_daemon_online", lambda _id: online)
     if send is not None:
         monkeypatch.setattr(gw, "send_control_frame", send)
+
+
+def _patch_cloud_daemon(monkeypatch, *, online: bool, send=None):
+    """Stub the gateways router's cloud-daemon hooks."""
+    import app.routers.gateways as gw
+
+    monkeypatch.setattr(gw, "is_cloud_daemon_online", lambda _id: online)
+    if send is not None:
+        monkeypatch.setattr(gw, "send_cloud_control_frame", send)
 
 
 def _patch_hub_gateway_send(monkeypatch, *, online: bool, send=None):
@@ -419,6 +478,84 @@ async def test_create_telegram_persists_metadata_and_token_preview(
     assert len(rows) == 1
     assert "botToken" not in (rows[0].config_json or {})
     assert rows[0].config_json.get("tokenPreview") == "1234...wxyz"
+
+
+@pytest.mark.asyncio
+async def test_create_telegram_for_cloud_agent_dispatches_to_cloud_daemon(
+    client, seed, db_session, monkeypatch
+):
+    calls: list[dict] = []
+
+    async def fake_send(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append(
+            {
+                "cloud_daemon_instance_id": cloud_daemon_instance_id,
+                "type": type_,
+                "params": params,
+                "timeout_ms": timeout_ms,
+            }
+        )
+        return {
+            "ok": True,
+            "result": {
+                "id": params["id"],
+                "type": "telegram",
+                "accountId": params["accountId"],
+                "enabled": True,
+                "tokenPreview": "1234...wxyz",
+                "status": {"running": True, "authorized": True},
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=False)
+    _patch_cloud_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_cloud/gateways",
+        headers=headers,
+        json={
+            "provider": "telegram",
+            "label": "cloud tg",
+            "bot_token": "1234:abcd",
+            "config": {
+                "allowedChatIds": ["111"],
+                "allowedSenderIds": ["111"],
+            },
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["agent_id"] == "ag_cloud"
+    assert body["daemon_instance_id"] == seed["cloud_daemon_row_id"]
+    assert body["config"]["tokenPreview"] == "1234...wxyz"
+    assert calls == [
+        {
+            "cloud_daemon_instance_id": seed["cloud_daemon_id"],
+            "type": "upsert_gateway",
+            "params": {
+                "id": body["id"],
+                "type": "telegram",
+                "accountId": "ag_cloud",
+                "label": "cloud tg",
+                "enabled": True,
+                "settings": {
+                    "allowedSenderIds": ["111"],
+                    "allowedChatIds": ["111"],
+                },
+                "secret": {"botToken": "1234:abcd"},
+            },
+            "timeout_ms": None,
+        }
+    ]
+
+    row = await db_session.scalar(
+        select(AgentGatewayConnection).where(
+            AgentGatewayConnection.agent_id == "ag_cloud"
+        )
+    )
+    assert row is not None
+    assert row.daemon_instance_id == seed["cloud_daemon_row_id"]
 
 
 @pytest.mark.asyncio

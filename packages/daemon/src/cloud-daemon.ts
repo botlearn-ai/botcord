@@ -12,7 +12,6 @@
 import { shouldWake, type AttentionPolicy } from "@botcord/protocol-core";
 import {
   Gateway,
-  createBotCordChannel,
   resolveTranscriptEnabled,
   type ChannelAdapter,
   type GatewayChannelConfig,
@@ -27,7 +26,7 @@ import { ControlChannel } from "./control-channel.js";
 import { toGatewayConfig } from "./daemon-config-map.js";
 import { log as daemonLog } from "./log.js";
 import { createProvisioner } from "./provision.js";
-import { pushRuntimeSnapshot } from "./daemon.js";
+import { createDaemonChannel, pushRuntimeSnapshot } from "./daemon.js";
 import { SnapshotWriter } from "./snapshot-writer.js";
 import { createDaemonSystemContextBuilder } from "./system-context.js";
 import { readWorkingMemorySnapshot } from "./working-memory.js";
@@ -250,20 +249,8 @@ export async function startCloudDaemon(
     config: gwConfig,
     sessionStorePath: opts.sessionStorePath ?? SESSIONS_PATH,
     createChannel: (chCfg: GatewayChannelConfig): ChannelAdapter => {
-      // Only BotCord channels are supported in cloud mode — third-party
-      // gateways are a local-daemon feature.
-      if (chCfg.type !== "botcord") {
-        throw new Error(
-          `cloud daemon: channel type "${chCfg.type}" not supported in cloud mode`,
-        );
-      }
-      const agentId =
-        typeof chCfg.agentId === "string" ? chCfg.agentId : chCfg.accountId;
-      return createBotCordChannel({
-        id: chCfg.id,
-        accountId: chCfg.accountId,
-        agentId,
-        credentialsPath: credentialPathByAgentId.get(agentId),
+      return createDaemonChannel(chCfg, {
+        credentialPathByAgentId,
         hubBaseUrl: cloudCfg.hubUrl,
       });
     },
