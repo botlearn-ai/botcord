@@ -62,6 +62,15 @@ def _make_provider(
 # ---------------------------------------------------------------------------
 
 
+def test_default_startup_command_prefers_configured_npm_spec():
+    """Default launch should not prefer a stale daemon baked into the template."""
+    assert "case \"${CLOUD_DAEMON_NPM_SPEC:-}\"" in CLOUD_DAEMON_STARTUP_COMMAND
+    assert "exec npx --yes --package \"$CLOUD_DAEMON_NPM_SPEC\"" in (
+        CLOUD_DAEMON_STARTUP_COMMAND
+    )
+    assert "bundled)" in CLOUD_DAEMON_STARTUP_COMMAND
+
+
 @pytest.mark.asyncio
 async def test_create_or_resume_starts_sandbox_and_injects_env():
     """Provider creates a sandbox, injects token + DeepSeek key, runs daemon."""

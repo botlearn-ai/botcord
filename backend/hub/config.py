@@ -331,8 +331,10 @@ E2B_DEFAULT_REGION: str | None = os.getenv("E2B_DEFAULT_REGION") or None
 E2B_SANDBOX_TIMEOUT_SECONDS: int = int(os.getenv("E2B_SANDBOX_TIMEOUT_SECONDS", "1800"))
 
 # Command Hub runs inside a freshly-created or resumed cloud daemon instance.
-# The default supports purpose-built images that already contain
-# ``botcord-daemon`` and preview templates that need to install it at boot.
+# The default prefers the Hub-selected npm package so paused/resumed sandboxes
+# do not keep running an older daemon baked into the E2B template. Set
+# ``CLOUD_DAEMON_NPM_SPEC=bundled`` to force a purpose-built image's
+# preinstalled ``botcord-daemon`` instead.
 CLOUD_DAEMON_NPM_SPEC: str = os.getenv(
     "CLOUD_DAEMON_NPM_SPEC", "@botcord/daemon@latest"
 )
@@ -340,10 +342,25 @@ CLOUD_DAEMON_STARTUP_COMMAND: str = os.getenv(
     "CLOUD_DAEMON_STARTUP_COMMAND",
     (
         "sh -lc '"
+        "case \"${CLOUD_DAEMON_NPM_SPEC:-}\" in "
+        "bundled) "
         "if command -v botcord-daemon >/dev/null 2>&1; then "
         "exec botcord-daemon start --foreground; "
         "fi; "
-        "exec npx --yes --package \"${CLOUD_DAEMON_NPM_SPEC:-@botcord/daemon@latest}\" "
+        ";; "
+        "\"\") "
+        "if command -v botcord-daemon >/dev/null 2>&1; then "
+        "exec botcord-daemon start --foreground; "
+        "fi; "
+        "exec npx --yes --package @botcord/daemon@latest "
+        "botcord-daemon start --foreground; "
+        ";; "
+        "*) "
+        "exec npx --yes --package \"$CLOUD_DAEMON_NPM_SPEC\" "
+        "botcord-daemon start --foreground; "
+        ";; "
+        "esac; "
+        "exec npx --yes --package @botcord/daemon@latest "
         "botcord-daemon start --foreground"
         "'"
     ),

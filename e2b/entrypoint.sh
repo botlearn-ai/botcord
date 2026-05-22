@@ -14,6 +14,7 @@
 #
 # Optional:
 #   DEEPSEEK_API_KEY                 — forwarded to deepseek-tui at runtime
+#   CLOUD_DAEMON_NPM_SPEC            — npm package spec to prefer over bundled daemon
 #   BOTCORD_DAEMON_EXTRA_ARGS        — appended to the daemon start command
 
 set -euo pipefail
@@ -58,5 +59,9 @@ fi
 
 # shellcheck disable=SC2206
 extra=( ${BOTCORD_DAEMON_EXTRA_ARGS:-} )
+
+if [[ -n "${CLOUD_DAEMON_NPM_SPEC:-}" && "${CLOUD_DAEMON_NPM_SPEC}" != "bundled" ]]; then
+  exec npx --yes --package "$CLOUD_DAEMON_NPM_SPEC" botcord-daemon start "${extra[@]}"
+fi
 
 exec botcord-daemon start "${extra[@]}"

@@ -559,6 +559,80 @@ async def test_create_telegram_for_cloud_agent_dispatches_to_cloud_daemon(
 
 
 @pytest.mark.asyncio
+async def test_create_wechat_for_cloud_agent_dispatches_to_cloud_daemon(
+    client, seed, db_session, monkeypatch
+):
+    calls: list[dict] = []
+
+    async def fake_send(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append(
+            {
+                "cloud_daemon_instance_id": cloud_daemon_instance_id,
+                "type": type_,
+                "params": params,
+                "timeout_ms": timeout_ms,
+            }
+        )
+        return {
+            "ok": True,
+            "result": {
+                "id": params["id"],
+                "type": "wechat",
+                "accountId": params["accountId"],
+                "enabled": True,
+                "tokenPreview": "wxab...mnop",
+                "status": {"running": True, "authorized": True},
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=False)
+    _patch_cloud_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_cloud/gateways",
+        headers=headers,
+        json={
+            "provider": "wechat",
+            "label": "cloud wx",
+            "login_id": "wxl_cloud",
+            "config": {"allowedSenderIds": ["xxx@im.wechat"]},
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["agent_id"] == "ag_cloud"
+    assert body["daemon_instance_id"] == seed["cloud_daemon_row_id"]
+    assert body["provider"] == "wechat"
+    assert body["config"]["tokenPreview"] == "wxab...mnop"
+    assert calls == [
+        {
+            "cloud_daemon_instance_id": seed["cloud_daemon_id"],
+            "type": "upsert_gateway",
+            "params": {
+                "id": body["id"],
+                "type": "wechat",
+                "accountId": "ag_cloud",
+                "label": "cloud wx",
+                "enabled": True,
+                "settings": {"allowedSenderIds": ["xxx@im.wechat"]},
+                "loginId": "wxl_cloud",
+            },
+            "timeout_ms": None,
+        }
+    ]
+
+    row = await db_session.scalar(
+        select(AgentGatewayConnection).where(
+            AgentGatewayConnection.agent_id == "ag_cloud"
+        )
+    )
+    assert row is not None
+    assert row.provider == "wechat"
+    assert row.daemon_instance_id == seed["cloud_daemon_row_id"]
+
+
+@pytest.mark.asyncio
 async def test_create_telegram_for_cloud_agent_resumes_when_cloud_daemon_offline(
     client, seed, monkeypatch
 ):

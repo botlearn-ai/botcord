@@ -618,4 +618,4 @@ PR 4 前已确认 (2026-05-20):
 
 - DeepSeek provider key 通过 Hub env `DEEPSEEK_API_KEY` 注入 sandbox。完整 secret manager 集成留待生产硬化阶段。
 - E2B template 默认 `botcord-deepseek-tui-ubuntu2404-dev2` (ID `z0f20u29zdgx7cxnuzcu`),通过 env `E2B_TEMPLATE_ID` 覆盖。
-- sandbox 启动命令通过 Hub env `CLOUD_DAEMON_STARTUP_COMMAND` 覆盖。默认命令先检查 `botcord-daemon`，缺失时用 `npx --package "$CLOUD_DAEMON_NPM_SPEC"` 启动，再执行 `botcord-daemon start --foreground`。注入 env: `BOTCORD_HUB_URL` / `BOTCORD_CLOUD_DAEMON_INSTANCE_ID` / `BOTCORD_DAEMON_INSTANCE_ID` / `BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN` / `CLOUD_DAEMON_NPM_SPEC` / `DEEPSEEK_API_KEY`。
+- sandbox 启动命令通过 Hub env `CLOUD_DAEMON_STARTUP_COMMAND` 覆盖。默认命令优先用 `npx --package "$CLOUD_DAEMON_NPM_SPEC"` 启动，避免复用模板中已过期的预装 daemon；设置 `CLOUD_DAEMON_NPM_SPEC=bundled` 时才强制使用镜像内置 `botcord-daemon`。注入 env: `BOTCORD_HUB_URL` / `BOTCORD_CLOUD_DAEMON_INSTANCE_ID` / `BOTCORD_DAEMON_INSTANCE_ID` / `BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN` / `CLOUD_DAEMON_NPM_SPEC` / `DEEPSEEK_API_KEY`。
