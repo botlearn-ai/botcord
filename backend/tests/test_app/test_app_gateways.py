@@ -623,6 +623,85 @@ async def test_create_telegram_for_cloud_agent_resumes_when_cloud_daemon_offline
 
 
 @pytest.mark.asyncio
+async def test_create_telegram_for_cloud_agent_retries_after_disconnect(
+    client, seed, db_session, monkeypatch
+):
+    import app.routers.gateways as gw
+
+    gw._RATE_BUCKETS.clear()
+    online = {"value": True}
+    resume_calls: list[dict] = []
+    send_calls: list[dict] = []
+
+    class FakeCloudAgentService:
+        async def resume_cloud_agent(self, db, *, user_id, agent_id):
+            resume_calls.append({"user_id": user_id, "agent_id": agent_id})
+            online["value"] = True
+            return None
+
+    async def fake_send(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        send_calls.append(
+            {
+                "cloud_daemon_instance_id": cloud_daemon_instance_id,
+                "type": type_,
+                "params": params,
+                "timeout_ms": timeout_ms,
+            }
+        )
+        if len(send_calls) == 1:
+            online["value"] = False
+            raise gw.CloudDaemonDispatchError(
+                "cloud_daemon_disconnected",
+                "cloud daemon disconnected",
+            )
+        return {
+            "ok": True,
+            "result": {
+                "id": params["id"],
+                "type": "telegram",
+                "accountId": params["accountId"],
+                "enabled": True,
+                "tokenPreview": "1234...wxyz",
+                "status": {"running": True, "authorized": True},
+            },
+        }
+
+    monkeypatch.setattr(gw, "CloudAgentService", lambda: FakeCloudAgentService())
+    monkeypatch.setattr(gw, "is_cloud_daemon_online", lambda _id: online["value"])
+    monkeypatch.setattr(gw, "send_cloud_control_frame", fake_send)
+    _patch_daemon(monkeypatch, online=False)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_cloud/gateways",
+        headers=headers,
+        json={
+            "provider": "telegram",
+            "label": "cloud tg",
+            "bot_token": "1234:abcd",
+            "config": {
+                "allowedChatIds": ["111"],
+                "allowedSenderIds": ["111"],
+            },
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    assert resume_calls == [{"user_id": seed["user_id"], "agent_id": "ag_cloud"}]
+    assert len(send_calls) == 2
+    assert send_calls[0]["type"] == "upsert_gateway"
+    assert send_calls[1]["type"] == "upsert_gateway"
+    rows = (
+        await db_session.execute(
+            select(AgentGatewayConnection).where(
+                AgentGatewayConnection.agent_id == "ag_cloud"
+            )
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
 async def test_create_telegram_requires_bot_token(client, seed, monkeypatch):
     _patch_daemon(monkeypatch, online=True)
     headers = {"Authorization": f"Bearer {seed['token']}"}

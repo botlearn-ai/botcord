@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  Clock,
   Copy,
   Info,
   Loader2,
@@ -78,6 +79,50 @@ function isAckTimeoutError(err: unknown): boolean {
   return (
     err instanceof GatewayApiError &&
     (err.status === 504 || err.message === "daemon_ack_timeout")
+  );
+}
+
+function useExpiryCountdown(expiresAt: number | null): number | null {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [expiresAt]);
+
+  if (!expiresAt) return null;
+  return Math.max(0, expiresAt - now);
+}
+
+function formatCountdown(ms: number): string {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function WechatLoginExpiryNotice({
+  remainingMs,
+}: {
+  remainingMs: number | null;
+}) {
+  if (remainingMs === null) return null;
+  const expired = remainingMs <= 0;
+  return (
+    <div
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] ${
+        expired
+          ? "border-amber-400/35 bg-amber-400/10 text-amber-200"
+          : remainingMs <= 60_000
+            ? "border-amber-400/30 bg-amber-400/10 text-amber-200"
+            : "border-glass-border bg-glass-bg/45 text-text-tertiary"
+      }`}
+    >
+      <Clock className="h-3 w-3" />
+      {expired ? "临时登录态已过期，请重新扫码" : `临时登录态剩余 ${formatCountdown(remainingMs)}`}
+    </div>
   );
 }
 
@@ -1183,6 +1228,7 @@ function WechatAddForm({
   const [loginId, setLoginId] = useState<string | null>(null);
   const [qrcode, setQrcode] = useState<string | null>(null);
   const [qrcodeUrl, setQrcodeUrl] = useState<string | null>(null);
+  const [loginExpiresAt, setLoginExpiresAt] = useState<number | null>(null);
   const [status, setStatus] = useState<WechatLoginStatus>("pending");
   const [tokenPreview, setTokenPreview] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState<string | null>(null);
@@ -1201,6 +1247,8 @@ function WechatAddForm({
   const [senderDiscoverError, setSenderDiscoverError] = useState<string | null>(null);
   const [copiedSenderId, setCopiedSenderId] = useState<string | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const loginRemainingMs = useExpiryCountdown(loginExpiresAt);
+  const loginExpired = loginRemainingMs !== null && loginRemainingMs <= 0;
 
   useEffect(() => {
     return () => {
@@ -1208,15 +1256,32 @@ function WechatAddForm({
     };
   }, []);
 
+  useEffect(() => {
+    if (!loginExpired) return;
+    if (phase === "scanning" && status !== "expired" && status !== "failed") {
+      setStatus("expired");
+    }
+    if (pollTimer.current) {
+      clearInterval(pollTimer.current);
+      pollTimer.current = null;
+    }
+  }, [loginExpired, phase, status]);
+
   async function handleStart() {
     setBusy(true);
     setError(null);
+    setSenderDiscoverError(null);
+    setSenderDiscoverHint(null);
+    setDiscoveredSenders([]);
     try {
       const r = await startWechatLogin(agentId, {});
       setLoginId(r.loginId);
       setQrcode(r.qrcode);
       setQrcodeUrl(r.qrcodeUrl ?? null);
+      setLoginExpiresAt(r.expiresAt);
       setStatus("pending");
+      setTokenPreview(null);
+      setBaseUrl(null);
       setPhase("scanning");
       // start polling
       if (pollTimer.current) clearInterval(pollTimer.current);
@@ -1265,9 +1330,19 @@ function WechatAddForm({
   const whitelistEmpty = allowedSenderIds.length === 0;
   const loginReady = phase === "ready" && !!loginId;
   const senderReady = allowedSenderIds.length > 0;
-  const canSave = phase === "ready" && !!loginId && !whitelistEmpty && !daemonOffline && !busy;
+  const canSave =
+    phase === "ready" &&
+    !!loginId &&
+    !whitelistEmpty &&
+    !loginExpired &&
+    !daemonOffline &&
+    !busy;
 
   async function handleSave() {
+    if (loginExpired) {
+      setError("微信临时登录态已过期，请重新扫码。");
+      return;
+    }
     if (!canSave || !loginId) return;
     setBusy(true);
     setError(null);
@@ -1295,6 +1370,11 @@ function WechatAddForm({
 
   async function handleDiscoverSenders() {
     if (!loginId || discoveringSenders) return;
+    if (loginExpired) {
+      setSenderDiscoverHint(null);
+      setSenderDiscoverError("微信临时登录态已过期，请重新扫码。");
+      return;
+    }
     setDiscoveringSenders(true);
     setSenderDiscoverHint("等待最近微信消息...");
     setSenderDiscoverError(null);
@@ -1379,7 +1459,10 @@ function WechatAddForm({
 
         {phase === "scanning" && (
           <div className="space-y-2 rounded-lg border border-glass-border bg-deep-black/40 p-3">
-            <div className="text-xs text-text-secondary">{statusText[status]}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-text-secondary">{statusText[status]}</span>
+              <WechatLoginExpiryNotice remainingMs={loginRemainingMs} />
+            </div>
             {qrcodeUrl ? (
               <div className="inline-flex h-44 w-44 items-center justify-center rounded-md border border-glass-border bg-white p-2">
                 <QRCodeSVG
@@ -1426,11 +1509,14 @@ function WechatAddForm({
         )}
 
         {phase === "ready" && (
-          <div className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2 text-[11px] text-emerald-200">
-            已授权
-            {tokenPreview ? (
-              <span className="ml-1 font-mono">· token {tokenPreview}</span>
-            ) : null}
+          <div className="space-y-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2">
+            <div className="text-[11px] text-emerald-200">
+              已授权
+              {tokenPreview ? (
+                <span className="ml-1 font-mono">· token {tokenPreview}</span>
+              ) : null}
+            </div>
+            <WechatLoginExpiryNotice remainingMs={loginRemainingMs} />
           </div>
         )}
       </StepSection>
@@ -1455,7 +1541,7 @@ function WechatAddForm({
               <button
                 type="button"
                 onClick={handleDiscoverSenders}
-                disabled={!loginId || busy || discoveringSenders}
+                disabled={!loginId || loginExpired || busy || discoveringSenders}
                 className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-neon-cyan/50 bg-neon-cyan/15 px-3 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50 sm:w-auto"
               >
                 {discoveringSenders ? (
@@ -1570,6 +1656,11 @@ function WechatAddForm({
             {busy && <Loader2 className="h-3 w-3 animate-spin" />}
             保存
           </button>
+          {loginExpired && (
+            <p className="mt-2 text-[10px] leading-relaxed text-amber-200">
+              微信临时登录态已过期，请重新扫码后保存。
+            </p>
+          )}
         </StepSection>
       )}
 
@@ -1638,6 +1729,7 @@ function GatewayEditForm({
   const [wechatLoginId, setWechatLoginId] = useState<string | null>(null);
   const [wechatQrcodeUrl, setWechatQrcodeUrl] = useState<string | null>(null);
   const [wechatQrcode, setWechatQrcode] = useState<string | null>(null);
+  const [wechatLoginExpiresAt, setWechatLoginExpiresAt] = useState<number | null>(null);
   const [wechatStatus, setWechatStatus] = useState<WechatLoginStatus>("pending");
   const [wechatLoginBusy, setWechatLoginBusy] = useState(false);
   const [discoveringSenders, setDiscoveringSenders] = useState(false);
@@ -1648,12 +1740,25 @@ function GatewayEditForm({
   const [senderDiscoverError, setSenderDiscoverError] = useState<string | null>(null);
   const [copiedSenderId, setCopiedSenderId] = useState<string | null>(null);
   const editPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wechatLoginRemainingMs = useExpiryCountdown(wechatLoginExpiresAt);
+  const wechatLoginExpired = wechatLoginRemainingMs !== null && wechatLoginRemainingMs <= 0;
 
   useEffect(() => {
     return () => {
       if (editPollTimer.current) clearInterval(editPollTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!wechatLoginExpired) return;
+    if (wechatStatus !== "confirmed" && wechatStatus !== "failed") {
+      setWechatStatus("expired");
+    }
+    if (editPollTimer.current) {
+      clearInterval(editPollTimer.current);
+      editPollTimer.current = null;
+    }
+  }, [wechatLoginExpired, wechatStatus]);
 
   const allowedChatIds = csvToList(chatIds);
   const allowedSenderIds = csvToList(senderIds);
@@ -1772,6 +1877,7 @@ function GatewayEditForm({
       setWechatLoginId(r.loginId);
       setWechatQrcodeUrl(r.qrcodeUrl ?? null);
       setWechatQrcode(r.qrcode);
+      setWechatLoginExpiresAt(r.expiresAt);
       setWechatStatus("pending");
       if (editPollTimer.current) clearInterval(editPollTimer.current);
       editPollTimer.current = setInterval(() => {
@@ -1812,6 +1918,11 @@ function GatewayEditForm({
 
   async function handleDiscoverWechatSenders() {
     if (!wechatLoginId || discoveringSenders || wechatStatus !== "confirmed") return;
+    if (wechatLoginExpired) {
+      setSenderDiscoverHint(null);
+      setSenderDiscoverError("微信临时登录态已过期，请重新扫码。");
+      return;
+    }
     setDiscoveringSenders(true);
     setSenderDiscoverHint("等待最近微信消息...");
     setSenderDiscoverError(null);
@@ -2035,6 +2146,7 @@ function GatewayEditForm({
                 disabled={
                   !wechatLoginId ||
                   wechatStatus !== "confirmed" ||
+                  wechatLoginExpired ||
                   saving ||
                   discoveringSenders
                 }
@@ -2051,6 +2163,9 @@ function GatewayEditForm({
                 用要接入的微信账号发一条消息。
               </span>
             </div>
+            {wechatLoginId && (
+              <WechatLoginExpiryNotice remainingMs={wechatLoginRemainingMs} />
+            )}
             {wechatLoginId && wechatStatus !== "confirmed" && (
               <div className="space-y-2 rounded-lg border border-glass-border bg-glass-bg/35 p-2">
                 <div className="text-[11px] text-text-secondary">
