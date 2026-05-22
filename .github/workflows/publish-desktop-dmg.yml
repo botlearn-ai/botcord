@@ -62,6 +62,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate required release secrets
+        env:
+          MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64: ${{ secrets.MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
+          MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          for name in \
+            MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 \
+            MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD \
+            APP_STORE_CONNECT_API_KEY_BASE64 \
+            APP_STORE_CONNECT_API_KEY_ID \
+            APP_STORE_CONNECT_API_ISSUER_ID
+          do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf "Missing required GitHub Actions secrets:\n" >&2
+            printf "  - %s\n" "${missing[@]}" >&2
+            exit 1
+          fi
+
       - name: Import Developer ID certificate
         env:
           MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64: ${{ secrets.MAC_DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
@@ -164,8 +193,20 @@ jobs:
           mkdir -p release-assets
           DMG_OUT="release-assets/${{ steps.meta.outputs.asset_prefix }}.dmg"
           ZIP_OUT="release-assets/${{ steps.meta.outputs.asset_prefix }}.app.zip"
+          APP_NOTARY_ZIP="$RUNNER_TEMP/BotCord.app.notary.zip"
 
           codesign --verify --deep --strict --verbose=2 "$APP"
+
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$APP_NOTARY_ZIP"
+          xcrun notarytool submit "$APP_NOTARY_ZIP" \
+            --key "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8" \
+            --key-id "$APP_STORE_CONNECT_API_KEY_ID" \
+            --issuer "$APP_STORE_CONNECT_API_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+          spctl -a -vv --type execute "$APP"
+
           cp "$DMG" "$DMG_OUT"
           codesign --force \
             --sign "$DEVELOPER_ID_SIGNING_IDENTITY_HASH" \
@@ -226,8 +267,8 @@ jobs:
               `BotCord Desktop ${process.env.DESKTOP_VERSION}`,
               "",
               "Assets:",
-              "- macOS DMG installer",
-              "- zipped .app bundle",
+              "- signed and notarized macOS DMG installer",
+              "- signed, notarized, and stapled zipped .app bundle",
               "- SHA256 checksums",
             ].join("\n");
 
