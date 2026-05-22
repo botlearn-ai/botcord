@@ -150,6 +150,25 @@ describe("DeepseekTuiAdapter", () => {
     }
   });
 
+  it("treats DeepSeek embedded terminal events as turn completion", async () => {
+    const server = await startMockDeepseekServer({
+      events: [
+        { event: "status", data: { event: "turn.started", thread_id: "thr_test", turn_id: "turn_test" } },
+        { event: "message.delta", data: { thread_id: "thr_test", turn_id: "turn_test", content: "done" } },
+        { event: "status", data: { event: "turn.finished", thread_id: "thr_test", turn_id: "turn_test" } },
+      ],
+    });
+    try {
+      const { result, blocks, status } = runAdapter(server.baseUrl, server.token);
+      const res = await result;
+      expect(res).toEqual({ text: "done", newSessionId: server.threadId });
+      expect(blocks).toContain("assistant_text");
+      expect(status.at(-1)).toEqual({ phase: "stopped", label: undefined });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("reuses an existing DeepSeek thread id and patches per-turn system context", async () => {
     const server = await startMockDeepseekServer({ threadId: "thr_existing" });
     try {

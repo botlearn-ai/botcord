@@ -868,6 +868,47 @@ describe("createBotCordChannel — streamBlock()", () => {
     }
   });
 
+  it("marks DeepSeek terminal events for owner-chat stream cleanup", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const client = makeClient({
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+      });
+      await channel.streamBlock!({
+        traceId: "m_trace",
+        accountId: "ag_self",
+        conversationId: "rm_oc_1",
+        block: {
+          kind: "other",
+          seq: 6,
+          raw: {
+            event: "turn.finished",
+            payload: { thread_id: "thr_1", turn_id: "turn_1" },
+          },
+        },
+        log: silentLog,
+      });
+      const [, init] = fetchSpy.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      expect(body.block).toMatchObject({
+        kind: "other",
+        seq: 6,
+        payload: { terminal: true, event: "turn.finished" },
+      });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it("normalizes a thinking block with phase/label/source payload", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     const realFetch = globalThis.fetch;
