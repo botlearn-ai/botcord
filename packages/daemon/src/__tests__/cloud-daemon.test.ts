@@ -19,6 +19,7 @@ import { startCloudDaemon } from "../cloud-daemon.js";
 import type { CloudModeConfig } from "../cloud-mode.js";
 import { ControlChannel } from "../control-channel.js";
 import type { DaemonConfig } from "../config.js";
+import type { Gateway, GatewayChannelConfig } from "../gateway/index.js";
 
 class FakeWebSocket extends EventEmitter {
   public readyState = 0;
@@ -167,6 +168,44 @@ describe("startCloudDaemon", () => {
       expect(callArgs.gateway).toBeDefined();
       expect(callArgs.onAgentInstalled).toBeInstanceOf(Function);
       expect(callArgs.policyResolver).toBeDefined();
+    } finally {
+      await handle.stop("test");
+    }
+  });
+
+  it("allows third-party gateway channels to be hot-plugged in cloud mode", async () => {
+    let gateway: Pick<Gateway, "addChannel"> | undefined;
+    const ctor = makeFakeCtor();
+    class TestControlChannel extends ControlChannel {
+      constructor(opts: ConstructorParameters<typeof ControlChannel>[0]) {
+        super({ ...opts, webSocketCtor: ctor, hubPublicKey: null });
+      }
+    }
+    const handle = await startCloudDaemon({
+      cloudConfig: makeCfg(),
+      config: makeDaemonCfg(),
+      configPath: "(cloud-mode)",
+      controlChannelFactory: TestControlChannel as unknown as typeof ControlChannel,
+      provisionerFactory: ((args: { gateway: Gateway }) => {
+        gateway = args.gateway;
+        return vi.fn();
+      }) as unknown as typeof import("../provision.js").createProvisioner,
+      sessionStorePath: path.join(tmpDir, "sessions.json"),
+      snapshotPath: path.join(tmpDir, "snapshot.json"),
+      snapshotIntervalMs: 60_000,
+    });
+    try {
+      expect(gateway).toBeDefined();
+      await expect(
+        gateway!.addChannel({
+          id: "gw_tg_cloud",
+          type: "telegram",
+          accountId: "ag_cloud",
+          allowedSenderIds: ["42"],
+          allowedChatIds: ["111"],
+          secretFile: path.join(tmpDir, "missing-telegram-secret.json"),
+        } satisfies GatewayChannelConfig),
+      ).resolves.toBeUndefined();
     } finally {
       await handle.stop("test");
     }
