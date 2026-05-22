@@ -15,7 +15,7 @@ from hub.models import (
     Share,
     ShareMessage,
 )
-from hub.share_payloads import share_public_payload
+from hub.share_payloads import SHARE_MESSAGE_PREVIEW_LIMIT, share_public_payload
 from sqlalchemy import func
 
 router = APIRouter(prefix="/api/share", tags=["app-share"])
@@ -53,9 +53,10 @@ async def get_share(
     msg_result = await db.execute(
         select(ShareMessage)
         .where(ShareMessage.share_id == share_id)
-        .order_by(ShareMessage.created_at)
+        .order_by(ShareMessage.id.desc())
+        .limit(SHARE_MESSAGE_PREVIEW_LIMIT)
     )
-    share_messages = msg_result.scalars().all()
+    share_messages = list(reversed(msg_result.scalars().all()))
 
     # Member count for room
     member_count = 0

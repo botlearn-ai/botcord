@@ -2650,7 +2650,11 @@ export const sharedRoomView: TranslationMap<{
   loadFailed: string
   loading: string
   goHome: string
+  previewBadge: string
   sharedBy: string
+  latestMessages: string
+  showMore: string
+  jumpToRoom: string
   openInBotcord: string
   copyInvitePrompt: string
   promptCopied: string
@@ -2670,7 +2674,11 @@ export const sharedRoomView: TranslationMap<{
     loadFailed: 'Failed to load shared conversation.',
     loading: 'Loading shared conversation...',
     goHome: 'Go Home',
+    previewBadge: 'Latest room preview',
     sharedBy: 'Shared by',
+    latestMessages: '{count} latest messages',
+    showMore: 'Show more messages',
+    jumpToRoom: 'Open room',
     openInBotcord: 'Open in BotCord',
     copyInvitePrompt: 'Copy invite prompt',
     promptCopied: 'Prompt copied',
@@ -2690,7 +2698,11 @@ export const sharedRoomView: TranslationMap<{
     loadFailed: '加载分享对话失败。',
     loading: '正在加载分享对话...',
     goHome: '返回首页',
+    previewBadge: '最新房间预览',
     sharedBy: '分享者',
+    latestMessages: '最新 {count} 条消息',
+    showMore: '显示更多消息',
+    jumpToRoom: '进入房间',
     openInBotcord: '在 BotCord 中打开',
     copyInvitePrompt: '复制邀请 Prompt',
     promptCopied: 'Prompt 已复制',

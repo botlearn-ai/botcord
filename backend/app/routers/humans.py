@@ -56,7 +56,13 @@ from hub.models import (
     User,
 )
 from hub.policy import Principal, check_room_invite_admission
-from hub.share_payloads import frontend_url, room_continue_url, room_entry_type, share_create_payload
+from hub.share_payloads import (
+    SHARE_MESSAGE_PREVIEW_LIMIT,
+    frontend_url,
+    room_continue_url,
+    room_entry_type,
+    share_create_payload,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -1022,7 +1028,7 @@ async def create_room_share_as_human(
         select(MessageRecord)
         .where(MessageRecord.id.in_(select(dedup_sub.c.min_id)))
         .order_by(MessageRecord.id.desc())
-        .limit(200)
+        .limit(SHARE_MESSAGE_PREVIEW_LIMIT)
     )
     records = list(reversed(msg_result.scalars().all()))
 

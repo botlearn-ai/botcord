@@ -58,7 +58,13 @@ from hub.models import (
     ShareMessage,
     User,
 )
-from hub.share_payloads import frontend_url, room_entry_type, share_create_payload, share_public_payload
+from hub.share_payloads import (
+    SHARE_MESSAGE_PREVIEW_LIMIT,
+    frontend_url,
+    room_entry_type,
+    share_create_payload,
+    share_public_payload,
+)
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -697,9 +703,10 @@ async def create_share(
     msg_result = await db.execute(
         select(MessageRecord)
         .where(MessageRecord.id.in_(select(dedup_sub.c.min_id)))
-        .order_by(MessageRecord.id.asc())
+        .order_by(MessageRecord.id.desc())
+        .limit(SHARE_MESSAGE_PREVIEW_LIMIT)
     )
-    records = msg_result.scalars().all()
+    records = list(reversed(msg_result.scalars().all()))
 
     # Batch-resolve sender names
     sender_ids = set()
@@ -983,9 +990,10 @@ async def get_shared_room(
     msg_result = await db.execute(
         select(ShareMessage)
         .where(ShareMessage.share_id == share_id)
-        .order_by(ShareMessage.created_at.asc())
+        .order_by(ShareMessage.id.desc())
+        .limit(SHARE_MESSAGE_PREVIEW_LIMIT)
     )
-    share_messages = msg_result.scalars().all()
+    share_messages = list(reversed(msg_result.scalars().all()))
 
     messages = []
     for sm in share_messages:
