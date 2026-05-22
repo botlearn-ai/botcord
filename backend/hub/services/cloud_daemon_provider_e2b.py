@@ -73,6 +73,7 @@ class E2BSandboxClient(Protocol):
         env: dict[str, str],
         region: str | None,
         timeout_seconds: int,
+        lifecycle: dict[str, Any] | None,
     ) -> SandboxRunResult:
         ...
 
@@ -170,12 +171,14 @@ class _E2BSdkClient:
         env: dict[str, str],
         region: str | None,
         timeout_seconds: int,
+        lifecycle: dict[str, Any] | None,
     ) -> SandboxRunResult:
         try:
             sandbox = await self._e2b.AsyncSandbox.create(
                 template=template_id,
                 timeout=timeout_seconds,
                 envs=env,
+                lifecycle=lifecycle,
                 **self._api_opts(),
             )
         except self._e2b.SandboxException as exc:
@@ -268,6 +271,7 @@ class _FakeSandboxRecord:
     template_id: str
     region: str | None
     env: dict[str, str]
+    lifecycle: dict[str, Any]
     status: str  # running | paused | killed
     commands: list[str] = field(default_factory=list)
 
@@ -308,6 +312,7 @@ class FakeE2BSandboxClient:
         env: dict[str, str],
         region: str | None,
         timeout_seconds: int,
+        lifecycle: dict[str, Any] | None,
     ) -> SandboxRunResult:
         if self._fail_on == "create":
             raise RuntimeError("fake e2b create failure")
@@ -319,6 +324,7 @@ class FakeE2BSandboxClient:
                 template_id=template_id,
                 region=region,
                 env=dict(env),
+                lifecycle=dict(lifecycle or {}),
                 status="running",
             )
             return SandboxRunResult(
@@ -408,6 +414,7 @@ class E2BCloudDaemonProvider:
         deepseek_api_key: str | None = None,
         startup_command: str = CLOUD_DAEMON_STARTUP_COMMAND,
         daemon_npm_spec: str = CLOUD_DAEMON_NPM_SPEC,
+        sandbox_lifecycle: dict[str, Any] | None = None,
     ) -> None:
         self._client = client
         self._template_id = template_id
@@ -416,6 +423,11 @@ class E2BCloudDaemonProvider:
         self._hub_public_base_url = hub_public_base_url
         self._startup_command = startup_command
         self._daemon_npm_spec = daemon_npm_spec
+        self._sandbox_lifecycle = (
+            dict(sandbox_lifecycle)
+            if sandbox_lifecycle is not None
+            else {"on_timeout": "pause", "auto_resume": False}
+        )
         # Allow tests to inject a key; otherwise default to Hub config.
         self._deepseek_api_key = (
             deepseek_api_key if deepseek_api_key is not None else DEEPSEEK_API_KEY
@@ -470,6 +482,7 @@ class E2BCloudDaemonProvider:
                         env=env,
                         region=chosen_region,
                         timeout_seconds=self._sandbox_timeout_seconds,
+                        lifecycle=self._sandbox_lifecycle,
                     )
             else:
                 run = await self._client.create_sandbox(
@@ -477,6 +490,7 @@ class E2BCloudDaemonProvider:
                     env=env,
                     region=chosen_region,
                     timeout_seconds=self._sandbox_timeout_seconds,
+                    lifecycle=self._sandbox_lifecycle,
                 )
 
             # Launch (or relaunch) the daemon as a background process.
