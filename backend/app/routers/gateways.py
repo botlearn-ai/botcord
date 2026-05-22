@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import os
@@ -39,6 +40,7 @@ from hub.routers.cloud_daemon_control import (
     is_cloud_daemon_online,
     send_cloud_control_frame,
 )
+from hub.services.cloud_agent import CloudAgentError, CloudAgentService
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +277,57 @@ def _require_online(host: _GatewayHost) -> None:
         raise HTTPException(status_code=409, detail="daemon_offline")
 
 
+_CLOUD_GATEWAY_RESUME_WAIT_SECONDS = 20.0
+_CLOUD_GATEWAY_RESUME_POLL_SECONDS = 0.5
+
+
+async def _ensure_gateway_host_online(
+    db: AsyncSession,
+    ctx: RequestContext,
+    agent: Agent,
+    host: _GatewayHost,
+) -> None:
+    """Ensure the daemon target is reachable before a gateway write.
+
+    Local daemon-hosted agents still require an already-connected user daemon.
+    Cloud agents are different: their sandbox may have been paused by idle
+    management, so a gateway action is user intent to resume it.
+    """
+    if not host.cloud_daemon_instance_id:
+        _require_online(host)
+        return
+
+    if is_cloud_daemon_online(host.cloud_daemon_instance_id):
+        return
+
+    try:
+        await CloudAgentService().resume_cloud_agent(
+            db,
+            user_id=ctx.user_id,
+            agent_id=agent.agent_id,
+        )
+    except CloudAgentError as exc:
+        logger.warning(
+            "cloud gateway resume failed: agent=%s cloud=%s code=%s err=%s",
+            agent.agent_id,
+            host.cloud_daemon_instance_id,
+            exc.code,
+            exc.message,
+        )
+        raise HTTPException(
+            status_code=409 if exc.http_status == 409 else exc.http_status,
+            detail="daemon_offline" if exc.http_status == 409 else exc.code,
+        ) from exc
+
+    deadline = time.monotonic() + _CLOUD_GATEWAY_RESUME_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if is_cloud_daemon_online(host.cloud_daemon_instance_id):
+            return
+        await asyncio.sleep(_CLOUD_GATEWAY_RESUME_POLL_SECONDS)
+
+    raise HTTPException(status_code=409, detail="daemon_offline")
+
+
 async def _send_gateway_control_frame(
     host: _GatewayHost,
     type_: str,
@@ -472,8 +525,8 @@ async def create_gateway(
     if body.provider not in _ALLOWED_PROVIDERS:
         raise HTTPException(status_code=422, detail="unsupported_provider")
 
-    _, host = await _load_gateway_host_or_422(db, ctx, agent_id)
-    _require_online(host)
+    agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
+    await _ensure_gateway_host_online(db, ctx, agent, host)
 
     if body.provider == "telegram" and not body.bot_token:
         raise HTTPException(status_code=400, detail="missing_bot_token")
@@ -546,8 +599,8 @@ async def patch_gateway(
     db: AsyncSession = Depends(get_db),
 ) -> GatewayOut:
     _rate_limit(ctx.user_id, "gateway-write")
-    _, host, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
-    _require_online(host)
+    agent, host, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
+    await _ensure_gateway_host_online(db, ctx, agent, host)
 
     fields = body.model_fields_set
     if "label" in fields:
@@ -628,7 +681,7 @@ async def delete_gateway(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    _, host, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
+    agent, host, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
     if force:
         # C1: operator opt-in escape hatch — daemon is permanently dead and the
         # row would otherwise be orphaned. Skip the daemon round-trip entirely.
@@ -637,7 +690,7 @@ async def delete_gateway(
             extra={"daemon_instance_id": host.daemon_instance_id, "gateway_id": row.id},
         )
     else:
-        _require_online(host)
+        await _ensure_gateway_host_online(db, ctx, agent, host)
 
         ack = await _send_gateway_control_frame(host, "remove_gateway", {"id": row.id})
         _ack_or_raise(ack)
@@ -655,8 +708,8 @@ async def test_gateway(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     _rate_limit(ctx.user_id, "gateway-test")
-    _, host, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
-    _require_online(host)
+    agent, host, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
+    await _ensure_gateway_host_online(db, ctx, agent, host)
 
     ack = await _send_gateway_control_frame(host, "test_gateway", {"id": row.id})
     result = _ack_or_raise(ack)
@@ -682,8 +735,8 @@ async def wechat_login_start(
     the user calls ``POST /gateways`` with the matching ``loginId``.
     """
     _rate_limit(ctx.user_id, "wechat-login")
-    _, host = await _load_gateway_host_or_422(db, ctx, agent_id)
-    _require_online(host)
+    agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
+    await _ensure_gateway_host_online(db, ctx, agent, host)
 
     params: dict[str, Any] = {
         "provider": "wechat",
@@ -715,8 +768,8 @@ async def wechat_login_status(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     _rate_limit(ctx.user_id, "wechat-login")
-    _, host = await _load_gateway_host_or_422(db, ctx, agent_id)
-    _require_online(host)
+    agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
+    await _ensure_gateway_host_online(db, ctx, agent, host)
 
     ack = await _send_gateway_control_frame(
         host,
@@ -739,8 +792,8 @@ async def feishu_login_start(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     _rate_limit(ctx.user_id, "wechat-login")
-    _, host = await _load_gateway_host_or_422(db, ctx, agent_id)
-    _require_online(host)
+    agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
+    await _ensure_gateway_host_online(db, ctx, agent, host)
 
     params: dict[str, Any] = {
         "provider": "feishu",
@@ -769,8 +822,8 @@ async def feishu_login_status(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     _rate_limit(ctx.user_id, "wechat-login")
-    _, host = await _load_gateway_host_or_422(db, ctx, agent_id)
-    _require_online(host)
+    agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
+    await _ensure_gateway_host_online(db, ctx, agent, host)
 
     ack = await _send_gateway_control_frame(
         host,
@@ -800,8 +853,8 @@ async def wechat_recent_senders(
     saved, so users can whitelist a sender without knowing ``xxx@im.wechat``.
     """
     _rate_limit(ctx.user_id, "wechat-login")
-    _, host = await _load_gateway_host_or_422(db, ctx, agent_id)
-    _require_online(host)
+    agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
+    await _ensure_gateway_host_online(db, ctx, agent, host)
 
     ack = await _send_gateway_control_frame(
         host,

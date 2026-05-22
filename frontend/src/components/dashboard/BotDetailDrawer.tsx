@@ -302,7 +302,13 @@ export default function BotDetailDrawer() {
               onOpenChat={() => void openOwnerChat()}
             />
           )}
-          {tab === "settings" && <SettingsTab agentId={bot.agent_id} t={t} />}
+          {tab === "settings" && (
+            <SettingsTab
+              agentId={bot.agent_id}
+              hostingKind={bot.hosting_kind ?? null}
+              t={t}
+            />
+          )}
           {tab === "files" && <FilesTab agentId={bot.agent_id} t={t} />}
           {tab === "wallet" && <BotWalletTab agentId={bot.agent_id} displayName={bot.display_name} />}
         </div>
@@ -703,7 +709,15 @@ function ProfileEditor({
 
 /* --------------------------- Settings --------------------------- */
 
-function SettingsTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
+function SettingsTab({
+  agentId,
+  hostingKind,
+  t,
+}: {
+  agentId: string;
+  hostingKind?: string | null;
+  t: BotDetailDrawerCopy;
+}) {
   return (
     <div className="space-y-6">
       <section className="space-y-3">
@@ -724,7 +738,7 @@ function SettingsTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
           {t.settings.channels}
         </h3>
-        <AgentChannelsTab agentId={agentId} />
+        <AgentChannelsTab agentId={agentId} hostingKind={hostingKind} />
       </section>
     </div>
   );

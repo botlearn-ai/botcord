@@ -701,7 +701,9 @@ export default function AgentSettingsDrawer({
             </div>
           )}
 
-          {tab === "gateways" && <AgentChannelsTab agentId={agentId} />}
+          {tab === "gateways" && (
+            <AgentChannelsTab agentId={agentId} hostingKind={hostingKind} />
+          )}
 
           {tab === "schedules" && <AgentSchedulesTab agentId={agentId} />}
 
