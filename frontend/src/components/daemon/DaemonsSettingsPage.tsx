@@ -165,6 +165,13 @@ function RuntimesBlock({
   onCollectDiagnostics: () => void;
 }) {
   const runtimes = daemon.runtimes;
+  const circuitBreakers =
+    runtimes?.flatMap((runtime) =>
+      (runtime.health?.circuitBreakers ?? []).map((breaker) => ({
+        runtimeId: runtime.id,
+        ...breaker,
+      })),
+    ) ?? [];
   const disabled = refreshing || daemon.status === "revoked";
   const diagnosticsDisabled =
     collectingDiagnostics || daemon.status !== "online";
@@ -211,6 +218,24 @@ function RuntimesBlock({
           ))}
         </div>
       )}
+
+      {circuitBreakers.length > 0 ? (
+        <div className="rounded-md border border-yellow-400/20 bg-yellow-400/10 px-2 py-1 text-[11px] text-yellow-200">
+          <div className="flex items-center gap-1 font-medium">
+            <AlertTriangle className="h-3 w-3" />
+            Runtime dispatch paused
+          </div>
+          <div className="mt-0.5 text-yellow-100/80">
+            {circuitBreakers.map((breaker) => {
+              const until = new Date(breaker.blockedUntil);
+              const untilText = Number.isNaN(until.getTime())
+                ? "temporarily"
+                : `until ${until.toLocaleTimeString()}`;
+              return `${breaker.runtimeId} in ${breaker.conversationId}: ${breaker.lastError || "authentication failed"} (${breaker.failures} failures, ${untilText})`;
+            }).join("; ")}
+          </div>
+        </div>
+      ) : null}
 
       {errorMsg ? (
         <span className="rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-[11px] text-red-300">

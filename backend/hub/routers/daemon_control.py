@@ -1506,6 +1506,11 @@ def _parse_runtime_snapshot_params(
         endpoints = entry.get("endpoints")
         if isinstance(endpoints, list) and len(endpoints) > 32:
             entry["endpoints"] = endpoints[:32]
+        health = entry.get("health")
+        if isinstance(health, dict):
+            circuit_breakers = health.get("circuitBreakers")
+            if isinstance(circuit_breakers, list) and len(circuit_breakers) > 32:
+                health["circuitBreakers"] = circuit_breakers[:32]
     if not isinstance(probed_at, (int, float)) or isinstance(probed_at, bool):
         return None
     if probed_at <= 0:

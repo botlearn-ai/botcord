@@ -1020,6 +1020,71 @@ async def test_runtime_snapshot_oversized_array_rejected(
 
 
 @pytest.mark.asyncio
+async def test_runtime_snapshot_caps_nested_runtime_health(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    """Nested runtime health arrays are capped before persistence."""
+    from sqlalchemy import select
+
+    from hub.routers.daemon_control import _DaemonConn, _handle_daemon_event
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    fake_ws = _FakeWS()
+    conn = _DaemonConn(
+        ws=fake_ws,  # type: ignore[arg-type]
+        user_id=str(seed_user["user_id"]),
+        daemon_instance_id=instance_id,
+        pending_acks={},
+    )
+
+    breakers = [
+        {
+            "key": f"claude-code:botcord:ag_1:rm_oc_{i}:",
+            "channel": "botcord",
+            "accountId": "ag_1",
+            "conversationId": f"rm_oc_{i}",
+            "failures": 3,
+            "openedAt": 1000,
+            "blockedUntil": 2000,
+            "lastFailureAt": 1500,
+            "lastError": "Failed to authenticate",
+        }
+        for i in range(40)
+    ]
+    await _handle_daemon_event(
+        conn,
+        {
+            "id": "frm_rs_health",
+            "type": "runtime_snapshot",
+            "params": {
+                "runtimes": [
+                    {
+                        "id": "claude-code",
+                        "available": True,
+                        "health": {"circuitBreakers": breakers},
+                    }
+                ],
+                "probedAt": _probed_now_ms(),
+            },
+        },
+    )
+    ack = json.loads(fake_ws.sent[-1])
+    assert ack == {"id": "frm_rs_health", "ok": True}
+
+    await db_session.commit()
+    res = await db_session.execute(
+        select(DaemonInstance).where(DaemonInstance.id == instance_id)
+    )
+    inst = res.scalar_one()
+    stored = inst.runtimes_json
+    if isinstance(stored, str):
+        stored = json.loads(stored)
+    assert len(stored[0]["health"]["circuitBreakers"]) == 32
+
+
+@pytest.mark.asyncio
 async def test_list_instances_without_runtimes_returns_none(
     client: AsyncClient, seed_user
 ):

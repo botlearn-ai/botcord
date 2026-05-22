@@ -1,5 +1,8 @@
+import { execFileSync, type ExecFileSyncOptions } from "node:child_process";
 import path from "node:path";
 import { NdjsonStreamAdapter, type NdjsonEventCtx } from "./ndjson-stream.js";
+import { consoleLogger } from "../log.js";
+import { looksLikeRuntimeAuthFailure } from "../runtime-errors.js";
 import {
   firstExistingPath,
   readCommandVersion,
@@ -18,6 +21,24 @@ const CLAUDE_DESKTOP_CLI_RELATIVE_PATH = path.join(
 );
 const CLAUDE_DESKTOP_CLI_SYSTEM_PATH =
   "/Applications/Claude Code URL Handler.app/Contents/MacOS/claude";
+const log = consoleLogger;
+
+const CLAUDE_CODE_AUTH_ENV_DENYLIST = [
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "ANTHROPIC_CUSTOM_HEADERS",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+];
+
+export function scrubClaudeCodeAuthEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out = { ...env };
+  for (const key of CLAUDE_CODE_AUTH_ENV_DENYLIST) {
+    delete out[key];
+  }
+  return out;
+}
+
 function isValidClaudeSessionId(sessionId: string): boolean {
   if (sessionId.length === 0 || sessionId.length > 512) return false;
   if (sessionId.startsWith("-")) return false;
@@ -125,6 +146,63 @@ export function probeClaude(deps: ProbeDeps = {}): RuntimeProbeResult {
   };
 }
 
+export interface ClaudeAuthProbeResult {
+  checked: boolean;
+  ok: boolean;
+  message: string;
+}
+
+export function probeClaudeAuth(deps: ProbeDeps = {}): ClaudeAuthProbeResult {
+  const command = resolveClaudeCommand(deps);
+  if (!command) return { checked: false, ok: false, message: "claude command not found" };
+  return runClaudeAuthProbe(command, deps);
+}
+
+function runClaudeAuthProbe(command: string, deps: ProbeDeps = {}): ClaudeAuthProbeResult {
+  const execFn = deps.execFileSyncFn ?? execFileSync;
+  const env = scrubClaudeCodeAuthEnv(deps.env ?? process.env);
+  try {
+    const raw = execFn(command, ["-p", "ping", "--output-format", "stream-json"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env,
+      timeout: 20_000,
+    } as ExecFileSyncOptions);
+    const output = Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw ?? "");
+    const authFailure = claudeAuthFailureFromOutput(output);
+    if (authFailure) return { checked: true, ok: false, message: authFailure };
+    return { checked: true, ok: true, message: "claude-code auth ok" };
+  } catch (err) {
+    const e = err as Error & { stdout?: Buffer | string; stderr?: Buffer | string };
+    const output = `${bufferishToString(e.stdout)}\n${bufferishToString(e.stderr)}`.trim();
+    const authFailure = claudeAuthFailureFromOutput(output);
+    return {
+      checked: true,
+      ok: false,
+      message: authFailure || e.message || "claude-code auth probe failed",
+    };
+  }
+}
+
+function bufferishToString(raw: Buffer | string | undefined): string {
+  return Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw ?? "");
+}
+
+function claudeAuthFailureFromOutput(output: string): string | null {
+  for (const line of output.split(/\r?\n/)) {
+    const s = line.trim();
+    if (!s) continue;
+    try {
+      const obj = JSON.parse(s) as { type?: string; result?: unknown; total_cost_usd?: unknown };
+      if (obj.type === "result" && typeof obj.result === "string" && looksLikeRuntimeAuthFailure(obj.result)) {
+        return obj.result;
+      }
+    } catch {
+      if (looksLikeRuntimeAuthFailure(s)) return s;
+    }
+  }
+  return looksLikeRuntimeAuthFailure(output) ? output : null;
+}
+
 /**
  * Claude Code adapter — spawns `claude -p "<text>" --output-format stream-json`
  * (with `--resume <sid>` when available) and parses the ndjson stream.
@@ -197,6 +275,10 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
     return args;
   }
 
+  protected override spawnEnv(opts: RuntimeRunOptions): NodeJS.ProcessEnv {
+    return scrubClaudeCodeAuthEnv(super.spawnEnv(opts));
+  }
+
   protected handleEvent(raw: unknown, ctx: NdjsonEventCtx): void {
     const obj = raw as {
       type?: string;
@@ -229,8 +311,22 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
     if (obj.type === "result") {
       if (typeof obj.total_cost_usd === "number") ctx.state.costUsd = obj.total_cost_usd;
       if (obj.subtype === "success") {
-        if (typeof obj.session_id === "string") ctx.state.newSessionId = obj.session_id;
-        if (typeof obj.result === "string") ctx.state.finalText = obj.result;
+        const result = typeof obj.result === "string" ? obj.result : "";
+        const looksLikeAuthFailure =
+          obj.total_cost_usd === 0 && looksLikeRuntimeAuthFailure(result);
+        if (looksLikeAuthFailure) {
+          log.error("claude-code authentication failed; check ~/.claude login or unset stale Anthropic env vars", {
+            error: result,
+          });
+          ctx.state.newSessionId = "";
+          ctx.state.finalText = "";
+          ctx.state.assistantTextChunks = [];
+          ctx.state.assistantTextBytes = 0;
+          ctx.state.errorText = result;
+        } else {
+          if (typeof obj.session_id === "string") ctx.state.newSessionId = obj.session_id;
+          if (typeof obj.result === "string") ctx.state.finalText = obj.result;
+        }
       } else {
         // Non-success result (e.g. resume targeted a missing UUID). Claude Code
         // still emits a fresh `session_id` for the just-spawned empty session —

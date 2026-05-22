@@ -65,6 +65,7 @@ export interface GatewayBootOptions {
    * bookkeeping like loop-risk tracking.
    */
   onOutbound?: OutboundObserver;
+  onRuntimeCircuitBreakerChange?: () => void;
   /**
    * Optional observer fired after each runtime turn resolves. Forwarded
    * to the dispatcher verbatim — see {@link Dispatcher} for semantics.
@@ -181,6 +182,7 @@ export class Gateway {
       composeUserTurn: opts.composeUserTurn,
       onOutbound: opts.onOutbound,
       onTurnComplete: opts.onTurnComplete,
+      onRuntimeCircuitBreakerChange: opts.onRuntimeCircuitBreakerChange,
       managedRoutes: this.managedRoutes,
       attentionGate: opts.attentionGate,
       resolveHubUrl: opts.resolveHubUrl,
@@ -216,6 +218,7 @@ export class Gateway {
     return {
       channels: this.channelManager.status(),
       turns: this.dispatcher.turns(),
+      runtimeCircuitBreakers: this.dispatcher.runtimeCircuitBreakers(),
     };
   }
 

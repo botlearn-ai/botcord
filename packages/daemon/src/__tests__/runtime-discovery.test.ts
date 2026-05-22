@@ -28,6 +28,7 @@ vi.mock("../adapters/runtimes.js", async () => {
 });
 
 const {
+  attachRuntimeHealth,
   collectRuntimeSnapshot,
   collectRuntimeSnapshotAsync,
   clearRuntimeProbeCache,
@@ -365,5 +366,94 @@ describe("pushRuntimeSnapshot (first-connect push)", () => {
     const ok = pushRuntimeSnapshot({ send });
     expect(ok).toBe(false);
     expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("attaches live runtime circuit breaker health to the pushed runtime entry", () => {
+    setRuntimes([
+      {
+        id: "claude-code",
+        displayName: "Claude Code",
+        binary: "claude",
+        supportsRun: true,
+        result: { available: true },
+      },
+    ]);
+    const send = vi.fn(() => true);
+    const ok = pushRuntimeSnapshot(
+      { send },
+      {
+        channels: {},
+        turns: {},
+        runtimeCircuitBreakers: {
+          "claude-code:botcord:ag_1:rm_oc_a:": {
+            key: "claude-code:botcord:ag_1:rm_oc_a:",
+            runtime: "claude-code",
+            channel: "botcord",
+            accountId: "ag_1",
+            conversationId: "rm_oc_a",
+            threadId: null,
+            failures: 3,
+            openedAt: 1000,
+            blockedUntil: 2000,
+            lastFailureAt: 1500,
+            lastError: "Failed to authenticate",
+          },
+        },
+      },
+    );
+    expect(ok).toBe(true);
+    const frame = send.mock.calls[0]![0] as {
+      params: { runtimes: Array<{ id: string; health?: { circuitBreakers?: unknown[] } }> };
+    };
+    expect(frame.params.runtimes[0].health?.circuitBreakers).toEqual([
+      expect.objectContaining({
+        conversationId: "rm_oc_a",
+        failures: 3,
+        lastError: "Failed to authenticate",
+      }),
+    ]);
+  });
+});
+
+describe("attachRuntimeHealth", () => {
+  it("groups live circuit breakers onto matching runtime entries", () => {
+    const snap = {
+      runtimes: [
+        { id: "claude-code", available: true },
+        { id: "codex", available: true },
+      ],
+      probedAt: 1000,
+    };
+    const out = attachRuntimeHealth(snap, {
+      channels: {},
+      turns: {},
+      runtimeCircuitBreakers: {
+        "claude-code:botcord:ag_1:rm_oc_a:": {
+          key: "claude-code:botcord:ag_1:rm_oc_a:",
+          runtime: "claude-code",
+          channel: "botcord",
+          accountId: "ag_1",
+          conversationId: "rm_oc_a",
+          threadId: null,
+          failures: 3,
+          openedAt: 1000,
+          blockedUntil: 2000,
+          lastFailureAt: 1500,
+          lastError: "Failed to authenticate",
+        },
+      },
+    });
+    expect(out.runtimes[0]).toMatchObject({
+      id: "claude-code",
+      health: {
+        circuitBreakers: [
+          {
+            conversationId: "rm_oc_a",
+            lastError: "Failed to authenticate",
+          },
+        ],
+      },
+    });
+    expect(out.runtimes[1]).toEqual({ id: "codex", available: true });
   });
 });

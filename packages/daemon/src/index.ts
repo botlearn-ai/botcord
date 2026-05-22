@@ -144,7 +144,10 @@ Commands:
   route list
   route remove --room <rm_xxx>|--prefix <rm_xxx>
   config                                  Print resolved config
-  doctor [--json] [--bundle] [--full-log] Scan local runtimes (${ADAPTER_LIST});
+  doctor [--json] [--auth-check] [--bundle] [--full-log]
+                                          Scan local runtimes (${ADAPTER_LIST});
+                                          --auth-check also runs a Claude Code
+                                          ping probe and may contact Anthropic.
                                           --bundle also writes a zip under
                                           ~/.botcord/diagnostics/. Bundles
                                           daemon.log plus the latest 5 rotated
@@ -1413,6 +1416,7 @@ async function cmdDoctor(args: ParsedArgs): Promise<void> {
     fileReader: fsFileReader,
     fetcher: defaultHttpFetcher,
     timeoutMs: 5_000,
+    authCheck: args.flags["auth-check"] === true,
   });
 
   if (args.flags.json === true) {

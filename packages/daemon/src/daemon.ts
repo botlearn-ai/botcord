@@ -28,6 +28,7 @@ import { toGatewayConfig } from "./daemon-config-map.js";
 import { log as daemonLog } from "./log.js";
 import {
   adoptDiscoveredOpenclawAgents,
+  attachRuntimeHealth,
   collectRuntimeSnapshot,
   createProvisioner,
   type OnAgentInstalledHook,
@@ -222,8 +223,12 @@ export interface RuntimeSnapshotSink {
  * failure is non-fatal (the Hub will re-query via `list_runtimes` on demand
  * or wait for the next daemon restart). Exported for unit tests.
  */
-export function pushRuntimeSnapshot(sink: RuntimeSnapshotSink): boolean {
-  const snap = collectRuntimeSnapshot();
+export function pushRuntimeSnapshot(
+  sink: RuntimeSnapshotSink,
+  liveSnapshot?: GatewayRuntimeSnapshot,
+): boolean {
+  const base = collectRuntimeSnapshot();
+  const snap = liveSnapshot ? attachRuntimeHealth(base, liveSnapshot) : base;
   const ok = sink.send({
     id: `rt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     type: CONTROL_FRAME_TYPES.RUNTIME_SNAPSHOT,
@@ -502,7 +507,15 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     }
   };
 
-  const gateway = new Gateway({
+  let controlChannel: ControlChannel | null = null;
+  let gateway: Gateway;
+  const pushLiveRuntimeSnapshot = (): void => {
+    if (!controlChannel) return;
+    const pushed = pushRuntimeSnapshot(controlChannel, gateway.snapshot());
+    logger.info("control-channel: live runtime_snapshot push", { ok: pushed });
+  };
+
+  gateway = new Gateway({
     config: gwConfig,
     sessionStorePath: opts.sessionStorePath ?? SESSIONS_PATH,
     createChannel: (chCfg: GatewayChannelConfig): ChannelAdapter =>
@@ -517,6 +530,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     buildMemoryContext,
     onInbound,
     onOutbound,
+    onRuntimeCircuitBreakerChange: pushLiveRuntimeSnapshot,
     composeUserTurn: composeBotCordUserTurn,
     attentionGate,
     resolveHubUrl,
@@ -575,7 +589,6 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
   // Control channel is optional — daemon still runs (data-plane only)
   // when user-auth hasn't been set up yet. Operators can `login` later
   // without restarting, but for P0 we require a restart to pick it up.
-  let controlChannel: ControlChannel | null = null;
   if (userAuth?.current && !opts.disableControlChannel) {
     logger.info("control-channel: enabling", {
       userId: userAuth.current.userId,
@@ -614,7 +627,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
       // Plan §8.5 P0 — push one runtime snapshot immediately after connect
       // so Hub's `daemon_instances.runtimes_json` is populated for the
       // dashboard even before any user action. No periodic refresh in P0.
-      const pushed = pushRuntimeSnapshot(controlChannel);
+      const pushed = pushRuntimeSnapshot(controlChannel, gateway.snapshot());
       logger.info("control-channel: initial runtime_snapshot push", {
         ok: pushed,
       });

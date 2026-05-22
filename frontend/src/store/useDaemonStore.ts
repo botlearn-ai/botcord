@@ -55,10 +55,28 @@ export interface DaemonRuntime {
   version?: string;
   path?: string;
   error?: string;
+  health?: DaemonRuntimeHealth;
   /** OpenClaw-style runtimes carry per-gateway endpoint probe results. */
   endpoints?: DaemonRuntimeEndpoint[];
   /** Hermes runtime carries the per-device profile listing (1 BotCord agent : 1 profile). */
   profiles?: DaemonHermesProfile[];
+}
+
+export interface DaemonRuntimeHealth {
+  circuitBreakers?: DaemonRuntimeCircuitBreaker[];
+}
+
+export interface DaemonRuntimeCircuitBreaker {
+  key: string;
+  channel: string;
+  accountId: string;
+  conversationId: string;
+  threadId?: string | null;
+  failures: number;
+  openedAt: number;
+  blockedUntil: number;
+  lastFailureAt: number;
+  lastError: string;
 }
 
 export interface DaemonInstance {
@@ -311,17 +329,59 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
           })
           .filter(Boolean) as DaemonHermesProfile[])
       : undefined;
+    const health =
+      r.health && typeof r.health === "object"
+        ? normalizeRuntimeHealth(r.health as Record<string, unknown>)
+        : undefined;
     out.push({
       id,
       available: r.available === true,
       version: typeof r.version === "string" ? r.version : undefined,
       path: typeof r.path === "string" ? r.path : undefined,
       error: typeof r.error === "string" ? r.error : undefined,
+      health,
       endpoints,
       profiles,
     });
   }
   return out;
+}
+
+function normalizeRuntimeHealth(raw: Record<string, unknown>): DaemonRuntimeHealth | undefined {
+  const circuitBreakers = Array.isArray(raw.circuitBreakers)
+    ? ((raw.circuitBreakers as unknown[])
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") return null;
+          const b = entry as Record<string, unknown>;
+          const key = typeof b.key === "string" ? b.key : null;
+          const channel = typeof b.channel === "string" ? b.channel : null;
+          const accountId = typeof b.accountId === "string" ? b.accountId : null;
+          const conversationId =
+            typeof b.conversationId === "string" ? b.conversationId : null;
+          if (!key || !channel || !accountId || !conversationId) return null;
+          return {
+            key,
+            channel,
+            accountId,
+            conversationId,
+            threadId:
+              typeof b.threadId === "string"
+                ? b.threadId
+                : b.threadId === null
+                  ? null
+                  : undefined,
+            failures: typeof b.failures === "number" ? b.failures : 0,
+            openedAt: typeof b.openedAt === "number" ? b.openedAt : 0,
+            blockedUntil: typeof b.blockedUntil === "number" ? b.blockedUntil : 0,
+            lastFailureAt:
+              typeof b.lastFailureAt === "number" ? b.lastFailureAt : 0,
+            lastError: typeof b.lastError === "string" ? b.lastError : "",
+          } as DaemonRuntimeCircuitBreaker;
+        })
+        .filter(Boolean) as DaemonRuntimeCircuitBreaker[])
+    : undefined;
+  if (!circuitBreakers?.length) return undefined;
+  return { circuitBreakers };
 }
 
 function normalizeDaemon(raw: Record<string, unknown>): DaemonInstance {

@@ -98,6 +98,18 @@ describe("probeChannel", () => {
     expect(result.hubMessage).toContain("503");
   });
 
+  it("treats HTTP 404 as reachable because the probe only needs the Hub host", async () => {
+    const credsPath = "/creds/ag_123.json";
+    const result = await probeChannel(ch, {
+      credentialsPath: () => credsPath,
+      fileReader: fileReader({ [credsPath]: okCreds }),
+      fetcher: fetcher({ ok: false, status: 404 }),
+      timeoutMs: 1000,
+    });
+    expect(result.hubOk).toBe(true);
+    expect(result.hubMessage).toContain("404");
+  });
+
   it("probeChannels returns an entry per input channel", async () => {
     const credsPath = "/creds/ag_123.json";
     const results = await probeChannels({
@@ -198,6 +210,28 @@ describe("renderDoctor", () => {
     expect(out).toContain("Channels:");
     expect(out).toContain("botcord-main");
     expect(out).toContain("✓");
+  });
+
+  it("renders optional runtime auth check results", () => {
+    const out = renderDoctor({
+      runtimes: [
+        {
+          id: "claude-code",
+          displayName: "Claude Code",
+          binary: "claude",
+          supportsRun: true,
+          result: { available: true, version: "1.0.0", path: "/usr/bin/claude" },
+          auth: {
+            checked: true,
+            ok: false,
+            message: "Failed to authenticate. API Error: 403 Request not allowed",
+          },
+        },
+      ],
+      channels: [],
+    });
+    expect(out).toContain("auth failed");
+    expect(out).toContain("Failed to authenticate");
   });
 
   it("shows 'No channels configured.' when the channel list is empty", () => {

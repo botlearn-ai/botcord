@@ -242,6 +242,8 @@ describe("Dispatcher", () => {
     channel?: FakeChannel;
     runtimeFactory?: RuntimeFactory;
     turnTimeoutMs?: number;
+    runtimeAuthFailureThreshold?: number;
+    runtimeAuthFailureCooldownMs?: number;
   }) {
     const { store, dir } = await makeStore();
     tempDirs.push(dir);
@@ -254,6 +256,8 @@ describe("Dispatcher", () => {
       sessionStore: store,
       log: silentLogger(),
       turnTimeoutMs: args.turnTimeoutMs,
+      runtimeAuthFailureThreshold: args.runtimeAuthFailureThreshold,
+      runtimeAuthFailureCooldownMs: args.runtimeAuthFailureCooldownMs,
     });
     return { dispatcher, channel, store };
   }
@@ -454,6 +458,60 @@ describe("Dispatcher", () => {
 
     expect(store.all().length).toBe(0);
     expect(channel.sends[0].message.type).toBe("error");
+  });
+
+  it("treats auth failure text as an error and does not persist the failed session", async () => {
+    let callNo = 0;
+    const runtimeFactory: RuntimeFactory = () => {
+      callNo += 1;
+      if (callNo === 1) return new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+      return new FakeRuntime({
+        reply: "Failed to authenticate. API Error: 403 Request not allowed",
+        newSessionId: "sid-bad",
+      });
+    };
+    const { dispatcher, store, channel } = await scaffold({ runtimeFactory });
+
+    await dispatcher.handle(
+      makeEnvelope({ id: "msg_1", conversation: { id: "rm_oc_auth", kind: "direct" } }),
+    );
+    expect(store.all()[0].runtimeSessionId).toBe("sid-1");
+
+    await dispatcher.handle(
+      makeEnvelope({ id: "msg_2", conversation: { id: "rm_oc_auth", kind: "direct" } }),
+    );
+
+    expect(store.all().length).toBe(0);
+    expect(channel.sends).toHaveLength(2);
+    expect(channel.sends[1].message.type).toBe("error");
+    expect(channel.sends[1].message.text).toContain("Runtime error");
+    expect(channel.sends[1].message.text).toContain("Failed to authenticate");
+  });
+
+  it("opens an auth circuit breaker after repeated failures and skips runtime spawn", async () => {
+    const runtime = new FakeRuntime({
+      reply: "Failed to authenticate. API Error: 403 Request not allowed",
+      newSessionId: "sid-bad",
+    });
+    const { dispatcher, channel, store } = await scaffold({
+      runtimeFactory: () => runtime,
+      runtimeAuthFailureThreshold: 2,
+      runtimeAuthFailureCooldownMs: 60_000,
+    });
+    const conversation = { id: "rm_oc_auth_breaker", kind: "direct" as const };
+
+    await dispatcher.handle(makeEnvelope({ id: "msg_1", conversation }));
+    await dispatcher.handle(makeEnvelope({ id: "msg_2", conversation }));
+    expect(runtime.calls).toHaveLength(2);
+    expect(Object.values(dispatcher.runtimeCircuitBreakers())).toHaveLength(1);
+
+    await dispatcher.handle(makeEnvelope({ id: "msg_3", conversation }));
+
+    expect(runtime.calls).toHaveLength(2);
+    expect(store.all()).toHaveLength(0);
+    expect(channel.sends).toHaveLength(3);
+    expect(channel.sends[2].message.type).toBe("error");
+    expect(channel.sends[2].message.text).toContain("dispatch paused");
   });
 
   it("applies composeUserTurn before handing text to the runtime", async () => {

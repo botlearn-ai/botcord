@@ -431,6 +431,29 @@ export interface RuntimeProbeResult {
    * as `endpoints`).
    */
   profiles?: HermesProfileProbe[];
+  /**
+   * Optional live health state for this runtime on the daemon. Unlike
+   * `available`, this describes current dispatch health rather than whether
+   * the binary is installed.
+   */
+  health?: RuntimeHealthSnapshot;
+}
+
+export interface RuntimeHealthSnapshot {
+  circuitBreakers?: RuntimeCircuitBreakerProbe[];
+}
+
+export interface RuntimeCircuitBreakerProbe {
+  key: string;
+  channel: string;
+  accountId: string;
+  conversationId: string;
+  threadId?: string | null;
+  failures: number;
+  openedAt: number;
+  blockedUntil: number;
+  lastFailureAt: number;
+  lastError: string;
 }
 
 /**
