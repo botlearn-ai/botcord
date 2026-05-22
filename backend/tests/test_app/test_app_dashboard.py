@@ -15,6 +15,7 @@ from hub.enums import ParticipantType
 from hub.models import (
     Agent,
     Base,
+    CloudAgentInstance,
     Contact,
     ContactRequest,
     ContactRequestState,
@@ -644,3 +645,45 @@ async def test_chat_send_success(
     assert data["hub_msg_id"].startswith("h_")
     assert "room_id" in data
     assert data["status"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_chat_send_resumes_paused_cloud_agent(
+    client: AsyncClient,
+    seed_data: dict,
+    db_session: AsyncSession,
+    monkeypatch,
+):
+    import hub.services.cloud_agent as cloud_agent_mod
+    from hub.services.cloud_agent import CloudAgentService, CreateCloudAgentInput
+    from hub.services.cloud_daemon_provider import FakeCloudDaemonProvider
+
+    provider = FakeCloudDaemonProvider()
+    service = CloudAgentService(provider=provider, feature_enabled=True)
+    created = await service.create_cloud_agent(
+        db_session,
+        user_id=seed_data["user_id"],
+        body=CreateCloudAgentInput(name="Cloud Bot"),
+    )
+    await service.pause_cloud_agent(
+        db_session,
+        user_id=seed_data["user_id"],
+        agent_id=created.agent_id,
+    )
+    monkeypatch.setattr(cloud_agent_mod, "get_provider", lambda _name: provider)
+
+    resp = await client.post(
+        "/api/dashboard/chat/send",
+        json={"agent_id": created.agent_id, "text": "wake up"},
+        headers={"Authorization": f"Bearer {seed_data['token']}"},
+    )
+
+    assert resp.status_code == 202, resp.text
+    row = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == created.agent_id
+        )
+    )
+    assert row is not None
+    assert row.status == "ready"
+    assert provider.calls(created.cloud_daemon_instance_id)["create"] == 2
