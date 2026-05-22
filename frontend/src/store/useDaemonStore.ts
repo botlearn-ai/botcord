@@ -602,6 +602,25 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
         { method: "POST" },
       );
       if (!res.ok) {
+        const detail = await parseError(res);
+        const daemonOffline = res.status === 409 && detail === "daemon_offline";
+        if (daemonOffline) {
+          set((state) => ({
+            daemons: state.daemons.map((d) =>
+              d.id === id ? { ...d, status: "offline" } : d,
+            ),
+            ...(quiet
+              ? {}
+              : {
+                  refreshingRuntimesId: null,
+                  runtimeErrors: {
+                    ...state.runtimeErrors,
+                    [id]: "daemon offline, start it first",
+                  },
+                }),
+          }));
+          return;
+        }
         if (quiet) return;
         let msg: string;
         if (res.status === 409) {
@@ -609,7 +628,7 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
         } else if (res.status === 502) {
           msg = "daemon didn't respond";
         } else {
-          msg = await parseError(res);
+          msg = detail;
         }
         set((state) => ({
           refreshingRuntimesId: null,
