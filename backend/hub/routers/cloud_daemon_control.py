@@ -240,6 +240,7 @@ async def send_cloud_control_frame(
         await conn.ws.send_text(json.dumps(frame))
     except Exception as exc:  # noqa: BLE001
         conn.pending_acks.pop(frame["id"], None)
+        await _REGISTRY.unregister(conn)
         raise CloudDaemonDispatchError(
             "cloud_daemon_send_failed", f"daemon send failed: {exc}"
         ) from exc

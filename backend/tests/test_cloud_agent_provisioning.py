@@ -197,6 +197,34 @@ async def test_send_cloud_control_frame_timeout_raises():
         await _registry_for_tests().unregister(conn)
 
 
+@pytest.mark.asyncio
+async def test_send_cloud_control_frame_send_failure_unregisters_stale_conn():
+    class FailingWS(_FakeWS):
+        async def send_text(self, payload: str) -> None:
+            raise RuntimeError("socket closed")
+
+    ws = FailingWS()
+    conn = _CloudDaemonConn(
+        ws=ws,
+        user_id="u",
+        cloud_daemon_instance_id="cloud_dm_send_fail",
+        daemon_instance_id="dm_send_fail",
+    )
+    await _registry_for_tests().register(conn)
+
+    with pytest.raises(CloudDaemonDispatchError) as excinfo:
+        await send_cloud_control_frame(
+            "cloud_dm_send_fail",
+            "ping",
+            {},
+            timeout_ms=100,
+        )
+
+    assert excinfo.value.code == "cloud_daemon_send_failed"
+    assert not conn.pending_acks
+    assert _registry_for_tests().get_by_cloud("cloud_dm_send_fail") is None
+
+
 # ---------------------------------------------------------------------------
 # Service create + provision flow (E2B provider returns ``starting``)
 # ---------------------------------------------------------------------------

@@ -279,6 +279,11 @@ def _require_online(host: _GatewayHost) -> None:
 
 _CLOUD_GATEWAY_RESUME_WAIT_SECONDS = 20.0
 _CLOUD_GATEWAY_RESUME_POLL_SECONDS = 0.5
+_CLOUD_GATEWAY_DISPATCH_RETRY_CODES = {
+    "cloud_daemon_offline",
+    "cloud_daemon_disconnected",
+    "cloud_daemon_send_failed",
+}
 
 
 async def _ensure_gateway_host_online(
@@ -332,13 +337,47 @@ async def _send_gateway_control_frame(
     host: _GatewayHost,
     type_: str,
     params: dict[str, Any],
+    *,
+    db: AsyncSession | None = None,
+    ctx: RequestContext | None = None,
+    agent: Agent | None = None,
+    retry_cloud_disconnect: bool = False,
 ) -> dict[str, Any]:
     if not host.cloud_daemon_instance_id:
         return await send_control_frame(host.daemon_instance_id, type_, params)
     try:
         return await send_cloud_control_frame(host.cloud_daemon_instance_id, type_, params)
     except CloudDaemonDispatchError as exc:
+        if (
+            retry_cloud_disconnect
+            and exc.code in _CLOUD_GATEWAY_DISPATCH_RETRY_CODES
+            and db is not None
+            and ctx is not None
+            and agent is not None
+        ):
+            logger.warning(
+                "cloud gateway dispatch lost connection; attempting resume and retry: "
+                "agent=%s cloud=%s type=%s code=%s err=%s",
+                agent.agent_id,
+                host.cloud_daemon_instance_id,
+                type_,
+                exc.code,
+                exc.message,
+            )
+            await _ensure_gateway_host_online(db, ctx, agent, host)
+            try:
+                return await send_cloud_control_frame(
+                    host.cloud_daemon_instance_id,
+                    type_,
+                    params,
+                )
+            except CloudDaemonDispatchError as retry_exc:
+                exc = retry_exc
         if exc.code == "cloud_daemon_offline":
+            raise HTTPException(status_code=409, detail="daemon_offline") from exc
+        if exc.code == "cloud_daemon_disconnected":
+            raise HTTPException(status_code=409, detail="daemon_offline") from exc
+        if exc.code == "cloud_daemon_send_failed":
             raise HTTPException(status_code=409, detail="daemon_offline") from exc
         if exc.code == "cloud_daemon_ack_timeout":
             raise HTTPException(status_code=504, detail="daemon_ack_timeout") from exc
@@ -553,7 +592,15 @@ async def create_gateway(
     if body.provider in ("wechat", "feishu"):
         params["loginId"] = body.login_id
 
-    ack = await _send_gateway_control_frame(host, "upsert_gateway", params)
+    ack = await _send_gateway_control_frame(
+        host,
+        "upsert_gateway",
+        params,
+        db=db,
+        ctx=ctx,
+        agent=agent,
+        retry_cloud_disconnect=True,
+    )
     result = _ack_or_raise(ack)
 
     token_preview = result.get("tokenPreview")
@@ -692,7 +739,15 @@ async def delete_gateway(
     else:
         await _ensure_gateway_host_online(db, ctx, agent, host)
 
-        ack = await _send_gateway_control_frame(host, "remove_gateway", {"id": row.id})
+        ack = await _send_gateway_control_frame(
+            host,
+            "remove_gateway",
+            {"id": row.id},
+            db=db,
+            ctx=ctx,
+            agent=agent,
+            retry_cloud_disconnect=True,
+        )
         _ack_or_raise(ack)
 
     await db.delete(row)
@@ -711,7 +766,15 @@ async def test_gateway(
     agent, host, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
     await _ensure_gateway_host_online(db, ctx, agent, host)
 
-    ack = await _send_gateway_control_frame(host, "test_gateway", {"id": row.id})
+    ack = await _send_gateway_control_frame(
+        host,
+        "test_gateway",
+        {"id": row.id},
+        db=db,
+        ctx=ctx,
+        agent=agent,
+        retry_cloud_disconnect=True,
+    )
     result = _ack_or_raise(ack)
     return {"ok": True, "result": result}
 
@@ -748,7 +811,15 @@ async def wechat_login_start(
         _validate_base_url(body.base_url)
         params["baseUrl"] = body.base_url
 
-    ack = await _send_gateway_control_frame(host, "gateway_login_start", params)
+    ack = await _send_gateway_control_frame(
+        host,
+        "gateway_login_start",
+        params,
+        db=db,
+        ctx=ctx,
+        agent=agent,
+        retry_cloud_disconnect=True,
+    )
     result = _ack_or_raise(ack)
     # Surface the daemon-reported envelope verbatim — the dashboard already
     # speaks `{loginId, qrcode, qrcodeUrl, expiresAt}` per the design doc.
@@ -775,6 +846,10 @@ async def wechat_login_status(
         host,
         "gateway_login_status",
         {"provider": "wechat", "loginId": body.login_id, "accountId": agent_id},
+        db=db,
+        ctx=ctx,
+        agent=agent,
+        retry_cloud_disconnect=True,
     )
     result = _ack_or_raise(ack)
     return {
@@ -804,7 +879,15 @@ async def feishu_login_start(
     if body.domain:
         params["domain"] = body.domain
 
-    ack = await _send_gateway_control_frame(host, "gateway_login_start", params)
+    ack = await _send_gateway_control_frame(
+        host,
+        "gateway_login_start",
+        params,
+        db=db,
+        ctx=ctx,
+        agent=agent,
+        retry_cloud_disconnect=True,
+    )
     result = _ack_or_raise(ack)
     return {
         "loginId": result.get("loginId"),
@@ -829,6 +912,10 @@ async def feishu_login_status(
         host,
         "gateway_login_status",
         {"provider": "feishu", "loginId": body.login_id, "accountId": agent_id},
+        db=db,
+        ctx=ctx,
+        agent=agent,
+        retry_cloud_disconnect=True,
     )
     result = _ack_or_raise(ack)
     return {
@@ -865,6 +952,10 @@ async def wechat_recent_senders(
             "accountId": agent_id,
             "timeoutSeconds": body.timeout_seconds,
         },
+        db=db,
+        ctx=ctx,
+        agent=agent,
+        retry_cloud_disconnect=True,
     )
     result = _ack_or_raise(ack)
     senders = result.get("senders")
