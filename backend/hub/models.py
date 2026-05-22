@@ -1853,6 +1853,11 @@ class CloudAgentInstance(Base):
     last_run_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # User-visible activity timestamp consumed by the idle-pause sweep.
+    # See hub.services.cloud_agent_activity for the writer-side semantics.
+    last_active_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[dict] = mapped_column(

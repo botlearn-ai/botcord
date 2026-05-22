@@ -41,6 +41,7 @@ from hub.routers.cloud_daemon_control import (
     send_cloud_control_frame,
 )
 from hub.services.cloud_agent import CloudAgentError, CloudAgentService
+from hub.services.cloud_agent_activity import bump_if_cloud_agent
 
 logger = logging.getLogger(__name__)
 
@@ -333,6 +334,27 @@ async def _ensure_gateway_host_online(
     raise HTTPException(status_code=409, detail="daemon_offline")
 
 
+async def _stamp_cloud_activity(
+    db: AsyncSession | None,
+    agent: Agent | None,
+) -> None:
+    """Event 4: a gateway control frame succeeded — that's the user actively
+    operating this agent's gateway plumbing right now. Best-effort: stamp the
+    cloud_agent_instances row so the idle-pause sweep keeps the sandbox warm.
+    Failures are swallowed so the gateway response path stays clean."""
+    if db is None or agent is None or agent.hosting_kind != "cloud":
+        return
+    try:
+        await bump_if_cloud_agent(db, agent.agent_id)
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(
+            "gateway activity stamp failed: agent=%s err=%s",
+            agent.agent_id,
+            exc,
+        )
+
+
 async def _send_gateway_control_frame(
     host: _GatewayHost,
     type_: str,
@@ -344,9 +366,13 @@ async def _send_gateway_control_frame(
     retry_cloud_disconnect: bool = False,
 ) -> dict[str, Any]:
     if not host.cloud_daemon_instance_id:
-        return await send_control_frame(host.daemon_instance_id, type_, params)
+        ack = await send_control_frame(host.daemon_instance_id, type_, params)
+        await _stamp_cloud_activity(db, agent)
+        return ack
     try:
-        return await send_cloud_control_frame(host.cloud_daemon_instance_id, type_, params)
+        ack = await send_cloud_control_frame(host.cloud_daemon_instance_id, type_, params)
+        await _stamp_cloud_activity(db, agent)
+        return ack
     except CloudDaemonDispatchError as exc:
         if (
             retry_cloud_disconnect
@@ -366,11 +392,13 @@ async def _send_gateway_control_frame(
             )
             await _ensure_gateway_host_online(db, ctx, agent, host)
             try:
-                return await send_cloud_control_frame(
+                ack = await send_cloud_control_frame(
                     host.cloud_daemon_instance_id,
                     type_,
                     params,
                 )
+                await _stamp_cloud_activity(db, agent)
+                return ack
             except CloudDaemonDispatchError as retry_exc:
                 exc = retry_exc
         if exc.code == "cloud_daemon_offline":

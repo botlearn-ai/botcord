@@ -37,6 +37,11 @@ from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.dashboard_message_shaping import load_user_display_names
 from hub.database import async_session, get_db
 from hub.services import presence as presence_service
+from hub.services.cloud_agent_activity import (
+    bump_if_cloud_agent,
+    maybe_bump_for_inbound,
+    maybe_bump_for_inbound_many,
+)
 from hub.enums import TopicStatus
 from hub.id_generators import generate_hub_msg_id, generate_topic_id
 from hub.models import (
@@ -948,6 +953,26 @@ async def _send_direct_message(
             topic_id=existing.topic_id,
         )
 
+    # Event 1: stamp the receiver if it is a cloud agent and the inbound
+    # message would wake its runtime per attention policy. Goes inside the
+    # same commit so the activity stamp is atomic with the message record.
+    _payload_text = None
+    if isinstance(envelope.payload, dict):
+        _payload_text = (
+            envelope.payload.get("text")
+            or envelope.payload.get("body")
+            or envelope.payload.get("message")
+        )
+    await maybe_bump_for_inbound(
+        db,
+        receiver_id=envelope.to,
+        sender_id=envelope.from_,
+        room_id=room_id,
+        text=_payload_text if isinstance(_payload_text, str) else None,
+        mentioned=True,  # DM directly addresses the receiver.
+        message_type=envelope.type.value,
+    )
+
     await db.commit()
 
     # Resolve sender display name for realtime event
@@ -1221,6 +1246,35 @@ async def _send_room_message(
             receiver_hub_msg_ids[receiver_id] = existing.hub_msg_id
             continue
 
+    # Event 1 (room fan-out): stamp every cloud-hosted receiver whose
+    # attention policy would actually wake the runtime. Self-delivery and
+    # owner-chat human receivers are excluded — they don't represent
+    # agent-side work. Stays inside the same commit as the message rows.
+    _payload_text = None
+    if isinstance(envelope.payload, dict):
+        _payload_text = (
+            envelope.payload.get("text")
+            or envelope.payload.get("body")
+            or envelope.payload.get("message")
+        )
+    _agent_receivers = {
+        rid
+        for rid in receivers
+        if rid.startswith("ag_")
+        and not (_self_delivery and rid == envelope.from_)
+        and rid not in owner_chat_human_receivers
+    }
+    if _agent_receivers:
+        await maybe_bump_for_inbound_many(
+            db,
+            receiver_ids=_agent_receivers,
+            sender_id=envelope.from_,
+            room_id=room_id,
+            text=_payload_text if isinstance(_payload_text, str) else None,
+            mentioned_set=mentioned_set,
+            message_type=envelope.type.value,
+        )
+
     await db.commit()
 
     # Notify all receivers
@@ -1377,6 +1431,11 @@ async def send_message(
     # for V1; tighten when task/dispatch lifecycle wires explicit signals.
     if current_agent.startswith("ag_") and envelope.type == MessageType.message:
         presence_service.emit_processing_signal_async(current_agent, False)
+
+    # Event 2: cloud-agent outbound. Stamp on the sender side before fan-out
+    # so a cloud agent actively emitting traffic doesn't get idle-paused mid-turn.
+    # The stamp lives in the same db session and persists with the message record.
+    await bump_if_cloud_agent(db, envelope.from_)
 
     # Branch: room / direct message
     if envelope.to.startswith("rm_"):
