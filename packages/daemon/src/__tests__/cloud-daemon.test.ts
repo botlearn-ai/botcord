@@ -173,43 +173,52 @@ describe("startCloudDaemon", () => {
     }
   });
 
-  it("allows third-party gateway channels to be hot-plugged in cloud mode", async () => {
-    let gateway: Pick<Gateway, "addChannel"> | undefined;
-    const ctor = makeFakeCtor();
-    class TestControlChannel extends ControlChannel {
-      constructor(opts: ConstructorParameters<typeof ControlChannel>[0]) {
-        super({ ...opts, webSocketCtor: ctor, hubPublicKey: null });
+  it.each(["telegram", "wechat", "feishu"] as const)(
+    "allows %s gateway channels to be hot-plugged in cloud mode",
+    async (type) => {
+      let gateway: Pick<Gateway, "addChannel"> | undefined;
+      const ctor = makeFakeCtor();
+      class TestControlChannel extends ControlChannel {
+        constructor(opts: ConstructorParameters<typeof ControlChannel>[0]) {
+          super({ ...opts, webSocketCtor: ctor, hubPublicKey: null });
+        }
       }
-    }
-    const handle = await startCloudDaemon({
-      cloudConfig: makeCfg(),
-      config: makeDaemonCfg(),
-      configPath: "(cloud-mode)",
-      controlChannelFactory: TestControlChannel as unknown as typeof ControlChannel,
-      provisionerFactory: ((args: { gateway: Gateway }) => {
-        gateway = args.gateway;
-        return vi.fn();
-      }) as unknown as typeof import("../provision.js").createProvisioner,
-      sessionStorePath: path.join(tmpDir, "sessions.json"),
-      snapshotPath: path.join(tmpDir, "snapshot.json"),
-      snapshotIntervalMs: 60_000,
-    });
-    try {
-      expect(gateway).toBeDefined();
-      await expect(
-        gateway!.addChannel({
-          id: "gw_tg_cloud",
-          type: "telegram",
+      const handle = await startCloudDaemon({
+        cloudConfig: makeCfg(),
+        config: makeDaemonCfg(),
+        configPath: "(cloud-mode)",
+        controlChannelFactory: TestControlChannel as unknown as typeof ControlChannel,
+        provisionerFactory: ((args: { gateway: Gateway }) => {
+          gateway = args.gateway;
+          return vi.fn();
+        }) as unknown as typeof import("../provision.js").createProvisioner,
+        sessionStorePath: path.join(tmpDir, "sessions.json"),
+        snapshotPath: path.join(tmpDir, "snapshot.json"),
+        snapshotIntervalMs: 60_000,
+      });
+      try {
+        expect(gateway).toBeDefined();
+        const cfg: GatewayChannelConfig = {
+          id: `gw_${type}_cloud`,
+          type,
           accountId: "ag_cloud",
-          allowedSenderIds: ["42"],
-          allowedChatIds: ["111"],
-          secretFile: path.join(tmpDir, "missing-telegram-secret.json"),
-        } satisfies GatewayChannelConfig),
-      ).resolves.toBeUndefined();
-    } finally {
-      await handle.stop("test");
-    }
-  });
+          allowedSenderIds: [type === "telegram" ? "42" : "alice"],
+          secretFile: path.join(tmpDir, `missing-${type}-secret.json`),
+        };
+        if (type !== "wechat") {
+          cfg.allowedChatIds = ["111"];
+        }
+        if (type === "feishu") {
+          cfg.appId = "cli_test";
+        }
+        await expect(
+          gateway!.addChannel(cfg),
+        ).resolves.toBeUndefined();
+      } finally {
+        await handle.stop("test");
+      }
+    },
+  );
 
   it("stop() is idempotent", async () => {
     const handle = await startCloudDaemon({
