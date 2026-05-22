@@ -326,8 +326,8 @@ CLOUD_AGENT_IDLE_SWEEP_INTERVAL_SECONDS: float = float(
 E2B_API_KEY: str | None = os.getenv("E2B_API_KEY")
 E2B_TEMPLATE_ID: str = os.getenv("E2B_TEMPLATE_ID", "z0f20u29zdgx7cxnuzcu")
 E2B_DEFAULT_REGION: str | None = os.getenv("E2B_DEFAULT_REGION") or None
-# Wall-clock cap on a sandbox between hellos; the provider passes it to E2B
-# as the sandbox's max-lifetime hint so a hung sandbox is recycled.
+# Wall-clock cap for each running E2B sandbox window. The provider configures
+# E2B lifecycle on create so timeout pauses the sandbox instead of killing it.
 E2B_SANDBOX_TIMEOUT_SECONDS: int = int(os.getenv("E2B_SANDBOX_TIMEOUT_SECONDS", "1800"))
 
 # Command Hub runs inside a freshly-created or resumed cloud daemon instance.

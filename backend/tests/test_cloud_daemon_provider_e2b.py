@@ -81,6 +81,7 @@ async def test_create_or_resume_starts_sandbox_and_injects_env():
     sandbox = client.get(handle.provider_sandbox_id)
     assert sandbox is not None
     assert sandbox.template_id == "tpl_test_default"
+    assert sandbox.lifecycle == {"on_timeout": "pause", "auto_resume": False}
     assert sandbox.commands == [CLOUD_DAEMON_STARTUP_COMMAND]
 
     # Env vars carry the WS connection info + secrets.
@@ -440,6 +441,7 @@ async def test_sdk_client_create_sandbox_forwards_args(fake_e2b_sdk_client):
         env={"FOO": "bar"},
         region="us-east-1",
         timeout_seconds=600,
+        lifecycle={"on_timeout": "pause", "auto_resume": False},
     )
     assert run.sandbox_id == "sbx_alpha"
     assert run.template_id == "tpl-x"
@@ -451,6 +453,10 @@ async def test_sdk_client_create_sandbox_forwards_args(fake_e2b_sdk_client):
     assert call["template"] == "tpl-x"
     assert call["timeout"] == 600
     assert call["envs"] == {"FOO": "bar"}
+    assert call["opts"]["lifecycle"] == {
+        "on_timeout": "pause",
+        "auto_resume": False,
+    }
     assert call["opts"]["api_key"] == "ek_test_apikey"
 
 
@@ -531,4 +537,5 @@ async def test_sdk_client_create_wraps_sdk_exception(fake_e2b_sdk_client):
             env={},
             region=None,
             timeout_seconds=60,
+            lifecycle={"on_timeout": "pause", "auto_resume": False},
         )
