@@ -1,0 +1,106 @@
+name: Deploy Gateway Ingress (reusable)
+
+# Reusable gateway-ingress deploy — called by ci.yml (preview) and
+# release.yml (prod). Mirrors deploy-backend.yml: build Docker image,
+# push to ECR, restart the appropriate runtime.
+#
+# Build context = repo root because the image bundles the sibling
+# `packages/protocol-core` package.
+on:
+  workflow_call:
+    inputs:
+      env_name:
+        description: 'Target environment: preview | prod'
+        required: true
+        type: string
+      ref:
+        description: 'Git ref to checkout (default: current SHA)'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      image_tag:
+        description: 'ECR image tag pushed'
+        value: ${{ jobs.deploy.outputs.image_tag }}
+
+env:
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  PROJECT: botcord-gateway-ingress
+
+jobs:
+  # ── Build + push docker image ────────────────────────────────────────────────
+  deploy:
+    name: Build & Push
+    runs-on: self-hosted
+    timeout-minutes: 20
+    outputs:
+      image_tag: ${{ steps.build.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Build docker image
+        id: build
+        run: |
+          ENV_NAME="${{ inputs.env_name }}"
+          if [ ! -f "packages/gateway-ingress/Dockerfile" ]; then
+            echo "❌ packages/gateway-ingress/Dockerfile missing" >&2
+            exit 1
+          fi
+          docker build -f packages/gateway-ingress/Dockerfile -t $PROJECT:$ENV_NAME .
+          echo "image_tag=$ENV_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Built $PROJECT:$ENV_NAME"
+
+      - name: Push to ECR
+        run: |
+          ENV_NAME="${{ inputs.env_name }}"
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+          docker tag $PROJECT:$ENV_NAME $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
+          docker push $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
+          echo "✅ Pushed $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME"
+
+  # ── Restart preview (docker-compose) ─────────────────────────────────────────
+  restart-preview:
+    name: Restart Preview
+    needs: [deploy]
+    if: inputs.env_name == 'preview'
+    runs-on: self-hosted
+    timeout-minutes: 10
+    env:
+      PROJECT: botcord-gateway-ingress
+    steps:
+      - name: docker compose down/up
+        run: |
+          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-preview/docker-compose.yaml down
+          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-preview/docker-compose.yaml up -d
+          echo "✅ Preview restarted"
+
+  # ── Rollout prod (k8s) ───────────────────────────────────────────────────────
+  restart-prod:
+    name: Rollout Production
+    needs: [deploy]
+    if: inputs.env_name == 'prod'
+    runs-on: self-hosted
+    timeout-minutes: 15
+    env:
+      PROJECT: botcord-gateway-ingress
+    steps:
+      - name: Apply k8s config
+        run: kubectl apply -f ${{ secrets.K8S_PROD_INGRESS_CONFIG }}
+
+      - name: Rollout restart
+        run: kubectl rollout restart deployment/$PROJECT -n prod
+
+      - name: Wait for rollout
+        run: |
+          if ! kubectl rollout status deployment/$PROJECT -n prod --timeout=300s; then
+            echo "❌ Rollout timed out"
+            exit 1
+          fi
+          echo "✅ Rollout complete"
+
+      - name: Check pod status
+        run: |
+          kubectl get pods -n prod -l app=$PROJECT
+          kubectl logs -n prod -l app=$PROJECT --tail=20 || true
