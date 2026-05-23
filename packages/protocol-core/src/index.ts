@@ -6,4 +6,5 @@ export * from "./session-key.js";
 export * from "./client.js";
 export * from "./daemon-client.js";
 export * from "./control-frame.js";
+export * from "./runtime-frame.js";
 export * from "./should-wake.js";

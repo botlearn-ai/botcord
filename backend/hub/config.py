@@ -68,6 +68,27 @@ if ALLOW_PRIVATE_ENDPOINTS and not INTERNAL_API_SECRET:
         "Set INTERNAL_API_SECRET to a strong random value in production."
     )
 
+# Shared secret used by the gateway-ingress service when it calls the
+# Hub thin lifecycle API (POST /internal/cloud-gateway/...). The ingress
+# service authenticates with this bearer; ``INTERNAL_API_SECRET`` is also
+# accepted so operators can hit the same endpoints from runbooks.
+CLOUD_GATEWAY_INGRESS_SECRET: str | None = os.getenv(
+    "CLOUD_GATEWAY_INGRESS_SECRET", None
+)
+# Cloud runtime session tokens are scoped JWTs minted by the Hub for the
+# ingress service. The signing key is derived from ``JWT_SECRET`` unless
+# a dedicated key is provided so a leaked runtime token cannot be replayed
+# against agent JWT validators.
+CLOUD_GATEWAY_RUNTIME_TOKEN_TTL_SECONDS: int = int(
+    os.getenv("CLOUD_GATEWAY_RUNTIME_TOKEN_TTL_SECONDS", "300")
+)
+# Public WS endpoint advertised to gateway-ingress so it can connect to the
+# cloud-daemon runtime session. Defaults to the runtime relay path on the
+# Hub; deployments that expose the cloud daemon directly should override.
+CLOUD_GATEWAY_RUNTIME_ENDPOINT: str = os.getenv(
+    "CLOUD_GATEWAY_RUNTIME_ENDPOINT", "wss://hub.botcord.chat/cloud-gateway/runtime"
+)
+
 # Supabase JWT verification (optional — set ONE of these)
 # Option 1: symmetric HS256 secret (legacy Supabase projects)
 SUPABASE_JWT_SECRET: str | None = os.getenv("SUPABASE_JWT_SECRET")

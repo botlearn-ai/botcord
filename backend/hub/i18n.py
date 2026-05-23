@@ -511,6 +511,25 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
         Locale.ZH: "当前 cloud daemon 无权结算该 run",
     },
     # -----------------------------------------------------------------------
+    # Cloud Gateway ingress (routers/cloud_gateway_internal.py)
+    # -----------------------------------------------------------------------
+    "cloud_gateway_agent_not_cloud_hosted": {
+        Locale.EN: "Agent is not hosted on a cloud daemon",
+        Locale.ZH: "该 Agent 未部署在云端 daemon 上",
+    },
+    "cloud_gateway_agent_unavailable": {
+        Locale.EN: "Cloud agent is unavailable",
+        Locale.ZH: "云端 Agent 当前不可用",
+    },
+    "cloud_agent_binding_not_found": {
+        Locale.EN: "Cloud agent binding not found",
+        Locale.ZH: "未找到云端 Agent 绑定记录",
+    },
+    "cloud_daemon_not_found": {
+        Locale.EN: "Cloud daemon not found",
+        Locale.ZH: "未找到云端 daemon",
+    },
+    # -----------------------------------------------------------------------
     # Dashboard (dashboard.py)
     # -----------------------------------------------------------------------
     "before_after_exclusive": {
@@ -1100,6 +1119,26 @@ HINT_MESSAGES: dict[str, dict[Locale, str]] = {
     "cloud_run_settle_wrong_daemon": {
         Locale.EN: "The cloud daemon token does not host the agent that owns this run; check that the daemon is settling its own runs.",
         Locale.ZH: "当前 cloud daemon 的访问 token 未托管该 run 对应的 agent；请确认 daemon 仅结算自己产生的 run。",
+    },
+
+    # -----------------------------------------------------------------------
+    # Cloud Gateway ingress
+    # -----------------------------------------------------------------------
+    "cloud_gateway_agent_not_cloud_hosted": {
+        Locale.EN: "Cloud gateway ingress only routes traffic for cloud-hosted agents; check the agent's hosting_kind.",
+        Locale.ZH: "云端 Gateway Ingress 仅支持云端托管的 Agent，请确认 hosting_kind 为 cloud。",
+    },
+    "cloud_gateway_agent_unavailable": {
+        Locale.EN: "The cloud agent is being deleted or has been removed; recreate it before retrying.",
+        Locale.ZH: "该云端 Agent 正在删除或已被移除，请重新创建后再试。",
+    },
+    "cloud_agent_binding_not_found": {
+        Locale.EN: "Cloud agent binding row is missing; the agent may have been deleted between requests.",
+        Locale.ZH: "未找到云端 Agent 绑定记录，可能在两次请求间被删除。",
+    },
+    "cloud_daemon_not_found": {
+        Locale.EN: "The cloud daemon referenced by this agent is missing; rebuild the binding.",
+        Locale.ZH: "该 Agent 绑定的云端 daemon 记录已丢失，请重新创建绑定。",
     },
 
     # -----------------------------------------------------------------------
