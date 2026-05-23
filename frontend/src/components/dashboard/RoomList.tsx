@@ -428,12 +428,6 @@ export default function RoomList({
                     )}
                   </div>
                 </div>
-                {room._originAgent ? (
-                  <div className="mt-0.5 flex items-center gap-1 text-[10px] text-text-secondary/55">
-                    <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-neon-cyan/40" />
-                    <span className="truncate">via {room._originAgent.display_name}</span>
-                  </div>
-                ) : null}
                 <div className="mt-0.5 flex items-center gap-1.5">
                   {room.required_subscription_product_id && (
                     <span className="shrink-0">
