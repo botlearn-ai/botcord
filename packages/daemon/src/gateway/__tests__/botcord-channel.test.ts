@@ -769,6 +769,30 @@ describe("createBotCordChannel — streamBlock()", () => {
     });
   });
 
+  it("normalizes DeepSeek tool input so the dashboard can expand it", () => {
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "tool_use",
+          seq: 4,
+          raw: {
+            event: "tool.started",
+            payload: { id: "tool_1", name: "exec_shell", input: { cmd: "pwd" } },
+          },
+        },
+        4,
+      ),
+    ).toEqual({
+      kind: "tool_call",
+      seq: 4,
+      payload: {
+        id: "tool_1",
+        name: "exec_shell",
+        params: { cmd: "pwd" },
+      },
+    });
+  });
+
   it("POSTs to /hub/stream-block with the right trace_id + block", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     const realFetch = globalThis.fetch;
