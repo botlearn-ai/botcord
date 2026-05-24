@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
-import { MessageCircle, Settings2, Share2, SlidersHorizontal, UserCircle, Users } from "lucide-react";
+import { ArrowLeft, MessageCircle, SlidersHorizontal, UserCircle, Users } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -104,6 +104,7 @@ export default function ContactsDetailPane() {
   const t = contactsUiI18n[useLanguage()];
   const [messageBusy, setMessageBusy] = useState(false);
   const selectedContactKey = useDashboardUIStore((s) => s.selectedContactKey);
+  const setSelectedContactKey = useDashboardUIStore((s) => s.setSelectedContactKey);
   const setBotDetailAgentId = useDashboardUIStore((s) => s.setBotDetailAgentId);
   const setPeerBotAgentId = useDashboardUIStore((s) => s.setPeerBotAgentId);
   const {
@@ -269,7 +270,16 @@ export default function ContactsDetailPane() {
   };
 
   return (
-    <div className="flex h-full w-full flex-1 flex-col bg-deep-black">
+    <div className="relative flex h-full w-full flex-1 flex-col bg-deep-black">
+      <button
+        type="button"
+        onClick={() => setSelectedContactKey(null)}
+        className="absolute left-2 top-2 hidden h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+        aria-label="Back to contacts"
+        title="Back to contacts"
+      >
+        <ArrowLeft className="h-5 w-5" />
+      </button>
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-10">
         {avatar}
         <div className="mt-5 flex items-center gap-2">
