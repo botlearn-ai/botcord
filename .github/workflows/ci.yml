@@ -25,6 +25,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       packages: ${{ steps.filter.outputs.packages }}
+      gateway_ingress: ${{ steps.filter.outputs.gateway_ingress }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
@@ -43,6 +44,11 @@ jobs:
               - 'cli/**'
               - 'packages/**'
               - '.github/workflows/ci.yml'
+            gateway_ingress:
+              - 'packages/gateway-ingress/**'
+              - 'packages/protocol-core/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/deploy-gateway-ingress.yml'
 
   # ── Backend: pytest ──────────────────────────────────────────────────────────
   backend-ci:
@@ -111,6 +117,31 @@ jobs:
           npm install ../packages/protocol-core
           npm run build
 
+  # ── Gateway ingress: vitest ──────────────────────────────────────────────────
+  gateway-ingress-ci:
+    name: Gateway Ingress CI
+    runs-on: self-hosted
+    needs: [changes]
+    if: needs.changes.outputs.gateway_ingress == 'true'
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: protocol-core build
+        working-directory: packages/protocol-core
+        run: |
+          npm install
+          npm run build
+      - name: gateway-ingress build + test
+        working-directory: packages/gateway-ingress
+        run: |
+          npm install
+          npm install ../protocol-core
+          npm run build
+          npm test
+
   # ── Deploy backend preview (shared across all PRs + main) ────────────────────
   deploy-backend-preview:
     name: Deploy Backend (preview)
@@ -120,6 +151,19 @@ jobs:
       needs.changes.outputs.backend == 'true' &&
       needs.backend-ci.result == 'success'
     uses: ./.github/workflows/deploy-backend.yml
+    with:
+      env_name: preview
+    secrets: inherit
+
+  # ── Deploy gateway-ingress preview ───────────────────────────────────────────
+  deploy-gateway-ingress-preview:
+    name: Deploy Gateway Ingress (preview)
+    needs: [changes, gateway-ingress-ci]
+    if: |
+      always() &&
+      needs.changes.outputs.gateway_ingress == 'true' &&
+      needs.gateway-ingress-ci.result == 'success'
+    uses: ./.github/workflows/deploy-gateway-ingress.yml
     with:
       env_name: preview
     secrets: inherit
@@ -142,7 +186,7 @@ jobs:
   pr-comment:
     name: PR Preview Comment
     runs-on: self-hosted
-    needs: [changes, deploy-backend-preview, deploy-frontend-preview]
+    needs: [changes, deploy-backend-preview, deploy-frontend-preview, deploy-gateway-ingress-preview]
     if: always() && github.event_name == 'pull_request'
     timeout-minutes: 5
     permissions:
@@ -155,8 +199,10 @@ jobs:
           FE_URL: ${{ needs.deploy-frontend-preview.outputs.deploy_url }}
           FE_RESULT: ${{ needs.deploy-frontend-preview.result }}
           BE_RESULT: ${{ needs.deploy-backend-preview.result }}
+          GW_RESULT: ${{ needs.deploy-gateway-ingress-preview.result }}
           FE_CHANGED: ${{ needs.changes.outputs.frontend }}
           BE_CHANGED: ${{ needs.changes.outputs.backend }}
+          GW_CHANGED: ${{ needs.changes.outputs.gateway_ingress }}
         with:
           script: |
             const fmt = (changed, result, extra) => {
@@ -173,6 +219,7 @@ jobs:
               feUrl ? `[${feUrl}](${feUrl})` : 'deployed'
             );
             const beCell = fmt(process.env.BE_CHANGED, process.env.BE_RESULT, 'preview restarted');
+            const gwCell = fmt(process.env.GW_CHANGED, process.env.GW_RESULT, 'preview restarted');
 
             const sha = context.payload.pull_request.head.sha.substring(0, 7);
             const branch = context.payload.pull_request.head.ref;
@@ -190,6 +237,7 @@ jobs:
               `| **Commit** | [\`${sha}\`](${commitUrl}) |`,
               `| **Frontend** | ${feCell} |`,
               `| **Backend** | ${beCell} |`,
+              `| **Gateway Ingress** | ${gwCell} |`,
               `| **Workflow** | [View run](${runUrl}) |`,
             ].join('\n');
 
@@ -215,7 +263,15 @@ jobs:
   notify:
     name: Notify Feishu
     runs-on: self-hosted
-    needs: [changes, backend-ci, frontend-ci, packages-ci, deploy-backend-preview, deploy-frontend-preview]
+    needs:
+      - changes
+      - backend-ci
+      - frontend-ci
+      - packages-ci
+      - gateway-ingress-ci
+      - deploy-backend-preview
+      - deploy-frontend-preview
+      - deploy-gateway-ingress-preview
     if: always()
     timeout-minutes: 5
     steps:
@@ -226,11 +282,13 @@ jobs:
           BE_CI: ${{ needs.backend-ci.result }}
           FE_CI: ${{ needs.frontend-ci.result }}
           PKG_CI: ${{ needs.packages-ci.result }}
+          GW_CI: ${{ needs.gateway-ingress-ci.result }}
           BE_DEPLOY: ${{ needs.deploy-backend-preview.result }}
           FE_DEPLOY: ${{ needs.deploy-frontend-preview.result }}
+          GW_DEPLOY: ${{ needs.deploy-gateway-ingress-preview.result }}
         run: |
           FAIL=0
-          for R in "$BE_CI" "$FE_CI" "$PKG_CI" "$BE_DEPLOY" "$FE_DEPLOY"; do
+          for R in "$BE_CI" "$FE_CI" "$PKG_CI" "$GW_CI" "$BE_DEPLOY" "$FE_DEPLOY" "$GW_DEPLOY"; do
             if [[ "$R" == "failure" || "$R" == "cancelled" ]]; then FAIL=1; fi
           done
           if [[ $FAIL -eq 0 ]]; then
@@ -254,8 +312,10 @@ jobs:
               {"label": "Backend CI", "value": "${{ needs.backend-ci.result }}"},
               {"label": "Frontend CI", "value": "${{ needs.frontend-ci.result }}"},
               {"label": "Packages CI", "value": "${{ needs.packages-ci.result }}"},
+              {"label": "Gateway Ingress CI", "value": "${{ needs.gateway-ingress-ci.result }}"},
               {"label": "Backend 部署", "value": "${{ needs.deploy-backend-preview.result }}"},
               {"label": "Frontend 部署", "value": "${{ needs.deploy-frontend-preview.result }}"},
+              {"label": "Gateway Ingress 部署", "value": "${{ needs.deploy-gateway-ingress-preview.result }}"},
               {"label": "Frontend URL", "value": "${{ needs.deploy-frontend-preview.outputs.deploy_url || '（未变更）' }}"}
             ]
           buttons: |

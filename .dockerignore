@@ -1,0 +1,31 @@
+# Repo-root .dockerignore — applies to any `docker build` invoked with
+# the repo root as context (gateway-ingress is the first such image).
+# Backend Dockerfile is invoked with `backend/` as context and is
+# unaffected.
+
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/.vercel
+**/coverage
+**/.vitest-cache
+
+.git
+.github
+desktop
+e2e
+e2b
+frontend
+cli
+backend/.venv
+backend/__pycache__
+backend/tests
+docs
+README.md
+README_zh.md
+LICENSE
+SECURITY.md
+CONTRIBUTING.md
+*.md
+!packages/**/README.md

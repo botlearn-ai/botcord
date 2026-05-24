@@ -14,6 +14,7 @@
 - `cloud-agent-subscription-commercialization.md`: Cloud Agent 订阅服务的技术方案、成本测算、商业化套餐草稿与落地路线。
 - `cloud-agent-subscription-implementation-plan.md`: Cloud Agent 订阅服务的工程拆解、阶段 gate、PR 顺序和 MVP 验收边界。
 - `cloud-agent-technical-design.md`: Cloud Agent MVP 的正式技术设计，包含 `/cloud/daemon/ws`、多 agent 托管、正式 API、E2B provider、usage ledger 和 shell 安全边界。
+- `cloud-gateway-ingress-technical-design.md`: Cloud Agent 第三方直连接入的技术设计，包含独立 `gateway-ingress` 服务、Hub thin resume API、provider ingress/outbound 边界和实施阶段。
 
 归档文档
 

@@ -20,7 +20,7 @@ on:
         required: false
         default: 'both'
         type: choice
-        options: [both, backend, frontend]
+        options: [both, backend, frontend, all, gateway-ingress]
       run_migrations:
         description: 'Run production DB migrations before deploying'
         required: false
@@ -156,7 +156,7 @@ jobs:
       always() &&
       needs.prepare.result == 'success' &&
       (needs.migrate-prod.result == 'success' || needs.migrate-prod.result == 'skipped') &&
-      (inputs.targets == 'both' || inputs.targets == 'backend')
+      (inputs.targets == 'both' || inputs.targets == 'all' || inputs.targets == 'backend')
     uses: ./.github/workflows/deploy-backend.yml
     with:
       env_name: prod
@@ -171,8 +171,22 @@ jobs:
       always() &&
       needs.prepare.result == 'success' &&
       (needs.migrate-prod.result == 'success' || needs.migrate-prod.result == 'skipped') &&
-      (inputs.targets == 'both' || inputs.targets == 'frontend')
+      (inputs.targets == 'both' || inputs.targets == 'all' || inputs.targets == 'frontend')
     uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      env_name: prod
+      ref: ${{ needs.prepare.outputs.source_sha }}
+    secrets: inherit
+
+  # ── Deploy gateway-ingress prod ─────────────────────────────────────────────
+  deploy-gateway-ingress-prod:
+    name: Deploy Gateway Ingress (prod)
+    needs: [prepare]
+    if: |
+      always() &&
+      needs.prepare.result == 'success' &&
+      (inputs.targets == 'all' || inputs.targets == 'gateway-ingress')
+    uses: ./.github/workflows/deploy-gateway-ingress.yml
     with:
       env_name: prod
       ref: ${{ needs.prepare.outputs.source_sha }}
@@ -181,12 +195,13 @@ jobs:
   # ── Promote release/latest ──────────────────────────────────────────────────
   promote-latest:
     name: Promote release/latest
-    needs: [prepare, deploy-backend-prod, deploy-frontend-prod]
+    needs: [prepare, deploy-backend-prod, deploy-frontend-prod, deploy-gateway-ingress-prod]
     if: |
       always() &&
       (needs.deploy-backend-prod.result == 'success' || needs.deploy-backend-prod.result == 'skipped') &&
       (needs.deploy-frontend-prod.result == 'success' || needs.deploy-frontend-prod.result == 'skipped') &&
-      !(needs.deploy-backend-prod.result == 'skipped' && needs.deploy-frontend-prod.result == 'skipped') &&
+      (needs.deploy-gateway-ingress-prod.result == 'success' || needs.deploy-gateway-ingress-prod.result == 'skipped') &&
+      !(needs.deploy-backend-prod.result == 'skipped' && needs.deploy-frontend-prod.result == 'skipped' && needs.deploy-gateway-ingress-prod.result == 'skipped') &&
       needs.prepare.outputs.publish_mode != 'redeploy'
     runs-on: self-hosted
     timeout-minutes: 5
@@ -202,12 +217,13 @@ jobs:
   # ── GitHub Release + tag ────────────────────────────────────────────────────
   create-release:
     name: Create GitHub Release
-    needs: [prepare, deploy-backend-prod, deploy-frontend-prod, promote-latest]
+    needs: [prepare, deploy-backend-prod, deploy-frontend-prod, deploy-gateway-ingress-prod, promote-latest]
     if: |
       always() &&
       (needs.deploy-backend-prod.result == 'success' || needs.deploy-backend-prod.result == 'skipped') &&
       (needs.deploy-frontend-prod.result == 'success' || needs.deploy-frontend-prod.result == 'skipped') &&
-      !(needs.deploy-backend-prod.result == 'skipped' && needs.deploy-frontend-prod.result == 'skipped') &&
+      (needs.deploy-gateway-ingress-prod.result == 'success' || needs.deploy-gateway-ingress-prod.result == 'skipped') &&
+      !(needs.deploy-backend-prod.result == 'skipped' && needs.deploy-frontend-prod.result == 'skipped' && needs.deploy-gateway-ingress-prod.result == 'skipped') &&
       (needs.promote-latest.result == 'success' || needs.promote-latest.result == 'skipped')
     runs-on: self-hosted
     timeout-minutes: 10
@@ -294,7 +310,14 @@ jobs:
   notify:
     name: Notify Feishu
     runs-on: self-hosted
-    needs: [prepare, migrate-prod, deploy-backend-prod, deploy-frontend-prod, promote-latest, create-release]
+    needs:
+      - prepare
+      - migrate-prod
+      - deploy-backend-prod
+      - deploy-frontend-prod
+      - deploy-gateway-ingress-prod
+      - promote-latest
+      - create-release
     if: always() && needs.prepare.result == 'success'
     timeout-minutes: 5
     steps:
@@ -303,24 +326,26 @@ jobs:
         env:
           DB: ${{ needs.deploy-backend-prod.result }}
           DF: ${{ needs.deploy-frontend-prod.result }}
+          DG: ${{ needs.deploy-gateway-ingress-prod.result }}
           PROMOTE: ${{ needs.promote-latest.result }}
           RELEASE: ${{ needs.create-release.result }}
           MODE: ${{ needs.prepare.outputs.publish_mode }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          BE_OK=false; FE_OK=false
+          BE_OK=false; FE_OK=false; GW_OK=false
           [[ "$DB" == "success" || "$DB" == "skipped" ]] && BE_OK=true
           [[ "$DF" == "success" || "$DF" == "skipped" ]] && FE_OK=true
+          [[ "$DG" == "success" || "$DG" == "skipped" ]] && GW_OK=true
 
           PROMOTE_OK=false
           if [[ "$PROMOTE" == "success" ]] || [[ "$PROMOTE" == "skipped" && "$MODE" == "redeploy" ]]; then
             PROMOTE_OK=true
           fi
 
-          if [[ "$BE_OK" == "true" && "$FE_OK" == "true" && "$PROMOTE_OK" == "true" && "$RELEASE" == "success" ]]; then
+          if [[ "$BE_OK" == "true" && "$FE_OK" == "true" && "$GW_OK" == "true" && "$PROMOTE_OK" == "true" && "$RELEASE" == "success" ]]; then
             echo "color=green" >> $GITHUB_OUTPUT
             echo "title=🚀 BotCord ${VERSION} 发布成功（${MODE}）" >> $GITHUB_OUTPUT
-          elif [[ "$BE_OK" == "true" && "$FE_OK" == "true" && "$PROMOTE_OK" == "true" ]]; then
+          elif [[ "$BE_OK" == "true" && "$FE_OK" == "true" && "$GW_OK" == "true" && "$PROMOTE_OK" == "true" ]]; then
             echo "color=grey" >> $GITHUB_OUTPUT
             echo "title=⚠️ BotCord ${VERSION} 部署完成（${MODE}，Release 创建失败）" >> $GITHUB_OUTPUT
           else
@@ -345,6 +370,7 @@ jobs:
               {"label": "DB 迁移", "value": "${{ needs.migrate-prod.result }}"},
               {"label": "Backend 部署", "value": "${{ needs.deploy-backend-prod.result }}"},
               {"label": "Frontend 部署", "value": "${{ needs.deploy-frontend-prod.result }}"},
+              {"label": "Gateway Ingress 部署", "value": "${{ needs.deploy-gateway-ingress-prod.result }}"},
               {"label": "更新 latest", "value": "${{ needs.promote-latest.result }}"},
               {"label": "Release 创建", "value": "${{ needs.create-release.result }}"}
             ]

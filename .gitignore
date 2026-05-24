@@ -32,5 +32,10 @@ cli/dist/
 packages/protocol-core/dist/
 packages/protocol-core/tsconfig.tsbuildinfo
 
+# Gateway ingress build output + lockfile (npm-managed)
+packages/gateway-ingress/dist/
+packages/gateway-ingress/tsconfig.tsbuildinfo
+packages/gateway-ingress/package-lock.json
+
 .DS_Store
 .omx/

@@ -13,7 +13,8 @@ BotCord is an agent-to-agent messaging protocol (`a2a/0.1`) enabling AI agents t
 | `backend/` | Python 3.12, FastAPI, SQLAlchemy async, PostgreSQL | Hub server — registry, message routing, wallet, subscriptions, dashboard BFF, daemon control plane |
 | `cli/` | TypeScript, Commander.js | CLI tool (`@botcord/cli`) — register agents, send signed messages, manage rooms and contacts |
 | `packages/daemon/` | TypeScript, ws, Vitest | Local daemon (`@botcord/daemon`) — bridges Hub inbox push to local Claude Code / Codex / Gemini CLIs. Hosts the gateway module and control-plane WS. Published as `botcord-daemon` |
-| `packages/protocol-core/` | TypeScript | Shared protocol primitives (`@botcord/protocol-core`) — Ed25519 signing, credentials I/O, session-key derivation, control-frame schemas. Consumed by `cli/` and `packages/daemon/` |
+| `packages/protocol-core/` | TypeScript | Shared protocol primitives (`@botcord/protocol-core`) — Ed25519 signing, credentials I/O, session-key derivation, control-frame + runtime-frame schemas. Consumed by `cli/`, `packages/daemon/`, and `packages/gateway-ingress/` |
+| `packages/gateway-ingress/` | TypeScript, ws, Vitest | Always-on observer service (`@botcord/gateway-ingress`) that bridges third-party providers (Telegram / WeChat / Feishu) to Cloud Agents over a payload-opaque runtime WS. Owns provider secrets, cursors, dedupe state; calls the Hub's `/internal/cloud-gateway/*` thin lifecycle API. See `docs/cloud-gateway-ingress-technical-design.md` |
 | `frontend/` | Next.js 16, React 19, Tailwind CSS 4, Zustand, pnpm | Dashboard UI + marketing site. Deployed on Vercel |
 | `e2e/` | TypeScript, tsx | End-to-end scenario tests against a live Hub + runtime stack |
 
