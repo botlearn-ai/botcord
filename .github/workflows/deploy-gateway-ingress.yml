@@ -55,10 +55,18 @@ jobs:
       - name: Push to ECR
         run: |
           ENV_NAME="${{ inputs.env_name }}"
+          IMAGE_REPOSITORY="botlearn-ai/$PROJECT"
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
-          docker tag $PROJECT:$ENV_NAME $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
-          docker push $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
-          echo "✅ Pushed $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME"
+          if ! aws ecr describe-repositories --region us-east-1 --repository-names "$IMAGE_REPOSITORY" >/dev/null 2>&1; then
+            if aws ecr create-repository --region us-east-1 --repository-name "$IMAGE_REPOSITORY" >/dev/null; then
+              echo "✅ Created ECR repository $IMAGE_REPOSITORY"
+            else
+              aws ecr describe-repositories --region us-east-1 --repository-names "$IMAGE_REPOSITORY" >/dev/null
+            fi
+          fi
+          docker tag $PROJECT:$ENV_NAME $ECR_REGISTRY/$IMAGE_REPOSITORY:$ENV_NAME
+          docker push $ECR_REGISTRY/$IMAGE_REPOSITORY:$ENV_NAME
+          echo "✅ Pushed $ECR_REGISTRY/$IMAGE_REPOSITORY:$ENV_NAME"
 
   # ── Restart preview (docker-compose) ─────────────────────────────────────────
   restart-preview:
