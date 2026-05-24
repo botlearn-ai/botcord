@@ -248,11 +248,14 @@ export interface ToolResultContentProps {
   result: string;
   /** Tool name (for fullscreen title) */
   toolName?: string;
+  /** Disable Claude content-array unwrapping when rendering tool inputs. */
+  unwrapContentArray?: boolean;
 }
 
 export default function ToolResultContent({
   result,
   toolName = "tool",
+  unwrapContentArray = true,
 }: ToolResultContentProps) {
   const [fullScreen, setFullScreen] = useState(false);
 
@@ -263,7 +266,7 @@ export default function ToolResultContent({
       try {
         const parsed = JSON.parse(trimmed);
         // Claude API content format: { content: [{ type: "text", text: "..." }] }
-        if (parsed?.content?.[0]?.text && typeof parsed.content[0].text === "string") {
+        if (unwrapContentArray && parsed?.content?.[0]?.text && typeof parsed.content[0].text === "string") {
           return parsed.content[0].text as string;
         }
       } catch {
@@ -271,7 +274,7 @@ export default function ToolResultContent({
       }
     }
     return result;
-  }, [result]);
+  }, [result, unwrapContentArray]);
 
   const contentType = useMemo(() => detectContentType(rawText), [rawText]);
   const truncated = rawText.length > MAX_INLINE_CHARS;

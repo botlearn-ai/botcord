@@ -18,14 +18,88 @@ function ToolCallIcon({ name }: { name: string }) {
   return <Code2 className="w-3 h-3 text-cyan-400 shrink-0" />;
 }
 
-function summarizeParams(params: Record<string, unknown> | undefined): string | null {
-  if (!params || Object.keys(params).length === 0) return null;
-  for (const v of Object.values(params)) {
-    if (typeof v === "string" && v.length > 0) {
-      return v.length > 60 ? v.slice(0, 60) + "..." : v;
+const PARAM_HINT_KEYS = [
+  "command",
+  "cmd",
+  "query",
+  "path",
+  "file_path",
+  "filename",
+  "tool_name",
+  "name",
+  "input",
+  "arguments",
+  "args",
+  "rawInput",
+  "raw_input",
+];
+
+function truncate(text: string, max = 80): string {
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function compactValue(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (isRecord(value) || Array.isArray(value)) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
     }
   }
   return null;
+}
+
+function summarizeParams(params: unknown): string | null {
+  const parsed = parseMaybeJson(params);
+  if (parsed == null) return null;
+  if (typeof parsed !== "object") return compactValue(parsed);
+  if (Array.isArray(parsed)) return parsed.length > 0 ? truncate(JSON.stringify(parsed)) : null;
+  const record = parsed as Record<string, unknown>;
+  if (Object.keys(record).length === 0) return null;
+
+  for (const key of PARAM_HINT_KEYS) {
+    if (key in record) {
+      const hint = compactValue(record[key]);
+      if (hint) return truncate(hint);
+    }
+  }
+
+  for (const v of Object.values(record)) {
+    const hint = compactValue(v);
+    if (hint) return truncate(hint);
+  }
+  return null;
+}
+
+function formatToolParams(params: unknown): string | null {
+  const parsed = parseMaybeJson(params);
+  if (parsed == null) return null;
+  if (typeof parsed === "string") return parsed;
+  if (typeof parsed === "number" || typeof parsed === "boolean") return String(parsed);
+  if (isRecord(parsed) && Object.keys(parsed).length === 0) return null;
+  if (Array.isArray(parsed) && parsed.length === 0) return null;
+  try {
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return String(parsed);
+  }
 }
 
 function summarizeResult(result: string): string {
@@ -47,6 +121,7 @@ interface BlockView {
   kind: "tool_call" | "tool_result" | "reasoning" | "system" | "error" | "todo" | "unknown";
   toolName?: string;
   paramHint?: string | null;
+  paramDetails?: string | null;
   resultStr?: string;
   reasoningText?: string;
   systemLabel?: string;
@@ -103,6 +178,9 @@ function blockDetails(raw: unknown, payload?: Record<string, unknown>): string {
 function buildToolNameById(blocks: StreamBlockEntry[]): Record<string, string> {
   const m: Record<string, string> = {};
   for (const b of blocks) {
+    if (b.block.kind === "tool_call" && typeof b.block.payload?.id === "string" && typeof b.block.payload?.name === "string") {
+      m[b.block.payload.id] = b.block.payload.name;
+    }
     const contents = (b.block.raw as any)?.message?.content;
     if (!Array.isArray(contents)) continue;
     for (const c of contents) {
@@ -114,6 +192,183 @@ function buildToolNameById(blocks: StreamBlockEntry[]): Record<string, string> {
   return m;
 }
 
+function stringField(obj: any, key: string): string | undefined {
+  const value = obj?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function extractToolCall(raw: any): { name: string; params?: unknown; id?: string } | null {
+  const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
+  const tu = contents.find((c: any) => c?.type === "tool_use");
+  if (tu) {
+    return {
+      name: stringField(tu, "name") ?? "tool",
+      params: parseMaybeJson(tu.input ?? tu.arguments),
+      id: stringField(tu, "id"),
+    };
+  }
+
+  const deepseek = extractDeepseekToolCall(raw);
+  if (deepseek) return deepseek;
+
+  const item = raw?.item;
+  if (item && typeof item === "object") {
+    return {
+      name: stringField(item, "type") ?? stringField(item, "name") ?? "tool",
+      params: item,
+      id: stringField(item, "id"),
+    };
+  }
+
+  const toolCalls = Array.isArray(raw?.tool_calls) ? raw.tool_calls : [];
+  const toolCall = toolCalls.find((t: any) => t && typeof t === "object");
+  if (toolCall) {
+    const fn = toolCall.function && typeof toolCall.function === "object" ? toolCall.function : undefined;
+    return {
+      name: stringField(fn, "name") ?? stringField(toolCall, "name") ?? "tool",
+      params: parseMaybeJson(fn?.arguments ?? toolCall.arguments ?? toolCall.input ?? toolCall.rawInput),
+      id: stringField(toolCall, "id"),
+    };
+  }
+
+  const update = raw?.params?.update ?? raw?.update;
+  const acpTool = update?.toolCall ?? update?.tool_call ?? update?.tool;
+  if (acpTool && typeof acpTool === "object") {
+    return {
+      name: stringField(acpTool, "name") ?? stringField(update, "name") ?? "tool",
+      params: parseMaybeJson(
+        acpTool.rawInput ??
+          acpTool.raw_input ??
+          acpTool.input ??
+          acpTool.arguments ??
+          acpTool.args ??
+          acpTool.params,
+      ) ?? acpTool,
+      id: stringField(acpTool, "id") ?? stringField(update, "toolCallId"),
+    };
+  }
+
+  return null;
+}
+
+function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id?: string } | null {
+  const payload = raw?.payload;
+  if (!payload || typeof payload !== "object") return null;
+
+  if (raw?.event === "tool.started") {
+    const tool = payload.tool && typeof payload.tool === "object" ? payload.tool : undefined;
+    return {
+      name: stringField(payload, "name") ?? stringField(tool, "name") ?? "tool",
+      params: parseMaybeJson(payload.input ?? payload.arguments ?? payload.params ?? tool?.input ?? tool?.rawInput),
+      id: stringField(payload, "id") ?? stringField(tool, "id"),
+    };
+  }
+
+  if (payload.event === "item.started") {
+    const inner = payload.payload && typeof payload.payload === "object" ? payload.payload : {};
+    const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
+    const tool = inner.tool && typeof inner.tool === "object" ? inner.tool : item?.tool;
+    return {
+      name:
+        stringField(tool, "name") ??
+        stringField(inner, "name") ??
+        stringField(item, "name") ??
+        stringField(item, "type") ??
+        "tool",
+      params: parseMaybeJson(
+        tool?.input ??
+          tool?.rawInput ??
+          tool?.arguments ??
+          inner.input ??
+          item?.input ??
+          item?.arguments,
+      ) ?? tool ?? item,
+      id: stringField(tool, "id") ?? stringField(inner, "id") ?? stringField(item, "id"),
+    };
+  }
+
+  return null;
+}
+
+function extractToolResult(raw: any): { name?: string; result: string; id?: string } | null {
+  const deepseek = extractDeepseekToolResult(raw);
+  if (deepseek) return deepseek;
+
+  const item = raw?.item;
+  if (item && typeof item === "object") {
+    const result = item.output ?? item.result ?? item.text ?? item.summary ?? item.diff ?? item.error ?? item;
+    return {
+      name: stringField(item, "type") ?? stringField(item, "name"),
+      result: stringifyDetails(result),
+      id: stringField(item, "id"),
+    };
+  }
+
+  if (raw?.role === "tool") {
+    return {
+      result: stringifyDetails(raw.content),
+      id: stringField(raw, "tool_call_id"),
+    };
+  }
+
+  const update = raw?.params?.update ?? raw?.update;
+  const acpTool = update?.toolCall ?? update?.tool_call ?? update?.tool;
+  if (acpTool && typeof acpTool === "object") {
+    const result =
+      acpTool.output ??
+      acpTool.result ??
+      acpTool.content ??
+      acpTool.error ??
+      update.content ??
+      update;
+    return {
+      name: stringField(acpTool, "name") ?? stringField(update, "name"),
+      result: stringifyDetails(result),
+      id: stringField(acpTool, "id") ?? stringField(update, "toolCallId"),
+    };
+  }
+
+  return null;
+}
+
+function extractDeepseekToolResult(raw: any): { name?: string; result: string; id?: string } | null {
+  const payload = raw?.payload;
+  if (!payload || typeof payload !== "object") return null;
+
+  if (raw?.event === "tool.completed") {
+    const result = payload.output ?? payload.result ?? payload.content ?? payload.error ?? payload;
+    return {
+      name: stringField(payload, "name"),
+      result: stringifyDetails(result),
+      id: stringField(payload, "id"),
+    };
+  }
+
+  if (payload.event === "item.completed" || payload.event === "item.failed") {
+    const inner = payload.payload && typeof payload.payload === "object" ? payload.payload : {};
+    const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
+    const result =
+      item?.output ??
+      item?.result ??
+      item?.content ??
+      item?.detail ??
+      item?.summary ??
+      item?.error ??
+      inner.output ??
+      inner.result ??
+      inner.error ??
+      item ??
+      inner;
+    return {
+      name: stringField(item, "name") ?? stringField(item, "type") ?? stringField(inner, "name"),
+      result: stringifyDetails(result),
+      id: stringField(item, "id") ?? stringField(inner, "id"),
+    };
+  }
+
+  return null;
+}
+
 function normalizeBlock(
   block: StreamBlockEntry["block"],
   ctx?: { toolNameById?: Record<string, string> },
@@ -123,17 +378,20 @@ function normalizeBlock(
 
   // Legacy shape ------------------------------------------------------------
   if (kind === "tool_call") {
+    const params = payload?.params ?? payload?.input ?? payload?.arguments ?? payload?.details;
     return {
       kind: "tool_call",
       toolName: (payload?.name as string) || "tool",
-      paramHint: summarizeParams(payload?.params as Record<string, unknown> | undefined),
+      paramHint: summarizeParams(params),
+      paramDetails: formatToolParams(params),
       rawKind: kind,
     };
   }
   if (kind === "tool_result" && payload) {
+    const id = typeof payload.tool_use_id === "string" ? payload.tool_use_id : undefined;
     return {
       kind: "tool_result",
-      toolName: (payload.name as string) || "tool",
+      toolName: (payload.name as string) || (id && ctx?.toolNameById?.[id]) || "tool",
       resultStr: String(payload.result ?? ""),
       rawKind: kind,
     };
@@ -157,6 +415,17 @@ function normalizeBlock(
 
   // Daemon-gateway shape (Codex / Claude-code) ------------------------------
   if (kind === "tool_use") {
+    const call = extractToolCall(rawAny);
+    if (call) {
+      return {
+        kind: "tool_call",
+        toolName: call.name,
+        paramHint: summarizeParams(call.params),
+        paramDetails: formatToolParams(call.params),
+        rawKind: kind,
+      };
+    }
+
     // Claude-code: raw.message.content[*] where type === "tool_use"
     const contents = rawAny?.message?.content;
     if (Array.isArray(contents)) {
@@ -165,7 +434,8 @@ function normalizeBlock(
         return {
           kind: "tool_call",
           toolName: (tu.name as string) || "tool",
-          paramHint: summarizeParams((tu.input || tu.arguments) as Record<string, unknown> | undefined),
+          paramHint: summarizeParams(tu.input || tu.arguments),
+          paramDetails: formatToolParams(tu.input || tu.arguments),
           rawKind: kind,
         };
       }
@@ -183,6 +453,7 @@ function normalizeBlock(
         kind: "tool_call",
         toolName: name,
         paramHint: typeof hint === "string" && hint.length > 60 ? hint.slice(0, 60) + "..." : hint ?? null,
+        paramDetails: formatToolParams(item),
         rawKind: kind,
       };
     }
@@ -190,6 +461,16 @@ function normalizeBlock(
   }
 
   if (kind === "tool_result") {
+    const directResult = extractToolResult(rawAny);
+    if (directResult) {
+      return {
+        kind: "tool_result",
+        toolName: directResult.name || "tool",
+        resultStr: directResult.result,
+        rawKind: kind,
+      };
+    }
+
     // Claude-code: raw.message.content[*] where type === "tool_result".
     // The tool name is not on the result itself — look it up via tool_use_id.
     const contents = rawAny?.message?.content;
@@ -295,15 +576,29 @@ function StreamBlockItem({
 
   if (view.kind === "tool_call") {
     const name = view.toolName || "tool";
+    const details = view.paramDetails || "";
     return (
-      <div className="flex items-start gap-2 py-1">
-        <ToolCallIcon name={name} />
-        <div className="min-w-0">
+      <div className="py-1">
+        <button
+          onClick={() => details && setResultExpanded(!resultExpanded)}
+          className="flex items-center gap-2 group min-w-0 text-left"
+        >
+          <ToolCallIcon name={name} />
           <span className="text-xs font-mono text-cyan-400">{name}</span>
-          {view.paramHint && (
-            <p className="text-[10px] text-zinc-500 truncate mt-0.5">{view.paramHint}</p>
+          {details && (
+            resultExpanded
+              ? <ChevronDown className="inline ml-1 w-2.5 h-2.5 text-zinc-500" />
+              : <ChevronRight className="inline ml-1 w-2.5 h-2.5 text-zinc-500" />
           )}
-        </div>
+        </button>
+        {view.paramHint && !resultExpanded && (
+          <p className="mt-0.5 ml-5 text-[10px] text-zinc-500 truncate max-w-[400px]">
+            {view.paramHint}
+          </p>
+        )}
+        {details && resultExpanded && (
+          <ToolResultContent result={details} toolName={`${name} input`} unwrapContentArray={false} />
+        )}
       </div>
     );
   }

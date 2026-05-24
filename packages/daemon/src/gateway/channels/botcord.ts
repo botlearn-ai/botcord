@@ -153,10 +153,11 @@ function defaultClientFactory(input: {
  */
 function isOwnerTrust(msg: InboxMessage): boolean {
   if (msg.room_id?.startsWith(OWNER_CHAT_PREFIX)) return true;
-  if (msg.source_type === "dashboard_user_chat") return true;
+  const sourceType = msg.source_type as string | undefined;
+  if (sourceType === "dashboard_user_chat") return true;
   // Cloud Agent run tasks are Hub-issued on the user's behalf, same
   // trust posture as owner chat.
-  if (msg.source_type === "cloud_agent_run") return true;
+  if (sourceType === "cloud_agent_run") return true;
   return false;
 }
 
@@ -197,10 +198,11 @@ function normalizeInbox(
   // run completes). All other envelope types (notification, system,
   // contact_added/removed, …) are still filtered out — they belong in
   // a separate push-notification path that daemon does not yet implement.
+  const envType = env.type as string;
   if (
-    env.type !== "message" &&
-    env.type !== "contact_request" &&
-    env.type !== "cloud_run"
+    envType !== "message" &&
+    envType !== "contact_request" &&
+    envType !== "cloud_run"
   )
     return null;
   if (!msg.room_id) return null;
@@ -214,8 +216,9 @@ function normalizeInbox(
 
   const isDm = msg.room_id.startsWith(DM_ROOM_PREFIX);
   const isOwnerChat = msg.room_id.startsWith(OWNER_CHAT_PREFIX);
+  const sourceType = msg.source_type as string | undefined;
   const senderKind: "user" | "agent" =
-    ownerTrust || msg.source_type === "dashboard_human_room" ? "user" : "agent";
+    ownerTrust || sourceType === "dashboard_human_room" ? "user" : "agent";
 
   const senderName = msg.source_user_name ?? undefined;
   const threadId = msg.topic_id ?? msg.topic ?? null;
@@ -1005,45 +1008,25 @@ function normalizeBlockForHub(
   }
 
   if (kind === "tool_use") {
-    // Claude Code: assistant message w/ content[].type === "tool_use" → {id,name,input}
-    // Codex:       item.started for command_execution, file_change, mcp_tool_call, web_search
-    const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
-    const tu = contents.find((c: any) => c?.type === "tool_use");
-    if (tu) {
-      payload.name = typeof tu.name === "string" ? tu.name : "tool";
-      if (tu.input && typeof tu.input === "object") payload.params = tu.input;
-      if (typeof tu.id === "string") payload.id = tu.id;
-    } else if (raw?.item && typeof raw.item === "object") {
-      payload.name = typeof raw.item.type === "string" ? raw.item.type : "tool";
-      const params = codexToolParams(raw.item);
-      if (Object.keys(params).length > 0) payload.params = params;
-      if (typeof raw.item.id === "string") payload.id = raw.item.id;
-      if (typeof raw.item.status === "string") payload.status = raw.item.status;
+    // Claude Code, Codex, DeepSeek TUI, Kimi, and ACP all expose tool calls
+    // with slightly different field names. Preserve the real invocation input
+    // so the dashboard can show more than a bare "tool" label.
+    const call = extractToolCall(raw);
+    if (call) {
+      payload.name = call.name;
+      if (call.params !== undefined && !isEmptyRecord(call.params)) payload.params = call.params;
+      if (call.id) payload.id = call.id;
+      if (call.status) payload.status = call.status;
     }
     return { kind: "tool_call", seq, payload };
   }
 
   if (kind === "tool_result") {
-    // Claude Code: {type:"user", message:{content:[{type:"tool_result",tool_use_id,content}]}}
-    // Codex:       item.completed for command_execution, file_change, mcp_tool_call, web_search
-    const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
-    const tr = contents.find((c: any) => c?.type === "tool_result");
-    if (tr) {
-      let resultStr = "";
-      if (typeof tr.content === "string") {
-        resultStr = tr.content;
-      } else if (Array.isArray(tr.content)) {
-        resultStr = tr.content
-          .map((c: any) => (typeof c?.text === "string" ? c.text : JSON.stringify(c)))
-          .join("\n");
-      }
-      payload.result = resultStr;
-      if (typeof tr.tool_use_id === "string") payload.tool_use_id = tr.tool_use_id;
-    } else if (raw?.item && typeof raw.item === "object") {
-      payload.name = typeof raw.item.type === "string" ? raw.item.type : "tool";
-      if (typeof raw.item.id === "string") payload.tool_use_id = raw.item.id;
-      const result = codexToolResult(raw.item);
-      if (result) payload.result = result;
+    const result = extractToolResult(raw);
+    if (result) {
+      if (result.name) payload.name = result.name;
+      payload.result = result.result;
+      if (result.id) payload.tool_use_id = result.id;
     }
     return { kind: "tool_result", seq, payload };
   }
@@ -1095,6 +1078,191 @@ function isTerminalRuntimeBlock(raw: any): boolean {
     terminal === "turn.done" ||
     terminal === "done"
   );
+}
+
+function extractToolCall(raw: any): { name: string; params?: unknown; id?: string; status?: string } | null {
+  const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
+  const tu = contents.find((c: any) => c?.type === "tool_use");
+  if (tu) {
+    return {
+      name: stringField(tu, "name") ?? "tool",
+      params: parseMaybeJson(tu.input ?? tu.arguments),
+      id: stringField(tu, "id"),
+    };
+  }
+
+  const deepseek = extractDeepseekToolCall(raw);
+  if (deepseek) return deepseek;
+
+  const item = raw?.item;
+  if (item && typeof item === "object") {
+    const params = codexToolParams(item);
+    return {
+      name: stringField(item, "type") ?? stringField(item, "name") ?? "tool",
+      params,
+      id: stringField(item, "id"),
+      status: stringField(item, "status"),
+    };
+  }
+
+  const toolCalls = Array.isArray(raw?.tool_calls) ? raw.tool_calls : [];
+  const toolCall = toolCalls.find((t: any) => t && typeof t === "object");
+  if (toolCall) {
+    const fn = toolCall.function && typeof toolCall.function === "object" ? toolCall.function : undefined;
+    return {
+      name: stringField(fn, "name") ?? stringField(toolCall, "name") ?? "tool",
+      params: parseMaybeJson(fn?.arguments ?? toolCall.arguments ?? toolCall.input ?? toolCall.rawInput),
+      id: stringField(toolCall, "id"),
+    };
+  }
+
+  const update = raw?.params?.update ?? raw?.update;
+  const acpTool = update?.toolCall ?? update?.tool_call ?? update?.tool;
+  if (acpTool && typeof acpTool === "object") {
+    return {
+      name: stringField(acpTool, "name") ?? stringField(update, "name") ?? "tool",
+      params: parseMaybeJson(
+        acpTool.rawInput ??
+          acpTool.raw_input ??
+          acpTool.input ??
+          acpTool.arguments ??
+          acpTool.args ??
+          acpTool.params,
+      ) ?? acpTool,
+      id: stringField(acpTool, "id") ?? stringField(update, "toolCallId"),
+    };
+  }
+
+  return null;
+}
+
+function extractToolResult(raw: any): { name?: string; result: string; id?: string } | null {
+  const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
+  const tr = contents.find((c: any) => c?.type === "tool_result");
+  if (tr) {
+    return {
+      result: stringifyToolResult(tr.content),
+      id: stringField(tr, "tool_use_id"),
+    };
+  }
+
+  const deepseek = extractDeepseekToolResult(raw);
+  if (deepseek) return deepseek;
+
+  const item = raw?.item;
+  if (item && typeof item === "object") {
+    const result = codexToolResult(item);
+    return {
+      name: stringField(item, "type") ?? stringField(item, "name"),
+      result: result || stringifyToolResult(item),
+      id: stringField(item, "id"),
+    };
+  }
+
+  if (raw?.role === "tool") {
+    return {
+      result: stringifyToolResult(raw.content),
+      id: stringField(raw, "tool_call_id"),
+    };
+  }
+
+  const update = raw?.params?.update ?? raw?.update;
+  const acpTool = update?.toolCall ?? update?.tool_call ?? update?.tool;
+  if (acpTool && typeof acpTool === "object") {
+    const result =
+      acpTool.output ??
+      acpTool.result ??
+      acpTool.content ??
+      acpTool.error ??
+      update.content ??
+      update;
+    return {
+      name: stringField(acpTool, "name") ?? stringField(update, "name"),
+      result: stringifyToolResult(result),
+      id: stringField(acpTool, "id") ?? stringField(update, "toolCallId"),
+    };
+  }
+
+  return null;
+}
+
+function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id?: string; status?: string } | null {
+  const payload = raw?.payload;
+  if (!payload || typeof payload !== "object") return null;
+
+  if (raw?.event === "tool.started") {
+    const tool = payload.tool && typeof payload.tool === "object" ? payload.tool : undefined;
+    return {
+      name: stringField(payload, "name") ?? stringField(tool, "name") ?? "tool",
+      params: parseMaybeJson(payload.input ?? payload.arguments ?? payload.params ?? tool?.input ?? tool?.rawInput),
+      id: stringField(payload, "id") ?? stringField(tool, "id"),
+      status: stringField(payload, "status") ?? stringField(tool, "status"),
+    };
+  }
+
+  if (payload.event === "item.started") {
+    const inner = payload.payload && typeof payload.payload === "object" ? payload.payload : {};
+    const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
+    const tool = inner.tool && typeof inner.tool === "object" ? inner.tool : item?.tool;
+    return {
+      name:
+        stringField(tool, "name") ??
+        stringField(inner, "name") ??
+        stringField(item, "name") ??
+        stringField(item, "type") ??
+        "tool",
+      params: parseMaybeJson(
+        tool?.input ??
+          tool?.rawInput ??
+          tool?.arguments ??
+          inner.input ??
+          item?.input ??
+          item?.arguments,
+      ) ?? tool ?? item,
+      id: stringField(tool, "id") ?? stringField(inner, "id") ?? stringField(item, "id"),
+      status: stringField(tool, "status") ?? stringField(inner, "status") ?? stringField(item, "status"),
+    };
+  }
+
+  return null;
+}
+
+function extractDeepseekToolResult(raw: any): { name?: string; result: string; id?: string } | null {
+  const payload = raw?.payload;
+  if (!payload || typeof payload !== "object") return null;
+
+  if (raw?.event === "tool.completed") {
+    const result = payload.output ?? payload.result ?? payload.content ?? payload.error ?? payload;
+    return {
+      name: stringField(payload, "name"),
+      result: stringifyToolResult(result),
+      id: stringField(payload, "id"),
+    };
+  }
+
+  if (payload.event === "item.completed" || payload.event === "item.failed") {
+    const inner = payload.payload && typeof payload.payload === "object" ? payload.payload : {};
+    const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
+    const result =
+      item?.output ??
+      item?.result ??
+      item?.content ??
+      item?.detail ??
+      item?.summary ??
+      item?.error ??
+      inner.output ??
+      inner.result ??
+      inner.error ??
+      item ??
+      inner;
+    return {
+      name: stringField(item, "name") ?? stringField(item, "type") ?? stringField(inner, "name"),
+      result: stringifyToolResult(result),
+      id: stringField(item, "id") ?? stringField(inner, "id"),
+    };
+  }
+
+  return null;
 }
 
 function formatBlockDetails(raw: unknown): string {
@@ -1166,6 +1334,47 @@ function codexToolResult(item: Record<string, unknown>): string {
   }
 
   return parts.join("\n");
+}
+
+function stringifyToolResult(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((c: any) => {
+        if (typeof c === "string") return c;
+        if (typeof c?.text === "string") return c.text;
+        return stringifyToolResult(c);
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function isEmptyRecord(value: unknown): boolean {
+  return !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
+}
+
+function stringField(obj: any, key: string): string | undefined {
+  const value = obj?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function extractContentText(content: unknown): string {
