@@ -1019,20 +1019,35 @@ export default function DashboardApp() {
     }
   };
 
-  const mobileShowsMain =
+  const mobileMessagesShowsMain =
+    routeSidebarTab === "messages"
+    && (
+      uiStore.messagesShowRequests
+      || uiStore.messagesPane === "user-chat"
+      || Boolean(uiStore.openedRoomId)
+    );
+  const mobileContactsShowsMain =
     routeSidebarTab === "contacts"
+    && (
+      uiStore.contactsView === "requests"
+      || Boolean(uiStore.selectedContactKey)
+    );
+  const mobileShowsMain =
+    routeSidebarTab === "home"
     || routeSidebarTab === "explore"
     || routeSidebarTab === "wallet"
     || routeSidebarTab === "activity"
-    || (routeSidebarTab === "messages" && (uiStore.messagesPane === "user-chat" || Boolean(uiStore.openedRoomId)))
-    || (routeSidebarTab === "bots" && Boolean(uiStore.selectedBotAgentId));
+    || routeSidebarTab === "bots"
+    || mobileMessagesShowsMain
+    || mobileContactsShowsMain;
   const mobileHideSecondary =
-    routeSidebarTab === "wallet"
+    routeSidebarTab === "home"
+    || routeSidebarTab === "wallet"
     || routeSidebarTab === "activity"
     || routeSidebarTab === "explore"
-    || routeSidebarTab === "contacts"
-    || (routeSidebarTab === "messages" && (uiStore.messagesPane === "user-chat" || Boolean(uiStore.openedRoomId)))
-    || (routeSidebarTab === "bots" && Boolean(uiStore.selectedBotAgentId));
+    || routeSidebarTab === "bots"
+    || mobileMessagesShowsMain
+    || mobileContactsShowsMain;
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
   const primaryNavigationPending = Boolean(
     uiStore.pendingPrimaryNavigation && pathname !== uiStore.pendingPrimaryNavigation.path,
