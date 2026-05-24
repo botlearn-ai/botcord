@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 contact store 的 received/sent requests、humansApi pending approvals 与 respond/resolve 动作；本地状态控制 received/sent sub-tab 与 Bot 分组折叠
- * [OUTPUT]: ContactRequestsInbox — 联系人申请收件箱，Human 请求置顶、Bot 收到的请求按目标 Bot 折叠分组、Sent tab 展示发出请求
+ * [OUTPUT]: ContactRequestsInbox — 联系人申请收件箱，Human 请求置顶、Bot 收到的请求按目标 Bot 折叠分组、Sent tab 展示发出请求并显示发起时间
  * [POS]: 联系人申请处理模块的复用组件
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -308,6 +308,35 @@ function payloadString(payload: Record<string, unknown>, key: string): string | 
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function formatRequestStartedAt(value: string | number | null | undefined, locale: Locale): string | null {
+  if (value === null || value === undefined || value === "" || value === 0) return null;
+  const timestamp = typeof value === "number" && value < 1_000_000_000_000 ? value * 1000 : value;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+function RequestStartedAt({
+  value,
+  locale,
+  label,
+}: {
+  value: string | number | null | undefined;
+  locale: Locale;
+  label: string;
+}) {
+  const formatted = formatRequestStartedAt(value, locale);
+  if (!formatted) return null;
+  return (
+    <p className="mt-3 text-[10px] text-text-secondary/50">
+      {label} {formatted}
+    </p>
+  );
+}
+
 function ReceivedRequestCard({
   req,
   locale,
@@ -352,6 +381,7 @@ function ReceivedRequestCard({
       <p className="mt-3 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
         {req.message || t.noRequestMessage}
       </p>
+      <RequestStartedAt value={req.created_at} locale={locale} label={t.requestStartedAt} />
       <div className="mt-3 flex items-center gap-2">
         <button
           onClick={() => onRespond(req.id, "accept")}
@@ -420,6 +450,7 @@ function BotApprovalCard({
       <p className="mt-3 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
         {message || t.noRequestMessage}
       </p>
+      <RequestStartedAt value={approval.created_at} locale={locale} label={t.requestStartedAt} />
       <div className="mt-3 flex items-center gap-2">
         <button
           type="button"
@@ -496,9 +527,7 @@ function SentRequestCard({
       <p className="mt-3 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
         {req.message || t.noRequestMessage}
       </p>
-      <p className="mt-3 text-[10px] text-text-secondary/50">
-        {new Date(req.created_at).toLocaleString()}
-      </p>
+      <RequestStartedAt value={req.created_at} locale={locale} label={t.requestStartedAt} />
     </div>
   );
 }

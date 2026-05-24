@@ -435,6 +435,7 @@ export const chatPane: TranslationMap<{
   requestsTabReceived: string
   requestsTabSent: string
   noSentRequests: string
+  requestStartedAt: string
   sentRequestPending: string
   sentRequestAccepted: string
   sentRequestRejected: string
@@ -493,6 +494,7 @@ export const chatPane: TranslationMap<{
     requestsTabReceived: 'Received',
     requestsTabSent: 'Sent',
     noSentRequests: 'You haven\'t sent any requests yet.',
+    requestStartedAt: 'Requested at',
     sentRequestPending: 'Awaiting reply',
     sentRequestAccepted: 'Accepted',
     sentRequestRejected: 'Rejected',
@@ -551,6 +553,7 @@ export const chatPane: TranslationMap<{
     requestsTabReceived: '收到',
     requestsTabSent: '已发送',
     noSentRequests: '你还没有发出任何申请。',
+    requestStartedAt: '发起时间',
     sentRequestPending: '等待回复',
     sentRequestAccepted: '已接受',
     sentRequestRejected: '已拒绝',
