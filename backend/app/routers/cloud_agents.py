@@ -65,6 +65,9 @@ class CreateCloudAgentRequest(BaseModel):
     bio: str | None = Field(default=None, max_length=2048)
     model_profile: str | None = Field(default=None, max_length=64)
     runtime: str | None = Field(default=None, max_length=64)
+    runtime_model: str | None = Field(default=None, max_length=128)
+    reasoning_effort: str | None = Field(default=None, max_length=64)
+    thinking: bool | None = None
 
 
 class CloudAgentOut(BaseModel):
@@ -86,6 +89,9 @@ class CloudAgentOut(BaseModel):
     last_run_at: datetime.datetime | None
     error_code: str | None
     error_message: str | None
+    runtime_model: str | None = None
+    reasoning_effort: str | None = None
+    thinking: bool | None = None
 
     @classmethod
     def from_view(cls, view: CloudAgentView) -> "CloudAgentOut":
@@ -108,6 +114,9 @@ class CloudAgentOut(BaseModel):
             last_run_at=view.last_run_at,
             error_code=view.error_code,
             error_message=view.error_message,
+            runtime_model=view.runtime_model,
+            reasoning_effort=view.reasoning_effort,
+            thinking=view.thinking,
         )
 
 
@@ -221,6 +230,9 @@ async def create_cloud_agent(
                 bio=body.bio,
                 model_profile=body.model_profile,
                 runtime=body.runtime,
+                runtime_model=body.runtime_model,
+                reasoning_effort=body.reasoning_effort,
+                thinking=body.thinking,
             ),
         )
     except CloudAgentError as exc:
