@@ -6,6 +6,7 @@ import { apiFetch, userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { botDetailDrawer } from "@/lib/i18n/translations/dashboard";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useDaemonStore } from "@/store/useDaemonStore";
 import {
   usePolicyStore,
   type AgentPolicy,
@@ -18,6 +19,7 @@ import UnbindAgentDialog from "./UnbindAgentDialog";
 import AgentChannelsTab from "./AgentChannelsTab";
 import AgentSchedulesTab from "./AgentSchedulesTab";
 import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
+import BotRuntimeCapabilitiesPanel from "./BotRuntimeCapabilitiesPanel";
 
 interface AgentSettingsDrawerProps {
   agentId: string;
@@ -25,6 +27,11 @@ interface AgentSettingsDrawerProps {
   bio?: string | null;
   avatarUrl?: string | null;
   hostingKind?: string | null;
+  daemonInstanceId?: string | null;
+  runtime?: string | null;
+  runtimeModel?: string | null;
+  reasoningEffort?: string | null;
+  thinking?: boolean | null;
   onClose: () => void;
   onSaved?: () => void;
 }
@@ -267,6 +274,11 @@ export default function AgentSettingsDrawer({
   bio,
   avatarUrl,
   hostingKind,
+  daemonInstanceId,
+  runtime,
+  runtimeModel,
+  reasoningEffort,
+  thinking,
   onClose,
   onSaved,
 }: AgentSettingsDrawerProps) {
@@ -299,6 +311,10 @@ export default function AgentSettingsDrawer({
       : "DMs always wake the Bot. Room messages use room-level overrides first, then inherit this default policy.",
   };
   const refreshUserProfile = useDashboardSessionStore((s) => s.refreshUserProfile);
+  const daemons = useDaemonStore((s) => s.daemons);
+  const daemon = daemonInstanceId
+    ? daemons.find((entry) => entry.id === daemonInstanceId) ?? null
+    : null;
 
   const [tab, setTab] = useState<Tab>("profile");
   const [showUnbind, setShowUnbind] = useState(false);
@@ -526,6 +542,16 @@ export default function AgentSettingsDrawer({
                   className="w-full resize-none rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
                 />
               </div>
+
+              <BotRuntimeCapabilitiesPanel
+                agentId={agentId}
+                daemon={daemon}
+                runtimeId={runtime}
+                runtimeModel={runtimeModel}
+                reasoningEffort={reasoningEffort}
+                thinking={thinking}
+                onSaved={refreshUserProfile}
+              />
 
               {profileError && (
                 <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">

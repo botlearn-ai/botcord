@@ -854,6 +854,9 @@ export interface UserAgent {
   daemon_instance_id?: string | null;
   hosting_kind?: "daemon" | "openclaw" | "cli" | "cloud" | string | null;
   runtime?: string | null;
+  runtime_model?: string | null;
+  reasoning_effort?: string | null;
+  thinking?: boolean | null;
 }
 
 // --- Activity / Observability types ---

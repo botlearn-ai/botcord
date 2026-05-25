@@ -1587,17 +1587,25 @@ async def _load_agent_identity_snapshot(
             exc,
         )
         return []
-    # Only fields the daemon's `applyAgentIdentity` actually consumes ship
-    # on the wire — runtime is already cached locally in the credentials
-    # file and re-sending it here would just bloat the hello payload.
-    return [
-        {
+    # Ship the Hub source-of-truth for both identity.md fields and runtime
+    # selector fields. Offline daemons reconcile these into credentials and
+    # managed routes on the next hello.
+    agents: list[dict[str, Any]] = []
+    for row in rows:
+        entry: dict[str, Any] = {
             "agentId": row.agent_id,
             "displayName": row.display_name,
             "bio": row.bio,
+            "runtime": row.runtime,
         }
-        for row in rows
-    ]
+        if row.runtime_model is not None:
+            entry["runtimeModel"] = row.runtime_model
+        if row.reasoning_effort is not None:
+            entry["reasoningEffort"] = row.reasoning_effort
+        if row.thinking is not None:
+            entry["thinking"] = row.thinking
+        agents.append(entry)
+    return agents
 
 
 async def _handle_daemon_event(conn: _DaemonConn, msg: dict[str, Any]) -> None:

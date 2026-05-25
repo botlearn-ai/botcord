@@ -30,6 +30,7 @@ from hub.models import (
     AgentSubscription,
     Base,
     DaemonAgentCleanup,
+    DaemonInstance,
     KeyState,
     MessagePolicy,
     Role,
@@ -813,6 +814,127 @@ async def test_patch_agent_pushes_update_when_daemon_online(
     assert captured["params"]["agentId"] == "ag_agent001"
     assert captured["params"]["displayName"] == "Renamed"
     assert captured["params"]["bio"] == "Fresh bio"
+
+
+@pytest.mark.asyncio
+async def test_patch_agent_updates_runtime_options_when_daemon_online(
+    client: AsyncClient, db_session: AsyncSession, seed_user: dict, monkeypatch
+):
+    seed_user["agent1"].daemon_instance_id = "di_runtime"
+    seed_user["agent1"].runtime = "codex"
+    db_session.add(
+        DaemonInstance(
+            id="di_runtime",
+            user_id=seed_user["user_id"],
+            label="runtime machine",
+            refresh_token_hash="ab" * 32,
+            runtimes_json=[
+                {
+                    "id": "codex",
+                    "available": True,
+                    "models": [
+                        {
+                            "id": "gpt-5.2",
+                            "parameters": [
+                                {
+                                    "id": "reasoning_effort",
+                                    "type": "string",
+                                    "values": ["minimal", "high"],
+                                },
+                                {"id": "thinking", "type": "boolean"},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        )
+    )
+    await db_session.commit()
+
+    import app.routers.users as users_mod
+    import asyncio as _asyncio
+
+    monkeypatch.setattr(users_mod, "is_daemon_online", lambda _id: True)
+    captured: dict = {}
+    sent = _asyncio.Event()
+
+    async def fake_send(daemon_id, type_, params, timeout_ms=None):
+        captured["daemon_id"] = daemon_id
+        captured["type"] = type_
+        captured["params"] = params
+        sent.set()
+        return {"id": "x", "ok": True}
+
+    monkeypatch.setattr(users_mod, "send_control_frame", fake_send)
+
+    resp = await client.patch(
+        "/api/users/me/agents/ag_agent001",
+        json={
+            "runtime_model": "gpt-5.2",
+            "reasoning_effort": "high",
+            "thinking": True,
+        },
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["runtime_model"] == "gpt-5.2"
+    assert body["reasoning_effort"] == "high"
+    assert body["thinking"] is True
+
+    await _asyncio.wait_for(sent.wait(), timeout=2.0)
+    assert captured["daemon_id"] == "di_runtime"
+    assert captured["type"] == "update_agent"
+    assert captured["params"] == {
+        "agentId": "ag_agent001",
+        "runtime": "codex",
+        "runtimeModel": "gpt-5.2",
+        "reasoningEffort": "high",
+        "thinking": True,
+    }
+
+    await db_session.refresh(seed_user["agent1"])
+    assert seed_user["agent1"].runtime_model == "gpt-5.2"
+    assert seed_user["agent1"].reasoning_effort == "high"
+    assert seed_user["agent1"].thinking is True
+
+
+@pytest.mark.asyncio
+async def test_patch_agent_rejects_unsupported_runtime_options(
+    client: AsyncClient, db_session: AsyncSession, seed_user: dict
+):
+    seed_user["agent1"].daemon_instance_id = "di_runtime_reject"
+    seed_user["agent1"].runtime = "codex"
+    db_session.add(
+        DaemonInstance(
+            id="di_runtime_reject",
+            user_id=seed_user["user_id"],
+            label="runtime machine",
+            refresh_token_hash="cd" * 32,
+            runtimes_json=[
+                {
+                    "id": "codex",
+                    "available": True,
+                    "parameters": [
+                        {
+                            "id": "reasoning_effort",
+                            "type": "string",
+                            "values": ["minimal", "low"],
+                        }
+                    ],
+                }
+            ],
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.patch(
+        "/api/users/me/agents/ag_agent001",
+        json={"reasoning_effort": "high"},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "runtime_unavailable"
 
 
 @pytest.mark.asyncio

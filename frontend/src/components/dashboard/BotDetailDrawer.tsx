@@ -36,6 +36,7 @@ import {
 } from "@/store/usePolicyStore";
 import AgentChannelsTab from "./AgentChannelsTab";
 import AgentSchedulesTab from "./AgentSchedulesTab";
+import BotRuntimeCapabilitiesPanel from "./BotRuntimeCapabilitiesPanel";
 import BotAvatar from "./BotAvatar";
 import { CompositeAvatar } from "./CompositeAvatar";
 import BotWalletTab from "./BotWalletTab";
@@ -117,6 +118,7 @@ export default function BotDetailDrawer() {
     })),
   );
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
+  const refreshUserProfile = useDashboardSessionStore((s) => s.refreshUserProfile);
   const daemons = useDaemonStore((s) => s.daemons);
   const { loadOwnedAgentRooms, ownedAgentRooms, upsertOptimisticOwnerChatRoom } = useDashboardChatStore(
     useShallow((s) => ({
@@ -306,6 +308,12 @@ export default function BotDetailDrawer() {
             <SettingsTab
               agentId={bot.agent_id}
               hostingKind={bot.hosting_kind ?? null}
+              daemon={device}
+              runtimeId={getBotRuntimeId(bot, device)}
+              runtimeModel={bot.runtime_model ?? null}
+              reasoningEffort={bot.reasoning_effort ?? null}
+              thinking={bot.thinking ?? null}
+              onRuntimeSaved={refreshUserProfile}
               t={t}
             />
           )}
@@ -712,14 +720,36 @@ function ProfileEditor({
 function SettingsTab({
   agentId,
   hostingKind,
+  daemon,
+  runtimeId,
+  runtimeModel,
+  reasoningEffort,
+  thinking,
+  onRuntimeSaved,
   t,
 }: {
   agentId: string;
   hostingKind?: string | null;
+  daemon: DaemonInstance | null;
+  runtimeId: string | null;
+  runtimeModel?: string | null;
+  reasoningEffort?: string | null;
+  thinking?: boolean | null;
+  onRuntimeSaved: () => Promise<void>;
   t: BotDetailDrawerCopy;
 }) {
   return (
     <div className="space-y-6">
+      <BotRuntimeCapabilitiesPanel
+        agentId={agentId}
+        daemon={daemon}
+        runtimeId={runtimeId}
+        runtimeModel={runtimeModel}
+        reasoningEffort={reasoningEffort}
+        thinking={thinking}
+        onSaved={onRuntimeSaved}
+      />
+
       <section className="space-y-3">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
           {t.settings.conversation}
