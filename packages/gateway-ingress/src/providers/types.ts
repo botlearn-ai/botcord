@@ -1,7 +1,7 @@
+import type { GatewayInboundMessage } from "@botcord/protocol-core";
 import type { IngressLogger } from "../log.js";
 import type {
   GatewayConnection,
-  NormalizedInboundMessage,
   OutboundSendRequest,
   OutboundSendResult,
 } from "../types.js";
@@ -44,7 +44,7 @@ export interface ProviderRuntimeContext {
    * write succeeded), `false` if the message was a duplicate, or
    * throws when ingestion failed and the cursor must NOT advance.
    */
-  emit(message: NormalizedInboundMessage, providerEventId: string): Promise<boolean>;
+  emit(message: GatewayInboundMessage, providerEventId: string): Promise<boolean>;
   /**
    * Persist a provider cursor blob. Called only after `emit` succeeded
    * for every message in the batch — never before.

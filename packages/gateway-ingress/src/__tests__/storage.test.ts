@@ -4,11 +4,11 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import type { GatewayInboundMessage } from "@botcord/protocol-core";
 import { FileSystemIngressStore } from "../storage/store.js";
 import type {
   GatewayConnection,
   InboundEvent,
-  NormalizedInboundMessage,
   OutboundDelivery,
 } from "../types.js";
 
@@ -16,7 +16,7 @@ function tmp(): string {
   return mkdtempSync(join(tmpdir(), "botcord-ingress-"));
 }
 
-const NORMALIZED: NormalizedInboundMessage = {
+const NORMALIZED: GatewayInboundMessage = {
   id: "telegram:42:1",
   channel: "gw_tg_test",
   accountId: "ag_test",

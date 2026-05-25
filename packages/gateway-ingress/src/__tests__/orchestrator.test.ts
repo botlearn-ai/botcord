@@ -8,7 +8,8 @@ import { noopLogger } from "../log.js";
 import { IngressOrchestrator } from "../orchestrator.js";
 import { RuntimeSessionManager } from "../runtime/session.js";
 import { FileSystemIngressStore } from "../storage/store.js";
-import type { GatewayConnection, NormalizedInboundMessage } from "../types.js";
+import type { GatewayInboundMessage } from "@botcord/protocol-core";
+import type { GatewayConnection } from "../types.js";
 import { FakeHubClient, FakeRuntimeSocket, FakeSocketFactory } from "./fixtures.js";
 
 import type {
@@ -32,7 +33,7 @@ const CONN: GatewayConnection = {
   updatedAt: 1,
 };
 
-const NORMALIZED: NormalizedInboundMessage = {
+const NORMALIZED: GatewayInboundMessage = {
   id: "telegram:42:1",
   channel: CONN.id,
   accountId: CONN.agentId,

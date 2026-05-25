@@ -1,4 +1,20 @@
 import type { GatewayLogger } from "./log.js";
+import type {
+  GatewayInboundEnvelope as CanonicalGatewayInboundEnvelope,
+  GatewayInboundMessage as CanonicalGatewayInboundMessage,
+  GatewayOutboundAttachment as CanonicalGatewayOutboundAttachment,
+  GatewayOutboundMessage as CanonicalGatewayOutboundMessage,
+  RuntimeGatewayProvider,
+} from "@botcord/protocol-core";
+
+// Canonical gateway message shapes live in `@botcord/protocol-core` so the
+// `gateway-ingress` provider adapters can import the same types without
+// pulling the entire daemon. Daemon re-exports the canonical shapes here so
+// every existing import (`from "./gateway/index.js"`) keeps working.
+export type GatewayInboundMessage = CanonicalGatewayInboundMessage;
+export type GatewayInboundEnvelope = CanonicalGatewayInboundEnvelope;
+export type GatewayOutboundAttachment = CanonicalGatewayOutboundAttachment;
+export type GatewayOutboundMessage = CanonicalGatewayOutboundMessage;
 
 // ---------------------------------------------------------------------------
 // Routing (§9)
@@ -89,42 +105,9 @@ export interface GatewayConfig {
 // Inbound / outbound message shape (§7.3, §7.4, §7.5)
 // ---------------------------------------------------------------------------
 
-/** Normalized inbound message produced by a channel adapter for the dispatcher. */
-export interface GatewayInboundMessage {
-  id: string;
-  /** Channel adapter id (`ChannelAdapter.id`), not channel type. */
-  channel: string;
-  accountId: string;
-  conversation: {
-    id: string;
-    kind: "direct" | "group";
-    title?: string;
-    threadId?: string | null;
-  };
-  sender: {
-    id: string;
-    name?: string;
-    kind: "user" | "agent" | "system";
-  };
-  text?: string;
-  raw: unknown;
-  replyTo?: string | null;
-  mentioned?: boolean;
-  receivedAt: number;
-  trace?: {
-    id: string;
-    streamable?: boolean;
-  };
-}
-
-/** Inbound envelope wrapping a normalized message with optional upstream ack callbacks. */
-export interface GatewayInboundEnvelope {
-  message: GatewayInboundMessage;
-  ack?: {
-    accept(): Promise<void>;
-    reject?(reason: string): Promise<void>;
-  };
-}
+// `GatewayInboundMessage` and `GatewayInboundEnvelope` are re-exported from
+// `@botcord/protocol-core` at the top of this file. The wire-level subset is
+// `RuntimeGatewayInboundPayload` in protocol-core/runtime-frame.ts.
 
 /**
  * Channel-agnostic hook that produces a system-context string for a turn.
@@ -179,28 +162,8 @@ export type OutboundObserver = (
   message: GatewayOutboundMessage,
 ) => Promise<void> | void;
 
-/** Outbound reply payload passed to `ChannelAdapter.send()`. */
-export interface GatewayOutboundAttachment {
-  /** Local daemon-readable file path. */
-  filePath?: string;
-  /** In-memory bytes, primarily for tests and in-process tool callers. */
-  data?: Uint8Array;
-  filename?: string;
-  contentType?: string;
-  kind?: "image" | "file" | "video";
-}
-
-export interface GatewayOutboundMessage {
-  channel: string;
-  accountId: string;
-  conversationId: string;
-  threadId?: string | null;
-  type?: "message" | "error";
-  text: string;
-  attachments?: GatewayOutboundAttachment[];
-  replyTo?: string | null;
-  traceId?: string | null;
-}
+// `GatewayOutboundAttachment` and `GatewayOutboundMessage` are re-exported from
+// `@botcord/protocol-core` at the top of this file.
 
 // ---------------------------------------------------------------------------
 // Status (§14)
@@ -218,7 +181,7 @@ export interface ChannelStatusSnapshot {
   lastStopAt?: number;
   lastError?: string | null;
   /** Third-party provider id when this channel is not the built-in BotCord. */
-  provider?: "wechat" | "telegram" | "feishu";
+  provider?: RuntimeGatewayProvider;
   /** Last time the adapter polled the upstream provider (ms epoch). */
   lastPollAt?: number;
   /** Last time the adapter accepted an inbound message (ms epoch). */

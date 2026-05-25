@@ -1,4 +1,13 @@
-import type { RuntimeGatewayProvider } from "@botcord/protocol-core";
+import type {
+  GatewayInboundMessage,
+  RuntimeGatewayProvider,
+} from "@botcord/protocol-core";
+
+// Canonical normalized inbound shape lives in `@botcord/protocol-core` so
+// daemon channel adapters and ingress provider adapters share one
+// definition. Re-exported here for backwards-compat with existing
+// `from "./types.js"` imports across the ingress package.
+export type { GatewayInboundMessage } from "@botcord/protocol-core";
 
 /**
  * Local types describing on-disk + in-memory shapes for the ingress
@@ -61,7 +70,7 @@ export interface InboundEvent {
   providerEventId: string;
   conversationId: string;
   senderId: string;
-  normalizedMessage: NormalizedInboundMessage;
+  normalizedMessage: GatewayInboundMessage;
   status: InboundEventStatus;
   attemptCount: number;
   lastError?: string | null;
@@ -69,37 +78,9 @@ export interface InboundEvent {
   updatedAt: number;
 }
 
-/**
- * Normalized message payload mirroring the runtime-frame
- * `RuntimeGatewayInboundPayload`. Kept duplicated rather than imported
- * because the ingress writes this before any runtime frame is built,
- * and tests would otherwise depend on the shared package's compiled
- * output.
- */
-export interface NormalizedInboundMessage {
-  id: string;
-  channel: string;
-  accountId: string;
-  conversation: {
-    id: string;
-    kind: "direct" | "group";
-    title?: string;
-    threadId?: string | null;
-  };
-  sender: {
-    id: string;
-    name?: string;
-    kind: "user" | "agent" | "system";
-  };
-  text?: string;
-  replyTo?: string | null;
-  mentioned?: boolean;
-  receivedAt: number;
-  trace?: {
-    id: string;
-    streamable?: boolean;
-  };
-}
+// `NormalizedInboundMessage` was a local copy of the canonical
+// `GatewayInboundMessage` shape; both are now re-exported from
+// `@botcord/protocol-core`. See the top of this file.
 
 export type DeliveryStatus = "streaming" | "sent" | "failed";
 
