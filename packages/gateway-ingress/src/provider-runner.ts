@@ -3,7 +3,8 @@ import type { IngressOrchestrator } from "./orchestrator.js";
 import type { ProviderAdapter, ProviderAdapterFactory, ProviderRuntimeContext } from "./providers/types.js";
 import type { IngressSecretStore } from "./storage/secrets.js";
 import type { IngressStore } from "./storage/store.js";
-import type { GatewayConnection, NormalizedInboundMessage } from "./types.js";
+import type { GatewayInboundMessage } from "@botcord/protocol-core";
+import type { GatewayConnection } from "./types.js";
 
 /**
  * Spins up one provider adapter per `GatewayConnection`, wiring it to
@@ -64,7 +65,7 @@ export class ProviderRunner {
       secret: secret as Record<string, unknown>,
       log: this.opts.log,
       abortSignal: abort.signal,
-      emit: async (message: NormalizedInboundMessage, providerEventId: string) =>
+      emit: async (message: GatewayInboundMessage, providerEventId: string) =>
         this.opts.orchestrator.ingest(conn.id, message, providerEventId),
       persistCursor: (cursor) => {
         this.opts.store.updateState(conn.id, { cursor });

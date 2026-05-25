@@ -14,10 +14,10 @@ import type { IngressLogger } from "./log.js";
 import { RuntimeSessionManager } from "./runtime/session.js";
 import type { ProviderAdapter } from "./providers/types.js";
 import type { IngressStore } from "./storage/store.js";
+import type { GatewayInboundMessage } from "@botcord/protocol-core";
 import type {
   GatewayConnection,
   InboundEvent,
-  NormalizedInboundMessage,
   OutboundSendRequest,
 } from "./types.js";
 
@@ -80,7 +80,7 @@ export class IngressOrchestrator {
    */
   async ingest(
     gatewayId: string,
-    message: NormalizedInboundMessage,
+    message: GatewayInboundMessage,
     providerEventId: string,
   ): Promise<boolean> {
     const connection = this.opts.store.getConnection(gatewayId);
