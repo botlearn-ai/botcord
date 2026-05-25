@@ -1401,6 +1401,9 @@ async def test_load_agent_identity_snapshot_returns_active_bound_agents(
                 display_name="Keep One",
                 bio="Bio one",
                 runtime="claude-code",
+                runtime_model="opus",
+                reasoning_effort="high",
+                thinking=True,
                 user_id=seed_user["user_id"],
                 daemon_instance_id=instance_id,
                 message_policy=MessagePolicy.contacts_only,
@@ -1442,8 +1445,16 @@ async def test_load_agent_identity_snapshot_returns_active_bound_agents(
     assert by_id["ag_keep1"]["displayName"] == "Keep One"
     assert by_id["ag_keep1"]["bio"] == "Bio one"
     assert by_id["ag_keep2"]["bio"] is None
-    # runtime is intentionally not on the wire — it's cached locally on the daemon.
-    assert "runtime" not in by_id["ag_keep1"]
+    # Runtime selectors are mirrored so offline daemons can reconcile
+    # credentials and managed routes on next hello.
+    assert by_id["ag_keep1"]["runtime"] == "claude-code"
+    assert by_id["ag_keep1"]["runtimeModel"] == "opus"
+    assert by_id["ag_keep1"]["reasoningEffort"] == "high"
+    assert by_id["ag_keep1"]["thinking"] is True
+    assert by_id["ag_keep2"]["runtime"] == "codex"
+    assert "runtimeModel" not in by_id["ag_keep2"]
+    assert "reasoningEffort" not in by_id["ag_keep2"]
+    assert "thinking" not in by_id["ag_keep2"]
 
 
 # ---------------------------------------------------------------------------
