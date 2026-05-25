@@ -8,3 +8,6 @@ export * from "./daemon-client.js";
 export * from "./control-frame.js";
 export * from "./runtime-frame.js";
 export * from "./should-wake.js";
+export * from "./gateway-message.js";
+export * from "./gateway-text.js";
+export * from "./gateway-sanitize.js";
