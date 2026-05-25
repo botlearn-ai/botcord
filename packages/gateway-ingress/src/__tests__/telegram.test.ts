@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { noopLogger } from "../log.js";
 import { createTelegramProvider } from "../providers/telegram.js";
 import type { ProviderRuntimeContext } from "../providers/types.js";
-import type { GatewayConnection, NormalizedInboundMessage } from "../types.js";
+import type { GatewayInboundMessage } from "@botcord/protocol-core";
+import type { GatewayConnection } from "../types.js";
 
 const conn: GatewayConnection = {
   id: "gw_tg_unit",
@@ -21,11 +22,11 @@ const conn: GatewayConnection = {
 
 function makeCtx(secret: Record<string, unknown>, abort: AbortController): {
   ctx: ProviderRuntimeContext;
-  emits: { msg: NormalizedInboundMessage; providerEventId: string }[];
+  emits: { msg: GatewayInboundMessage; providerEventId: string }[];
   cursors: Record<string, unknown>[];
   activity: { lastPollAt?: number; lastInboundAt?: number; lastError?: string | null }[];
 } {
-  const emits: { msg: NormalizedInboundMessage; providerEventId: string }[] = [];
+  const emits: { msg: GatewayInboundMessage; providerEventId: string }[] = [];
   const cursors: Record<string, unknown>[] = [];
   const activity: { lastPollAt?: number; lastInboundAt?: number; lastError?: string | null }[] = [];
   const ctx: ProviderRuntimeContext = {

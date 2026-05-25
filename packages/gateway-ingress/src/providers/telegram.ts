@@ -1,4 +1,5 @@
-import type { NormalizedInboundMessage, OutboundSendRequest, OutboundSendResult } from "../types.js";
+import type { GatewayInboundMessage } from "@botcord/protocol-core";
+import type { OutboundSendRequest, OutboundSendResult } from "../types.js";
 import type { ProviderAdapter, ProviderAdapterFactory, ProviderRuntimeContext } from "./types.js";
 
 /**
@@ -123,7 +124,7 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
     update: TelegramUpdate,
     accountId: string,
     channelId: string,
-  ): NormalizedInboundMessage | null {
+  ): GatewayInboundMessage | null {
     const msg = update.message;
     if (!msg) return null;
     const text = typeof msg.text === "string" ? msg.text : null;
@@ -146,7 +147,7 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
       from.username ?? from.first_name ?? undefined;
     const messageId = `telegram:${chatId}:${msg.message_id}`;
 
-    const normalized: NormalizedInboundMessage = {
+    const normalized: GatewayInboundMessage = {
       id: messageId,
       channel: channelId,
       accountId,
@@ -313,7 +314,10 @@ export const telegramProviderFactory: ProviderAdapterFactory = (gatewayId) =>
   createTelegramProvider({ gatewayId });
 
 // ---------------------------------------------------------------------------
-// Local helpers — copied from daemon to avoid cross-package coupling.
+// Local helpers — paragraph-aware splitter (different algorithm from the
+// canonical `splitText` in `@botcord/protocol-core`, which cuts on single
+// newlines). Kept local because Telegram replies benefit from preserving
+// paragraph boundaries when the daemon-style cutter would break mid-paragraph.
 // ---------------------------------------------------------------------------
 
 function splitText(text: string, limit: number): string[] {
