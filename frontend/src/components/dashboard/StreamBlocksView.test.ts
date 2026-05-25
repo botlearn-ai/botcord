@@ -24,21 +24,40 @@ function mixedToolUseBlock(): StreamBlockEntry {
 }
 
 describe("StreamBlocksView", () => {
-  it("does not render composing text for delivered execution blocks by default", () => {
+  it("hides composing text when the tool card is collapsed (default)", () => {
     const html = renderToStaticMarkup(
-      React.createElement(StreamBlocksView, { blocks: [mixedToolUseBlock()] }),
+      React.createElement(StreamBlocksView, {
+        blocks: [mixedToolUseBlock()],
+        showComposing: true,
+      }),
     );
 
     expect(html).not.toContain("Composing");
     expect(html).not.toContain("draft answer");
   });
 
-  it("renders composing text when explicitly used for an active stream", () => {
+  it("renders composing text inside the expanded tool card", () => {
     const html = renderToStaticMarkup(
-      React.createElement(StreamBlocksView, { blocks: [mixedToolUseBlock()], showComposing: true }),
+      React.createElement(StreamBlocksView, {
+        blocks: [mixedToolUseBlock()],
+        showComposing: true,
+        defaultExpanded: true,
+      }),
     );
 
     expect(html).toContain("Composing");
     expect(html).toContain("draft answer");
+  });
+
+  it("does not render composing text when showComposing is off, even if expanded", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(StreamBlocksView, {
+        blocks: [mixedToolUseBlock()],
+        defaultExpanded: true,
+      }),
+    );
+
+    expect(html).not.toContain("Composing");
+    expect(html).not.toContain("draft answer");
   });
 });

@@ -553,7 +553,11 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
             <div key={msg.clientId} className="space-y-1.5">
               {/* Finalized execution blocks above agent message */}
               {!isUser && msg.streamBlocks.length > 0 && (
-                <StreamBlocksView key={`${msg.clientId}-delivered`} blocks={msg.streamBlocks} />
+                <StreamBlocksView
+                  key={`${msg.clientId}-delivered`}
+                  blocks={msg.streamBlocks}
+                  showComposing
+                />
               )}
               {hasVisibleBubble && (
                 <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
