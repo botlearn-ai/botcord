@@ -8,6 +8,7 @@
  */
 
 import { create } from "zustand";
+import { apiFetch } from "@/lib/api";
 
 export interface OpenclawHost {
   id: string;
@@ -89,7 +90,7 @@ export const useOpenclawHostStore = create<State & Actions>()((set, get) => ({
     if (get().loading) return;
     set({ loading: true });
     try {
-      const res = await fetch("/api/users/me/agents/openclaw/hosts", {
+      const res = await apiFetch("/api/users/me/agents/openclaw/hosts", {
         cache: "no-store",
       });
       if (!res.ok) {
@@ -104,7 +105,7 @@ export const useOpenclawHostStore = create<State & Actions>()((set, get) => ({
   },
 
   async issueInstall(input) {
-    const res = await fetch("/api/users/me/agents/openclaw/install", {
+    const res = await apiFetch("/api/users/me/agents/openclaw/install", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: input.name, bio: input.bio }),
@@ -124,7 +125,7 @@ export const useOpenclawHostStore = create<State & Actions>()((set, get) => ({
   },
 
   async pollBindCode(bindCode) {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/users/me/agents/openclaw/install/${encodeURIComponent(bindCode)}`,
       { cache: "no-store" },
     );
@@ -140,14 +141,14 @@ export const useOpenclawHostStore = create<State & Actions>()((set, get) => ({
   },
 
   async revokeBindCode(bindCode) {
-    await fetch(
+    await apiFetch(
       `/api/users/me/agents/openclaw/install/${encodeURIComponent(bindCode)}`,
       { method: "DELETE" },
     ).catch(() => {});
   },
 
   async provisionOnHost(hostId, input) {
-    const res = await fetch("/api/users/me/agents/openclaw/provision", {
+    const res = await apiFetch("/api/users/me/agents/openclaw/provision", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -176,7 +177,7 @@ export const useOpenclawHostStore = create<State & Actions>()((set, get) => ({
   },
 
   async renameHost(hostId, label) {
-    await fetch(
+    await apiFetch(
       `/api/users/me/agents/openclaw/hosts/${encodeURIComponent(hostId)}`,
       {
         method: "PATCH",
@@ -188,7 +189,7 @@ export const useOpenclawHostStore = create<State & Actions>()((set, get) => ({
   },
 
   async revokeHost(hostId) {
-    await fetch(
+    await apiFetch(
       `/api/users/me/agents/openclaw/hosts/${encodeURIComponent(hostId)}`,
       { method: "DELETE" },
     );

@@ -81,3 +81,52 @@ export async function proxyHub(
     });
   }
 }
+
+export async function proxyPublicHub(
+  path: string,
+  req: Request,
+  init: { method: HubMethod },
+): Promise<NextResponse> {
+  const headers: Record<string, string> = {};
+  const contentType = req.headers.get("Content-Type");
+  if (contentType) headers["Content-Type"] = contentType;
+  headers.Origin = req.headers.get("Origin") || new URL(req.url).origin;
+
+  let body: BodyInit | undefined;
+  if (init.method !== "GET") {
+    body = await req.text();
+  }
+
+  const url = new URL(path, HUB_BASE_URL).toString();
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: init.method,
+      headers,
+      body,
+      cache: "no-store",
+    });
+  } catch (err) {
+    return NextResponse.json(
+      {
+        error: "upstream_unreachable",
+        message: err instanceof Error ? err.message : String(err),
+      },
+      { status: 502 },
+    );
+  }
+
+  const text = await res.text();
+  if (!text) {
+    return new NextResponse(null, { status: res.status });
+  }
+  try {
+    const json = JSON.parse(text);
+    return NextResponse.json(json, { status: res.status });
+  } catch {
+    return new NextResponse(text, {
+      status: res.status,
+      headers: { "Content-Type": res.headers.get("Content-Type") || "text/plain" },
+    });
+  }
+}

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Supabase session for auth gating; fetch to /api/daemon/auth/* BFF routes
+ * [INPUT]: Supabase session for auth gating; Hub /daemon/auth/* routes
  * [OUTPUT]: ActivatePage — public-shell page that authorizes a new daemon
  *   via the device-code flow (plan §6.1)
  * [POS]: dashboard control-plane onboarding page rendered at /activate
@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { apiFetch } from "@/lib/api";
 
 function formatUserCode(raw: string): string {
   // Keep alphanumerics only, uppercase, then group as XXXX-XXXX (max 8 chars).
@@ -121,7 +122,7 @@ export default function ActivatePage() {
     setApproveError(null);
     setApproveOk(false);
     try {
-      const res = await fetch("/api/daemon/auth/device-approve", {
+      const res = await apiFetch("/daemon/auth/device-approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

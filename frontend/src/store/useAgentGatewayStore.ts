@@ -7,6 +7,7 @@
  */
 
 import { create } from "zustand";
+import { apiFetch } from "@/lib/api";
 
 export type GatewayProvider = "telegram" | "wechat" | "feishu";
 export type GatewayStatus = "pending" | "active" | "error" | "disabled";
@@ -261,7 +262,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
   async load(agentId) {
     set((s) => ({ loading: { ...s.loading, [agentId]: true } }));
     try {
-      const res = await fetch(base(agentId), { cache: "no-store" });
+      const res = await apiFetch(base(agentId), { cache: "no-store" });
       if (!res.ok) throw await readErr(res);
       const list = parseGatewayList(await res.json());
       set((s) => ({
@@ -293,7 +294,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
   },
 
   async create(agentId, input) {
-    const res = await fetch(base(agentId), {
+    const res = await apiFetch(base(agentId), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -317,7 +318,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
   },
 
   async patch(agentId, gatewayId, patch) {
-    const res = await fetch(`${base(agentId)}/${encodeURIComponent(gatewayId)}`, {
+    const res = await apiFetch(`${base(agentId)}/${encodeURIComponent(gatewayId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -352,7 +353,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
 
   async remove(agentId, gatewayId, opts) {
     const qs = opts?.force ? "?force=1" : "";
-    const res = await fetch(`${base(agentId)}/${encodeURIComponent(gatewayId)}${qs}`, {
+    const res = await apiFetch(`${base(agentId)}/${encodeURIComponent(gatewayId)}${qs}`, {
       method: "DELETE",
     });
     if (!res.ok && res.status !== 204) {
@@ -374,7 +375,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
   },
 
   async test(agentId, gatewayId) {
-    const res = await fetch(
+    const res = await apiFetch(
       `${base(agentId)}/${encodeURIComponent(gatewayId)}/test`,
       { method: "POST" },
     );
@@ -410,7 +411,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
   },
 
   async startWechatLogin(agentId, opts) {
-    const res = await fetch(`${base(agentId)}/wechat/login/start`, {
+    const res = await apiFetch(`${base(agentId)}/wechat/login/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(opts ?? {}),
@@ -426,7 +427,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
   },
 
   async pollWechatLogin(agentId, loginId) {
-    const res = await fetch(`${base(agentId)}/wechat/login/status`, {
+    const res = await apiFetch(`${base(agentId)}/wechat/login/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ loginId }),
@@ -447,7 +448,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
   },
 
   async discoverWechatSenders(agentId, loginId, opts) {
-    const res = await fetch(`${base(agentId)}/wechat/senders`, {
+    const res = await apiFetch(`${base(agentId)}/wechat/senders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -496,7 +497,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
   },
 
   async startFeishuLogin(agentId, opts) {
-    const res = await fetch(`${base(agentId)}/feishu/login/start`, {
+    const res = await apiFetch(`${base(agentId)}/feishu/login/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(opts ?? {}),
@@ -512,7 +513,7 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
   },
 
   async pollFeishuLogin(agentId, loginId) {
-    const res = await fetch(`${base(agentId)}/feishu/login/status`, {
+    const res = await apiFetch(`${base(agentId)}/feishu/login/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ loginId }),

@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { apiFetch } from "@/lib/api";
 import {
   GatewayApiError,
   useAgentGatewayStore,
@@ -554,7 +555,7 @@ function TelegramAddForm({
             ? "等待 Telegram 最近消息..."
             : `还没发现消息，继续等待 ${attempt}/3...`,
         );
-        const res = await fetch("/api/telegram/chat-ids", {
+        const res = await apiFetch("/api/telegram/chat-ids", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ botToken, timeoutSeconds: 8 }),
@@ -1813,7 +1814,7 @@ function GatewayEditForm({
             ? "等待 Telegram 最近消息..."
             : `还没发现消息，继续等待 ${attempt}/3...`,
         );
-        const res = await fetch("/api/telegram/chat-ids", {
+        const res = await apiFetch("/api/telegram/chat-ids", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ botToken, timeoutSeconds: 8 }),

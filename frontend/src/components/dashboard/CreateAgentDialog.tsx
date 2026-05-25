@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { createAgentDialog } from "@/lib/i18n/translations/dashboard";
 import { pickRandomAgentIdentity } from "@/lib/random-agent-identity";
@@ -77,7 +78,7 @@ async function createCloudAgent(input: {
   name: string;
   bio?: string;
 }): Promise<{ agentId: string }> {
-  const res = await fetch("/api/cloud-agents", {
+  const res = await apiFetch("/api/cloud-agents", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
