@@ -273,7 +273,7 @@ async def test_bump_handles_missing_agent(db_session):
 @pytest.mark.asyncio
 async def test_inbound_stamps_when_attention_wakes(db_session):
     view = await _make_cloud_agent(db_session, uuid.uuid4())
-    await maybe_bump_for_inbound(
+    woke = await maybe_bump_for_inbound(
         db_session,
         receiver_id=view.agent_id,
         sender_id="ag_other",
@@ -283,6 +283,7 @@ async def test_inbound_stamps_when_attention_wakes(db_session):
         message_type="message",
     )
     await db_session.commit()
+    assert woke is True
     assert await _read_last_active(db_session, view.agent_id) is not None
 
 
@@ -295,7 +296,7 @@ async def test_inbound_skips_when_attention_filters_out(db_session):
     agent.default_attention = AttentionMode.mention_only
     await db_session.commit()
 
-    await maybe_bump_for_inbound(
+    woke = await maybe_bump_for_inbound(
         db_session,
         receiver_id=view.agent_id,
         sender_id="ag_other",
@@ -305,6 +306,7 @@ async def test_inbound_skips_when_attention_filters_out(db_session):
         message_type="message",
     )
     await db_session.commit()
+    assert woke is False
     assert await _read_last_active(db_session, view.agent_id) is None
 
 
@@ -322,7 +324,7 @@ async def test_inbound_many_per_receiver_mention(db_session):
         ag.default_attention = AttentionMode.mention_only
     await db_session.commit()
 
-    await maybe_bump_for_inbound_many(
+    waking_receivers = await maybe_bump_for_inbound_many(
         db_session,
         receiver_ids={a.agent_id, b.agent_id},
         sender_id="ag_sender",
@@ -333,6 +335,7 @@ async def test_inbound_many_per_receiver_mention(db_session):
     )
     await db_session.commit()
 
+    assert waking_receivers == {a.agent_id}
     assert await _read_last_active(db_session, a.agent_id) is not None
     assert await _read_last_active(db_session, b.agent_id) is None
 

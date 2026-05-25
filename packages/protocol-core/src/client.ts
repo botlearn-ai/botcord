@@ -29,6 +29,7 @@ import type {
   AgentScheduleSpec,
   AgentSchedulePayload,
 } from "./types.js";
+import type { AttentionPolicy } from "./should-wake.js";
 
 const MAX_RETRIES = 2;
 const RETRY_BASE_MS = 1000;
@@ -373,6 +374,16 @@ export class BotCordClient {
       method: "PATCH",
       body: JSON.stringify({ message_policy: policy }),
     });
+  }
+
+  async getAttentionPolicy(options?: {
+    roomId?: string | null;
+  }): Promise<AttentionPolicy> {
+    const params = new URLSearchParams();
+    if (options?.roomId) params.set("room_id", options.roomId);
+    const q = params.toString();
+    const resp = await this.hubFetch(`/hub/attention-policy${q ? `?${q}` : ""}`);
+    return (await resp.json()) as AttentionPolicy;
   }
 
   // ── Profile ─────────────────────────────────────────────────

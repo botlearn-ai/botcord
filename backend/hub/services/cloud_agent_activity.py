@@ -153,7 +153,7 @@ async def maybe_bump_for_inbound(
     text: str | None,
     mentioned: bool,
     message_type: str | None,
-) -> None:
+) -> bool:
     """Inbound messages count as activity only when the agent's attention
     policy would actually wake the runtime (design §4.2).
 
@@ -163,13 +163,13 @@ async def maybe_bump_for_inbound(
     when the policy is unclear.
     """
     if not receiver_id:
-        return
+        return False
     try:
         agent = await db.scalar(
             select(Agent).where(Agent.agent_id == receiver_id)
         )
         if agent is None or agent.hosting_kind != "cloud":
-            return
+            return False
         if not await would_wake_runtime(
             db,
             receiver=agent,
@@ -179,14 +179,15 @@ async def maybe_bump_for_inbound(
             sender_id=sender_id,
             message_type=message_type,
         ):
-            return
-        await _stamp_active(db, receiver_id)
+            return False
+        return await _stamp_active(db, receiver_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "cloud activity bump (inbound) failed: receiver=%s err=%s",
             receiver_id,
             exc,
         )
+        return False
 
 
 async def maybe_bump_for_inbound_many(
@@ -198,18 +199,19 @@ async def maybe_bump_for_inbound_many(
     text: str | None,
     mentioned_set: set[str] | None,
     message_type: str | None,
-) -> None:
+) -> set[str]:
     """Room fan-out variant: one ``would_wake_runtime`` evaluation per
     receiver. Receivers outside ``mentioned_set`` (and ``@all`` if present)
     are treated as not mentioned."""
+    waking_receivers: set[str] = set()
     if not receiver_ids:
-        return
+        return waking_receivers
     has_all_mention = bool(mentioned_set and "@all" in mentioned_set)
     for rid in receiver_ids:
         per_mentioned = has_all_mention or (
             bool(mentioned_set) and rid in mentioned_set
         )
-        await maybe_bump_for_inbound(
+        if await maybe_bump_for_inbound(
             db,
             receiver_id=rid,
             sender_id=sender_id,
@@ -217,4 +219,6 @@ async def maybe_bump_for_inbound_many(
             text=text,
             mentioned=per_mentioned,
             message_type=message_type,
-        )
+        ):
+            waking_receivers.add(rid)
+    return waking_receivers

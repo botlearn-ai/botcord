@@ -16,6 +16,7 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from hub.enums import AttentionMode
 from hub.models import (
     Agent,
     Base,
@@ -260,6 +261,13 @@ async def test_provision_pending_dispatches_provision_agent_and_marks_ready(
     view = await service.create_cloud_agent(
         db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
     )
+    agent = await db_session.scalar(
+        select(Agent).where(Agent.agent_id == view.agent_id)
+    )
+    assert agent is not None
+    agent.default_attention = AttentionMode.mention_only
+    agent.attention_keywords = '["alpha", "beta"]'
+    await db_session.commit()
 
     conn, ws = await _register_fake_conn(
         view.cloud_daemon_instance_id, "dm_unused"
@@ -282,6 +290,8 @@ async def test_provision_pending_dispatches_provision_agent_and_marks_ready(
             assert creds["runtime"] == "deepseek-tui"
             assert params["runtime"] == "deepseek-tui"
             assert params["name"] == "A"
+            assert params["defaultAttention"] == "mention_only"
+            assert params["attentionKeywords"] == ["alpha", "beta"]
 
         ack_task = asyncio.create_task(_ack_when_sent())
         await service.provision_pending_for_cloud_daemon(
