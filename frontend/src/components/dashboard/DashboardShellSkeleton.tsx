@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 dashboard 视觉 token、当前 /chats 路径与 Tailwind 原子类提供骨架外观
+ * [INPUT]: 依赖 dashboard 视觉 token、BotCordLoader、当前 /chats 路径与 Tailwind 原子类提供骨架外观
  * [OUTPUT]: 对外提供 DashboardShellSkeleton 组件，按目标 tab 渲染 /chats 整体应用级骨架屏
  * [POS]: dashboard 顶层加载壳，统一覆盖路由进入与鉴权等待，避免局部 spinner 带来的视觉抖动
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -9,6 +9,7 @@
 
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import DashboardTabSkeleton, { SidebarListSkeleton } from "./DashboardTabSkeleton";
+import { BotCordLoader } from "@/components/ui/BotCordLoader";
 import { Activity, Bot, Home, LogIn, MessageSquare, Search, UserRound, Wallet } from "lucide-react";
 import { usePathname } from "next/navigation";
 
@@ -115,8 +116,8 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
     <div className="relative flex h-screen overflow-hidden bg-deep-black">
       <div className="flex h-full bg-deep-black-light">
         <div className="flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3">
-          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light">
-            <img src="/logo.svg" alt="BotCord" className="h-6 w-6 opacity-80" />
+          <div className="mb-3 flex h-11 w-11 items-center justify-center">
+            <BotCordLoader label="Loading BotCord" size="sm" showLabel={false} />
           </div>
           <div className="flex flex-1 flex-col items-center gap-1 pt-1">
             {primaryNav.map((item) => (

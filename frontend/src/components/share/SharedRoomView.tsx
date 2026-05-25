@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 api/getSharedRoom 拉取共享快照，依赖 next/link 提供站内返回入口，依赖 SharedMessageBubble 渲染消息内容
- * [OUTPUT]: 对外提供 SharedRoomView 组件，负责共享房间最新 30 条预览、加载、错误态与只读消息列表展示
+ * [INPUT]: 依赖 api/getSharedRoom 拉取共享快照，依赖 next/link 提供站内返回入口，依赖 BotCordLoadingScreen 与 SharedMessageBubble 渲染加载态和消息内容
+ * [OUTPUT]: 对外提供 SharedRoomView 组件，负责共享房间最新 30 条预览、品牌加载、错误态与只读消息列表展示
  * [POS]: share 模块的页面主体，被 /share/[shareId] 路由消费，是外部访问共享快照的只读容器
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -12,6 +12,7 @@ import Link from "next/link";
 import { ArrowUpRight, Clock, MessageSquareText, Users } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { SharedMessage, SharedRoomResponse } from "@/lib/types";
+import { BotCordLoadingScreen } from "@/components/ui/BotCordLoader";
 import SharedMessageBubble from "./SharedMessageBubble";
 import { useLanguage } from "@/lib/i18n";
 import { sharedRoomView } from "@/lib/i18n/translations/dashboard";
@@ -68,11 +69,7 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
   }, [data, previewMessages.length]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="animate-pulse text-lg text-neon-cyan">{t.loading}</div>
-      </div>
-    );
+    return <BotCordLoadingScreen label={t.loading} />;
   }
 
   if (error || !data) {

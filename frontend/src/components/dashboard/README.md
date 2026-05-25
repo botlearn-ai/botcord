@@ -77,6 +77,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-05-25: `DashboardShellSkeleton.tsx` 的冷启动品牌位接入 `BotCordLoader`，让 `/chats` 首屏等待态和全站 loading 动效保持一致。
 - 2026-05-24: `ContactRequestsInbox.tsx` 在收到的好友申请、Bot 审批申请和已发送申请卡片上统一显示发起时间，避免申请列表只展示对象和消息却无法判断先后。
 - 2026-05-19: `/chats/messages` 刷新不再预取其它 tab 的 RSC 路由，也不再后台预热公开目录和钱包接口；MessagesPanel 复用 Sidebar 的联系人请求加载，避免 received/sent/pending-approvals 重复请求。
 - 2026-05-14: `DashboardShellSkeleton.tsx`、`DashboardApp.tsx`、`Sidebar.tsx` 与 `ChatPane.tsx` 改为按 `/chats` 当前路径推导首帧 tab；刷新 Home/Explore/Contacts/Wallet/My Bots 时不再误用 Messages 会话骨架或默认消息视图。
