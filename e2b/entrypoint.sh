@@ -60,8 +60,10 @@ fi
 # shellcheck disable=SC2206
 extra=( ${BOTCORD_DAEMON_EXTRA_ARGS:-} )
 
-if [[ -n "${CLOUD_DAEMON_NPM_SPEC:-}" && "${CLOUD_DAEMON_NPM_SPEC}" != "bundled" ]]; then
-  exec npx --yes --package "$CLOUD_DAEMON_NPM_SPEC" botcord-daemon start "${extra[@]}"
+daemon_npm_spec="${CLOUD_DAEMON_NPM_SPEC:-@botcord/daemon@^0.2.78}"
+
+if [[ "$daemon_npm_spec" != "bundled" ]]; then
+  exec npx --yes --package "$daemon_npm_spec" botcord-daemon start "${extra[@]}"
 fi
 
 exec botcord-daemon start "${extra[@]}"
