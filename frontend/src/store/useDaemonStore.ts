@@ -187,6 +187,7 @@ interface DaemonState {
   error: string | null;
   revokingId: string | null;
   removingId: string | null;
+  restartingId: string | null;
   renamingId: string | null;
   refreshingRuntimesId: string | null;
   collectingDiagnosticsId: string | null;
@@ -201,6 +202,7 @@ interface DaemonState {
     id: string,
     opts?: { forgetIfOffline?: boolean; reason?: string },
   ) => Promise<RemoveDeviceResult>;
+  restartDevice: (id: string) => Promise<boolean>;
   rename: (id: string, label: string | null) => Promise<boolean>;
   refreshRuntimes: (id: string, opts?: { quiet?: boolean }) => Promise<void>;
   collectDiagnostics: (id: string) => Promise<DiagnosticBundleResult | null>;
@@ -218,6 +220,7 @@ const initialState = {
   error: null as string | null,
   revokingId: null as string | null,
   removingId: null as string | null,
+  restartingId: null as string | null,
   renamingId: null as string | null,
   refreshingRuntimesId: null as string | null,
   collectingDiagnosticsId: null as string | null,
@@ -723,6 +726,43 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
         error: state.error ?? err.message,
       }));
       throw err;
+    }
+  },
+
+  restartDevice: async (id) => {
+    set({ restartingId: id, error: null });
+    try {
+      const res = await apiFetch(
+        `/daemon/instances/${encodeURIComponent(id)}/restart`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const msg = await parseError(res);
+        set({ restartingId: null, error: msg });
+        return false;
+      }
+      const data = (await res.json().catch(() => null)) as
+        | Record<string, unknown>
+        | null;
+      const next = data ? normalizeDaemon(data) : null;
+      set((state) => ({
+        daemons: state.daemons.map((d) =>
+          d.id === id
+            ? next
+              ? { ...d, ...next }
+              : { ...d, status: "offline" }
+            : d,
+        ),
+        restartingId: null,
+      }));
+      void get().refresh({ quiet: true });
+      return true;
+    } catch (err) {
+      set({
+        restartingId: null,
+        error: err instanceof Error ? err.message : "Failed to restart device",
+      });
+      return false;
     }
   },
 

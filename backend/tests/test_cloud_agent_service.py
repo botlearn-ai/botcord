@@ -349,6 +349,43 @@ async def test_pause_then_resume_round_trip(db_session):
 
 
 @pytest.mark.asyncio
+async def test_restart_cloud_daemon_restarts_shared_sandbox(db_session):
+    user_id = uuid.uuid4()
+    svc, fake = _make_service(max_per_user=4, max_agents_per_daemon=2)
+    a = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    b = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
+    )
+    assert a.cloud_daemon_instance_id == b.cloud_daemon_instance_id
+    assert fake.calls(a.cloud_daemon_instance_id)["create"] == 2
+    daemon_instance_id = await db_session.scalar(
+        select(CloudDaemonInstance.daemon_instance_id).where(
+            CloudDaemonInstance.id == a.cloud_daemon_instance_id
+        )
+    )
+    assert daemon_instance_id is not None
+
+    await svc.restart_cloud_daemon(
+        db_session,
+        user_id=user_id,
+        daemon_instance_id=daemon_instance_id,
+    )
+
+    rows = (
+        await db_session.execute(
+            select(CloudAgentInstance).where(
+                CloudAgentInstance.cloud_daemon_instance_id == a.cloud_daemon_instance_id
+            )
+        )
+    ).scalars().all()
+    assert {row.agent_id for row in rows} == {a.agent_id, b.agent_id}
+    assert {row.status for row in rows} == {"ready"}
+    assert fake.calls(a.cloud_daemon_instance_id)["create"] == 3
+
+
+@pytest.mark.asyncio
 async def test_pause_idempotent(db_session):
     user_id = uuid.uuid4()
     svc, fake = _make_service()
