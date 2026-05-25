@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { ChevronRight, Cpu } from "lucide-react";
+import { ChevronRight, Cloud, Cpu } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -51,7 +51,9 @@ export default function MyDevicesView() {
         <div className="flex flex-col gap-3">
           {visibleDaemons.map((device) => {
             const online = device.status === "online";
+            const isCloud = device.kind === "cloud";
             const bots = botsByDevice.get(device.id) ?? [];
+            const DeviceIcon = isCloud ? Cloud : Cpu;
             return (
               <button
                 key={device.id}
@@ -61,13 +63,18 @@ export default function MyDevicesView() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass-bg/60 text-text-secondary">
-                      <Cpu className="h-5 w-5" />
+                      <DeviceIcon className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <h2 className="truncate text-base font-semibold text-text-primary">
-                          {device.label || device.id}
+                          {device.label || (isCloud ? "BotCord Cloud Device" : device.id)}
                         </h2>
+                        {isCloud ? (
+                          <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-[10px] text-neon-cyan">
+                            Cloud
+                          </span>
+                        ) : null}
                         <span
                           className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-[10px] ${
                             online

@@ -53,6 +53,7 @@ from hub.routers.wallet import internal_router as wallet_internal_router
 from hub.routers.wallet import router as wallet_router
 from hub.routers.cloud_agent_internal import internal_router as cloud_agent_internal_router
 from hub.routers.cloud_gateway_internal import internal_router as cloud_gateway_internal_router
+from hub.routers.cloud_gateway_internal import runtime_router as cloud_gateway_runtime_router
 from hub.storage import storage_requires_local_disk
 
 from app.routers.humans import router as app_humans_router
@@ -279,6 +280,7 @@ app.include_router(wallet_router)
 app.include_router(wallet_internal_router)
 app.include_router(cloud_agent_internal_router)
 app.include_router(cloud_gateway_internal_router)
+app.include_router(cloud_gateway_runtime_router)
 app.include_router(stripe_router)
 app.include_router(subscriptions_router)
 app.include_router(subscriptions_internal_router)

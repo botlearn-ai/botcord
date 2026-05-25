@@ -421,7 +421,7 @@ async def test_list_instances(client: AsyncClient, seed_user):
 
 
 @pytest.mark.asyncio
-async def test_list_instances_hides_cloud_daemons(
+async def test_list_instances_includes_cloud_daemons(
     client: AsyncClient, seed_user, db_session: AsyncSession
 ):
     local_bundle = await _provision_instance_via_device_code(client, seed_user)
@@ -452,8 +452,56 @@ async def test_list_instances_hides_cloud_daemons(
         headers={"Authorization": f"Bearer {seed_user['token']}"},
     )
     assert r.status_code == 200, r.text
-    ids = [entry["id"] for entry in r.json()["instances"]]
-    assert ids == [local_bundle["daemon_instance_id"]]
+    by_id = {entry["id"]: entry for entry in r.json()["instances"]}
+    assert set(by_id) == {cloud_daemon_row.id, local_bundle["daemon_instance_id"]}
+    assert by_id[cloud_daemon_row.id]["kind"] == "cloud"
+    assert by_id[local_bundle["daemon_instance_id"]]["kind"] == "local"
+
+
+@pytest.mark.asyncio
+async def test_restart_cloud_daemon_instance(
+    client: AsyncClient, seed_user, db_session: AsyncSession, monkeypatch
+):
+    cloud_daemon_row = DaemonInstance(
+        id="dm_cloudrestart",
+        user_id=seed_user["user_id"],
+        label="cloud-deepseek-tui",
+        kind="cloud",
+        refresh_token_hash="z" * 64,
+    )
+    db_session.add(cloud_daemon_row)
+    db_session.add(
+        CloudDaemonInstance(
+            id="cloud_dm_restart",
+            user_id=seed_user["user_id"],
+            daemon_instance_id=cloud_daemon_row.id,
+            provider="fake",
+            runtime="deepseek-tui",
+            status="ready",
+            max_agents=3,
+            active_agent_count=1,
+        )
+    )
+    await db_session.commit()
+
+    calls = []
+
+    class FakeCloudAgentService:
+        async def restart_cloud_daemon(self, db, *, user_id, daemon_instance_id):
+            calls.append((user_id, daemon_instance_id))
+
+    import hub.services.cloud_agent as cloud_agent_mod
+
+    monkeypatch.setattr(cloud_agent_mod, "CloudAgentService", FakeCloudAgentService)
+
+    r = await client.post(
+        f"/daemon/instances/{cloud_daemon_row.id}/restart",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == cloud_daemon_row.id
+    assert r.json()["kind"] == "cloud"
+    assert calls == [(seed_user["user_id"], cloud_daemon_row.id)]
 
 
 # ---------------------------------------------------------------------------
@@ -1230,6 +1278,97 @@ async def test_refresh_runtimes_success_persists_and_returns(
             stored = json.loads(stored)
         assert stored == runtimes
         assert inst.runtimes_probed_at is not None
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_refresh_runtimes_cloud_daemon_uses_cloud_registry(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    from sqlalchemy import select
+
+    from hub.routers.cloud_daemon_control import (
+        _CloudDaemonConn,
+        _registry_for_tests as _cloud_registry_for_tests,
+    )
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+    cloud_id = "cloud_dm_refresh_test"
+    daemon = await db_session.scalar(
+        select(DaemonInstance).where(DaemonInstance.id == instance_id)
+    )
+    assert daemon is not None
+    daemon.kind = "cloud"
+    db_session.add(
+        CloudDaemonInstance(
+            id=cloud_id,
+            user_id=seed_user["user_id"],
+            daemon_instance_id=instance_id,
+            provider="e2b",
+            runtime="deepseek-tui",
+            status="ready",
+            max_agents=3,
+        )
+    )
+    await db_session.commit()
+
+    fake_ws = _FakeWS()
+    conn = _CloudDaemonConn(
+        ws=fake_ws,  # type: ignore[arg-type]
+        user_id=str(seed_user["user_id"]),
+        cloud_daemon_instance_id=cloud_id,
+        daemon_instance_id=instance_id,
+        pending_acks={},
+    )
+    registry = _cloud_registry_for_tests()
+    await registry.register(conn)
+    try:
+        probed_at = _probed_now_ms()
+        runtimes = [
+            {
+                "id": "deepseek-tui",
+                "available": True,
+                "models": [{"id": "deepseek-v4-flash", "source": "builtin"}],
+                "parameters": [{"id": "reasoning_effort", "type": "string"}],
+            },
+        ]
+
+        async def _reply_when_sent() -> None:
+            for _ in range(100):
+                if fake_ws.sent:
+                    break
+                await asyncio.sleep(0.01)
+            assert fake_ws.sent
+            sent = json.loads(fake_ws.sent[0])
+            assert sent["type"] == "list_runtimes"
+            fut = conn.pending_acks.get(sent["id"])
+            assert fut is not None
+            fut.set_result(
+                {
+                    "id": sent["id"],
+                    "ok": True,
+                    "result": {"runtimes": runtimes, "probedAt": probed_at},
+                }
+            )
+
+        reply_task = asyncio.create_task(_reply_when_sent())
+        r = await client.post(
+            f"/daemon/instances/{instance_id}/refresh-runtimes",
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        await reply_task
+        assert r.status_code == 200, r.text
+        assert r.json()["runtimes"] == runtimes
+
+        await db_session.commit()
+        refreshed = await db_session.scalar(
+            select(DaemonInstance).where(DaemonInstance.id == instance_id)
+        )
+        assert refreshed is not None
+        assert refreshed.runtimes_json == runtimes
+        assert refreshed.runtimes_probed_at is not None
     finally:
         await registry.unregister(conn)
 

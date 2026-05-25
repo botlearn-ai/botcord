@@ -102,6 +102,15 @@ CLOUD_GATEWAY_RUNTIME_TOKEN_TTL_SECONDS: int = int(
 CLOUD_GATEWAY_RUNTIME_ENDPOINT: str = os.getenv(
     "CLOUD_GATEWAY_RUNTIME_ENDPOINT", "wss://hub.botcord.chat/cloud-gateway/runtime"
 )
+# Optional admin endpoint for pushing dashboard-managed cloud gateway
+# connection metadata into the always-on gateway-ingress service. When unset,
+# dashboard gateway CRUD keeps the existing daemon-control behavior only.
+CLOUD_GATEWAY_INGRESS_ADMIN_URL: str | None = (
+    os.getenv("CLOUD_GATEWAY_INGRESS_ADMIN_URL", "").strip().rstrip("/") or None
+)
+CLOUD_GATEWAY_INGRESS_ADMIN_TIMEOUT_SECONDS: float = float(
+    os.getenv("CLOUD_GATEWAY_INGRESS_ADMIN_TIMEOUT_SECONDS", "5")
+)
 
 # Supabase JWT verification (optional — set ONE of these)
 # Option 1: symmetric HS256 secret (legacy Supabase projects)

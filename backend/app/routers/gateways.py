@@ -26,6 +26,7 @@ import time
 from typing import Any, Literal
 from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
@@ -33,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
 from app.clients import cloud_gateway_ingress_client as ingress_client
+from hub import config as hub_config
 from hub.database import get_db
 from hub.id_generators import generate_gateway_connection_id
 from hub.models import Agent, AgentGatewayConnection, CloudAgentInstance
@@ -770,6 +772,101 @@ def _build_settings(config: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _ingress_sync_secret() -> str | None:
+    return hub_config.CLOUD_GATEWAY_INGRESS_SECRET or hub_config.INTERNAL_API_SECRET
+
+
+async def _sync_cloud_gateway_ingress_upsert(
+    host: _GatewayHost,
+    *,
+    gateway_id: str,
+    user_id: Any,
+    agent_id: str,
+    provider: str,
+    label: str | None,
+    enabled: bool,
+    status: str,
+    config: dict[str, Any],
+    secret: dict[str, Any] | None = None,
+) -> None:
+    if not host.cloud_daemon_instance_id or not hub_config.CLOUD_GATEWAY_INGRESS_ADMIN_URL:
+        return
+    auth_secret = _ingress_sync_secret()
+    if not auth_secret:
+        raise HTTPException(status_code=500, detail="ingress_sync_secret_missing")
+    payload: dict[str, Any] = {
+        "id": gateway_id,
+        "agentId": agent_id,
+        "userId": str(user_id),
+        "provider": provider,
+        "label": label,
+        "enabled": enabled,
+        "status": status,
+        "config": config,
+    }
+    if secret is not None:
+        payload["secret"] = secret
+    url = f"{hub_config.CLOUD_GATEWAY_INGRESS_ADMIN_URL}/admin/gateways/{gateway_id}"
+    try:
+        async with httpx.AsyncClient(
+            timeout=hub_config.CLOUD_GATEWAY_INGRESS_ADMIN_TIMEOUT_SECONDS
+        ) as client:
+            resp = await client.put(
+                url,
+                headers={"Authorization": f"Bearer {auth_secret}"},
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "cloud gateway ingress upsert sync failed: gateway=%s err=%s",
+            gateway_id,
+            exc,
+        )
+        raise HTTPException(status_code=502, detail="ingress_sync_failed") from exc
+    if resp.status_code >= 400:
+        logger.warning(
+            "cloud gateway ingress upsert sync rejected: gateway=%s status=%s",
+            gateway_id,
+            resp.status_code,
+        )
+        raise HTTPException(status_code=502, detail="ingress_sync_rejected")
+
+
+async def _sync_cloud_gateway_ingress_delete(
+    host: _GatewayHost,
+    *,
+    gateway_id: str,
+) -> None:
+    if not host.cloud_daemon_instance_id or not hub_config.CLOUD_GATEWAY_INGRESS_ADMIN_URL:
+        return
+    auth_secret = _ingress_sync_secret()
+    if not auth_secret:
+        raise HTTPException(status_code=500, detail="ingress_sync_secret_missing")
+    url = f"{hub_config.CLOUD_GATEWAY_INGRESS_ADMIN_URL}/admin/gateways/{gateway_id}"
+    try:
+        async with httpx.AsyncClient(
+            timeout=hub_config.CLOUD_GATEWAY_INGRESS_ADMIN_TIMEOUT_SECONDS
+        ) as client:
+            resp = await client.delete(
+                url,
+                headers={"Authorization": f"Bearer {auth_secret}"},
+            )
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "cloud gateway ingress delete sync failed: gateway=%s err=%s",
+            gateway_id,
+            exc,
+        )
+        raise HTTPException(status_code=502, detail="ingress_sync_failed") from exc
+    if resp.status_code >= 400:
+        logger.warning(
+            "cloud gateway ingress delete sync rejected: gateway=%s status=%s",
+            gateway_id,
+            resp.status_code,
+        )
+        raise HTTPException(status_code=502, detail="ingress_sync_rejected")
+
+
 def _list_has_value(config: dict[str, Any], key: str) -> bool:
     value = config.get(key)
     return isinstance(value, list) and any(
@@ -948,6 +1045,22 @@ async def create_gateway(
     if isinstance(daemon_status, dict) and daemon_status.get("running") is False and body.enabled:
         status_value = "pending"
 
+    sync_secret: dict[str, Any] | None = None
+    if body.provider == "telegram" and body.bot_token:
+        sync_secret = {"botToken": body.bot_token}
+    await _sync_cloud_gateway_ingress_upsert(
+        host,
+        gateway_id=gateway_id,
+        user_id=ctx.user_id,
+        agent_id=agent_id,
+        provider=body.provider,
+        label=body.label,
+        enabled=body.enabled,
+        status=status_value,
+        config=config,
+        secret=sync_secret,
+    )
+
     row = AgentGatewayConnection(
         id=gateway_id,
         user_id=ctx.user_id,
@@ -1113,6 +1226,22 @@ async def patch_gateway(
     else:
         row.status = "active" if row.enabled else "disabled"
 
+    sync_secret: dict[str, Any] | None = None
+    if row.provider == "telegram" and body.bot_token:
+        sync_secret = {"botToken": body.bot_token}
+    await _sync_cloud_gateway_ingress_upsert(
+        host,
+        gateway_id=row.id,
+        user_id=ctx.user_id,
+        agent_id=row.agent_id,
+        provider=row.provider,
+        label=row.label,
+        enabled=row.enabled,
+        status=row.status,
+        config=config,
+        secret=sync_secret,
+    )
+
     try:
         # trade-off: rare commit failure leaves Hub stale; daemon hot-plug already applied. list_gateways will reconcile on next refresh.
         await db.commit()
@@ -1203,6 +1332,7 @@ async def delete_gateway(
         )
         _ack_or_raise(ack)
 
+    await _sync_cloud_gateway_ingress_delete(host, gateway_id=row.id)
     await db.delete(row)
     await db.commit()
     return Response(status_code=204)

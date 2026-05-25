@@ -73,6 +73,7 @@ from hub.id_generators import (
 )
 from hub.models import (
     Agent,
+    CloudDaemonInstance,
     DaemonAgentCleanup,
     DaemonDiagnosticBundle,
     DaemonDeviceCode,
@@ -616,7 +617,7 @@ async def list_instances(
         select(DaemonInstance)
         .where(
             DaemonInstance.user_id == ctx.user_id,
-            DaemonInstance.kind == "local",
+            DaemonInstance.kind.in_(("local", "cloud")),
         )
         .order_by(DaemonInstance.created_at.desc())
     )
@@ -653,6 +654,34 @@ async def rename_instance(
     new_label = body.label.strip() if isinstance(body.label, str) else None
     instance.label = new_label or None
     await db.commit()
+    await db.refresh(instance)
+    return _instance_to_view(instance)
+
+
+@router.post("/daemon/instances/{daemon_instance_id}/restart", response_model=_InstanceView)
+async def restart_instance(
+    daemon_instance_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> _InstanceView:
+    instance = await _load_owned_instance(db, ctx.user_id, daemon_instance_id)
+    if instance.kind != "cloud":
+        raise HTTPException(status_code=409, detail="restart_only_supported_for_cloud_daemon")
+
+    from hub.services.cloud_agent import CloudAgentError, CloudAgentService
+
+    try:
+        await CloudAgentService().restart_cloud_daemon(
+            db,
+            user_id=ctx.user_id,
+            daemon_instance_id=daemon_instance_id,
+        )
+    except CloudAgentError as exc:
+        raise HTTPException(
+            status_code=exc.http_status,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+
     await db.refresh(instance)
     return _instance_to_view(instance)
 
@@ -1104,6 +1133,71 @@ async def refresh_instance_runtimes(
     instance = await _load_owned_instance(db, ctx.user_id, daemon_instance_id)
     if instance.revoked_at is not None:
         raise HTTPException(status_code=409, detail="daemon_revoked")
+
+    if instance.kind == "cloud":
+        cloud_row = await db.scalar(
+            select(CloudDaemonInstance).where(
+                CloudDaemonInstance.daemon_instance_id == daemon_instance_id,
+                CloudDaemonInstance.user_id == ctx.user_id,
+            )
+        )
+        if cloud_row is None:
+            raise HTTPException(status_code=409, detail="daemon_offline")
+
+        from hub.routers.cloud_daemon_control import (
+            CloudDaemonDispatchError,
+            send_cloud_control_frame,
+        )
+
+        try:
+            ack = await send_cloud_control_frame(
+                cloud_row.id,
+                "list_runtimes",
+                {},
+                timeout_ms=_REFRESH_RUNTIMES_TIMEOUT_MS,
+            )
+        except CloudDaemonDispatchError as exc:
+            if exc.code == "cloud_daemon_offline":
+                raise HTTPException(status_code=409, detail="daemon_offline") from exc
+            if exc.code == "cloud_daemon_ack_timeout":
+                raise HTTPException(status_code=504, detail="daemon_ack_timeout") from exc
+            raise HTTPException(
+                status_code=502,
+                detail={"code": exc.code, "daemon_message": exc.message},
+            ) from exc
+
+        if not isinstance(ack, dict) or not ack.get("ok"):
+            err = ack.get("error") if isinstance(ack, dict) else None
+            code = (err or {}).get("code") if isinstance(err, dict) else None
+            message = (err or {}).get("message") if isinstance(err, dict) else None
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "upstream_error",
+                    "daemon_code": code,
+                    "daemon_message": message,
+                },
+            )
+
+        result = ack.get("result") if isinstance(ack.get("result"), dict) else None
+        persisted = None
+        if result is not None:
+            persisted = await _persist_runtime_snapshot(db, instance, result)
+        if persisted is None:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "upstream_error",
+                    "daemon_message": "malformed runtime snapshot",
+                },
+            )
+        await db.commit()
+
+        runtimes, probed_dt = persisted
+        return _RefreshRuntimesResponse(
+            runtimes=runtimes,
+            runtimes_probed_at=probed_dt,
+        )
 
     conn = _REGISTRY.get(daemon_instance_id)
     if conn is None:

@@ -630,6 +630,136 @@ class CloudAgentService:
         await db.refresh(cdi)
         return _make_view(agent, cai, cdi)
 
+    async def restart_cloud_daemon(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        daemon_instance_id: str,
+    ) -> None:
+        """Restart the cloud daemon/sandbox owned by ``user_id``.
+
+        This is a daemon-level operation: one cloud daemon can host multiple
+        Cloud Agents, so all ready/provisioning agents on the sandbox are
+        marked for reprovisioning before the provider relaunches the process.
+        """
+        self._require_feature_enabled()
+        row = (
+            await db.execute(
+                select(CloudDaemonInstance, DaemonInstance)
+                .join(
+                    DaemonInstance,
+                    DaemonInstance.id == CloudDaemonInstance.daemon_instance_id,
+                )
+                .where(
+                    CloudDaemonInstance.daemon_instance_id == daemon_instance_id,
+                    CloudDaemonInstance.user_id == user_id,
+                    DaemonInstance.user_id == user_id,
+                )
+            )
+        ).one_or_none()
+        if row is None:
+            raise CloudAgentError(
+                "not_found",
+                f"cloud daemon for daemon instance {daemon_instance_id!r} not found",
+                http_status=404,
+            )
+        cdi, daemon_row = row
+        if cdi.status in {"deleted", "deleting"}:
+            raise CloudAgentError(
+                "invalid_state",
+                f"cannot restart cloud daemon in status {cdi.status!r}",
+                http_status=409,
+            )
+        if await self._cloud_daemon_has_active_run(db, cdi.id):
+            raise CloudAgentError(
+                "active_run",
+                "cannot restart cloud daemon while a cloud agent run is active",
+                http_status=409,
+            )
+
+        agent_rows = (
+            await db.execute(
+                select(CloudAgentInstance, Agent)
+                .join(Agent, Agent.agent_id == CloudAgentInstance.agent_id)
+                .where(
+                    CloudAgentInstance.cloud_daemon_instance_id == cdi.id,
+                    CloudAgentInstance.user_id == user_id,
+                    CloudAgentInstance.status.notin_(("deleted", "deleting")),
+                )
+            )
+        ).all()
+        if not agent_rows:
+            raise CloudAgentError(
+                "no_agents",
+                "cloud daemon has no active agents to restart",
+                http_status=409,
+            )
+
+        for cai, agent in agent_rows:
+            if cai.status in {"ready", "provisioning", "failed", "paused"}:
+                _ensure_provisioning_metadata(db, cai, agent)
+                cai.status = "provisioning"
+                cai.error_code = None
+                cai.error_message = None
+        cdi.status = "starting"
+        cdi.error_code = None
+        cdi.error_message = None
+        await db.commit()
+
+        provider = self._get_provider()
+        try:
+            handle = await provider.create_or_resume(
+                cloud_daemon_instance_id=cdi.id,
+                daemon_instance_id=daemon_row.id,
+                user_id=str(user_id),
+                runtime=cdi.runtime,
+                provider_sandbox_id=cdi.provider_sandbox_id,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "cloud daemon restart failed: cloud=%s err=%s",
+                cdi.id,
+                exc,
+            )
+            cdi.status = "failed"
+            cdi.error_code = "provider_restart_failed"
+            cdi.error_message = str(exc)
+            for cai, _agent in agent_rows:
+                cai.status = "failed"
+                cai.error_code = "provider_restart_failed"
+                cai.error_message = str(exc)
+            await db.commit()
+            raise CloudAgentError(
+                "provider_restart_failed",
+                f"cloud daemon provider failed: {exc}",
+                http_status=502,
+            ) from exc
+
+        _apply_handle_to_rows(cdi, handle)
+        cdi.last_started_at = _now()
+        if handle.status == "failed":
+            for cai, _agent in agent_rows:
+                cai.status = "failed"
+                cai.error_code = handle.error_code
+                cai.error_message = handle.error_message
+                _scrub_provisioning_metadata(cai)
+        elif handle.status == "ready":
+            for cai, _agent in agent_rows:
+                cai.status = "ready"
+                cai.error_code = None
+                cai.error_message = None
+                _scrub_provisioning_metadata(cai)
+        await db.commit()
+
+        if handle.status == "failed":
+            raise CloudAgentError(
+                handle.error_code or "provider_restart_failed",
+                handle.error_message
+                or "cloud daemon provider reported restart failure",
+                http_status=502,
+            )
+
     async def delete_cloud_agent(
         self,
         db: AsyncSession,

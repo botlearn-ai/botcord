@@ -25,6 +25,10 @@ export interface IngressConfig {
   setupPort: number;
   /** Setup server bind host. Defaults to loopback. */
   setupHost: string;
+  /** Admin sync server bind port; 0 to disable. */
+  adminPort: number;
+  /** Admin sync server bind host. */
+  adminHost: string;
   /** Optional override for the runtime WS endpoint advertised by Hub. */
   runtimeEndpointOverride?: string;
   /**
@@ -48,6 +52,8 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Ingress
   const healthHost = env.BOTCORD_INGRESS_HEALTH_HOST ?? "127.0.0.1";
   const setupPort = Number(env.BOTCORD_INGRESS_SETUP_PORT ?? "9101");
   const setupHost = env.BOTCORD_INGRESS_SETUP_HOST ?? "127.0.0.1";
+  const adminPort = Number(env.BOTCORD_INGRESS_ADMIN_PORT ?? "0");
+  const adminHost = env.BOTCORD_INGRESS_ADMIN_HOST ?? "127.0.0.1";
   const runtimeEndpointOverride = env.BOTCORD_INGRESS_RUNTIME_ENDPOINT;
   const dedupeCapacity = Number(env.BOTCORD_INGRESS_DEDUPE_CAPACITY ?? "1024");
   return {
@@ -59,6 +65,8 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Ingress
     healthHost,
     setupPort: Number.isFinite(setupPort) ? setupPort : 0,
     setupHost,
+    adminPort: Number.isFinite(adminPort) ? adminPort : 0,
+    adminHost,
     ...(runtimeEndpointOverride ? { runtimeEndpointOverride } : {}),
     dedupeCapacity: Number.isFinite(dedupeCapacity) && dedupeCapacity > 0 ? dedupeCapacity : 1024,
   };

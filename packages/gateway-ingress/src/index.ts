@@ -1,3 +1,4 @@
+export * from "./admin-sync.js";
 export * from "./config.js";
 export * from "./hub-client.js";
 export * from "./log.js";
