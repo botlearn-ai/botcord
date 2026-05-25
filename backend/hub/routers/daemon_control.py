@@ -73,6 +73,7 @@ from hub.id_generators import (
 )
 from hub.models import (
     Agent,
+    CloudDaemonInstance,
     DaemonAgentCleanup,
     DaemonDiagnosticBundle,
     DaemonDeviceCode,
@@ -1132,6 +1133,71 @@ async def refresh_instance_runtimes(
     instance = await _load_owned_instance(db, ctx.user_id, daemon_instance_id)
     if instance.revoked_at is not None:
         raise HTTPException(status_code=409, detail="daemon_revoked")
+
+    if instance.kind == "cloud":
+        cloud_row = await db.scalar(
+            select(CloudDaemonInstance).where(
+                CloudDaemonInstance.daemon_instance_id == daemon_instance_id,
+                CloudDaemonInstance.user_id == ctx.user_id,
+            )
+        )
+        if cloud_row is None:
+            raise HTTPException(status_code=409, detail="daemon_offline")
+
+        from hub.routers.cloud_daemon_control import (
+            CloudDaemonDispatchError,
+            send_cloud_control_frame,
+        )
+
+        try:
+            ack = await send_cloud_control_frame(
+                cloud_row.id,
+                "list_runtimes",
+                {},
+                timeout_ms=_REFRESH_RUNTIMES_TIMEOUT_MS,
+            )
+        except CloudDaemonDispatchError as exc:
+            if exc.code == "cloud_daemon_offline":
+                raise HTTPException(status_code=409, detail="daemon_offline") from exc
+            if exc.code == "cloud_daemon_ack_timeout":
+                raise HTTPException(status_code=504, detail="daemon_ack_timeout") from exc
+            raise HTTPException(
+                status_code=502,
+                detail={"code": exc.code, "daemon_message": exc.message},
+            ) from exc
+
+        if not isinstance(ack, dict) or not ack.get("ok"):
+            err = ack.get("error") if isinstance(ack, dict) else None
+            code = (err or {}).get("code") if isinstance(err, dict) else None
+            message = (err or {}).get("message") if isinstance(err, dict) else None
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "upstream_error",
+                    "daemon_code": code,
+                    "daemon_message": message,
+                },
+            )
+
+        result = ack.get("result") if isinstance(ack.get("result"), dict) else None
+        persisted = None
+        if result is not None:
+            persisted = await _persist_runtime_snapshot(db, instance, result)
+        if persisted is None:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "upstream_error",
+                    "daemon_message": "malformed runtime snapshot",
+                },
+            )
+        await db.commit()
+
+        runtimes, probed_dt = persisted
+        return _RefreshRuntimesResponse(
+            runtimes=runtimes,
+            runtimes_probed_at=probed_dt,
+        )
 
     conn = _REGISTRY.get(daemon_instance_id)
     if conn is None:
