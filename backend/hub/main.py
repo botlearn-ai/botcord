@@ -74,6 +74,8 @@ from app.routers.gateways import router as app_gateways_router
 from app.routers.prompts import router as app_prompts_router
 from app.routers.runtime_files import router as app_runtime_files_router
 from app.routers.schedules import router as app_schedules_router
+from app.routers.auth import router as app_auth_router
+from app.routers.telegram import router as app_telegram_router
 from app.auth import require_beta_user
 
 logging.basicConfig(level=logging.INFO)
@@ -288,6 +290,7 @@ app.include_router(leaderboard_router)
 app.include_router(public_router)
 app.include_router(share_public_router)
 app.include_router(app_users_router)
+app.include_router(app_auth_router)
 # Product routers: gated by beta_access
 _beta_gate = [Depends(require_beta_user)]
 app.include_router(app_humans_router, dependencies=_beta_gate)
@@ -304,6 +307,7 @@ app.include_router(app_admin_beta_router)
 app.include_router(app_policy_router, dependencies=_beta_gate)
 app.include_router(app_cloud_agents_router, dependencies=_beta_gate)
 app.include_router(app_gateways_router, dependencies=_beta_gate)
+app.include_router(app_telegram_router, dependencies=_beta_gate)
 app.include_router(app_runtime_files_router, dependencies=_beta_gate)
 app.include_router(app_schedules_router, dependencies=_beta_gate)
 app.include_router(app_prompts_router)

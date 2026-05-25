@@ -24,6 +24,7 @@ import {
   type DaemonRuntime,
 } from "@/store/useDaemonStore";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
+import { downloadApiFile } from "@/lib/api";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never";
@@ -278,12 +279,16 @@ function RuntimesBlock({
             ? `, expires ${compactDateTime(diagnosticResult.expires_at)}`
             : ""}
           {" · "}
-          <a
-            href={`/api/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`}
+          <button
+            type="button"
+            onClick={() => void downloadApiFile(
+              `/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`,
+              diagnosticResult.filename,
+            )}
             className="underline underline-offset-2"
           >
             Download
-          </a>
+          </button>
         </span>
       ) : null}
       {diagnosticError ? (

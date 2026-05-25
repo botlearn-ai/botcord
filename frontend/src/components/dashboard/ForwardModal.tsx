@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileArchive, Loader2, MessageSquare, Users, User, X } from "lucide-react";
-import { api, getActiveIdentity } from "@/lib/api";
+import { api, apiFetch, getActiveIdentity } from "@/lib/api";
 import type { Attachment } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -87,7 +87,7 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
           activeIdentity?.type === "agent"
             ? activeIdentity.id
             : ownedAgents[0]?.agent_id;
-        const res = await fetch(sourceFile.url, { cache: "no-store" });
+        const res = await apiFetch(sourceFile.url, { cache: "no-store" });
         if (!res.ok) throw new Error("Failed to prepare file for sending");
         const blob = await res.blob();
         const file = new File([blob], sourceFile.filename, {

@@ -25,7 +25,7 @@ import { useShallow } from "zustand/shallow";
 import { buildDaemonStartCommand } from "@/components/daemon/DaemonInstallCommand";
 import { useLanguage } from "@/lib/i18n";
 import { homePanel as homePanelI18n } from "@/lib/i18n/translations/dashboard";
-import { api } from "@/lib/api";
+import { api, apiFetch } from "@/lib/api";
 import type { ActivityStats, PublicRoom, UserAgent } from "@/lib/types";
 import { sortOwnedAgentsNewestFirst } from "@/lib/owned-agents";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -529,7 +529,7 @@ export function DeviceConnectPanel({
   async function refreshInstallCommand(): Promise<void> {
     setTokenLoading(true);
     try {
-      const res = await fetch("/api/daemon/auth/install-ticket", {
+      const res = await apiFetch("/daemon/auth/install-ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),

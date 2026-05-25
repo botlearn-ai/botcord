@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Bell, Bot, Clock, FileText, Loader2, MessageSquare, Plug, RefreshCw, Shield, Trash2, User, UserRound, X } from "lucide-react";
-import { userApi } from "@/lib/api";
+import { apiFetch, userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { botDetailDrawer } from "@/lib/i18n/translations/dashboard";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -374,7 +374,7 @@ export default function AgentSettingsDrawer({
     setFilesLoading(true);
     setFilesError(null);
     try {
-      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/runtime-files`, {
+      const res = await apiFetch(`/api/agents/${encodeURIComponent(agentId)}/runtime-files`, {
         method: "GET",
         cache: "no-store",
       });

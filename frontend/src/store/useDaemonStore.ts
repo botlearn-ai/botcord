@@ -16,6 +16,7 @@
 
 import { create } from "zustand";
 import { useDashboardSessionStore } from "./useDashboardSessionStore";
+import { apiFetch } from "@/lib/api";
 
 export interface DaemonRuntimeEndpoint {
   name: string;
@@ -606,7 +607,7 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
     const quiet = opts?.quiet === true;
     if (!quiet) set({ loading: true, error: null });
     try {
-      const res = await fetch("/api/daemon/instances", {
+      const res = await apiFetch("/daemon/instances", {
         method: "GET",
         cache: "no-store",
       });
@@ -644,8 +645,8 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
   revoke: async (id: string) => {
     set({ revokingId: id, error: null });
     try {
-      const res = await fetch(
-        `/api/daemon/instances/${encodeURIComponent(id)}/revoke`,
+      const res = await apiFetch(
+        `/daemon/instances/${encodeURIComponent(id)}/revoke`,
         { method: "POST" },
       );
       if (!res.ok) {
@@ -671,8 +672,8 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
   removeDevice: async (id, opts) => {
     set({ removingId: id, error: null });
     try {
-      const res = await fetch(
-        `/api/daemon/instances/${encodeURIComponent(id)}/remove`,
+      const res = await apiFetch(
+        `/daemon/instances/${encodeURIComponent(id)}/remove`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -739,7 +740,7 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
       return { renamingId: id, renameErrors: next };
     });
     try {
-      const res = await fetch(`/api/daemon/instances/${encodeURIComponent(id)}`, {
+      const res = await apiFetch(`/daemon/instances/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label: trimmed }),
@@ -786,8 +787,8 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
       });
     }
     try {
-      const res = await fetch(
-        `/api/daemon/instances/${encodeURIComponent(id)}/refresh-runtimes`,
+      const res = await apiFetch(
+        `/daemon/instances/${encodeURIComponent(id)}/refresh-runtimes`,
         { method: "POST" },
       );
       if (!res.ok) {
@@ -856,8 +857,8 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
       return { collectingDiagnosticsId: id, diagnosticErrors: nextErrors };
     });
     try {
-      const res = await fetch(
-        `/api/daemon/instances/${encodeURIComponent(id)}/diagnostics`,
+      const res = await apiFetch(
+        `/daemon/instances/${encodeURIComponent(id)}/diagnostics`,
         { method: "POST" },
       );
       if (!res.ok) {
@@ -936,7 +937,7 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
     if (input.openclawAgent) body.openclaw_agent = input.openclawAgent;
     if (input.hermesProfile) body.hermes_profile = input.hermesProfile;
 
-    const res = await fetch("/api/users/me/agents/provision", {
+    const res = await apiFetch("/api/users/me/agents/provision", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

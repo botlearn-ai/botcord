@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useShallow } from "zustand/shallow";
-import { api, userApi } from "@/lib/api";
+import { api, apiFetch, userApi } from "@/lib/api";
 import type { ActivityStats, HumanAgentRoomSummary, UserAgent } from "@/lib/types";
 import { dmPeerId } from "@/components/dashboard/dmRoom";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -924,7 +924,7 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/runtime-files`, {
+      const res = await apiFetch(`/api/agents/${encodeURIComponent(agentId)}/runtime-files`, {
         method: "GET",
         cache: "no-store",
       });

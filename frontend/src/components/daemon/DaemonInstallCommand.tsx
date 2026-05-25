@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: install-ticket BFF (`/api/daemon/auth/install-ticket`); env URLs
+ * [INPUT]: Hub install-ticket endpoint (`/daemon/auth/install-ticket`); env URLs
  * [OUTPUT]: DaemonInstallCommand — copy-paste curl|sh panel that installs/starts
  *   the BotCord daemon and (when an install token is granted) auto-authorizes it
  * [POS]: shared between CreateAgentDialog (no-daemon state) and DaemonsSettingsPage
@@ -17,6 +17,7 @@ import {
   RefreshCcw,
   Server,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
@@ -81,7 +82,7 @@ export default function DaemonInstallCommand({
     setTokenLoading(true);
     setTokenError(null);
     try {
-      const res = await fetch("/api/daemon/auth/install-ticket", {
+      const res = await apiFetch("/daemon/auth/install-ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),

@@ -22,6 +22,7 @@ import { useDaemonStore } from "@/store/useDaemonStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import ForwardModal from "@/components/dashboard/ForwardModal";
+import { downloadApiFile } from "@/lib/api";
 import BotAvatar from "./BotAvatar";
 
 /**
@@ -114,10 +115,9 @@ export default function DeviceDetailDrawer() {
     : device.status === "removal_pending" ? "text-yellow-400"
     : "text-text-secondary/60";
   const diagnosticResult = diagnosticResults[device.id];
-  const diagnosticDownloadUrl = diagnosticResult
-    ? `/api/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`
+  const diagnosticDownloadPath = diagnosticResult
+    ? `/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`
     : "";
-
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
@@ -379,14 +379,18 @@ export default function DeviceDetailDrawer() {
                 >
                   <Send className="h-3.5 w-3.5" />
                 </button>
-                <a
-                  href={diagnosticDownloadUrl}
+                <button
+                  type="button"
+                  onClick={() => void downloadApiFile(
+                    diagnosticDownloadPath,
+                    diagnosticResult.filename,
+                  )}
                   title="下载日志文件"
                   aria-label="下载日志文件"
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
                 >
                   <Download className="h-3.5 w-3.5" />
-                </a>
+                </button>
               </div>
             ) : null}
             <div className="flex justify-end">
@@ -463,7 +467,7 @@ export default function DeviceDetailDrawer() {
         <ForwardModal
           quoteText=""
           sourceFile={{
-            url: diagnosticDownloadUrl,
+            url: diagnosticDownloadPath,
             filename: diagnosticResult.filename,
             contentType: "application/zip",
             sizeBytes: diagnosticResult.size_bytes,

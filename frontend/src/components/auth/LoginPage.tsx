@@ -14,6 +14,7 @@ import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from '@/lib/i18n';
 import { loginPage } from '@/lib/i18n/translations/auth';
 import { common } from '@/lib/i18n/translations/common';
+import { publicApiFetch } from "@/lib/api";
 
 export default function LoginPage() {
   const locale = useLanguage();
@@ -63,7 +64,7 @@ export default function LoginPage() {
         router.push(nextPath);
       }
     } else {
-      const response = await fetch("/api/auth/signup", {
+      const response = await publicApiFetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

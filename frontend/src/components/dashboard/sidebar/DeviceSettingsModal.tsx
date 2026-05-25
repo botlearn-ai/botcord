@@ -4,6 +4,7 @@ import { useState } from "react";
 import { RefreshCw, Loader2, Check, Trash2, FileArchive, Download, Send } from "lucide-react";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import ForwardModal from "@/components/dashboard/ForwardModal";
+import { downloadApiFile } from "@/lib/api";
 import type { DiagnosticBundleResult } from "@/store/useDaemonStore";
 
 interface DeviceSettingsModalProps {
@@ -88,10 +89,9 @@ export default function DeviceSettingsModal({
   const isOffline = status === "offline";
   const removeDisabled = isRemoving || status === "revoked" || status === "removal_pending";
   const diagnosticsDisabled = isCollectingDiagnostics || status !== "online";
-  const diagnosticDownloadUrl = diagnosticResult
-    ? `/api/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`
+  const diagnosticDownloadPath = diagnosticResult
+    ? `/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`
     : "";
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div className="relative w-full max-w-sm rounded-2xl border border-glass-border bg-deep-black-light shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -236,13 +236,17 @@ export default function DeviceSettingsModal({
                 >
                   <Send className="h-3.5 w-3.5" />
                 </button>
-                <a
-                  href={diagnosticDownloadUrl}
+                <button
+                  type="button"
+                  onClick={() => void downloadApiFile(
+                    diagnosticDownloadPath,
+                    diagnosticResult.filename,
+                  )}
                   title={locale === "zh" ? "下载日志文件" : "Download log file"}
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
                 >
                   <Download className="h-3.5 w-3.5" />
-                </a>
+                </button>
               </div>
             )}
             {diagnosticError && (
@@ -346,7 +350,7 @@ export default function DeviceSettingsModal({
         <ForwardModal
           quoteText=""
           sourceFile={{
-            url: diagnosticDownloadUrl,
+            url: diagnosticDownloadPath,
             filename: diagnosticResult.filename,
             contentType: "application/zip",
             sizeBytes: diagnosticResult.size_bytes,

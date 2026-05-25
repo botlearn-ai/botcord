@@ -210,6 +210,61 @@ async function buildAuthHeaders(identityOverride?: ActiveIdentity | null): Promi
   return headers;
 }
 
+export function apiUrl(path: string): string {
+  return new URL(path, API_BASE).toString();
+}
+
+export async function apiFetch(
+  path: string,
+  init: RequestInit = {},
+  identityOverride?: ActiveIdentity | null,
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const authHeaders = await buildAuthHeaders(identityOverride);
+  Object.entries(authHeaders).forEach(([key, value]) => {
+    if (!headers.has(key)) headers.set(key, value);
+  });
+  if (init.body && typeof init.body === "string" && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return fetch(apiUrl(path), { ...init, headers });
+}
+
+export async function publicApiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(apiUrl(path), init);
+}
+
+function filenameFromContentDisposition(value: string | null): string | null {
+  if (!value) return null;
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].replace(/^"|"$/g, ""));
+    } catch {
+      return utf8Match[1].replace(/^"|"$/g, "");
+    }
+  }
+  const asciiMatch = value.match(/filename="?([^";]+)"?/i);
+  return asciiMatch?.[1] ?? null;
+}
+
+export async function downloadApiFile(path: string, fallbackFilename: string): Promise<void> {
+  const res = await apiFetch(path, { method: "GET", cache: "no-store" });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || res.statusText || `Download failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filenameFromContentDisposition(res.headers.get("Content-Disposition")) ?? fallbackFilename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 /**
  * Pick the `?as=agent|human` query value for wallet APIs based on a
  * (possibly overridden) identity. Backend `_resolve_owner` uses this to

@@ -16,6 +16,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { desktopBridge, getDesktopInfo } from "@/lib/desktop-bridge";
+import { apiFetch } from "@/lib/api";
 
 const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
@@ -78,7 +79,7 @@ export default function DesktopInstallClient() {
         const isDesktop = info !== null;
 
         setPhase({ kind: "minting" });
-        const res = await fetch("/api/daemon/auth/install-ticket", {
+        const res = await apiFetch("/daemon/auth/install-ticket", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(label ? { label } : {}),

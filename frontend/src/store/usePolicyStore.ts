@@ -6,6 +6,7 @@
  */
 
 import { create } from "zustand";
+import { apiFetch } from "@/lib/api";
 
 // TODO(realtime): subscribe to policy_updated to invalidate cache once the
 // daemon control frame is wired into the dashboard realtime channel.
@@ -122,7 +123,7 @@ export const usePolicyStore = create<PolicyState>((set, get) => ({
   async loadGlobal(agentId) {
     set((s) => ({ globalLoading: { ...s.globalLoading, [agentId]: true } }));
     try {
-      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/policy`, {
+      const res = await apiFetch(`/api/agents/${encodeURIComponent(agentId)}/policy`, {
         cache: "no-store",
       });
       if (!res.ok) throw await readErr(res);
@@ -149,7 +150,7 @@ export const usePolicyStore = create<PolicyState>((set, get) => ({
       set((s) => ({ globalByAgent: { ...s.globalByAgent, [agentId]: optimistic } }));
     }
     try {
-      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}/policy`, {
+      const res = await apiFetch(`/api/agents/${encodeURIComponent(agentId)}/policy`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
@@ -171,7 +172,7 @@ export const usePolicyStore = create<PolicyState>((set, get) => ({
     const key = roomKey(agentId, roomId);
     set((s) => ({ roomLoading: { ...s.roomLoading, [key]: true } }));
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/agents/${encodeURIComponent(agentId)}/rooms/${encodeURIComponent(roomId)}/policy`,
         { cache: "no-store" },
       );
@@ -192,7 +193,7 @@ export const usePolicyStore = create<PolicyState>((set, get) => ({
     const key = roomKey(agentId, roomId);
     const prev = get().roomEffectiveByKey[key];
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/agents/${encodeURIComponent(agentId)}/rooms/${encodeURIComponent(roomId)}/policy`,
         {
           method: "PUT",
@@ -221,7 +222,7 @@ export const usePolicyStore = create<PolicyState>((set, get) => ({
       return { roomEffectiveByKey: next };
     });
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/agents/${encodeURIComponent(agentId)}/rooms/${encodeURIComponent(roomId)}/policy`,
         { method: "DELETE" },
       );
@@ -238,7 +239,7 @@ export const usePolicyStore = create<PolicyState>((set, get) => ({
     const key = roomKey(agentId, roomId);
     const prev = get().roomEffectiveByKey[key];
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/agents/${encodeURIComponent(agentId)}/rooms/${encodeURIComponent(roomId)}/snooze`,
         {
           method: "POST",
