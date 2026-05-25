@@ -421,7 +421,7 @@ async def test_list_instances(client: AsyncClient, seed_user):
 
 
 @pytest.mark.asyncio
-async def test_list_instances_hides_cloud_daemons(
+async def test_list_instances_includes_cloud_daemons(
     client: AsyncClient, seed_user, db_session: AsyncSession
 ):
     local_bundle = await _provision_instance_via_device_code(client, seed_user)
@@ -452,8 +452,56 @@ async def test_list_instances_hides_cloud_daemons(
         headers={"Authorization": f"Bearer {seed_user['token']}"},
     )
     assert r.status_code == 200, r.text
-    ids = [entry["id"] for entry in r.json()["instances"]]
-    assert ids == [local_bundle["daemon_instance_id"]]
+    by_id = {entry["id"]: entry for entry in r.json()["instances"]}
+    assert set(by_id) == {cloud_daemon_row.id, local_bundle["daemon_instance_id"]}
+    assert by_id[cloud_daemon_row.id]["kind"] == "cloud"
+    assert by_id[local_bundle["daemon_instance_id"]]["kind"] == "local"
+
+
+@pytest.mark.asyncio
+async def test_restart_cloud_daemon_instance(
+    client: AsyncClient, seed_user, db_session: AsyncSession, monkeypatch
+):
+    cloud_daemon_row = DaemonInstance(
+        id="dm_cloudrestart",
+        user_id=seed_user["user_id"],
+        label="cloud-deepseek-tui",
+        kind="cloud",
+        refresh_token_hash="z" * 64,
+    )
+    db_session.add(cloud_daemon_row)
+    db_session.add(
+        CloudDaemonInstance(
+            id="cloud_dm_restart",
+            user_id=seed_user["user_id"],
+            daemon_instance_id=cloud_daemon_row.id,
+            provider="fake",
+            runtime="deepseek-tui",
+            status="ready",
+            max_agents=3,
+            active_agent_count=1,
+        )
+    )
+    await db_session.commit()
+
+    calls = []
+
+    class FakeCloudAgentService:
+        async def restart_cloud_daemon(self, db, *, user_id, daemon_instance_id):
+            calls.append((user_id, daemon_instance_id))
+
+    import hub.services.cloud_agent as cloud_agent_mod
+
+    monkeypatch.setattr(cloud_agent_mod, "CloudAgentService", FakeCloudAgentService)
+
+    r = await client.post(
+        f"/daemon/instances/{cloud_daemon_row.id}/restart",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == cloud_daemon_row.id
+    assert r.json()["kind"] == "cloud"
+    assert calls == [(seed_user["user_id"], cloud_daemon_row.id)]
 
 
 # ---------------------------------------------------------------------------

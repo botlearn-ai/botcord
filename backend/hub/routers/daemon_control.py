@@ -616,7 +616,7 @@ async def list_instances(
         select(DaemonInstance)
         .where(
             DaemonInstance.user_id == ctx.user_id,
-            DaemonInstance.kind == "local",
+            DaemonInstance.kind.in_(("local", "cloud")),
         )
         .order_by(DaemonInstance.created_at.desc())
     )
@@ -653,6 +653,34 @@ async def rename_instance(
     new_label = body.label.strip() if isinstance(body.label, str) else None
     instance.label = new_label or None
     await db.commit()
+    await db.refresh(instance)
+    return _instance_to_view(instance)
+
+
+@router.post("/daemon/instances/{daemon_instance_id}/restart", response_model=_InstanceView)
+async def restart_instance(
+    daemon_instance_id: str,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> _InstanceView:
+    instance = await _load_owned_instance(db, ctx.user_id, daemon_instance_id)
+    if instance.kind != "cloud":
+        raise HTTPException(status_code=409, detail="restart_only_supported_for_cloud_daemon")
+
+    from hub.services.cloud_agent import CloudAgentError, CloudAgentService
+
+    try:
+        await CloudAgentService().restart_cloud_daemon(
+            db,
+            user_id=ctx.user_id,
+            daemon_instance_id=daemon_instance_id,
+        )
+    except CloudAgentError as exc:
+        raise HTTPException(
+            status_code=exc.http_status,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+
     await db.refresh(instance)
     return _instance_to_view(instance)
 

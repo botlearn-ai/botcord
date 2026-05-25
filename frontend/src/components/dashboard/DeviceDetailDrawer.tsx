@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Cloud,
   Cpu,
   Download,
   FileArchive,
@@ -35,9 +36,11 @@ export default function DeviceDetailDrawer() {
     diagnosticResults,
     collectingDiagnosticsId,
     removingId,
+    restartingId,
     refresh,
     rename,
     removeDevice,
+    restartDevice,
     refreshRuntimes,
     collectDiagnostics,
   } = useDaemonStore(
@@ -46,9 +49,11 @@ export default function DeviceDetailDrawer() {
       diagnosticResults: s.diagnosticResults,
       collectingDiagnosticsId: s.collectingDiagnosticsId,
       removingId: s.removingId,
+      restartingId: s.restartingId,
       refresh: s.refresh,
       rename: s.rename,
       removeDevice: s.removeDevice,
+      restartDevice: s.restartDevice,
       refreshRuntimes: s.refreshRuntimes,
       collectDiagnostics: s.collectDiagnostics,
     })),
@@ -104,6 +109,8 @@ export default function DeviceDetailDrawer() {
   if (!open || !device) return null;
 
   const online = device.status === "online";
+  const isCloud = device.kind === "cloud";
+  const DeviceIcon = isCloud ? Cloud : Cpu;
   const statusLabel =
     device.status === "online" ? "在线"
     : device.status === "offline" ? "离线"
@@ -121,7 +128,11 @@ export default function DeviceDetailDrawer() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await refreshRuntimes(device.id);
+      if (isCloud) {
+        await refresh({ quiet: true });
+      } else {
+        await refreshRuntimes(device.id);
+      }
     } finally {
       setIsRefreshing(false);
     }
@@ -142,6 +153,15 @@ export default function DeviceDetailDrawer() {
     ]);
     setSelectedDeviceId(null);
   };
+  const handleRestartDevice = async () => {
+    const ok = await restartDevice(device.id);
+    if (ok) {
+      await Promise.all([
+        refresh({ quiet: true }),
+        refreshUserProfile(),
+      ]);
+    }
+  };
 
   return (
     <>
@@ -160,13 +180,18 @@ export default function DeviceDetailDrawer() {
         {/* Drawer header */}
         <div className="flex items-center gap-3 border-b border-glass-border px-5 py-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass-bg/60 text-text-secondary">
-            <Cpu className="h-5 w-5" />
+            <DeviceIcon className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h2 className="truncate text-base font-semibold text-text-primary">
-                {device.label || device.id}
+                {device.label || (isCloud ? "BotCord Cloud Device" : device.id)}
               </h2>
+              {isCloud ? (
+                <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-[10px] text-neon-cyan">
+                  Cloud
+                </span>
+              ) : null}
               <span
                 className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-[10px] ${
                   online
@@ -276,8 +301,38 @@ export default function DeviceDetailDrawer() {
               </span>
             </Row>
           ) : null}
+          {isCloud ? (
+            <Row label="托管类型">
+              <span className="text-xs text-neon-cyan">BotCord Cloud</span>
+            </Row>
+          ) : null}
         </div>
       </section>
+
+      {isCloud ? (
+        <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+            云设备操作
+          </h3>
+          <div className="space-y-3">
+            <p className="text-[11px] leading-relaxed text-text-secondary/65">
+              重启会重新启动这台云设备上的 daemon，并重新连接所有托管 Bot。
+            </p>
+            <button
+              onClick={() => void handleRestartDevice()}
+              disabled={restartingId === device.id}
+              className="inline-flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
+            >
+              {restartingId === device.id ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              {restartingId === device.id ? "重启中..." : "重启云设备"}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {/* Rename */}
       <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
@@ -309,6 +364,7 @@ export default function DeviceDetailDrawer() {
       </section>
 
       {/* Restart command (collapsible) */}
+      {!isCloud ? (
       <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
         <button
           onClick={() => setShowInstall((v) => !v)}
@@ -336,8 +392,10 @@ export default function DeviceDetailDrawer() {
           </div>
         ) : null}
       </section>
+      ) : null}
 
       {/* Diagnostic log (collapsible) */}
+      {!isCloud ? (
       <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
         <button
           onClick={() => setShowLogs((v) => !v)}
@@ -405,8 +463,10 @@ export default function DeviceDetailDrawer() {
           </div>
         ) : null}
       </section>
+      ) : null}
 
       {/* Danger zone */}
+      {!isCloud ? (
       <section className="rounded-2xl border border-red-500/25 bg-red-500/5 p-5">
         <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-red-300/85">
           危险操作
@@ -460,6 +520,7 @@ export default function DeviceDetailDrawer() {
           </div>
         )}
       </section>
+      ) : null}
       </>)}
       </div>
       </aside>
