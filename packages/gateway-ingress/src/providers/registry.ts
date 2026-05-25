@@ -1,5 +1,7 @@
 import type { ProviderAdapterFactory } from "./types.js";
+import { feishuProviderFactory } from "./feishu.js";
 import { telegramProviderFactory } from "./telegram.js";
+import { wechatProviderFactory } from "./wechat.js";
 
 /**
  * Default provider factory table — the CLI seeds the `ProviderRunner`
@@ -8,4 +10,6 @@ import { telegramProviderFactory } from "./telegram.js";
  */
 export const DEFAULT_PROVIDER_FACTORIES: Record<string, ProviderAdapterFactory> = {
   telegram: telegramProviderFactory,
+  feishu: feishuProviderFactory,
+  wechat: wechatProviderFactory,
 };
