@@ -186,6 +186,25 @@ function scopeLabel(scope: AgentRuntimeFile["scope"]): string {
   return "Workspace";
 }
 
+function runtimeFilesErrorMessage(data: any, status: number, t: BotDetailDrawerCopy): string {
+  const detail = data?.detail;
+  const code =
+    typeof detail === "string"
+      ? detail
+      : typeof detail?.code === "string"
+        ? detail.code
+        : typeof data?.error === "string"
+          ? data.error
+          : null;
+  if (status === 409 || code === "daemon_offline" || code === "agent_not_daemon_hosted") {
+    return t.files.daemonUnavailable;
+  }
+  if (typeof data?.error === "string") return data.error;
+  if (typeof detail === "string") return detail;
+  if (typeof detail?.code === "string") return detail.code;
+  return t.files.loadFailed;
+}
+
 function contactOptions(t: BotDetailDrawerCopy): { value: ContactPolicy; label: string; hint: string }[] {
   return [
     { value: "open", ...t.settings.contactOptions.open },
@@ -361,18 +380,7 @@ export default function AgentSettingsDrawer({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        const detail = data?.detail;
-        const msg =
-          typeof data?.error === "string"
-            ? data.error
-            : typeof detail === "string"
-              ? detail
-              : typeof detail?.code === "string"
-                  ? detail.code
-                : res.status === 409
-                  ? t.files.daemonUnavailable
-                  : t.files.loadFailed;
-        throw new Error(msg);
+        throw new Error(runtimeFilesErrorMessage(data, res.status, t));
       }
       const data = (await res.json()) as AgentRuntimeFilesResponse;
       const files = Array.isArray(data.files) ? data.files : [];

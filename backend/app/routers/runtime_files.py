@@ -19,7 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
 from hub.database import get_db
-from hub.models import Agent
+from hub.models import Agent, CloudAgentInstance
+from hub.routers.cloud_daemon_control import (
+    CloudDaemonDispatchError,
+    is_cloud_daemon_online,
+    send_cloud_control_frame,
+)
 from hub.routers.daemon_control import is_daemon_online, send_control_frame
 
 logger = logging.getLogger(__name__)
@@ -46,6 +51,11 @@ class AgentRuntimeFilesOut(BaseModel):
     files: list[AgentRuntimeFileOut]
 
 
+class _RuntimeFilesHost(BaseModel):
+    daemon_instance_id: str
+    cloud_daemon_instance_id: str | None = None
+
+
 async def _load_owned_agent(db: AsyncSession, ctx: RequestContext, agent_id: str) -> Agent:
     result = await db.execute(
         select(Agent).where(
@@ -60,6 +70,71 @@ async def _load_owned_agent(db: AsyncSession, ctx: RequestContext, agent_id: str
     return agent
 
 
+async def _load_runtime_files_host(
+    db: AsyncSession,
+    ctx: RequestContext,
+    agent: Agent,
+) -> _RuntimeFilesHost:
+    if agent.hosting_kind == "cloud":
+        if not agent.daemon_instance_id:
+            raise HTTPException(status_code=409, detail="agent_not_daemon_hosted")
+        binding = await db.scalar(
+            select(CloudAgentInstance).where(
+                CloudAgentInstance.agent_id == agent.agent_id,
+                CloudAgentInstance.user_id == ctx.user_id,
+                CloudAgentInstance.status.notin_(("deleting", "deleted")),
+            )
+        )
+        if binding is None:
+            raise HTTPException(status_code=409, detail="agent_not_daemon_hosted")
+        return _RuntimeFilesHost(
+            daemon_instance_id=binding.daemon_instance_id,
+            cloud_daemon_instance_id=binding.cloud_daemon_instance_id,
+        )
+
+    if not agent.daemon_instance_id:
+        raise HTTPException(status_code=409, detail="agent_not_daemon_hosted")
+    return _RuntimeFilesHost(daemon_instance_id=agent.daemon_instance_id)
+
+
+async def _send_runtime_files_control_frame(
+    host: _RuntimeFilesHost,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    if host.cloud_daemon_instance_id:
+        if not is_cloud_daemon_online(host.cloud_daemon_instance_id):
+            raise HTTPException(status_code=409, detail="daemon_offline")
+        try:
+            return await send_cloud_control_frame(
+                host.cloud_daemon_instance_id,
+                "list_agent_files",
+                params,
+                timeout_ms=5000,
+            )
+        except CloudDaemonDispatchError as exc:
+            if exc.code in {
+                "cloud_daemon_offline",
+                "cloud_daemon_disconnected",
+                "cloud_daemon_send_failed",
+            }:
+                raise HTTPException(status_code=409, detail="daemon_offline") from exc
+            if exc.code == "cloud_daemon_ack_timeout":
+                raise HTTPException(status_code=504, detail="daemon_ack_timeout") from exc
+            raise HTTPException(
+                status_code=502,
+                detail={"code": exc.code, "daemon_message": exc.message},
+            ) from exc
+
+    if not is_daemon_online(host.daemon_instance_id):
+        raise HTTPException(status_code=409, detail="daemon_offline")
+    return await send_control_frame(
+        host.daemon_instance_id,
+        "list_agent_files",
+        params,
+        timeout_ms=5000,
+    )
+
+
 @router.get("/{agent_id}/runtime-files", response_model=AgentRuntimeFilesOut)
 async def get_agent_runtime_files(
     agent_id: str,
@@ -68,21 +143,13 @@ async def get_agent_runtime_files(
     db: AsyncSession = Depends(get_db),
 ) -> AgentRuntimeFilesOut:
     agent = await _load_owned_agent(db, ctx, agent_id)
-    if not agent.daemon_instance_id:
-        raise HTTPException(status_code=409, detail="agent_not_daemon_hosted")
-    if not is_daemon_online(agent.daemon_instance_id):
-        raise HTTPException(status_code=409, detail="daemon_offline")
+    host = await _load_runtime_files_host(db, ctx, agent)
 
     params: dict[str, Any] = {"agentId": agent.agent_id}
     if file_id:
         params["fileId"] = file_id
 
-    ack = await send_control_frame(
-        agent.daemon_instance_id,
-        "list_agent_files",
-        params,
-        timeout_ms=5000,
-    )
+    ack = await _send_runtime_files_control_frame(host, params)
     if not isinstance(ack, dict) or not ack.get("ok"):
         err = ack.get("error") if isinstance(ack, dict) else None
         code = (err or {}).get("code") if isinstance(err, dict) else None
