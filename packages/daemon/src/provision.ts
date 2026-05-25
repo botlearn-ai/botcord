@@ -26,6 +26,7 @@ import {
   type RuntimeProbeResult,
   type StoredBotCordCredentials,
   type UpdateAgentParams,
+  type GatewayInboundFrame,
 } from "@botcord/protocol-core";
 import type { Gateway } from "./gateway/index.js";
 import type { GatewayInboundMessage } from "./gateway/index.js";
@@ -77,6 +78,7 @@ import {
   buildRuntimeSelectionExtraArgs,
   mergeRuntimeExtraArgs,
 } from "./runtime-route-options.js";
+import { handleCloudGatewayRuntimeInbound } from "./cloud-gateway-runtime.js";
 
 /**
  * Information passed to {@link OnAgentInstalledHook} after a successful
@@ -424,6 +426,31 @@ export function createProvisioner(opts: ProvisionerOptions): (
         return gatewayControl.handleSend(
           v.params as unknown as Parameters<typeof gatewayControl.handleSend>[0],
         );
+      }
+
+      case "cloud_gateway_runtime_inbound": {
+        const params = (frame.params ?? {}) as { frame?: unknown };
+        const runtimeFrame = params.frame as GatewayInboundFrame | undefined;
+        if (!runtimeFrame || typeof runtimeFrame !== "object") {
+          return {
+            ok: false,
+            error: {
+              code: "bad_params",
+              message: "cloud_gateway_runtime_inbound requires params.frame",
+            },
+          };
+        }
+        const result = await handleCloudGatewayRuntimeInbound(gateway, runtimeFrame);
+        return result.accepted
+          ? { ok: true, result }
+          : {
+              ok: false,
+              result,
+              error: result.error ?? {
+                code: "runtime_inbound_rejected",
+                message: "cloud gateway runtime inbound was rejected",
+              },
+            };
       }
 
       case "list_agent_files": {

@@ -1,4 +1,5 @@
 import type { IngressConfig } from "./config.js";
+import { startAdminSyncServer, type AdminSyncServer } from "./admin-sync.js";
 import { createHubClient } from "./hub-client.js";
 import type { HubClient } from "./hub-client.js";
 import { startHealthServer, type HealthServer } from "./health.js";
@@ -24,6 +25,7 @@ export interface IngressService {
   orchestrator: IngressOrchestrator;
   runner: ProviderRunner;
   health: HealthServer | null;
+  admin: AdminSyncServer | null;
   config: IngressConfig;
   log: IngressLogger;
   shutdown(reason?: string): Promise<void>;
@@ -39,6 +41,8 @@ export interface BuildIngressOptions {
   factories?: Record<string, ProviderAdapterFactory>;
   /** Start the HTTP health server. Defaults to true when `config.healthPort > 0`. */
   startHealth?: boolean;
+  /** Start the HTTP admin sync server. Defaults to true when `config.adminPort > 0`. */
+  startAdmin?: boolean;
 }
 
 /** Construct the service graph without starting any provider loops. */
@@ -117,6 +121,20 @@ export async function buildIngressService(
     });
   }
 
+  const startAdmin = opts.startAdmin ?? opts.config.adminPort > 0;
+  let admin: AdminSyncServer | null = null;
+  if (startAdmin) {
+    admin = await startAdminSyncServer({
+      host: opts.config.adminHost,
+      port: opts.config.adminPort,
+      ingressSecret: opts.config.ingressSecret,
+      log,
+      store,
+      secrets,
+      runner,
+    });
+  }
+
   const service: IngressService = {
     store,
     secrets,
@@ -125,12 +143,14 @@ export async function buildIngressService(
     orchestrator,
     runner,
     health,
+    admin,
     config: opts.config,
     log,
     async shutdown(reason = "shutdown"): Promise<void> {
       await runner.stopAll(reason);
       await runtime.closeAll(reason);
       await health?.close();
+      await admin?.close();
     },
   };
   return service;

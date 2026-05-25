@@ -296,6 +296,28 @@ export class Gateway {
   }
 
   /**
+   * Inject an inbound message while routing replies through a caller-owned
+   * channel adapter. Cloud gateway runtime sessions use this to execute a
+   * provider message without loading provider credentials inside the sandbox:
+   * the temporary adapter captures the runtime's final reply and the always-on
+   * ingress service performs the provider send.
+   */
+  async injectInboundThrough(
+    message: GatewayInboundMessage,
+    channel: ChannelAdapter,
+    ack?: { accept: () => Promise<void> },
+  ): Promise<void> {
+    const previous = this.channelMap.get(channel.id);
+    this.channelMap.set(channel.id, channel);
+    try {
+      await this.dispatcher.handle({ message, ...(ack ? { ack } : {}) });
+    } finally {
+      if (previous) this.channelMap.set(channel.id, previous);
+      else this.channelMap.delete(channel.id);
+    }
+  }
+
+  /**
    * Send a daemon-control initiated outbound message through a registered
    * channel. Used by proactive third-party gateway sends where the runtime
    * explicitly targets an external provider conversation.

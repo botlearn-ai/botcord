@@ -46,6 +46,8 @@ type AddMode = null | "telegram" | "wechat" | "feishu";
 type TelegramDiscoveryChat = { id: string; type: string | null; label: string | null };
 type TelegramDiscoverySender = { id: string; label: string | null };
 
+const PROVIDER_OPTIONS: GatewayProvider[] = ["feishu", "wechat", "telegram"];
+
 const STATUS_LABELS: Record<GatewayStatus, string> = {
   active: "运行中",
   disabled: "已停用",
@@ -268,6 +270,18 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
         </div>
       )}
 
+      {isCloudAgent && !daemonOffline && (
+        <div className="flex items-start gap-2 rounded-xl border border-neon-cyan/30 bg-neon-cyan/10 px-3 py-2.5 text-xs text-neon-cyan">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-semibold">云端接入会自动恢复运行环境</div>
+            <div className="text-neon-cyan/80">
+              创建、扫码、启用或停用第三方接入时会自动唤醒云端 agent；恢复可能需要几秒，超时后稍后刷新即可确认状态。
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Connected gateways. */}
       <section className="space-y-2">
         <div className="flex items-center justify-between">
@@ -418,7 +432,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
           </div>
           {/* provider segmented control */}
           <div className="mb-4 inline-flex rounded-lg border border-glass-border bg-deep-black/40 p-0.5">
-            {(["feishu", "wechat", "telegram"] as const).map((p) => (
+            {PROVIDER_OPTIONS.map((p) => (
               <button
                 key={p}
                 type="button"
@@ -1708,6 +1722,7 @@ function GatewayEditForm({
     allowedChatIds?: unknown;
     allowedSenderIds?: unknown;
     baseUrl?: unknown;
+    domain?: unknown;
   };
   const initialChatIds = Array.isArray(cfg.allowedChatIds)
     ? cfg.allowedChatIds.filter((id): id is string => typeof id === "string").join("\n")
@@ -1715,9 +1730,11 @@ function GatewayEditForm({
   const initialSenderIds = Array.isArray(cfg.allowedSenderIds)
     ? cfg.allowedSenderIds.filter((id): id is string => typeof id === "string").join("\n")
     : "";
+  const initialFeishuDomain = cfg.domain === "lark" ? "lark" : "feishu";
   const [label, setLabel] = useState(gateway.label ?? "");
   const [chatIds, setChatIds] = useState(initialChatIds);
   const [senderIds, setSenderIds] = useState(initialSenderIds);
+  const [feishuDomain, setFeishuDomain] = useState<"feishu" | "lark">(initialFeishuDomain);
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [discoveringChats, setDiscoveringChats] = useState(false);
@@ -1774,14 +1791,28 @@ function GatewayEditForm({
     setSaving(true);
     onError(null);
     try {
+      const config =
+        gateway.provider === "telegram"
+          ? {
+              label: label.trim() || undefined,
+              allowedChatIds,
+              allowedSenderIds,
+            }
+          : gateway.provider === "feishu"
+            ? {
+                label: label.trim() || undefined,
+                domain: feishuDomain,
+                allowedSenderIds,
+                allowedChatIds,
+              }
+            : {
+                label: label.trim() || undefined,
+                allowedSenderIds,
+                ...(typeof cfg.baseUrl === "string" ? { baseUrl: cfg.baseUrl } : {}),
+              };
       await patch(agentId, gateway.id, {
         label: label.trim() || null,
-        config: {
-          label: label.trim() || undefined,
-          ...(gateway.provider === "telegram" ? { allowedChatIds } : {}),
-          allowedSenderIds,
-          ...(typeof cfg.baseUrl === "string" ? { baseUrl: cfg.baseUrl } : {}),
-        },
+        config,
         ...(gateway.provider === "telegram" && token.trim()
           ? { secret: { botToken: token.trim() } }
           : {}),
@@ -1994,7 +2025,13 @@ function GatewayEditForm({
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           disabled={saving}
-          placeholder={gateway.provider === "wechat" ? "例如：我的微信" : "例如：客服 Bot"}
+          placeholder={
+            gateway.provider === "wechat"
+              ? "例如：我的微信"
+              : gateway.provider === "feishu"
+                ? "例如：飞书助手"
+                : "例如：客服 Bot"
+          }
           className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
         />
       </Field>
@@ -2110,11 +2147,46 @@ function GatewayEditForm({
           </Field>
         </>
       )}
+      {gateway.provider === "feishu" && (
+        <>
+          <Field label="飞书域">
+            <div className="inline-flex rounded-lg border border-glass-border bg-deep-black/40 p-0.5">
+              {(["feishu", "lark"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setFeishuDomain(d)}
+                  disabled={saving}
+                  className={`rounded-md px-3 py-1 text-xs transition-colors ${
+                    feishuDomain === d
+                      ? "bg-neon-cyan/20 text-neon-cyan"
+                      : "text-text-secondary hover:text-text-primary"
+                  } disabled:opacity-50`}
+                >
+                  {d === "feishu" ? "飞书" : "Lark"}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <Field label="允许的飞书群 chat_id（可选，逗号或换行分隔）">
+            <textarea
+              value={chatIds}
+              onChange={(e) => setChatIds(e.target.value)}
+              disabled={saving}
+              rows={2}
+              placeholder="oc_xxxxx"
+              className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+            />
+          </Field>
+        </>
+      )}
       <Field
         label={
           gateway.provider === "wechat"
             ? "允许的微信用户 ID（逗号或换行分隔）"
-            : "允许的发送者 user id（逗号或换行分隔）"
+            : gateway.provider === "feishu"
+              ? "允许的飞书用户 open_id（逗号或换行分隔）"
+              : "允许的发送者 user id（逗号或换行分隔）"
         }
       >
         <textarea
@@ -2122,7 +2194,13 @@ function GatewayEditForm({
           onChange={(e) => setSenderIds(e.target.value)}
           disabled={saving}
           rows={2}
-          placeholder={gateway.provider === "wechat" ? "xxx@im.wechat" : "123456789"}
+          placeholder={
+            gateway.provider === "wechat"
+              ? "xxx@im.wechat"
+              : gateway.provider === "feishu"
+                ? "ou_xxxxx"
+                : "123456789"
+          }
           className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
         />
         {gateway.provider === "wechat" && (
@@ -2256,7 +2334,9 @@ function GatewayEditForm({
         <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
           {gateway.provider === "telegram"
             ? "必须同时保留允许的 chat id 和发送者 user id，才能保存修改。"
-            : "必须保留至少一个允许的微信用户 ID，才能保存修改。"}
+            : gateway.provider === "feishu"
+              ? "必须保留至少一个允许的飞书用户 open_id，才能保存修改。"
+              : "必须保留至少一个允许的微信用户 ID，才能保存修改。"}
         </p>
       )}
       <div className="flex justify-end gap-2">

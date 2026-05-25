@@ -34,12 +34,13 @@ contract.
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import time
 from typing import Any
 
 import jwt as pyjwt
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +50,7 @@ from hub.database import get_db
 from hub.i18n import I18nHTTPException
 from hub.models import Agent, CloudAgentInstance, CloudDaemonInstance
 from hub.routers.cloud_daemon_control import is_cloud_daemon_online
+from hub.routers.cloud_daemon_control import send_cloud_control_frame
 from hub.services.cloud_agent import (
     CloudAgentError,
     CloudAgentService,
@@ -60,6 +62,7 @@ logger = logging.getLogger(__name__)
 internal_router = APIRouter(
     prefix="/internal/cloud-gateway", tags=["cloud-gateway-internal"]
 )
+runtime_router = APIRouter(tags=["cloud-gateway-runtime"])
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +132,33 @@ def verify_runtime_session_token(token: str) -> dict[str, Any]:
     return claims
 
 
+def _runtime_ws_token(ws: WebSocket) -> str | None:
+    auth_header = ws.headers.get("authorization") or ws.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        return auth_header[len("Bearer ") :].strip()
+    token = ws.query_params.get("token")
+    return token.strip() if token else None
+
+
+async def _send_runtime_rejection(
+    ws: WebSocket,
+    *,
+    event_id: str,
+    code: str,
+    message: str,
+) -> None:
+    await ws.send_text(
+        json.dumps(
+            {
+                "type": "gateway_inbound_ack",
+                "event_id": event_id,
+                "accepted": False,
+                "error": {"code": code, "message": message},
+            }
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # DTOs (mirror packages/protocol-core/src/runtime-frame.ts)
 # ---------------------------------------------------------------------------
@@ -162,6 +192,169 @@ class TouchRequest(BaseModel):
 class TouchResponse(BaseModel):
     agent_id: str
     acknowledged_at: int
+
+
+# ---------------------------------------------------------------------------
+# Runtime relay WebSocket
+# ---------------------------------------------------------------------------
+
+
+@runtime_router.websocket("/cloud-gateway/runtime")
+async def cloud_gateway_runtime_ws(ws: WebSocket) -> None:
+    """Relay gateway-ingress runtime frames to the online cloud daemon.
+
+    This is the MVP transport for the design's "runtime direct session"
+    contract. The Hub authenticates the short-lived runtime token and then
+    relays payloads through the cloud daemon control connection without
+    storing or inspecting provider message bodies beyond the frame metadata
+    needed for routing and validation.
+    """
+    token = _runtime_ws_token(ws)
+    if not token:
+        await ws.close(code=4401, reason="missing bearer")
+        return
+    try:
+        claims = verify_runtime_session_token(token)
+    except ValueError as exc:
+        await ws.close(code=4401, reason=str(exc))
+        return
+
+    agent_id = str(claims["agent_id"])
+    gateway_id = str(claims["gateway_id"])
+    cloud_daemon_instance_id = str(claims["cloud_daemon_instance_id"])
+    token_event_id = claims.get("event_id")
+
+    await ws.accept()
+    try:
+        while True:
+            raw = await ws.receive_text()
+            try:
+                frame = json.loads(raw)
+            except json.JSONDecodeError:
+                await _send_runtime_rejection(
+                    ws,
+                    event_id=str(token_event_id or ""),
+                    code="bad_json",
+                    message="runtime frame must be JSON",
+                )
+                continue
+
+            if not isinstance(frame, dict):
+                await _send_runtime_rejection(
+                    ws,
+                    event_id=str(token_event_id or ""),
+                    code="bad_frame",
+                    message="runtime frame must be an object",
+                )
+                continue
+            frame_type = frame.get("type")
+            if frame_type == "runtime_heartbeat":
+                await ws.send_text(json.dumps({"type": "runtime_heartbeat", "ts": int(time.time() * 1000)}))
+                continue
+            event_id = str(frame.get("event_id") or token_event_id or "")
+            if frame_type != "gateway_inbound":
+                await _send_runtime_rejection(
+                    ws,
+                    event_id=event_id,
+                    code="bad_frame_type",
+                    message=f"unsupported runtime frame type {frame_type!r}",
+                )
+                continue
+            if frame.get("agent_id") != agent_id or frame.get("gateway_id") != gateway_id:
+                await _send_runtime_rejection(
+                    ws,
+                    event_id=event_id,
+                    code="runtime_token_scope_mismatch",
+                    message="runtime frame does not match token scope",
+                )
+                continue
+
+            try:
+                ack = await send_cloud_control_frame(
+                    cloud_daemon_instance_id,
+                    "cloud_gateway_runtime_inbound",
+                    {"frame": frame},
+                    timeout_ms=30 * 60 * 1000,
+                )
+            except Exception as exc:  # noqa: BLE001 - transport-specific failures become frame errors
+                logger.warning(
+                    "cloud-gateway runtime relay failed: cloud=%s agent=%s gateway=%s err=%s",
+                    cloud_daemon_instance_id,
+                    agent_id,
+                    gateway_id,
+                    exc,
+                )
+                await _send_runtime_rejection(
+                    ws,
+                    event_id=event_id,
+                    code="cloud_daemon_unavailable",
+                    message=str(exc),
+                )
+                continue
+
+            result = ack.get("result") if isinstance(ack, dict) else None
+            if not isinstance(ack, dict) or ack.get("ok") is not True or not isinstance(result, dict):
+                err = ack.get("error") if isinstance(ack, dict) else None
+                code = err.get("code") if isinstance(err, dict) else "daemon_rejected"
+                message = err.get("message") if isinstance(err, dict) else "daemon rejected runtime frame"
+                await _send_runtime_rejection(
+                    ws,
+                    event_id=event_id,
+                    code=str(code),
+                    message=str(message),
+                )
+                continue
+
+            turn_id = str(result.get("turnId") or f"turn_{event_id}")
+            conversation_id = str(
+                result.get("conversationId")
+                or (frame.get("message") or {}).get("conversation", {}).get("id")
+                or ""
+            )
+            await ws.send_text(
+                json.dumps(
+                    {
+                        "type": "gateway_inbound_ack",
+                        "event_id": event_id,
+                        "accepted": bool(result.get("accepted", True)),
+                        "runtime_session_id": turn_id,
+                    }
+                )
+            )
+            outbound = result.get("outbound")
+            if isinstance(outbound, dict):
+                await ws.send_text(
+                    json.dumps(
+                        {
+                            "type": "gateway_outbound_complete",
+                            "event_id": event_id,
+                            "turn_id": turn_id,
+                            "gateway_id": gateway_id,
+                            "agent_id": agent_id,
+                            "conversation_id": conversation_id,
+                            "final_text": str(outbound.get("finalText") or ""),
+                            "provider_message_id": outbound.get("providerMessageId"),
+                        }
+                    )
+                )
+            else:
+                await ws.send_text(
+                    json.dumps(
+                        {
+                            "type": "gateway_outbound_error",
+                            "event_id": event_id,
+                            "turn_id": turn_id,
+                            "gateway_id": gateway_id,
+                            "agent_id": agent_id,
+                            "conversation_id": conversation_id,
+                            "code": "no_outbound",
+                            "message": "runtime completed without an outbound message",
+                            "retryable": False,
+                        }
+                    )
+                )
+    except WebSocketDisconnect:
+        return
 
 
 # ---------------------------------------------------------------------------
