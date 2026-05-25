@@ -59,10 +59,9 @@ describe("usePolicyStore", () => {
 
     expect(result).toEqual(baseGlobal);
     expect(usePolicyStore.getState().globalByAgent["ag_alice"]).toEqual(baseGlobal);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/agents/ag_alice/policy",
-      expect.objectContaining({ cache: "no-store" }),
-    );
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(new URL(String(url)).pathname).toBe("/api/agents/ag_alice/policy");
+    expect(init).toEqual(expect.objectContaining({ cache: "no-store" }));
   });
 
   it("patchGlobal PATCHes and updates state with server response", async () => {
