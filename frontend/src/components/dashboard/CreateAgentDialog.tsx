@@ -100,6 +100,10 @@ function daemonRuntimeId(id: string): string {
 async function createCloudAgent(input: {
   name: string;
   bio?: string;
+  runtime?: string;
+  runtimeModel?: string;
+  reasoningEffort?: string;
+  thinking?: boolean;
 }): Promise<{ agentId: string }> {
   const res = await apiFetch("/api/cloud-agents", {
     method: "POST",
@@ -107,6 +111,10 @@ async function createCloudAgent(input: {
     body: JSON.stringify({
       name: input.name,
       ...(input.bio ? { bio: input.bio } : {}),
+      ...(input.runtime ? { runtime: input.runtime } : {}),
+      ...(input.runtimeModel ? { runtime_model: input.runtimeModel } : {}),
+      ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
+      ...(typeof input.thinking === "boolean" ? { thinking: input.thinking } : {}),
     }),
   });
   if (!res.ok) {
@@ -272,6 +280,22 @@ export default function CreateAgentDialog({
     () => daemons.filter((d) => d.status === "online" && d.kind !== "cloud"),
     [daemons],
   );
+  const cloudRuntimeDaemon = useMemo(() => {
+    const candidates = daemons.filter(
+      (d) =>
+        d.kind === "cloud" &&
+        d.status !== "revoked" &&
+        d.status !== "removal_pending",
+    );
+    const selected =
+      candidates.find((d) => d.status === "online" && (d.runtimes?.length ?? 0) > 0) ??
+      candidates.find((d) => (d.runtimes?.length ?? 0) > 0) ??
+      candidates.find((d) => d.status === "online") ??
+      candidates[0] ??
+      null;
+    if (!selected) return null;
+    return { ...selected, runtimes: applyRuntimeSupport(selected.runtimes, t.runtimeNotSupported) };
+  }, [daemons, t.runtimeNotSupported]);
   const deviceOptions = useMemo(
     () => [
       ...onlineDaemons.map((d, index) => ({
@@ -384,9 +408,9 @@ export default function CreateAgentDialog({
       const stillOnline = onlineDaemons.some((d) => d.id === selectedDaemonId);
       if (stillOnline) return;
     }
-    const pick = firstOnline(daemons);
+    const pick = firstOnline(onlineDaemons);
     setSelectedDaemonId(pick?.id ?? CLOUD_AGENT_OPTION_ID);
-  }, [daemons, onlineDaemons, selectedDaemonId, preselectedDaemonId]);
+  }, [onlineDaemons, selectedDaemonId, preselectedDaemonId]);
 
   const isCloudAgentSelected = selectedDaemonId === CLOUD_AGENT_OPTION_ID;
 
@@ -396,30 +420,27 @@ export default function CreateAgentDialog({
     if (!d || d.status !== "online") return null;
     return { ...d, runtimes: applyRuntimeSupport(d.runtimes, t.runtimeNotSupported) };
   }, [daemons, isCloudAgentSelected, selectedDaemonId, t.runtimeNotSupported]);
+  const runtimeDaemon = isCloudAgentSelected ? cloudRuntimeDaemon : selectedDaemon;
 
   // Auto-select first available runtime when daemon changes.
   useEffect(() => {
-    if (isCloudAgentSelected) {
+    if (!runtimeDaemon) {
       setSelectedRuntimeId(null);
       return;
     }
-    if (!selectedDaemon) {
-      setSelectedRuntimeId(null);
-      return;
-    }
-    const runtimes = selectedDaemon.runtimes ?? [];
+    const runtimes = runtimeDaemon.runtimes ?? [];
     const stillValid =
       selectedRuntimeId &&
       runtimes.some((r) => r.id === selectedRuntimeId && r.available);
     if (stillValid) return;
     const firstAvailable = runtimes.find((r) => r.available);
     setSelectedRuntimeId(firstAvailable?.id ?? null);
-  }, [isCloudAgentSelected, selectedDaemon, selectedRuntimeId]);
+  }, [runtimeDaemon, selectedRuntimeId]);
 
   // Reset OpenClaw selections when leaving the OpenClaw/QClaw runtime family.
   const selectedRuntime = useMemo(
-    () => selectedDaemon?.runtimes?.find((r) => r.id === selectedRuntimeId) ?? null,
-    [selectedDaemon, selectedRuntimeId],
+    () => runtimeDaemon?.runtimes?.find((r) => r.id === selectedRuntimeId) ?? null,
+    [runtimeDaemon, selectedRuntimeId],
   );
   const selectedModel = useMemo(
     () =>
@@ -508,7 +529,7 @@ export default function CreateAgentDialog({
     [selectableOpenclawAgents, selectedOpenclawAgent],
   );
   useEffect(() => {
-    if (!isOpenclawFamilyRuntime(selectedRuntimeId)) {
+    if (isCloudAgentSelected || !isOpenclawFamilyRuntime(selectedRuntimeId)) {
       setSelectedGateway(null);
       setSelectedOpenclawAgent(null);
       return;
@@ -517,10 +538,10 @@ export default function CreateAgentDialog({
     if (selectedGateway && reachable.some((e) => e.name === selectedGateway)) return;
     setSelectedGateway(reachable[0]?.name ?? null);
     setSelectedOpenclawAgent(null);
-  }, [selectedRuntime, selectedRuntimeId, selectedGateway]);
+  }, [isCloudAgentSelected, selectedRuntime, selectedRuntimeId, selectedGateway]);
 
   useEffect(() => {
-    if (!isOpenclawFamilyRuntime(selectedRuntimeId)) return;
+    if (isCloudAgentSelected || !isOpenclawFamilyRuntime(selectedRuntimeId)) return;
     const agents = selectedOpenclawEndpoint?.agents ?? [];
     if (agents.length === 0) return;
     const stillSelectable =
@@ -530,6 +551,7 @@ export default function CreateAgentDialog({
     setSelectedOpenclawAgent(selectableOpenclawAgents[0]?.id ?? null);
   }, [
     selectedRuntimeId,
+    isCloudAgentSelected,
     selectedOpenclawEndpoint,
     selectedOpenclawAgent,
     selectableOpenclawAgents,
@@ -554,7 +576,7 @@ export default function CreateAgentDialog({
   // hermes-agent. Prefer the active profile, falling back to the first
   // unoccupied entry. Reset when leaving the runtime.
   useEffect(() => {
-    if (selectedRuntimeId !== "hermes-agent") {
+    if (isCloudAgentSelected || selectedRuntimeId !== "hermes-agent") {
       setSelectedHermesProfile(null);
       return;
     }
@@ -568,7 +590,7 @@ export default function CreateAgentDialog({
     const active = profiles.find((p) => p.isActive && !p.occupiedBy);
     const firstFree = profiles.find((p) => !p.occupiedBy);
     setSelectedHermesProfile((active ?? firstFree)?.name ?? null);
-  }, [selectedRuntime, selectedRuntimeId, selectedHermesProfile]);
+  }, [isCloudAgentSelected, selectedRuntime, selectedRuntimeId, selectedHermesProfile]);
 
   const showEmptyState = deviceOptions.length === 0 && !loading;
   const trimmedName = name.trim();
@@ -597,7 +619,7 @@ export default function CreateAgentDialog({
   // Auto-detect OpenClaw gateways once the user picks the OpenClaw/QClaw runtime
   // but no reachable endpoint has been probed yet.
   useEffect(() => {
-    if (!isOpenclawFamilyRuntime(selectedRuntimeId)) return;
+    if (isCloudAgentSelected || !isOpenclawFamilyRuntime(selectedRuntimeId)) return;
     if (!selectedDaemon) return;
     const reachable = (selectedRuntime?.endpoints ?? []).filter((e) => e.reachable);
     if (reachable.length > 0) return;
@@ -606,7 +628,7 @@ export default function CreateAgentDialog({
       void refreshRuntimes(daemonId, { quiet: true });
     }, 5_000);
     return () => window.clearInterval(id);
-  }, [selectedRuntimeId, selectedDaemon, selectedRuntime, refreshRuntimes]);
+  }, [isCloudAgentSelected, selectedRuntimeId, selectedDaemon, selectedRuntime, refreshRuntimes]);
 
   function translateError(err: unknown): string {
     if (err instanceof ProvisionAgentError) {
@@ -644,6 +666,10 @@ export default function CreateAgentDialog({
         ? await createCloudAgent({
             name: trimmedName,
             bio: bio.trim() || undefined,
+            ...(selectedRuntimeId ? { runtime: daemonRuntimeId(selectedRuntimeId) } : {}),
+            ...(selectedRuntimeModel ? { runtimeModel: selectedRuntimeModel } : {}),
+            ...(selectedReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {}),
+            ...(selectedThinking !== null ? { thinking: selectedThinking } : {}),
           })
         : await provisionAgent(selectedDaemonId, {
             name: trimmedName,
@@ -671,8 +697,9 @@ export default function CreateAgentDialog({
     }
   }
 
-  const needsOpenclawGateway = isOpenclawFamilyRuntime(selectedRuntimeId);
-  const needsHermesProfile = selectedRuntimeId === "hermes-agent";
+  const needsOpenclawGateway =
+    !isCloudAgentSelected && isOpenclawFamilyRuntime(selectedRuntimeId);
+  const needsHermesProfile = !isCloudAgentSelected && selectedRuntimeId === "hermes-agent";
   const needsOpenclawAgent =
     needsOpenclawGateway && (selectedOpenclawEndpoint?.agents?.length ?? 0) > 0;
   const hasRuntimeModelOptions =
@@ -921,9 +948,37 @@ export default function CreateAgentDialog({
             </section>
 
             {isCloudAgentSelected ? (
-              <div className="flex items-start gap-2 rounded-xl border border-neon-cyan/20 bg-neon-cyan/5 px-3 py-2.5 text-xs leading-5 text-text-secondary">
-                <Cloud className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon-cyan" />
-                <span>{t.cloudAgentSelectedHint}</span>
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 rounded-xl border border-neon-cyan/20 bg-neon-cyan/5 px-3 py-2.5 text-xs leading-5 text-text-secondary">
+                  <Cloud className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neon-cyan" />
+                  <span>{t.cloudAgentSelectedHint}</span>
+                </div>
+                {cloudRuntimeDaemon ? (
+                  <RuntimePicker
+                    daemon={cloudRuntimeDaemon}
+                    selectedRuntimeId={selectedRuntimeId}
+                    onSelect={setSelectedRuntimeId}
+                    selectedRuntimeDetails={selectedRuntimeDetails}
+                    refreshing={refreshingRuntimesId === cloudRuntimeDaemon.id}
+                    onRefresh={() => {
+                      void refreshRuntimes(cloudRuntimeDaemon.id);
+                    }}
+                    labels={{
+                      runtimeLabel: t.runtimeLabel,
+                      runtimeLabelWithCount: t.runtimeLabelWithCount,
+                      runtimeAvailable: t.runtimeAvailable,
+                      noRuntimesDetected: t.noRuntimesDetected,
+                      probeRuntimes: t.probeRuntimes,
+                      unavailable: t.runtimeUnavailable,
+                      runtimeUnavailableGroup: t.runtimeUnavailableGroup,
+                      runtimeFound: t.runtimeFound,
+                      runtimeUnavailableCount: t.runtimeUnavailableCount,
+                      showUnavailable: t.showUnavailable,
+                      hideUnavailable: t.hideUnavailable,
+                    }}
+                    disabled={submitting}
+                  />
+                ) : null}
               </div>
             ) : (
               <RuntimePicker

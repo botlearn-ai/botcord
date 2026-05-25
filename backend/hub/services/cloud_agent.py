@@ -98,6 +98,9 @@ class CreateCloudAgentInput:
     bio: str | None = None
     model_profile: str | None = None
     runtime: str | None = None
+    runtime_model: str | None = None
+    reasoning_effort: str | None = None
+    thinking: bool | None = None
 
 
 @dataclass
@@ -123,6 +126,9 @@ class CloudAgentView:
     last_run_at: datetime.datetime | None
     error_code: str | None
     error_message: str | None
+    runtime_model: str | None = None
+    reasoning_effort: str | None = None
+    thinking: bool | None = None
 
 
 @dataclass
@@ -276,7 +282,11 @@ class CloudAgentService:
         if not name:
             raise CloudAgentError("invalid_name", "name is required", http_status=400)
         runtime = (body.runtime or CLOUD_AGENT_DEFAULT_RUNTIME).strip()
-        model_profile = (body.model_profile or CLOUD_AGENT_DEFAULT_MODEL_PROFILE).strip()
+        runtime_model = _clean_runtime_option(body.runtime_model)
+        reasoning_effort = _clean_runtime_option(body.reasoning_effort)
+        model_profile = (
+            body.model_profile or runtime_model or CLOUD_AGENT_DEFAULT_MODEL_PROFILE
+        ).strip()
 
         await self._enforce_per_user_quota(db, user_id)
 
@@ -288,6 +298,18 @@ class CloudAgentService:
             user_id=user_id,
             runtime=runtime,
         )
+        if not _daemon_snapshot_accepts_runtime_options(
+            daemon_row,
+            runtime=runtime,
+            runtime_model=runtime_model,
+            reasoning_effort=reasoning_effort,
+            thinking=body.thinking,
+        ):
+            raise CloudAgentError(
+                "runtime_unavailable",
+                "selected runtime, model, or reasoning effort is unavailable",
+                http_status=409,
+            )
 
         provider = self._get_provider()
 
@@ -356,7 +378,12 @@ class CloudAgentService:
                     "private_key_b64": private_key_b64,
                     "public_key_b64": pubkey_b64,
                     "key_id": key_id,
-                }
+                },
+                **_runtime_options_metadata(
+                    runtime_model=runtime_model,
+                    reasoning_effort=reasoning_effort,
+                    thinking=body.thinking,
+                ),
             },
         )
         db.add(cloud_agent)
@@ -1165,6 +1192,19 @@ class CloudAgentService:
                 "runtime": cai.runtime,
             },
         }
+        runtime_options = _cloud_agent_runtime_options(cai)
+        runtime_model = runtime_options.get("runtime_model")
+        reasoning_effort = runtime_options.get("reasoning_effort")
+        thinking = runtime_options.get("thinking")
+        if runtime_model:
+            params["runtimeModel"] = runtime_model
+            params["credentials"]["runtimeModel"] = runtime_model
+        if reasoning_effort:
+            params["reasoningEffort"] = reasoning_effort
+            params["credentials"]["reasoningEffort"] = reasoning_effort
+        if isinstance(thinking, bool):
+            params["thinking"] = thinking
+            params["credentials"]["thinking"] = thinking
         if agent.bio:
             params["bio"] = agent.bio
 
@@ -1514,6 +1554,128 @@ def _scrub_provisioning_metadata(cai: CloudAgentInstance) -> None:
     flag_modified(cai, "metadata_json")
 
 
+def _clean_runtime_option(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def _runtime_options_metadata(
+    *,
+    runtime_model: str | None,
+    reasoning_effort: str | None,
+    thinking: bool | None,
+) -> dict[str, dict[str, Any]]:
+    options: dict[str, Any] = {}
+    if runtime_model:
+        options["runtime_model"] = runtime_model
+    if reasoning_effort:
+        options["reasoning_effort"] = reasoning_effort
+    if isinstance(thinking, bool):
+        options["thinking"] = thinking
+    return {"runtime_options": options} if options else {}
+
+
+def _cloud_agent_runtime_options(cai: CloudAgentInstance) -> dict[str, Any]:
+    raw = (cai.metadata_json or {}).get("runtime_options")
+    if not isinstance(raw, dict):
+        return {}
+    options: dict[str, Any] = {}
+    runtime_model = _clean_runtime_option(raw.get("runtime_model"))
+    reasoning_effort = _clean_runtime_option(raw.get("reasoning_effort"))
+    if runtime_model:
+        options["runtime_model"] = runtime_model
+    if reasoning_effort:
+        options["reasoning_effort"] = reasoning_effort
+    if isinstance(raw.get("thinking"), bool):
+        options["thinking"] = raw["thinking"]
+    return options
+
+
+def _daemon_snapshot_accepts_runtime_options(
+    instance: DaemonInstance,
+    *,
+    runtime: str,
+    runtime_model: str | None,
+    reasoning_effort: str | None,
+    thinking: bool | None,
+) -> bool:
+    snap = instance.runtimes_json
+    if not isinstance(snap, list) or not snap:
+        return True
+    for entry in snap:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("id") != runtime:
+            continue
+        if entry.get("available") is not True:
+            return False
+        return _runtime_snapshot_accepts_model_options(
+            entry,
+            runtime_model=runtime_model,
+            reasoning_effort=reasoning_effort,
+            thinking=thinking,
+        )
+    return False
+
+
+def _runtime_snapshot_accepts_model_options(
+    entry: dict,
+    *,
+    runtime_model: str | None,
+    reasoning_effort: str | None,
+    thinking: bool | None,
+) -> bool:
+    selected_model: dict | None = None
+    if runtime_model:
+        models = entry.get("models")
+        if isinstance(models, list) and models:
+            for model in models:
+                if isinstance(model, dict) and model.get("id") == runtime_model:
+                    selected_model = model
+                    break
+            if selected_model is None:
+                return False
+
+    if reasoning_effort:
+        param = _find_runtime_parameter(
+            entry,
+            selected_model,
+            ("reasoning_effort", "effort"),
+        )
+        if param is not None:
+            values = param.get("values")
+            if isinstance(values, list) and values:
+                return reasoning_effort in {str(v) for v in values}
+
+    if thinking is not None:
+        param = _find_runtime_parameter(entry, selected_model, ("thinking",))
+        if param is None:
+            return False
+        if param.get("type") != "boolean":
+            return False
+
+    return True
+
+
+def _find_runtime_parameter(
+    entry: dict,
+    model: dict | None,
+    ids: tuple[str, ...],
+) -> dict | None:
+    for container in (model, entry):
+        if not isinstance(container, dict):
+            continue
+        params = container.get("parameters")
+        if not isinstance(params, list):
+            continue
+        for param in params:
+            if isinstance(param, dict) and param.get("id") in ids:
+                return param
+    return None
+
+
 def _ensure_provisioning_metadata(
     db: AsyncSession,
     cai: CloudAgentInstance,
@@ -1584,6 +1746,7 @@ def _make_view(
     cai: CloudAgentInstance,
     cdi: CloudDaemonInstance,
 ) -> CloudAgentView:
+    runtime_options = _cloud_agent_runtime_options(cai)
     return CloudAgentView(
         cloud_agent_instance_id=cai.id,
         agent_id=cai.agent_id,
@@ -1604,4 +1767,7 @@ def _make_view(
         last_run_at=cai.last_run_at,
         error_code=cai.error_code,
         error_message=cai.error_message,
+        runtime_model=runtime_options.get("runtime_model"),
+        reasoning_effort=runtime_options.get("reasoning_effort"),
+        thinking=runtime_options.get("thinking"),
     )

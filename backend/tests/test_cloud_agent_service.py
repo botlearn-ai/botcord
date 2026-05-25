@@ -213,6 +213,88 @@ async def test_different_runtimes_share_single_user_sandbox(db_session):
 
 
 @pytest.mark.asyncio
+async def test_create_persists_runtime_model_options(db_session):
+    user_id = uuid.uuid4()
+    svc, _ = _make_service(max_per_user=3, max_agents_per_daemon=3)
+    view = await svc.create_cloud_agent(
+        db_session,
+        user_id=user_id,
+        body=CreateCloudAgentInput(
+            name="A",
+            runtime="codex",
+            runtime_model="gpt-5.2",
+            reasoning_effort="high",
+        ),
+    )
+    assert view.runtime == "codex"
+    assert view.model_profile == "gpt-5.2"
+    assert view.runtime_model == "gpt-5.2"
+    assert view.reasoning_effort == "high"
+
+    row = await db_session.scalar(
+        select(CloudAgentInstance).where(CloudAgentInstance.agent_id == view.agent_id)
+    )
+    assert row is not None
+    assert row.metadata_json["runtime_options"] == {
+        "runtime_model": "gpt-5.2",
+        "reasoning_effort": "high",
+    }
+    assert "provisioning" not in row.metadata_json
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_reasoning_effort_not_in_cloud_snapshot(db_session):
+    user_id = uuid.uuid4()
+    svc, _ = _make_service(max_per_user=3, max_agents_per_daemon=3)
+    first = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == first.cloud_daemon_instance_id
+        )
+    )
+    assert cdi is not None
+    daemon = await db_session.scalar(
+        select(DaemonInstance).where(DaemonInstance.id == cdi.daemon_instance_id)
+    )
+    assert daemon is not None
+    daemon.runtimes_json = [
+        {
+            "id": "codex",
+            "available": True,
+            "models": [
+                {
+                    "id": "gpt-5.2",
+                    "parameters": [
+                        {
+                            "id": "reasoning_effort",
+                            "type": "enum",
+                            "values": ["low", "medium", "high"],
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    await db_session.commit()
+
+    with pytest.raises(CloudAgentError) as excinfo:
+        await svc.create_cloud_agent(
+            db_session,
+            user_id=user_id,
+            body=CreateCloudAgentInput(
+                name="B",
+                runtime="codex",
+                runtime_model="gpt-5.2",
+                reasoning_effort="xhigh",
+            ),
+        )
+    assert excinfo.value.code == "runtime_unavailable"
+    assert excinfo.value.http_status == 409
+
+
+@pytest.mark.asyncio
 async def test_create_provider_failure_marks_state_failed(db_session):
     user_id = uuid.uuid4()
     fake = FakeCloudDaemonProvider(force_create_failure=True)

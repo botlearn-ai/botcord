@@ -307,6 +307,45 @@ async def test_provision_pending_dispatches_provision_agent_and_marks_ready(
 
 
 @pytest.mark.asyncio
+async def test_provision_pending_dispatches_runtime_model_options(db_session):
+    service = _make_e2b_service()
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session,
+        user_id=user_id,
+        body=CreateCloudAgentInput(
+            name="A",
+            runtime="codex",
+            runtime_model="gpt-5.2",
+            reasoning_effort="high",
+        ),
+    )
+
+    conn, ws = await _register_fake_conn(view.cloud_daemon_instance_id, "dm_model")
+    try:
+        async def _ack_when_sent():
+            sent = await _ack_frame_when_sent(
+                conn, ws, expected_type="provision_agent"
+            )
+            params = sent["params"]
+            creds = params["credentials"]
+            assert params["runtime"] == "codex"
+            assert params["runtimeModel"] == "gpt-5.2"
+            assert params["reasoningEffort"] == "high"
+            assert creds["runtime"] == "codex"
+            assert creds["runtimeModel"] == "gpt-5.2"
+            assert creds["reasoningEffort"] == "high"
+
+        ack_task = asyncio.create_task(_ack_when_sent())
+        await service.provision_pending_for_cloud_daemon(
+            db_session, cloud_daemon_instance_id=view.cloud_daemon_instance_id
+        )
+        await ack_task
+    finally:
+        await _registry_for_tests().unregister(conn)
+
+
+@pytest.mark.asyncio
 async def test_provision_dispatch_ack_false_leaves_provisioning(db_session):
     service = _make_e2b_service()
     user_id = uuid.uuid4()

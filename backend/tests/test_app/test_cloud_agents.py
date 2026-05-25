@@ -217,6 +217,42 @@ async def test_create_then_list_then_get(client_factory, seed_user):
 
 
 @pytest.mark.asyncio
+async def test_create_accepts_runtime_model_options(
+    client_factory, seed_user, db_session
+):
+    client, _ = await client_factory()
+    headers = {"Authorization": f"Bearer {seed_user['token']}"}
+
+    r = await client.post(
+        "/api/cloud-agents",
+        json={
+            "name": "Research Bot",
+            "runtime": "codex",
+            "runtime_model": "gpt-5.2",
+            "reasoning_effort": "high",
+        },
+        headers=headers,
+    )
+    assert r.status_code == 201, r.text
+    created = r.json()
+    assert created["runtime"] == "codex"
+    assert created["model_profile"] == "gpt-5.2"
+    assert created["runtime_model"] == "gpt-5.2"
+    assert created["reasoning_effort"] == "high"
+
+    row = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == created["agent_id"]
+        )
+    )
+    assert row is not None
+    assert row.metadata_json["runtime_options"] == {
+        "runtime_model": "gpt-5.2",
+        "reasoning_effort": "high",
+    }
+
+
+@pytest.mark.asyncio
 async def test_pause_resume_round_trip(client_factory, seed_user):
     client, _ = await client_factory()
     headers = {"Authorization": f"Bearer {seed_user['token']}"}
