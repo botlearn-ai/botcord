@@ -9,6 +9,7 @@ tokens.  The strategy:
    (cached in-process by ``PyJWKClient``).
 """
 
+import datetime
 import logging
 import uuid as _uuid
 from dataclasses import dataclass, field
@@ -16,7 +17,7 @@ from dataclasses import dataclass, field
 import jwt
 from jwt import PyJWKClient
 from fastapi import Depends, Header, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.config import SUPABASE_JWT_SECRET
@@ -27,6 +28,10 @@ _logger = logging.getLogger(__name__)
 
 # JWKS clients keyed by issuer URL — lazily created, long-lived.
 _jwks_clients: dict[str, PyJWKClient] = {}
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 @dataclass
@@ -104,13 +109,56 @@ def _decode_supabase_token(token: str) -> dict:
     return payload
 
 
+def _clean_email(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    email = value.strip().lower()
+    if not email or "@" not in email:
+        return None
+    return email
+
+
+def _jwt_metadata(payload: dict | None, key: str) -> dict:
+    value = (payload or {}).get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _jwt_beta_access(payload: dict | None) -> bool:
+    metadata = _jwt_metadata(payload, "user_metadata")
+    app_metadata = _jwt_metadata(payload, "app_metadata")
+    return metadata.get("beta_access") is True or app_metadata.get("beta_access") is True
+
+
+def _jwt_can_match_existing_email(payload: dict | None) -> bool:
+    if (payload or {}).get("is_anonymous") is True:
+        return False
+
+    metadata = _jwt_metadata(payload, "user_metadata")
+    app_metadata = _jwt_metadata(payload, "app_metadata")
+    providers = app_metadata.get("providers")
+    provider_names = providers if isinstance(providers, list) else []
+
+    return (
+        app_metadata.get("provider") == "email"
+        or "email" in provider_names
+        or metadata.get("email_verified") is True
+        or app_metadata.get("email_verified") is True
+    )
+
+
 async def _load_user_and_roles(
     supabase_user_id: str,
     db: AsyncSession,
     *,
     jwt_payload: dict | None = None,
 ) -> tuple[User, list[str]]:
-    """Look up local User by supabase_user_id, auto-creating if missing."""
+    """Look up local User by Supabase identity, auto-creating if missing.
+
+    Some users can arrive with a fresh Supabase ``sub`` after auth-provider or
+    BFF migration while still carrying the same authenticated login email. Prefer
+    reattaching that existing local account over silently creating a second
+    BotCord account.
+    """
     # Convert string to UUID for proper column comparison (needed for SQLite)
     try:
         uid = _uuid.UUID(supabase_user_id)
@@ -122,13 +170,38 @@ async def _load_user_and_roles(
     )
     user = result.scalar_one_or_none()
 
+    email = _clean_email((jwt_payload or {}).get("email"))
+    metadata = _jwt_metadata(jwt_payload, "user_metadata")
+    jwt_has_beta_access = _jwt_beta_access(jwt_payload)
+
+    if user is None:
+        if email and _jwt_can_match_existing_email(jwt_payload):
+            result = await db.execute(
+                select(User).where(sa_func.lower(User.email) == email)
+            )
+            user = result.scalar_one_or_none()
+            if user is not None:
+                previous_supabase_user_id = str(user.supabase_user_id)
+                user.supabase_user_id = uid
+                user.last_login_at = _utc_now()
+                if user.avatar_url is None:
+                    user.avatar_url = metadata.get("avatar_url") or metadata.get("picture")
+                if jwt_has_beta_access and not user.beta_access:
+                    user.beta_access = True
+                await db.commit()
+                await db.refresh(user)
+                _logger.info(
+                    "Reattached local user %s from supabase_user_id %s to %s via email",
+                    user.id,
+                    previous_supabase_user_id,
+                    supabase_user_id,
+                )
+
     if user is None:
         # Auto-create: the user exists in Supabase (JWT is valid) but the
         # local record was never created (e.g. email-verify callback landed
         # on a different origin).
         from hub.config import BETA_GATE_ENABLED
-        email = (jwt_payload or {}).get("email")
-        metadata = (jwt_payload or {}).get("user_metadata", {})
         display_name = (
             metadata.get("full_name")
             or metadata.get("name")
@@ -140,7 +213,7 @@ async def _load_user_and_roles(
             email=email,
             display_name=display_name,
             avatar_url=metadata.get("avatar_url") or metadata.get("picture"),
-            beta_access=not BETA_GATE_ENABLED,
+            beta_access=jwt_has_beta_access or not BETA_GATE_ENABLED,
         )
         db.add(user)
 
@@ -155,6 +228,11 @@ async def _load_user_and_roles(
         await db.commit()
         await db.refresh(user)
         _logger.info("Auto-created local user %s for supabase_user_id %s", user.id, supabase_user_id)
+
+    if jwt_has_beta_access and not user.beta_access:
+        user.beta_access = True
+        await db.commit()
+        await db.refresh(user)
 
     if user.banned_at is not None:
         raise HTTPException(status_code=403, detail="User is banned")
