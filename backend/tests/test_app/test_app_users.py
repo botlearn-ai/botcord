@@ -7,6 +7,7 @@ import jwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from unittest.mock import AsyncMock
 
@@ -18,7 +19,14 @@ TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-unit-tests"
 
 
-def _make_supabase_token(sub: str, secret: str = TEST_SUPABASE_SECRET) -> str:
+def _make_supabase_token(
+    sub: str,
+    secret: str = TEST_SUPABASE_SECRET,
+    *,
+    email: str | None = None,
+    user_metadata: dict | None = None,
+    app_metadata: dict | None = None,
+) -> str:
     """Create a fake Supabase JWT for testing."""
     payload = {
         "sub": sub,
@@ -27,6 +35,12 @@ def _make_supabase_token(sub: str, secret: str = TEST_SUPABASE_SECRET) -> str:
         + datetime.timedelta(hours=1),
         "iss": "supabase",
     }
+    if email is not None:
+        payload["email"] = email
+    if user_metadata is not None:
+        payload["user_metadata"] = user_metadata
+    if app_metadata is not None:
+        payload["app_metadata"] = app_metadata
     return jwt.encode(payload, secret, algorithm="HS256")
 
 
@@ -194,3 +208,57 @@ async def test_get_me_auto_creates_user(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert data["display_name"] == "User"  # fallback display name
+
+
+@pytest.mark.asyncio
+async def test_get_me_reattaches_existing_email_user(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_user: dict,
+):
+    """A fresh Supabase sub with the same login email must not create a new local account."""
+    previous_supabase_uid = seed_user["user"].supabase_user_id
+    new_supabase_uid = uuid.uuid4()
+    token = _make_supabase_token(
+        str(new_supabase_uid),
+        email="TEST@example.com",
+        user_metadata={"avatar_url": "https://example.com/new-avatar.png"},
+        app_metadata={"provider": "email", "providers": ["email"]},
+    )
+
+    resp = await client.get(
+        "/api/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == str(seed_user["user_id"])
+    assert data["display_name"] == "Test User"
+    assert [agent["agent_id"] for agent in data["agents"]] == ["ag_testuser001"]
+
+    users = (await db_session.execute(select(User))).scalars().all()
+    assert len(users) == 1
+    assert users[0].supabase_user_id == new_supabase_uid
+    assert users[0].supabase_user_id != previous_supabase_uid
+    assert users[0].last_login_at is not None
+
+
+@pytest.mark.asyncio
+async def test_get_me_auto_create_honors_beta_access_metadata(client: AsyncClient):
+    token = _make_supabase_token(
+        str(uuid.uuid4()),
+        email="beta@example.com",
+        user_metadata={"beta_access": True, "full_name": "Beta User"},
+    )
+
+    resp = await client.get(
+        "/api/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["display_name"] == "Beta User"
+    assert data["email"] == "beta@example.com"
+    assert data["beta_access"] is True
