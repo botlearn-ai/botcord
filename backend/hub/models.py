@@ -1779,7 +1779,7 @@ class CloudDaemonInstance(Base):
     region: Mapped[str | None] = mapped_column(String(64), nullable=True)
     runtime: Mapped[str] = mapped_column(String(64), nullable=False)
     max_agents: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default="1"
+        Integer, nullable=False, default=5, server_default="5"
     )
     active_agent_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
