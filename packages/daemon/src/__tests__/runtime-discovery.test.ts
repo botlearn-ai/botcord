@@ -76,15 +76,74 @@ describe("collectRuntimeSnapshot", () => {
       },
     ]);
     const snap = collectRuntimeSnapshot();
-    expect(snap.runtimes).toEqual([
-      {
-        id: "claude-code",
-        available: true,
-        version: "1.2.3",
-        path: "/usr/local/bin/claude",
-      },
-      { id: "codex", available: false },
-    ]);
+    expect(snap.runtimes[0]).toMatchObject({
+      id: "claude-code",
+      available: true,
+      version: "1.2.3",
+      path: "/usr/local/bin/claude",
+    });
+    const claudeModels = (snap.runtimes[0] as { models?: Array<{ id: string }> }).models;
+    expect(claudeModels?.map((m) => m.id)).toContain("sonnet");
+    expect(claudeModels?.map((m) => m.id)).toContain("opus");
+    expect(snap.runtimes[1]).toEqual({ id: "codex", available: false });
+  });
+
+  it("adds Kimi models from the local config file", () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "daemon-runtime-kimi-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      mkdirSync(path.join(tmp, ".kimi"), { recursive: true });
+      writeFileSync(
+        path.join(tmp, ".kimi", "config.toml"),
+        [
+          'default_model = "kimi-code/kimi-for-coding"',
+          "",
+          '[models."kimi-code/kimi-for-coding"]',
+          'provider = "managed:kimi-code"',
+          'model = "kimi-for-coding"',
+          "max_context_size = 262144",
+          'capabilities = ["thinking", "image_in"]',
+          'display_name = "Kimi-k2.6"',
+          "",
+        ].join("\n"),
+      );
+      setRuntimes([
+        {
+          id: "kimi-cli",
+          displayName: "Kimi",
+          binary: "kimi",
+          supportsRun: true,
+          result: { available: true },
+        },
+      ]);
+      const [runtime] = collectRuntimeSnapshot().runtimes;
+      expect((runtime as { models?: unknown[] }).models).toEqual([
+        {
+          id: "kimi-code/kimi-for-coding",
+          source: "config",
+          isDefault: true,
+          provider: "managed:kimi-code",
+          displayName: "Kimi-k2.6",
+          contextLength: 262144,
+          capabilities: ["thinking", "image_in"],
+          metadata: { model: "kimi-for-coding" },
+          parameters: [
+            {
+              id: "thinking",
+              displayName: "Thinking",
+              type: "boolean",
+              flag: "--thinking/--no-thinking",
+              source: "cli",
+            },
+          ],
+        },
+      ]);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it("omits optional fields rather than emitting explicit undefineds", () => {

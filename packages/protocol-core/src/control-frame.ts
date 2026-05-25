@@ -432,11 +432,75 @@ export interface RuntimeProbeResult {
    */
   profiles?: HermesProfileProbe[];
   /**
+   * Optional list of models the local runtime can currently select. This is
+   * best-effort and runtime-specific:
+   * - Codex / DeepSeek can expose CLI catalogs.
+   * - Kimi exposes the locally refreshed config models.
+   * - Claude Code exposes built-in aliases plus local settings/env overrides.
+   *
+   * Older Hub builds pass this through opaquely in `runtimes_json`.
+   */
+  models?: RuntimeModelProbe[];
+  /**
+   * Runtime-level configurable parameters and current defaults. These are
+   * global CLI/config knobs, not guarantees that every model supports them.
+   * Per-model knobs live on `models[].parameters`.
+   */
+  parameters?: RuntimeParameterProbe[];
+  /**
    * Optional live health state for this runtime on the daemon. Unlike
    * `available`, this describes current dispatch health rather than whether
    * the binary is installed.
    */
   health?: RuntimeHealthSnapshot;
+}
+
+/** One selectable model surfaced by daemon runtime discovery. */
+export interface RuntimeModelProbe {
+  /** Runtime-facing model id or alias to pass back via runtime-specific flags. */
+  id: string;
+  /** Human-readable label when the runtime/provider exposes one. */
+  displayName?: string;
+  /** Provider or provider profile key, when known. */
+  provider?: string;
+  /** Where this model entry came from. */
+  source?: "builtin" | "config" | "cli" | "api" | "gateway" | "env";
+  /** True when local config marks this as the default model. */
+  isDefault?: boolean;
+  /** Runtime/provider capability labels such as `thinking` or `image_in`. */
+  capabilities?: string[];
+  /** Maximum context tokens when the runtime/provider reports it. */
+  contextLength?: number;
+  /** Small runtime-specific facts that should not become protocol fields yet. */
+  metadata?: Record<string, unknown>;
+  /** Parameters known to apply to this specific model. */
+  parameters?: RuntimeParameterProbe[];
+}
+
+export type RuntimeParameterValue = string | number | boolean;
+
+/** One configurable runtime or model parameter surfaced by discovery. */
+export interface RuntimeParameterProbe {
+  /** Stable machine id, e.g. `reasoning_effort`, `thinking`, `sandbox_mode`. */
+  id: string;
+  /** Human-readable label when useful for UI. */
+  displayName?: string;
+  /** Value kind. */
+  type: "enum" | "boolean" | "integer" | "string";
+  /** Runtime CLI flag or config key that controls this parameter, when known. */
+  flag?: string;
+  /** Selectable values when the runtime exposes a finite set. */
+  values?: RuntimeParameterValue[];
+  /** Current/default value from runtime metadata or local config. */
+  defaultValue?: RuntimeParameterValue;
+  /** Minimum value for integer parameters. */
+  minimum?: number;
+  /** Maximum value for integer parameters. */
+  maximum?: number;
+  /** Where this parameter entry came from. */
+  source?: "builtin" | "config" | "cli" | "api" | "gateway" | "env";
+  /** Small runtime-specific facts that should not become protocol fields yet. */
+  metadata?: Record<string, unknown>;
 }
 
 export interface RuntimeHealthSnapshot {

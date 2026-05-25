@@ -72,6 +72,7 @@ import {
 import { log as daemonLog } from "./log.js";
 import { discoverAgentCredentials } from "./agent-discovery.js";
 import { resolveMemoryDir } from "./working-memory.js";
+import { discoverRuntimeModelCatalog } from "./runtime-models.js";
 
 /**
  * Information passed to {@link OnAgentInstalledHook} after a successful
@@ -1784,6 +1785,10 @@ export function collectRuntimeSnapshot(opts: { force?: boolean } = {}): ListRunt
     // style used above.
     if (entry.result.version) record.version = entry.result.version;
     if (entry.result.path) record.path = entry.result.path;
+    const catalog = discoverRuntimeModelCatalog(entry);
+    const models = catalog.models;
+    if (models?.length) record.models = models.slice(0, RUNTIME_MODELS_CAP);
+    if (catalog.parameters?.length) record.parameters = catalog.parameters.slice(0, RUNTIME_PARAMETERS_CAP);
     // Gateway's probe surface doesn't expose an `error` string today — it
     // already swallows throws into `{available: false}`. We leave the wire
     // field blank in that case and let callers treat `!available` as reason
@@ -1841,6 +1846,8 @@ export function attachRuntimeHealth(
 
 /** Maximum number of `endpoints[]` entries persisted per runtime (RFC §3.8.2). */
 export const RUNTIME_ENDPOINTS_CAP = 32;
+export const RUNTIME_MODELS_CAP = 128;
+export const RUNTIME_PARAMETERS_CAP = 64;
 
 /** Injection seam for L2 + L3 endpoint probes — kept testable + side-effect-free. */
 export type WsEndpointProbeFn = (args: {
