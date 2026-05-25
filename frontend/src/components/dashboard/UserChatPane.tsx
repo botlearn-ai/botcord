@@ -484,6 +484,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                   key={`${msg.clientId}-streaming`}
                   blocks={msg.streamBlocks}
                   defaultExpanded
+                  showComposing
                   onScrollRequest={wasNearBottomRef.current ? scrollToBottom : undefined}
                 />
               </div>
