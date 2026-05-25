@@ -164,7 +164,7 @@ export function createProvisioner(opts: ProvisionerOptions): (
 
       case CONTROL_FRAME_TYPES.HELLO: {
         const params = (frame.params ?? {}) as unknown as HelloParams;
-        const result = applyHelloIdentitySnapshot(params.agents);
+        const result = applyHelloIdentitySnapshot(params.agents, { gateway });
         daemonLog.debug("hello: identity snapshot applied", {
           frameId: frame.id,
           received: params.agents?.length ?? 0,
@@ -186,12 +186,19 @@ export function createProvisioner(opts: ProvisionerOptions): (
           displayName: params.displayName,
           bio: params.bio,
         });
+        const runtimeResult = applyAgentRuntimeSnapshot(params, { gateway });
+        const combined = {
+          changed: result.changed || runtimeResult.changed,
+          identity: result,
+          runtime: runtimeResult,
+        };
         daemonLog.info("update_agent applied", {
           agentId: params.agentId,
-          changed: result.changed,
-          skipped: result.skipped ?? null,
+          changed: combined.changed,
+          identitySkipped: result.skipped ?? null,
+          runtimeSkipped: runtimeResult.skipped ?? null,
         });
-        return { ok: true, result };
+        return { ok: true, result: combined };
       }
 
       case CONTROL_FRAME_TYPES.PROVISION_AGENT: {
@@ -2410,10 +2417,100 @@ interface HelloIdentityResult {
   skipped: number;
 }
 
+interface RuntimeSnapshotResult {
+  changed: boolean;
+  skipped?: string;
+  routeUpdated?: boolean;
+}
+
+interface RuntimeSnapshotCtx {
+  gateway?: Gateway;
+}
+
+function hasOwnField(obj: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function cleanNullableString(value: string | null | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function applyAgentRuntimeSnapshot(
+  snapshot: AgentIdentitySnapshot,
+  ctx: RuntimeSnapshotCtx = {},
+): RuntimeSnapshotResult {
+  const hasRuntimeFields = (
+    hasOwnField(snapshot, "runtime") ||
+    hasOwnField(snapshot, "runtimeModel") ||
+    hasOwnField(snapshot, "reasoningEffort") ||
+    hasOwnField(snapshot, "thinking")
+  );
+  if (!hasRuntimeFields) return { changed: false, skipped: "no_runtime_fields" };
+
+  const credentialsFile = defaultCredentialsFile(snapshot.agentId);
+  if (!existsSync(credentialsFile)) {
+    return { changed: false, skipped: "credentials_missing" };
+  }
+
+  const credentials = loadStoredCredentials(credentialsFile);
+  let changed = false;
+
+  if (hasOwnField(snapshot, "runtime")) {
+    const runtime = cleanNullableString(snapshot.runtime);
+    if (runtime !== credentials.runtime) {
+      if (runtime) credentials.runtime = runtime;
+      else delete credentials.runtime;
+      changed = true;
+    }
+  }
+
+  if (hasOwnField(snapshot, "runtimeModel")) {
+    const runtimeModel = cleanNullableString(snapshot.runtimeModel);
+    if (runtimeModel !== credentials.runtimeModel) {
+      if (runtimeModel) credentials.runtimeModel = runtimeModel;
+      else delete credentials.runtimeModel;
+      changed = true;
+    }
+  }
+
+  if (hasOwnField(snapshot, "reasoningEffort")) {
+    const reasoningEffort = cleanNullableString(snapshot.reasoningEffort);
+    if (reasoningEffort !== credentials.reasoningEffort) {
+      if (reasoningEffort) credentials.reasoningEffort = reasoningEffort;
+      else delete credentials.reasoningEffort;
+      changed = true;
+    }
+  }
+
+  if (hasOwnField(snapshot, "thinking")) {
+    if (typeof snapshot.thinking === "boolean") {
+      if (credentials.thinking !== snapshot.thinking) {
+        credentials.thinking = snapshot.thinking;
+        changed = true;
+      }
+    } else if (typeof credentials.thinking === "boolean") {
+      delete credentials.thinking;
+      changed = true;
+    }
+  }
+
+  if (!changed) return { changed: false };
+
+  writeCredentialsFile(credentialsFile, credentials);
+  if (ctx.gateway) {
+    upsertManagedRouteForCredentials(credentials, loadConfig(), ctx.gateway);
+    return { changed: true, routeUpdated: true };
+  }
+  return { changed: true };
+}
+
 /**
  * Reconcile every agent identity carried by the `hello.agents` snapshot
- * against the on-disk `identity.md`. Best-effort: a malformed entry or a
- * file-system error for one agent never aborts the rest.
+ * against the on-disk `identity.md` and credentials runtime selectors.
+ * Best-effort: a malformed entry or a file-system error for one agent never
+ * aborts the rest.
  *
  * Identity-snapshot semantics intentionally only touch the metadata
  * line + Bio body — Role/Boundaries paragraphs the user authored locally
@@ -2423,6 +2520,7 @@ interface HelloIdentityResult {
  */
 export function applyHelloIdentitySnapshot(
   snapshot: AgentIdentitySnapshot[] | undefined,
+  ctx: RuntimeSnapshotCtx = {},
 ): HelloIdentityResult {
   const out: HelloIdentityResult = { updated: 0, skipped: 0 };
   if (!Array.isArray(snapshot)) return out;
@@ -2436,7 +2534,8 @@ export function applyHelloIdentitySnapshot(
         displayName: entry.displayName,
         bio: entry.bio,
       });
-      if (result.changed) out.updated += 1;
+      const runtimeResult = applyAgentRuntimeSnapshot(entry, ctx);
+      if (result.changed || runtimeResult.changed) out.updated += 1;
       else out.skipped += 1;
     } catch (err) {
       out.skipped += 1;

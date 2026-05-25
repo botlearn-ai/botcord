@@ -951,7 +951,15 @@ const userApi = {
 
   async updateAgent(
     agentId: string,
-    patch: { display_name?: string; bio?: string | null; avatar_url?: string | null; is_default?: boolean },
+    patch: {
+      display_name?: string;
+      bio?: string | null;
+      avatar_url?: string | null;
+      is_default?: boolean;
+      runtime_model?: string | null;
+      reasoning_effort?: string | null;
+      thinking?: boolean | null;
+    },
   ): Promise<{
     agent_id: string;
     display_name: string;
@@ -959,6 +967,12 @@ const userApi = {
     avatar_url: string | null;
     is_default: boolean;
     claimed_at: string | null;
+    daemon_instance_id?: string | null;
+    hosting_kind?: string | null;
+    runtime?: string | null;
+    runtime_model?: string | null;
+    reasoning_effort?: string | null;
+    thinking?: boolean | null;
   }> {
     const result = await apiPatch<{
       agent_id: string;
@@ -967,6 +981,12 @@ const userApi = {
       avatar_url: string | null;
       is_default: boolean;
       claimed_at: string | null;
+      daemon_instance_id?: string | null;
+      hosting_kind?: string | null;
+      runtime?: string | null;
+      runtime_model?: string | null;
+      reasoning_effort?: string | null;
+      thinking?: boolean | null;
     }>(`/api/users/me/agents/${agentId}`, patch);
     invalidateMeCache();
     return result;

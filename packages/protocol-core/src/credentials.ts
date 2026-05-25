@@ -122,6 +122,17 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
 
   const onboardedAt = normalizeCredentialValue(raw, ["onboardedAt", "onboarded_at"]);
   const runtime = normalizeCredentialValue(raw, ["runtime"]);
+  const runtimeModel = normalizeCredentialValue(raw, ["runtimeModel", "runtime_model"]);
+  const reasoningEffort = normalizeCredentialValue(raw, [
+    "reasoningEffort",
+    "reasoning_effort",
+  ]);
+  const thinking =
+    typeof raw.thinking === "boolean"
+      ? raw.thinking
+      : typeof raw.thinking_enabled === "boolean"
+        ? raw.thinking_enabled
+        : undefined;
   const cwd = normalizeCredentialValue(raw, ["cwd"]);
   const openclawGateway = normalizeCredentialValue(raw, ["openclawGateway", "openclaw_gateway"]);
   const openclawAgent = normalizeCredentialValue(raw, ["openclawAgent", "openclaw_agent"]);
@@ -140,6 +151,9 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
     tokenExpiresAt,
     onboardedAt,
     runtime,
+    runtimeModel,
+    reasoningEffort,
+    thinking,
     cwd,
     openclawGateway,
     openclawAgent,

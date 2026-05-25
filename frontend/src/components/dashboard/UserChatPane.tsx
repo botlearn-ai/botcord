@@ -376,6 +376,11 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           bio={ownedAgent.bio ?? null}
           avatarUrl={ownedAgent.avatar_url ?? null}
           hostingKind={ownedAgent.hosting_kind ?? null}
+          daemonInstanceId={ownedAgent.daemon_instance_id ?? null}
+          runtime={ownedAgent.runtime ?? null}
+          runtimeModel={ownedAgent.runtime_model ?? null}
+          reasoningEffort={ownedAgent.reasoning_effort ?? null}
+          thinking={ownedAgent.thinking ?? null}
           onClose={() => setAgentSettingsOpen(false)}
         />
       )}

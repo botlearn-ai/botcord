@@ -1736,6 +1736,71 @@ describe("update_agent handler", () => {
     });
   });
 
+  it("updates runtime selectors in credentials and managed route", async () => {
+    await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
+      mockState.cfg = {
+        defaultRoute: {
+          adapter: "codex",
+          cwd: tmp,
+          extraArgs: ["--skip-git-repo-check"],
+        },
+        routes: [],
+        streamBlocks: true,
+      };
+      const credDir = nodePath.join(tmp, ".botcord", "credentials");
+      fs.mkdirSync(credDir, { recursive: true });
+      fs.writeFileSync(
+        nodePath.join(credDir, "ag_runtime.json"),
+        JSON.stringify({
+          version: 1,
+          hubUrl: "https://hub.example",
+          agentId: "ag_runtime",
+          keyId: "k_runtime",
+          privateKey: Buffer.alloc(32, 24).toString("base64"),
+          savedAt: new Date().toISOString(),
+        }),
+      );
+
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+      const ack = await provisioner({
+        id: "req_update_runtime",
+        type: CONTROL_FRAME_TYPES.UPDATE_AGENT,
+        params: {
+          agentId: "ag_runtime",
+          runtime: "codex",
+          runtimeModel: "gpt-5.2",
+          reasoningEffort: "high",
+          thinking: true,
+        },
+      });
+
+      expect(ack.ok).toBe(true);
+      expect((ack.result as { changed: boolean }).changed).toBe(true);
+
+      const saved = JSON.parse(
+        fs.readFileSync(nodePath.join(credDir, "ag_runtime.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(saved.runtime).toBe("codex");
+      expect(saved.runtimeModel).toBe("gpt-5.2");
+      expect(saved.reasoningEffort).toBe("high");
+      expect(saved.thinking).toBe(true);
+      expect(gw.listManagedRoutes()[0]).toMatchObject({
+        match: { accountId: "ag_runtime" },
+        runtime: "codex",
+        extraArgs: [
+          "--skip-git-repo-check",
+          "--model",
+          "gpt-5.2",
+          "-c",
+          'model_reasoning_effort="high"',
+        ],
+      });
+    });
+  });
+
   it("rejects update_agent without agentId", async () => {
     const gw = makeFakeGateway();
     const provisioner = createProvisioner({

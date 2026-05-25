@@ -136,6 +136,11 @@ class Agent(Base):
     # Runtime selected at creation (claude-code / codex / gemini / ...).
     # Null for agents created via bind_code.
     runtime: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Optional runtime selector fields cached by Hub and mirrored into the
+    # daemon's credentials file / managed route.
+    runtime_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reasoning_effort: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    thinking: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     signing_keys: Mapped[list["SigningKey"]] = relationship(back_populates="agent")
     challenges: Mapped[list["Challenge"]] = relationship(back_populates="agent")

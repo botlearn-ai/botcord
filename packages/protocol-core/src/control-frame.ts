@@ -305,6 +305,9 @@ export interface AgentIdentitySnapshot {
   displayName?: string;
   bio?: string | null;
   runtime?: string | null;
+  runtimeModel?: string | null;
+  reasoningEffort?: string | null;
+  thinking?: boolean | null;
 }
 
 /**

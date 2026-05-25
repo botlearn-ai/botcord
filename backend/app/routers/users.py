@@ -96,6 +96,9 @@ class PatchAgentBody(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=128)
     bio: str | None = Field(default=None, max_length=4000)
     avatar_url: str | None = None
+    runtime_model: str | None = Field(default=None, max_length=128)
+    reasoning_effort: str | None = Field(default=None, max_length=64)
+    thinking: bool | None = None
 
 
 class ClaimResolveBody(BaseModel):
@@ -144,6 +147,12 @@ def _agent_meta(agent: Agent) -> dict:
         "avatar_url": agent.avatar_url,
         "is_default": agent.is_default,
         "claimed_at": agent.claimed_at.isoformat() if agent.claimed_at else None,
+        "daemon_instance_id": agent.daemon_instance_id,
+        "hosting_kind": agent.hosting_kind,
+        "runtime": agent.runtime,
+        "runtime_model": agent.runtime_model,
+        "reasoning_effort": agent.reasoning_effort,
+        "thinking": agent.thinking,
     }
 
 
@@ -958,6 +967,9 @@ async def get_me(
                 "daemon_instance_id": a.daemon_instance_id,
                 "hosting_kind": a.hosting_kind,
                 "runtime": a.runtime,
+                "runtime_model": a.runtime_model,
+                "reasoning_effort": a.reasoning_effort,
+                "thinking": a.thinking,
             }
             for a in agents
         ],
@@ -995,6 +1007,9 @@ async def get_my_agents(
                 "daemon_instance_id": a.daemon_instance_id,
                 "hosting_kind": a.hosting_kind,
                 "runtime": a.runtime,
+                "runtime_model": a.runtime_model,
+                "reasoning_effort": a.reasoning_effort,
+                "thinking": a.thinking,
             }
             for a in agents
         ],
@@ -1076,7 +1091,7 @@ async def patch_agent(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update agent attributes (is_default, display_name, bio, avatar_url)."""
+    """Update agent attributes and daemon runtime selector options."""
     result = await db.execute(
         select(Agent).where(
             Agent.agent_id == agent_id,
@@ -1087,6 +1102,11 @@ async def patch_agent(
     agent = result.scalar_one_or_none()
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+    body_fields_raw = getattr(body, "model_fields_set", None)
+    if body_fields_raw is None:
+        body_fields_raw = getattr(body, "__fields_set__", set())
+    body_fields = set(body_fields_raw)
 
     if body.is_default is True:
         # Unset default on all other agents for this user
@@ -1110,9 +1130,9 @@ async def patch_agent(
             agent.display_name = name
             identity_changed = True
 
-    if body.bio is not None:
+    if "bio" in body_fields:
         # Normalise empty string to NULL so it reads as "no bio" downstream.
-        bio = body.bio.strip() or None
+        bio = (body.bio.strip() or None) if body.bio is not None else None
         if agent.bio != bio:
             agent.bio = bio
             identity_changed = True
@@ -1125,18 +1145,68 @@ async def patch_agent(
         if agent.avatar_url != avatar_url:
             agent.avatar_url = avatar_url
 
+    runtime_option_fields = {"runtime_model", "reasoning_effort", "thinking"}
+    runtime_options_requested = bool(body_fields & runtime_option_fields)
+    if runtime_options_requested:
+        if not agent.runtime:
+            raise HTTPException(status_code=409, detail="runtime_unavailable")
+        if not agent.daemon_instance_id:
+            raise HTTPException(status_code=409, detail="daemon_instance_not_found")
+
+        daemon_result = await db.execute(
+            select(DaemonInstance).where(DaemonInstance.id == agent.daemon_instance_id)
+        )
+        instance = daemon_result.scalar_one_or_none()
+        if instance is None or str(instance.user_id) != str(ctx.user_id):
+            raise HTTPException(status_code=409, detail="daemon_instance_not_found")
+
+        next_runtime_model = agent.runtime_model
+        next_reasoning_effort = agent.reasoning_effort
+        next_thinking = agent.thinking
+        if "runtime_model" in body_fields:
+            next_runtime_model = _clean_runtime_option(body.runtime_model)
+        if "reasoning_effort" in body_fields:
+            next_reasoning_effort = _clean_runtime_option(body.reasoning_effort)
+        if "thinking" in body_fields:
+            next_thinking = body.thinking
+
+        if not _daemon_lists_runtime(
+            instance,
+            agent.runtime,
+            next_runtime_model,
+            next_reasoning_effort,
+            next_thinking,
+        ):
+            raise HTTPException(status_code=409, detail="runtime_unavailable")
+
+        if agent.runtime_model != next_runtime_model:
+            agent.runtime_model = next_runtime_model
+        if agent.reasoning_effort != next_reasoning_effort:
+            agent.reasoning_effort = next_reasoning_effort
+        if agent.thinking != next_thinking:
+            agent.thinking = next_thinking
+
     await db.commit()
     await db.refresh(agent)
 
     # Best-effort live push to the daemon — fire-and-forget so a slow or
     # half-open daemon WS can never inflate this PATCH's latency. Offline
     # daemons reconcile via the `hello.agents` snapshot on next reconnect.
-    if identity_changed and agent.daemon_instance_id and is_daemon_online(agent.daemon_instance_id):
+    should_push_update = identity_changed or runtime_options_requested
+    if should_push_update and agent.daemon_instance_id and is_daemon_online(agent.daemon_instance_id):
         params: dict[str, object | None] = {"agentId": agent.agent_id}
         if body.display_name is not None:
             params["displayName"] = agent.display_name
-        if body.bio is not None:
+        if "bio" in body_fields:
             params["bio"] = agent.bio
+        if runtime_options_requested:
+            params["runtime"] = agent.runtime
+            if "runtime_model" in body_fields:
+                params["runtimeModel"] = agent.runtime_model
+            if "reasoning_effort" in body_fields:
+                params["reasoningEffort"] = agent.reasoning_effort
+            if "thinking" in body_fields:
+                params["thinking"] = agent.thinking
         task = asyncio.create_task(
             _push_update_agent_frame(agent.daemon_instance_id, agent.agent_id, params)
         )
@@ -1581,8 +1651,18 @@ class ProvisionAgentResponse(BaseModel):
     display_name: str
     avatar_url: str | None = None
     runtime: str
+    runtime_model: str | None = None
+    reasoning_effort: str | None = None
+    thinking: bool | None = None
     daemon_instance_id: str
     is_default: bool
+
+
+def _clean_runtime_option(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
 
 
 def _daemon_lists_runtime(
@@ -1798,6 +1878,8 @@ async def provision_agent(
     runtime = (body.runtime or "").strip()
     if not runtime:
         raise HTTPException(status_code=400, detail="runtime is required")
+    runtime_model = _clean_runtime_option(body.runtime_model)
+    reasoning_effort = _clean_runtime_option(body.reasoning_effort)
 
     result = await db.execute(
         select(DaemonInstance).where(DaemonInstance.id == body.daemon_instance_id)
@@ -1812,8 +1894,8 @@ async def provision_agent(
     if not _daemon_lists_runtime(
         instance,
         runtime,
-        body.runtime_model,
-        body.reasoning_effort,
+        runtime_model,
+        reasoning_effort,
         body.thinking,
         body.openclaw_gateway,
         body.hermes_profile,
@@ -1865,6 +1947,9 @@ async def provision_agent(
         is_default=is_first,
         claimed_at=now,
         runtime=runtime,
+        runtime_model=runtime_model,
+        reasoning_effort=reasoning_effort,
+        thinking=body.thinking,
         daemon_instance_id=body.daemon_instance_id,
         hosting_kind="daemon",
     )
@@ -1906,12 +1991,12 @@ async def provision_agent(
             "runtime": runtime,
         },
     }
-    if body.runtime_model:
-        frame_params["runtimeModel"] = body.runtime_model
-        frame_params["credentials"]["runtimeModel"] = body.runtime_model
-    if body.reasoning_effort:
-        frame_params["reasoningEffort"] = body.reasoning_effort
-        frame_params["credentials"]["reasoningEffort"] = body.reasoning_effort
+    if runtime_model:
+        frame_params["runtimeModel"] = runtime_model
+        frame_params["credentials"]["runtimeModel"] = runtime_model
+    if reasoning_effort:
+        frame_params["reasoningEffort"] = reasoning_effort
+        frame_params["credentials"]["reasoningEffort"] = reasoning_effort
     if body.thinking is not None:
         frame_params["thinking"] = body.thinking
         frame_params["credentials"]["thinking"] = body.thinking
@@ -1994,6 +2079,9 @@ async def provision_agent(
         display_name=agent.display_name,
         avatar_url=agent.avatar_url,
         runtime=runtime,
+        runtime_model=agent.runtime_model,
+        reasoning_effort=agent.reasoning_effort,
+        thinking=agent.thinking,
         daemon_instance_id=body.daemon_instance_id,
         is_default=agent.is_default,
     )

@@ -310,6 +310,11 @@ export default function BotsPanel({
           bio={agentSettingsBot.bio ?? null}
           avatarUrl={agentSettingsBot.avatar_url ?? null}
           hostingKind={agentSettingsBot.hosting_kind ?? null}
+          daemonInstanceId={agentSettingsBot.daemon_instance_id ?? null}
+          runtime={agentSettingsBot.runtime ?? null}
+          runtimeModel={agentSettingsBot.runtime_model ?? null}
+          reasoningEffort={agentSettingsBot.reasoning_effort ?? null}
+          thinking={agentSettingsBot.thinking ?? null}
           onClose={() => setAgentSettingsBot(null)}
           onSaved={() => setAgentSettingsBot(null)}
         />
