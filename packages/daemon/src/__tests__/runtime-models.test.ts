@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
+  discoverRuntimeModelCatalog,
   parseCodexModelCatalog,
   parseDeepseekModelList,
   parseKimiConfigModels,
@@ -53,6 +57,115 @@ describe("runtime model discovery parsers", () => {
         ],
       },
     ]);
+  });
+
+  it("parses Codex CLI cache descriptions", () => {
+    expect(
+      parseCodexModelCatalog(
+        JSON.stringify({
+          models: [
+            {
+              slug: "gpt-cache",
+              description: "Cached GPT",
+              visibility: "list",
+              supported_in_api: true,
+            },
+          ],
+        }),
+      ),
+    ).toEqual([
+      {
+        id: "gpt-cache",
+        displayName: "Cached GPT",
+        provider: "openai",
+        source: "cli",
+        metadata: { supportedInApi: true },
+      },
+    ]);
+  });
+
+  it("uses the Codex CLI model cache when live discovery is unavailable", () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "daemon-codex-cache-"));
+    const prevHome = process.env.HOME;
+    const prevCodexHome = process.env.CODEX_HOME;
+    try {
+      const codexHome = path.join(tmp, "codex-home");
+      mkdirSync(codexHome, { recursive: true });
+      process.env.HOME = path.join(tmp, "home");
+      process.env.CODEX_HOME = codexHome;
+      writeFileSync(
+        path.join(codexHome, "models_cache.json"),
+        JSON.stringify({
+          models: [
+            {
+              slug: "gpt-cache",
+              description: "Cached GPT",
+              visibility: "list",
+            },
+          ],
+        }),
+      );
+
+      const catalog = discoverRuntimeModelCatalog({
+        id: "codex",
+        displayName: "Codex",
+        binary: "codex",
+        supportsRun: true,
+        result: { available: true, path: path.join(tmp, "missing-codex") },
+      });
+
+      expect(catalog.models).toEqual([
+        {
+          id: "gpt-cache",
+          displayName: "Cached GPT",
+          provider: "openai",
+          source: "cli",
+        },
+      ]);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = prevCodexHome;
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to built-in Codex models and persists the runtime catalog cache", () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "daemon-runtime-catalog-"));
+    const prevHome = process.env.HOME;
+    const prevCodexHome = process.env.CODEX_HOME;
+    const prevCacheDir = process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR;
+    try {
+      const codexHome = path.join(tmp, "codex-home");
+      const cacheDir = path.join(tmp, "catalog-cache");
+      mkdirSync(codexHome, { recursive: true });
+      process.env.HOME = path.join(tmp, "home");
+      process.env.CODEX_HOME = codexHome;
+      process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR = cacheDir;
+
+      const catalog = discoverRuntimeModelCatalog({
+        id: "codex",
+        displayName: "Codex",
+        binary: "codex",
+        supportsRun: true,
+        result: { available: true, path: path.join(tmp, "missing-codex") },
+      });
+
+      expect(catalog.models?.map((m) => m.id)).toContain("gpt-5.2");
+      expect(readdirSync(cacheDir)).toEqual(["codex.json"]);
+      const payload = JSON.parse(readFileSync(path.join(cacheDir, "codex.json"), "utf8"));
+      expect(payload.runtimeId).toBe("codex");
+      expect(payload.catalog.models.map((m: { id: string }) => m.id)).toContain("gpt-5.2");
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = prevCodexHome;
+      if (prevCacheDir === undefined) delete process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR;
+      else process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR = prevCacheDir;
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it("parses DeepSeek model list output", () => {

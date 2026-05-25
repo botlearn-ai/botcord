@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { RuntimeModelProbe, RuntimeParameterProbe } from "@botcord/protocol-core";
@@ -7,6 +7,14 @@ import type { RuntimeProbeEntry } from "./adapters/runtimes.js";
 
 const MODEL_LIST_TIMEOUT_MS = 5000;
 const MODEL_LIST_MAX_BUFFER = 16 * 1024 * 1024;
+const RUNTIME_CATALOG_CACHE_VERSION = 1;
+const RUNTIME_CATALOG_CACHE_FRESH_MS = 10 * 60 * 1000;
+const DEFAULT_RUNTIME_CATALOG_CACHE_DIR = path.join(
+  homedir(),
+  ".botcord",
+  "daemon",
+  "runtime-catalog-cache",
+);
 
 const CLAUDE_ALIAS_MODELS: RuntimeModelProbe[] = [
   { id: "default", displayName: "Default", provider: "anthropic", source: "builtin" },
@@ -42,26 +50,143 @@ const DEEPSEEK_PROVIDER_VALUES = [
   "ollama",
 ];
 
+const CODEX_FALLBACK_MODELS: RuntimeModelProbe[] = [
+  { id: "gpt-5.2", displayName: "GPT-5.2", provider: "openai", source: "builtin" },
+  { id: "gpt-5.1", displayName: "GPT-5.1", provider: "openai", source: "builtin" },
+  { id: "gpt-5", displayName: "GPT-5", provider: "openai", source: "builtin" },
+  { id: "o4-mini", displayName: "o4-mini", provider: "openai", source: "builtin" },
+];
+
+const DEEPSEEK_FALLBACK_MODELS: RuntimeModelProbe[] = [
+  { id: "deepseek-v4-flash", displayName: "deepseek-v4-flash", provider: "deepseek", source: "builtin" },
+];
+
+const KIMI_FALLBACK_MODELS: RuntimeModelProbe[] = [
+  { id: "kimi-code/kimi-for-coding", displayName: "Kimi for Coding", provider: "managed:kimi-code", source: "builtin" },
+  { id: "kimi-k2-5", displayName: "kimi-k2-5", provider: "kimi", source: "builtin" },
+  { id: "kimi-k2-5-preview", displayName: "kimi-k2-5-preview", provider: "kimi", source: "builtin" },
+  { id: "kimi-k2-0711", displayName: "kimi-k2-0711", provider: "kimi", source: "builtin" },
+];
+
 export interface RuntimeModelDiscovery {
   models?: RuntimeModelProbe[];
   parameters?: RuntimeParameterProbe[];
 }
 
+interface RuntimeCatalogStrategy {
+  id: string;
+  contextKey: string;
+  discoverFresh(): RuntimeModelDiscovery;
+  fallback?(): RuntimeModelDiscovery;
+}
+
+interface RuntimeCatalogCacheFile {
+  version: number;
+  runtimeId: string;
+  contextKey: string;
+  updatedAt: number;
+  catalog?: RuntimeModelDiscovery;
+}
+
+const backgroundRefreshes = new Set<string>();
+
 export function discoverRuntimeModelCatalog(entry: RuntimeProbeEntry): RuntimeModelDiscovery {
   if (!entry.result.available) return {};
+  const strategy = runtimeCatalogStrategy(entry);
+  if (!strategy) return {};
+  return discoverRuntimeCatalogWithCache(strategy);
+}
+
+function runtimeCatalogStrategy(entry: RuntimeProbeEntry): RuntimeCatalogStrategy | null {
+  switch (entry.id) {
+    case "claude-code":
+      return {
+        id: entry.id,
+        contextKey: runtimeCatalogContextKey(entry, {
+          settings: fileStatKey(path.join(homedir(), ".claude", "settings.json")),
+          env: pickEnv([
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_CUSTOM_MODEL_OPTION",
+          ]),
+        }),
+        discoverFresh: discoverClaudeCatalog,
+        fallback: () => ({ models: CLAUDE_ALIAS_MODELS.slice(), parameters: discoverClaudeParameters() }),
+      };
+    case "codex":
+      return {
+        id: entry.id,
+        contextKey: runtimeCatalogContextKey(entry, {
+          codexHome: codexHomeDir(),
+          config: fileStatKey(path.join(codexHomeDir(), "config.toml")),
+          cliCache: fileStatKey(codexModelCachePath()),
+          env: pickEnv(["OPENAI_BASE_URL", "CODEX_HOME"]),
+        }),
+        discoverFresh: () => discoverCodexCatalog(entry.result.path),
+        fallback: () => ({ models: CODEX_FALLBACK_MODELS.slice(), parameters: discoverCodexParameters(null) }),
+      };
+    case "deepseek-tui":
+      return {
+        id: entry.id,
+        contextKey: runtimeCatalogContextKey(entry, {
+          config: fileStatKey(path.join(homedir(), ".deepseek", "config.toml")),
+          env: pickEnv(["BOTCORD_DEEPSEEK_TUI_BIN", "BOTCORD_DEEPSEEK_TUI_URL"]),
+        }),
+        discoverFresh: () => discoverDeepseekCatalog(entry.result.path),
+        fallback: () => ({
+          models: DEEPSEEK_FALLBACK_MODELS.slice(),
+          parameters: discoverDeepseekParameters(),
+        }),
+      };
+    case "kimi-cli":
+      return {
+        id: entry.id,
+        contextKey: runtimeCatalogContextKey(entry, {
+          config: fileStatKey(path.join(homedir(), ".kimi", "config.toml")),
+          env: pickEnv(["BOTCORD_KIMI_CLI_BIN"]),
+        }),
+        discoverFresh: discoverKimiCatalog,
+        fallback: () => ({
+          models: KIMI_FALLBACK_MODELS.slice(),
+          parameters: [
+            {
+              id: "thinking",
+              displayName: "Thinking",
+              type: "boolean",
+              flag: "--thinking/--no-thinking",
+              source: "builtin",
+            },
+          ],
+        }),
+      };
+    default:
+      return null;
+  }
+}
+
+function discoverRuntimeCatalogWithCache(strategy: RuntimeCatalogStrategy): RuntimeModelDiscovery {
+  const cached = readRuntimeCatalogCache(strategy.id, strategy.contextKey);
+  if (cached && Date.now() - cached.updatedAt < RUNTIME_CATALOG_CACHE_FRESH_MS) {
+    scheduleRuntimeCatalogRefresh(strategy);
+    return cached.catalog;
+  }
+
   try {
-    switch (entry.id) {
-      case "claude-code":
-        return discoverClaudeCatalog();
-      case "codex":
-        return discoverCodexCatalog(entry.result.path);
-      case "deepseek-tui":
-        return discoverDeepseekCatalog(entry.result.path);
-      case "kimi-cli":
-        return discoverKimiCatalog();
-      default:
-        return {};
+    const fresh = completeCatalogWithFallback(strategy.discoverFresh(), strategy);
+    if (hasCatalogData(fresh)) {
+      writeRuntimeCatalogCache(strategy.id, strategy.contextKey, fresh);
+      return fresh;
     }
+  } catch {
+    // Fall through to stale cache or built-in fallback.
+  }
+
+  if (cached) return cached.catalog;
+
+  try {
+    const fallback = strategy.fallback?.() ?? {};
+    return hasCatalogData(fallback) ? fallback : {};
   } catch {
     return {};
   }
@@ -73,6 +198,19 @@ export function discoverRuntimeModels(entry: RuntimeProbeEntry): RuntimeModelPro
 
 export function discoverRuntimeParameters(entry: RuntimeProbeEntry): RuntimeParameterProbe[] | undefined {
   return discoverRuntimeModelCatalog(entry).parameters;
+}
+
+function completeCatalogWithFallback(
+  catalog: RuntimeModelDiscovery,
+  strategy: RuntimeCatalogStrategy,
+): RuntimeModelDiscovery {
+  if (catalog.models?.length) return catalog;
+  const fallback = strategy.fallback?.();
+  if (!fallback?.models?.length) return catalog;
+  return {
+    ...catalog,
+    models: fallback.models,
+  };
 }
 
 function discoverClaudeCatalog(): RuntimeModelDiscovery {
@@ -161,9 +299,10 @@ function discoverClaudeParameters(): RuntimeParameterProbe[] {
 
 function discoverCodexCatalog(command: string | undefined): RuntimeModelDiscovery {
   const raw = runCommand(codexCommand(command), ["debug", "models"]);
+  const fallbackRaw = raw ?? readCodexModelCacheRaw();
   return {
-    models: raw ? parseCodexModelCatalog(raw) : undefined,
-    parameters: discoverCodexParameters(raw),
+    models: fallbackRaw ? parseCodexModelCatalog(fallbackRaw) : undefined,
+    parameters: discoverCodexParameters(fallbackRaw),
   };
 }
 
@@ -187,7 +326,7 @@ export function parseCodexModelCatalog(raw: string): RuntimeModelProbe[] | undef
       provider: "openai",
       source: "cli",
     };
-    const displayName = stringField(obj, "display_name");
+    const displayName = stringField(obj, "display_name") ?? stringField(obj, "description");
     if (displayName) model.displayName = displayName;
 
     const metadata: Record<string, unknown> = {};
@@ -500,6 +639,238 @@ export function parseKimiRuntimeParameters(raw: string): RuntimeParameterProbe[]
       source: "config",
     }),
   ];
+}
+
+function runtimeCatalogContextKey(
+  entry: RuntimeProbeEntry,
+  extra: Record<string, unknown>,
+): string {
+  return JSON.stringify({
+    runtime: entry.id,
+    path: entry.result.path ?? null,
+    version: entry.result.version ?? null,
+    home: homedir(),
+    ...extra,
+  });
+}
+
+function runtimeCatalogCacheDir(): string | null {
+  const explicit = process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR;
+  if (explicit && explicit.length > 0) return expandLeadingTilde(explicit);
+  // Keep unit tests from writing to a developer's real ~/.botcord unless a
+  // test opts into a temp cache directory explicitly.
+  if (process.env.NODE_ENV === "test") return null;
+  if (process.env.BOTCORD_RUNTIME_CATALOG_CACHE === "0") return null;
+  return DEFAULT_RUNTIME_CATALOG_CACHE_DIR;
+}
+
+function runtimeCatalogCachePath(runtimeId: string): string | null {
+  const dir = runtimeCatalogCacheDir();
+  if (!dir) return null;
+  const safe = runtimeId.replace(/[^A-Za-z0-9_.-]+/g, "_");
+  return path.join(dir, `${safe}.json`);
+}
+
+function readRuntimeCatalogCache(
+  runtimeId: string,
+  contextKey: string,
+): { updatedAt: number; catalog: RuntimeModelDiscovery } | null {
+  const file = runtimeCatalogCachePath(runtimeId);
+  if (!file) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as RuntimeCatalogCacheFile;
+    if (!parsed || typeof parsed !== "object") return null;
+    if (parsed.version !== RUNTIME_CATALOG_CACHE_VERSION) return null;
+    if (parsed.runtimeId !== runtimeId || parsed.contextKey !== contextKey) return null;
+    if (typeof parsed.updatedAt !== "number" || parsed.updatedAt <= 0) return null;
+    const catalog = normalizeCachedCatalog(parsed.catalog);
+    if (!catalog) return null;
+    return { updatedAt: parsed.updatedAt, catalog };
+  } catch {
+    return null;
+  }
+}
+
+function writeRuntimeCatalogCache(
+  runtimeId: string,
+  contextKey: string,
+  catalog: RuntimeModelDiscovery,
+): void {
+  if (!hasCatalogData(catalog)) return;
+  const file = runtimeCatalogCachePath(runtimeId);
+  if (!file) return;
+  try {
+    mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    const tmp = `${file}.${process.pid}.tmp`;
+    const payload: RuntimeCatalogCacheFile = {
+      version: RUNTIME_CATALOG_CACHE_VERSION,
+      runtimeId,
+      contextKey,
+      updatedAt: Date.now(),
+      catalog,
+    };
+    writeFileSync(tmp, JSON.stringify(payload, null, 2), { mode: 0o600 });
+    renameSync(tmp, file);
+  } catch {
+    // Cache writes must never affect runtime discovery.
+  }
+}
+
+function scheduleRuntimeCatalogRefresh(strategy: RuntimeCatalogStrategy): void {
+  if (process.env.NODE_ENV === "test") return;
+  if (process.env.BOTCORD_RUNTIME_CATALOG_BACKGROUND_REFRESH === "0") return;
+  const cacheKey = `${strategy.id}:${strategy.contextKey}`;
+  if (backgroundRefreshes.has(cacheKey)) return;
+  backgroundRefreshes.add(cacheKey);
+  const timer = setTimeout(() => {
+    try {
+      const fresh = completeCatalogWithFallback(strategy.discoverFresh(), strategy);
+      if (hasCatalogData(fresh)) {
+        writeRuntimeCatalogCache(strategy.id, strategy.contextKey, fresh);
+      }
+    } catch {
+      // Keep serving the previous cache entry.
+    } finally {
+      backgroundRefreshes.delete(cacheKey);
+    }
+  }, 0);
+  timer.unref?.();
+}
+
+function normalizeCachedCatalog(raw: unknown): RuntimeModelDiscovery | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  const models = normalizeCachedModels(obj.models);
+  const parameters = normalizeCachedParameters(obj.parameters);
+  const out: RuntimeModelDiscovery = {};
+  if (models?.length) out.models = models;
+  if (parameters?.length) out.parameters = parameters;
+  return hasCatalogData(out) ? out : null;
+}
+
+function normalizeCachedModels(raw: unknown): RuntimeModelProbe[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const models = raw
+    .map((item): RuntimeModelProbe | null => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+      const obj = item as Record<string, unknown>;
+      const id = stringField(obj, "id");
+      if (!id) return null;
+      const model: RuntimeModelProbe = { id };
+      const displayName = stringField(obj, "displayName");
+      if (displayName) model.displayName = displayName;
+      const provider = stringField(obj, "provider");
+      if (provider) model.provider = provider;
+      const source = stringField(obj, "source");
+      if (isRuntimeCatalogSource(source)) model.source = source;
+      if (obj.isDefault === true) model.isDefault = true;
+      const capabilities = arrayField(obj, "capabilities").filter(
+        (cap): cap is string => typeof cap === "string" && cap.length > 0,
+      );
+      if (capabilities.length) model.capabilities = capabilities;
+      if (typeof obj.contextLength === "number") model.contextLength = obj.contextLength;
+      if (obj.metadata && typeof obj.metadata === "object" && !Array.isArray(obj.metadata)) {
+        model.metadata = obj.metadata as Record<string, unknown>;
+      }
+      const parameters = normalizeCachedParameters(obj.parameters);
+      if (parameters?.length) model.parameters = parameters;
+      return model;
+    })
+    .filter((model): model is RuntimeModelProbe => !!model);
+  return models.length ? models : undefined;
+}
+
+function normalizeCachedParameters(raw: unknown): RuntimeParameterProbe[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const parameters = raw
+    .map((item): RuntimeParameterProbe | null => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+      const obj = item as Record<string, unknown>;
+      const id = stringField(obj, "id");
+      const type = stringField(obj, "type");
+      if (!id || !isRuntimeParameterType(type)) return null;
+      const param: RuntimeParameterProbe = { id, type };
+      const displayName = stringField(obj, "displayName");
+      if (displayName) param.displayName = displayName;
+      const flag = stringField(obj, "flag");
+      if (flag) param.flag = flag;
+      const values = arrayField(obj, "values").filter(isRuntimeParameterValue);
+      if (values.length) param.values = values;
+      if (isRuntimeParameterValue(obj.defaultValue)) param.defaultValue = obj.defaultValue;
+      if (typeof obj.minimum === "number") param.minimum = obj.minimum;
+      if (typeof obj.maximum === "number") param.maximum = obj.maximum;
+      const source = stringField(obj, "source");
+      if (isRuntimeCatalogSource(source)) param.source = source;
+      if (obj.metadata && typeof obj.metadata === "object" && !Array.isArray(obj.metadata)) {
+        param.metadata = obj.metadata as Record<string, unknown>;
+      }
+      return param;
+    })
+    .filter((param): param is RuntimeParameterProbe => !!param);
+  return parameters.length ? parameters : undefined;
+}
+
+function isRuntimeCatalogSource(value: string | undefined): value is RuntimeModelProbe["source"] {
+  return (
+    value === "builtin" ||
+    value === "config" ||
+    value === "cli" ||
+    value === "api" ||
+    value === "gateway" ||
+    value === "env"
+  );
+}
+
+function isRuntimeParameterType(value: string | undefined): value is RuntimeParameterProbe["type"] {
+  return value === "enum" || value === "boolean" || value === "integer" || value === "string";
+}
+
+function isRuntimeParameterValue(value: unknown): value is string | number | boolean {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
+
+function hasCatalogData(catalog: RuntimeModelDiscovery): boolean {
+  return !!(catalog.models?.length || catalog.parameters?.length);
+}
+
+function fileStatKey(file: string): string | null {
+  try {
+    const st = statSync(file);
+    return `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return null;
+  }
+}
+
+function pickEnv(names: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) out[name] = value;
+  }
+  return out;
+}
+
+function codexHomeDir(): string {
+  return process.env.CODEX_HOME ? expandLeadingTilde(process.env.CODEX_HOME) : path.join(homedir(), ".codex");
+}
+
+function codexModelCachePath(): string {
+  return path.join(codexHomeDir(), "models_cache.json");
+}
+
+function readCodexModelCacheRaw(): string | null {
+  try {
+    return readFileSync(codexModelCachePath(), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function expandLeadingTilde(value: string): string {
+  if (value === "~") return homedir();
+  if (value.startsWith("~/")) return path.join(homedir(), value.slice(2));
+  return value;
 }
 
 function codexCommand(command: string | undefined): string[] {
