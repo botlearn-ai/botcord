@@ -66,7 +66,7 @@ from hub.models import (
 )
 from hub.routers.daemon_control import is_daemon_online, send_control_frame
 from hub.enums import ApprovalKind, ApprovalState, ParticipantType
-from hub.policy import Principal, check_direct_admission
+from hub.policy import Principal, check_direct_admission, resolve_effective_attention
 from hub.prompt_guard import scan_content, InjectionRisk
 from hub.schemas import (
     HistoryMessage,
@@ -86,6 +86,17 @@ from hub.schemas import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/hub", tags=["hub"])
+
+
+def _wire_attention_policy(eff) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "mode": eff.mode.value if hasattr(eff.mode, "value") else str(eff.mode),
+        "keywords": list(eff.keywords or []),
+        "allowedSenderIds": list(eff.allowed_sender_ids or []),
+    }
+    if eff.muted_until is not None:
+        payload["muted_until"] = int(eff.muted_until.timestamp() * 1000)
+    return payload
 
 # ---------------------------------------------------------------------------
 # In-memory rate-limit state: agent_id → deque of timestamps
@@ -533,6 +544,24 @@ async def notify_inbox(
         await _publish_agent_realtime_event(db, realtime_event)
 
     return notified
+
+
+@router.get("/attention-policy")
+async def get_attention_policy(
+    room_id: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_current_claimed_agent),
+):
+    """Return the effective daemon attention policy for the authenticated agent.
+
+    Local daemons use this on policy-cache misses so a daemon restart after a
+    dashboard-side policy change does not silently fall back to ``always``.
+    """
+    agent = await db.scalar(select(Agent).where(Agent.agent_id == current_agent))
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    eff = await resolve_effective_attention(db, agent=agent, room_id=room_id)
+    return _wire_attention_policy(eff)
 
 
 # ---------------------------------------------------------------------------
@@ -1264,8 +1293,9 @@ async def _send_room_message(
         and not (_self_delivery and rid == envelope.from_)
         and rid not in owner_chat_human_receivers
     }
+    waking_agent_receivers: set[str] = set()
     if _agent_receivers:
-        await maybe_bump_for_inbound_many(
+        waking_agent_receivers = await maybe_bump_for_inbound_many(
             db,
             receiver_ids=_agent_receivers,
             sender_id=envelope.from_,
@@ -1304,7 +1334,12 @@ async def _send_room_message(
                 # Dedicated owner-chat WS handles immediate dashboard delivery.
                 pass
             else:
-                await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
+                await notify_inbox(
+                    receiver_id,
+                    db=db,
+                    realtime_event=rt_event,
+                    resume_cloud=is_owner_chat or receiver_id in waking_agent_receivers,
+                )
         except Exception as exc:
             logger.error(
                 "Room fan-out notify failed: receiver=%s room=%s msg_id=%s err=%s",

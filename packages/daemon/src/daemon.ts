@@ -50,6 +50,7 @@ import { UserAuthManager } from "./user-auth.js";
 import { PolicyResolver, type DaemonAttentionPolicy } from "./gateway/policy-resolver.js";
 import { scanMention } from "./mention-scan.js";
 import { createDiagnosticBundle, uploadDiagnosticBundle } from "./diagnostics.js";
+import { createAttentionPolicyFetcher } from "./attention-policy-fetcher.js";
 
 /**
  * Default hard cap for a single runtime turn. Long-running coding/research
@@ -442,13 +443,20 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     });
   };
 
-  // Per-agent attention policy cache (PR3, design §4.2 / §5). Seeded from
-  // the optional `defaultAttention` / `attentionKeywords` carried by
-  // `provision_agent`, refreshed in-place by the `policy_updated` control
-  // frame. PR2 will plug per-room overrides into `fetchEffective`; PR3
-  // leaves it absent so the resolver collapses to per-agent state.
+  // Per-agent attention policy cache (design §4.2 / §5). It is seeded from
+  // `provision_agent` / `policy_updated` frames when available and falls back
+  // to Hub on cold misses, so daemon restarts preserve dashboard policy.
+  const fetchAttentionPolicy = createAttentionPolicyFetcher({
+    credentialPathByAgentId,
+    defaultCredentialsPath: opts.credentialsPath,
+    hubBaseUrl: opts.hubBaseUrl,
+    log: logger,
+  });
   const policyResolver = new PolicyResolver({
-    fetchGlobal: async (_agentId: string) => undefined,
+    fetchGlobal: async (agentId: string) =>
+      fetchAttentionPolicy({ agentId, roomId: null }),
+    fetchEffective: async (agentId: string, roomId: string) =>
+      fetchAttentionPolicy({ agentId, roomId }),
   });
 
   // Display-name lookup for the mention text-fallback. Populated from boot

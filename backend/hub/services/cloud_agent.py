@@ -1192,6 +1192,10 @@ class CloudAgentService:
                 "runtime": cai.runtime,
             },
         }
+        params["defaultAttention"] = _attention_mode_value(agent.default_attention)
+        params["attentionKeywords"] = _decode_attention_keywords(
+            agent.attention_keywords
+        )
         runtime_options = _cloud_agent_runtime_options(cai)
         runtime_model = runtime_options.get("runtime_model")
         reasoning_effort = runtime_options.get("reasoning_effort")
@@ -1552,6 +1556,24 @@ def _scrub_provisioning_metadata(cai: CloudAgentInstance) -> None:
     # when we mutate-in-place; assigning a fresh dict above already
     # triggers it, but flag_modified is the safer pattern here.
     flag_modified(cai, "metadata_json")
+
+
+def _decode_attention_keywords(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(x) for x in parsed if isinstance(x, str)]
+
+
+def _attention_mode_value(raw: Any) -> str:
+    if raw is None:
+        return "always"
+    return raw.value if hasattr(raw, "value") else str(raw)
 
 
 def _clean_runtime_option(value: Any) -> str | None:

@@ -65,6 +65,7 @@ from hub.routers.hub import (
     is_agent_ws_online,
     notify_inbox,
 )
+from hub.services.cloud_agent_activity import maybe_bump_for_inbound_many
 from hub.share_payloads import SHARE_MESSAGE_PREVIEW_LIMIT, share_create_payload
 from hub.validators import normalize_file_url
 
@@ -2885,6 +2886,19 @@ async def human_room_send(
             if first_hub_msg_id is None:
                 first_hub_msg_id = existing.hub_msg_id
 
+    waking_agent_receivers: set[str] = set()
+    agent_receiver_ids = {rid for rid in receiver_ids if rid.startswith("ag_")}
+    if agent_receiver_ids:
+        waking_agent_receivers = await maybe_bump_for_inbound_many(
+            db,
+            receiver_ids=agent_receiver_ids,
+            sender_id=sender_id,
+            room_id=room_id,
+            text=text,
+            mentioned_set=mentioned_set,
+            message_type="message",
+        )
+
     await db.commit()
 
     # Fetch user display name for realtime event
@@ -2908,7 +2922,13 @@ async def human_room_send(
                 source_user_id=source_user_id_str,
                 source_user_name=user_display_name,
             )
-            await notify_inbox(receiver_id, db=db, realtime_event=rt_event)
+            await notify_inbox(
+                receiver_id,
+                db=db,
+                realtime_event=rt_event,
+                resume_cloud=room_id.startswith("rm_oc_")
+                or receiver_id in waking_agent_receivers,
+            )
         except Exception as exc:
             _logger.error(
                 "Human room fan-out notify failed receiver=%s room=%s err=%s",

@@ -793,6 +793,40 @@ async def test_mentions_set_mentioned_flag_per_receiver(
 
 
 @pytest.mark.asyncio
+async def test_room_send_does_not_resume_cloud_when_attention_filters(
+    client: AsyncClient, seed: dict, monkeypatch
+):
+    import app.routers.dashboard as dashboard_mod
+
+    bump_calls: list[dict] = []
+    notify_calls: list[tuple[str, bool]] = []
+
+    async def fake_bump_many(db, **kwargs):
+        bump_calls.append(kwargs)
+        return set()
+
+    async def fake_notify_inbox(
+        agent_id, *, db=None, realtime_event=None, resume_cloud=True
+    ):
+        notify_calls.append((agent_id, resume_cloud))
+        return 0
+
+    monkeypatch.setattr(dashboard_mod, "maybe_bump_for_inbound_many", fake_bump_many)
+    monkeypatch.setattr(dashboard_mod, "notify_inbox", fake_notify_inbox)
+
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "plain group chatter"},
+    )
+    assert r.status_code == 202, r.text
+
+    assert bump_calls
+    assert bump_calls[0]["mentioned_set"] == set()
+    assert dict(notify_calls)["ag_user3___"] is False
+
+
+@pytest.mark.asyncio
 async def test_mentions_filter_non_member_agent_ids(
     client: AsyncClient, seed: dict, db_session: AsyncSession
 ):
