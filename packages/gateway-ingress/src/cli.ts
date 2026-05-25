@@ -15,6 +15,7 @@ async function main(): Promise<void> {
     hubUrl: config.hubUrl,
     dataDir: config.dataDir,
     healthPort: config.healthPort,
+    adminPort: config.adminPort,
   });
   const service = await startIngress({ config });
 
