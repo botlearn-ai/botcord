@@ -741,10 +741,12 @@ function StreamBlockItem({
 export default function StreamBlocksView({
   blocks,
   defaultExpanded,
+  showComposing = false,
   onScrollRequest,
 }: {
   blocks: StreamBlockEntry[];
   defaultExpanded?: boolean;
+  showComposing?: boolean;
   onScrollRequest?: () => void;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
@@ -787,7 +789,7 @@ export default function StreamBlocksView({
     }
     return parts.join("");
   }
-  const composingText = buildComposingText();
+  const composingText = showComposing ? buildComposingText() : "";
 
   useEffect(() => {
     onScrollRequest?.();
