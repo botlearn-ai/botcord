@@ -835,18 +835,17 @@ export default function StreamBlocksView({
                     toolNameById={toolNameById}
                   />
                 ))}
+                {composingText && (
+                  <div className="py-2">
+                    <div className="mb-1 flex items-center gap-1.5">
+                      <Bot className="w-3 h-3 text-zinc-400" />
+                      <span className="text-xs text-zinc-400">Composing...</span>
+                    </div>
+                    <MarkdownContent content={composingText} />
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-
-        {composingText && (
-          <div className="rounded-lg px-3 py-2 bg-zinc-800 border border-zinc-700 text-sm text-zinc-200">
-            <div className="mb-1 flex items-center gap-1.5">
-              <Bot className="w-3 h-3 text-zinc-400" />
-              <span className="text-xs text-zinc-400">Composing...</span>
-            </div>
-            <MarkdownContent content={composingText} />
           </div>
         )}
       </div>
