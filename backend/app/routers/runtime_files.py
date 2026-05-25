@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -26,10 +28,19 @@ from hub.routers.cloud_daemon_control import (
     send_cloud_control_frame,
 )
 from hub.routers.daemon_control import is_daemon_online, send_control_frame
+from hub.services.cloud_agent import CloudAgentError, CloudAgentService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/agents", tags=["app-runtime-files"])
+
+_CLOUD_RUNTIME_FILES_RESUME_WAIT_SECONDS = 20.0
+_CLOUD_RUNTIME_FILES_RESUME_POLL_SECONDS = 0.5
+_CLOUD_RUNTIME_FILES_DISPATCH_RETRY_CODES = {
+    "cloud_daemon_offline",
+    "cloud_daemon_disconnected",
+    "cloud_daemon_send_failed",
+}
 
 
 class AgentRuntimeFileOut(BaseModel):
@@ -100,10 +111,13 @@ async def _load_runtime_files_host(
 async def _send_runtime_files_control_frame(
     host: _RuntimeFilesHost,
     params: dict[str, Any],
+    *,
+    db: AsyncSession,
+    ctx: RequestContext,
+    agent: Agent,
 ) -> dict[str, Any]:
     if host.cloud_daemon_instance_id:
-        if not is_cloud_daemon_online(host.cloud_daemon_instance_id):
-            raise HTTPException(status_code=409, detail="daemon_offline")
+        await _ensure_cloud_runtime_files_host_online(db, ctx, agent, host)
         try:
             return await send_cloud_control_frame(
                 host.cloud_daemon_instance_id,
@@ -112,6 +126,31 @@ async def _send_runtime_files_control_frame(
                 timeout_ms=5000,
             )
         except CloudDaemonDispatchError as exc:
+            if exc.code in _CLOUD_RUNTIME_FILES_DISPATCH_RETRY_CODES:
+                logger.warning(
+                    "cloud runtime files dispatch lost connection; attempting resume and retry: "
+                    "agent=%s cloud=%s code=%s err=%s",
+                    agent.agent_id,
+                    host.cloud_daemon_instance_id,
+                    exc.code,
+                    exc.message,
+                )
+                await _ensure_cloud_runtime_files_host_online(
+                    db,
+                    ctx,
+                    agent,
+                    host,
+                    force_resume=True,
+                )
+                try:
+                    return await send_cloud_control_frame(
+                        host.cloud_daemon_instance_id,
+                        "list_agent_files",
+                        params,
+                        timeout_ms=5000,
+                    )
+                except CloudDaemonDispatchError as retry_exc:
+                    exc = retry_exc
             if exc.code in {
                 "cloud_daemon_offline",
                 "cloud_daemon_disconnected",
@@ -135,6 +174,49 @@ async def _send_runtime_files_control_frame(
     )
 
 
+async def _ensure_cloud_runtime_files_host_online(
+    db: AsyncSession,
+    ctx: RequestContext,
+    agent: Agent,
+    host: _RuntimeFilesHost,
+    *,
+    force_resume: bool = False,
+) -> None:
+    cloud_daemon_instance_id = host.cloud_daemon_instance_id
+    if not cloud_daemon_instance_id:
+        return
+
+    if not force_resume and is_cloud_daemon_online(cloud_daemon_instance_id):
+        return
+
+    try:
+        await CloudAgentService().resume_cloud_agent(
+            db,
+            user_id=ctx.user_id,
+            agent_id=agent.agent_id,
+        )
+    except CloudAgentError as exc:
+        logger.warning(
+            "cloud runtime files resume failed: agent=%s cloud=%s code=%s err=%s",
+            agent.agent_id,
+            cloud_daemon_instance_id,
+            exc.code,
+            exc.message,
+        )
+        raise HTTPException(
+            status_code=409 if exc.http_status == 409 else exc.http_status,
+            detail="daemon_offline" if exc.http_status == 409 else exc.code,
+        ) from exc
+
+    deadline = time.monotonic() + _CLOUD_RUNTIME_FILES_RESUME_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if is_cloud_daemon_online(cloud_daemon_instance_id):
+            return
+        await asyncio.sleep(_CLOUD_RUNTIME_FILES_RESUME_POLL_SECONDS)
+
+    raise HTTPException(status_code=409, detail="daemon_offline")
+
+
 @router.get("/{agent_id}/runtime-files", response_model=AgentRuntimeFilesOut)
 async def get_agent_runtime_files(
     agent_id: str,
@@ -149,7 +231,13 @@ async def get_agent_runtime_files(
     if file_id:
         params["fileId"] = file_id
 
-    ack = await _send_runtime_files_control_frame(host, params)
+    ack = await _send_runtime_files_control_frame(
+        host,
+        params,
+        db=db,
+        ctx=ctx,
+        agent=agent,
+    )
     if not isinstance(ack, dict) or not ack.get("ok"):
         err = ack.get("error") if isinstance(ack, dict) else None
         code = (err or {}).get("code") if isinstance(err, dict) else None

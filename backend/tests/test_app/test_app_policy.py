@@ -353,6 +353,110 @@ async def test_runtime_files_for_owned_cloud_agent_dispatches_cloud_control_fram
 
 
 @pytest.mark.asyncio
+async def test_runtime_files_for_cloud_agent_resumes_sandbox_before_dispatch(
+    client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_files as runtime_files_mod
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.hosting_kind = "cloud"
+    agent.daemon_instance_id = "dm_cloud_resume_files"
+    agent.runtime = "codex"
+    daemon = DaemonInstance(
+        id="dm_cloud_resume_files",
+        user_id=agent.user_id,
+        kind="cloud",
+        refresh_token_hash="hash",
+    )
+    cloud_daemon = CloudDaemonInstance(
+        id="cloud_dm_resume_files",
+        user_id=agent.user_id,
+        daemon_instance_id=daemon.id,
+        provider="e2b",
+        status="ready",
+        runtime="codex",
+        max_agents=1,
+        active_agent_count=1,
+    )
+    cloud_binding = CloudAgentInstance(
+        id="cloud_ag_resume_files",
+        user_id=agent.user_id,
+        agent_id=agent.agent_id,
+        cloud_daemon_instance_id=cloud_daemon.id,
+        daemon_instance_id=daemon.id,
+        runtime="codex",
+        model_profile="default",
+        status="ready",
+    )
+    db_session.add_all([daemon, cloud_daemon, cloud_binding])
+    await db_session.commit()
+
+    online = {"value": False}
+    monkeypatch.setattr(
+        runtime_files_mod,
+        "is_cloud_daemon_online",
+        lambda cloud_daemon_id: (
+            cloud_daemon_id == "cloud_dm_resume_files" and online["value"]
+        ),
+    )
+
+    resume_calls = []
+
+    class FakeCloudAgentService:
+        async def resume_cloud_agent(self, db, *, user_id, agent_id):
+            resume_calls.append({"user_id": user_id, "agent_id": agent_id})
+            online["value"] = True
+            return None
+
+    monkeypatch.setattr(runtime_files_mod, "CloudAgentService", FakeCloudAgentService)
+
+    dispatch_calls = []
+
+    async def fake_send_cloud(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        dispatch_calls.append({
+            "cloud_daemon_instance_id": cloud_daemon_instance_id,
+            "type": type_,
+            "params": params,
+            "timeout_ms": timeout_ms,
+        })
+        return {
+            "ok": True,
+            "result": {
+                "agentId": "ag_owned",
+                "runtime": "codex",
+                "files": [
+                    {
+                        "id": "memory:working-memory.json",
+                        "name": "memory/working-memory.json",
+                        "scope": "memory",
+                        "content": '{"goal":"fresh"}\n',
+                    }
+                ],
+            },
+        }
+
+    monkeypatch.setattr(runtime_files_mod, "send_cloud_control_frame", fake_send_cloud)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.get(
+        "/api/agents/ag_owned/runtime-files?file_id=memory%3Aworking-memory.json",
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["files"][0]["content"] == '{"goal":"fresh"}\n'
+    assert resume_calls == [{"user_id": agent.user_id, "agent_id": "ag_owned"}]
+    assert dispatch_calls == [
+        {
+            "cloud_daemon_instance_id": "cloud_dm_resume_files",
+            "type": "list_agent_files",
+            "params": {"agentId": "ag_owned", "fileId": "memory:working-memory.json"},
+            "timeout_ms": 5000,
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_runtime_files_rejects_unowned_or_offline_agent(
     client, seed, db_session, monkeypatch
 ):
