@@ -106,7 +106,12 @@ async function startMockDeepseekServer(opts?: {
   };
 }
 
-function runAdapter(serverUrl: string, authToken: string, sessionId: string | null = null) {
+function runAdapter(
+  serverUrl: string,
+  authToken: string,
+  sessionId: string | null = null,
+  extraArgs?: string[],
+) {
   const adapter = new DeepseekTuiAdapter({ serverUrl, authToken });
   const ctrl = new AbortController();
   const blocks: string[] = [];
@@ -118,6 +123,7 @@ function runAdapter(serverUrl: string, authToken: string, sessionId: string | nu
     cwd: tmpRoot,
     signal: ctrl.signal,
     trustLevel: "owner",
+    extraArgs,
     systemContext: "runtime memory",
     onBlock: (b) => blocks.push(b.kind),
     onStatus: (e) => {
@@ -179,6 +185,29 @@ describe("DeepseekTuiAdapter", () => {
       const patch = server.calls.find((c) => c.method === "PATCH");
       expect(patch?.url).toBe("/v1/threads/thr_existing");
       expect(patch?.body).toEqual({ system_prompt: "runtime memory" });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("passes selected model and reasoning effort through HTTP payloads", async () => {
+    const server = await startMockDeepseekServer();
+    try {
+      const { result } = runAdapter(server.baseUrl, server.token, null, [
+        "--model",
+        "deepseek-v4-pro",
+        "--reasoning-effort",
+        "auto",
+      ]);
+      await result;
+      expect(server.calls.find((c) => c.method === "POST" && c.url === "/v1/threads")?.body).toMatchObject({
+        model: "deepseek-v4-pro",
+        reasoning_effort: "auto",
+      });
+      expect(server.calls.find((c) => c.method === "POST" && c.url.endsWith("/turns"))?.body).toMatchObject({
+        model: "deepseek-v4-pro",
+        reasoning_effort: "auto",
+      });
     } finally {
       await server.close();
     }

@@ -73,6 +73,10 @@ import { log as daemonLog } from "./log.js";
 import { discoverAgentCredentials } from "./agent-discovery.js";
 import { resolveMemoryDir } from "./working-memory.js";
 import { discoverRuntimeModelCatalog } from "./runtime-models.js";
+import {
+  buildRuntimeSelectionExtraArgs,
+  mergeRuntimeExtraArgs,
+} from "./runtime-route-options.js";
 
 /**
  * Information passed to {@link OnAgentInstalledHook} after a successful
@@ -1058,6 +1062,11 @@ function upsertManagedRouteForCredentials(
     runtime: credentials.runtime ?? cfg.defaultRoute.adapter,
     cwd: credentials.cwd ?? agentWorkspaceDir(credentials.agentId),
   };
+  const extraArgs = mergeRuntimeExtraArgs(
+    cfg.defaultRoute.extraArgs,
+    buildRuntimeSelectionExtraArgs(synthRoute.runtime, credentials),
+  );
+  if (extraArgs) synthRoute.extraArgs = extraArgs;
   if (synthRoute.runtime === "openclaw-acp") {
     const profile = (cfg.openclawGateways ?? []).find(
       (g) => g.name === credentials.openclawGateway,
@@ -1170,6 +1179,10 @@ async function materializeCredentials(
     if (c.token) record.token = c.token;
     if (typeof c.tokenExpiresAt === "number") record.tokenExpiresAt = c.tokenExpiresAt;
     if (runtime) record.runtime = runtime;
+    const runtimeSelection = pickRuntimeSelection(params);
+    if (runtimeSelection.runtimeModel) record.runtimeModel = runtimeSelection.runtimeModel;
+    if (runtimeSelection.reasoningEffort) record.reasoningEffort = runtimeSelection.reasoningEffort;
+    if (typeof runtimeSelection.thinking === "boolean") record.thinking = runtimeSelection.thinking;
     record.cwd = cwd;
     const openclawSel = pickOpenclawSelection(params);
     if (openclawSel.gateway) record.openclawGateway = openclawSel.gateway;
@@ -1204,6 +1217,10 @@ async function materializeCredentials(
     tokenExpiresAt: reg.expiresAt,
   };
   if (runtime) record.runtime = runtime;
+  const runtimeSelection = pickRuntimeSelection(params);
+  if (runtimeSelection.runtimeModel) record.runtimeModel = runtimeSelection.runtimeModel;
+  if (runtimeSelection.reasoningEffort) record.reasoningEffort = runtimeSelection.reasoningEffort;
+  if (typeof runtimeSelection.thinking === "boolean") record.thinking = runtimeSelection.thinking;
   record.cwd = cwd;
   const openclawSel = pickOpenclawSelection(params);
   if (openclawSel.gateway) record.openclawGateway = openclawSel.gateway;
@@ -2518,20 +2535,34 @@ export async function reloadConfig(ctx: { gateway: Gateway }): Promise<ReloadRes
  */
 function readAgentRuntimesFromCredentials(
   agentIds: string[],
-): Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string }> {
-  const out: Record<string, { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string }> = {};
+): Record<string, { runtime?: string; runtimeModel?: string; reasoningEffort?: string; thinking?: boolean; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string }> {
+  const out: Record<string, { runtime?: string; runtimeModel?: string; reasoningEffort?: string; thinking?: boolean; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string }> = {};
   for (const id of agentIds) {
     const file = defaultCredentialsFile(id);
     try {
       if (!existsSync(file)) continue;
       const creds = loadStoredCredentials(file);
-      const entry: { runtime?: string; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string } = {};
+      const entry: { runtime?: string; runtimeModel?: string; reasoningEffort?: string; thinking?: boolean; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string } = {};
       if (creds.runtime) entry.runtime = creds.runtime;
+      if (creds.runtimeModel) entry.runtimeModel = creds.runtimeModel;
+      if (creds.reasoningEffort) entry.reasoningEffort = creds.reasoningEffort;
+      if (typeof creds.thinking === "boolean") entry.thinking = creds.thinking;
       if (creds.cwd) entry.cwd = creds.cwd;
       if (creds.openclawGateway) entry.openclawGateway = creds.openclawGateway;
       if (creds.openclawAgent) entry.openclawAgent = creds.openclawAgent;
       if (creds.hermesProfile) entry.hermesProfile = creds.hermesProfile;
-      if (entry.runtime || entry.cwd || entry.openclawGateway || entry.openclawAgent || entry.hermesProfile) out[id] = entry;
+      if (
+        entry.runtime ||
+        entry.runtimeModel ||
+        entry.reasoningEffort ||
+        typeof entry.thinking === "boolean" ||
+        entry.cwd ||
+        entry.openclawGateway ||
+        entry.openclawAgent ||
+        entry.hermesProfile
+      ) {
+        out[id] = entry;
+      }
     } catch {
       // best-effort — skip agents with unreadable credentials
     }
@@ -2772,6 +2803,33 @@ function pickRuntime(params: ProvisionAgentParams): string | undefined {
   const candidates = [params.runtime, params.adapter, params.credentials?.runtime];
   for (const c of candidates) {
     if (typeof c === "string" && c.length > 0) return c;
+  }
+  return undefined;
+}
+
+function pickRuntimeSelection(
+  params: ProvisionAgentParams,
+): { runtimeModel?: string; reasoningEffort?: string; thinking?: boolean } {
+  const out: { runtimeModel?: string; reasoningEffort?: string; thinking?: boolean } = {};
+  const runtimeModel = pickString(params.runtimeModel, params.credentials?.runtimeModel);
+  const reasoningEffort = pickString(
+    params.reasoningEffort,
+    params.credentials?.reasoningEffort,
+  );
+  if (runtimeModel) out.runtimeModel = runtimeModel;
+  if (reasoningEffort) out.reasoningEffort = reasoningEffort;
+  if (typeof params.thinking === "boolean") {
+    out.thinking = params.thinking;
+  } else if (typeof params.credentials?.thinking === "boolean") {
+    out.thinking = params.credentials.thinking;
+  }
+  return out;
+}
+
+function pickString(...values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) return trimmed;
   }
   return undefined;
 }

@@ -35,6 +35,9 @@ import {
   ProvisionAgentError,
   type DaemonInstance,
   type DaemonRuntime,
+  type DaemonRuntimeModel,
+  type DaemonRuntimeParameter,
+  type DaemonRuntimeParameterValue,
 } from "@/store/useDaemonStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import {
@@ -64,6 +67,26 @@ const QCLAW_RUNTIME_ID = "qclaw";
 const CLOUD_AGENT_OPTION_ID = "__botcord_cloud_agent__";
 
 type DaemonRuntimeEndpoint = NonNullable<DaemonRuntime["endpoints"]>[number];
+
+function parameterValueKey(value: DaemonRuntimeParameterValue): string {
+  return typeof value === "boolean" ? (value ? "true" : "false") : String(value);
+}
+
+function findRuntimeParameter(
+  runtime: DaemonRuntime | null,
+  model: DaemonRuntimeModel | null,
+  ids: string[],
+): DaemonRuntimeParameter | null {
+  const modelParam = model?.parameters?.find((param) => ids.includes(param.id));
+  if (modelParam) return modelParam;
+  return runtime?.parameters?.find((param) => ids.includes(param.id)) ?? null;
+}
+
+function modelLabel(model: DaemonRuntimeModel): string {
+  return model.displayName && model.displayName !== model.id
+    ? `${model.displayName} (${model.id})`
+    : model.id;
+}
 
 function isOpenclawFamilyRuntime(id: string | null): boolean {
   return id === OPENCLAW_RUNTIME_ID || id === QCLAW_RUNTIME_ID;
@@ -268,6 +291,9 @@ export default function CreateAgentDialog({
 
   const [selectedDaemonId, setSelectedDaemonId] = useState<string | null>(null);
   const [selectedRuntimeId, setSelectedRuntimeId] = useState<string | null>(null);
+  const [selectedRuntimeModel, setSelectedRuntimeModel] = useState<string | null>(null);
+  const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<string | null>(null);
+  const [selectedThinking, setSelectedThinking] = useState<boolean | null>(null);
   const [selectedGateway, setSelectedGateway] = useState<string | null>(null);
   const [selectedOpenclawAgent, setSelectedOpenclawAgent] = useState<string | null>(null);
   const [selectedHermesProfile, setSelectedHermesProfile] = useState<string | null>(null);
@@ -394,6 +420,73 @@ export default function CreateAgentDialog({
     () => selectedDaemon?.runtimes?.find((r) => r.id === selectedRuntimeId) ?? null,
     [selectedDaemon, selectedRuntimeId],
   );
+  const selectedModel = useMemo(
+    () =>
+      selectedRuntime?.models?.find((model) => model.id === selectedRuntimeModel) ??
+      null,
+    [selectedRuntime, selectedRuntimeModel],
+  );
+  const reasoningParameter = useMemo(
+    () =>
+      findRuntimeParameter(selectedRuntime, selectedModel, [
+        "reasoning_effort",
+        "effort",
+      ]),
+    [selectedRuntime, selectedModel],
+  );
+  const thinkingParameter = useMemo(
+    () => findRuntimeParameter(selectedRuntime, selectedModel, ["thinking"]),
+    [selectedRuntime, selectedModel],
+  );
+  useEffect(() => {
+    const models = selectedRuntime?.models ?? [];
+    if (!selectedRuntime?.available || models.length === 0) {
+      setSelectedRuntimeModel(null);
+      return;
+    }
+    if (selectedRuntimeModel && models.some((model) => model.id === selectedRuntimeModel)) {
+      return;
+    }
+    const preferred = models.find((model) => model.isDefault) ?? models[0] ?? null;
+    setSelectedRuntimeModel(preferred?.id ?? null);
+  }, [selectedRuntime, selectedRuntimeModel]);
+
+  useEffect(() => {
+    if (!reasoningParameter) {
+      setSelectedReasoningEffort(null);
+      return;
+    }
+    const values = reasoningParameter.values?.map(parameterValueKey) ?? [];
+    const defaultValue =
+      reasoningParameter.defaultValue === undefined
+        ? null
+        : parameterValueKey(reasoningParameter.defaultValue);
+    if (values.length > 0) {
+      if (selectedReasoningEffort && values.includes(selectedReasoningEffort)) {
+        return;
+      }
+      setSelectedReasoningEffort(
+        defaultValue && values.includes(defaultValue)
+          ? defaultValue
+          : values[0] ?? null,
+      );
+      return;
+    }
+    setSelectedReasoningEffort(selectedReasoningEffort ?? defaultValue);
+  }, [reasoningParameter, selectedReasoningEffort]);
+
+  useEffect(() => {
+    if (!thinkingParameter || thinkingParameter.type !== "boolean") {
+      setSelectedThinking(null);
+      return;
+    }
+    if (selectedThinking !== null) return;
+    setSelectedThinking(
+      typeof thinkingParameter.defaultValue === "boolean"
+        ? thinkingParameter.defaultValue
+        : true,
+    );
+  }, [thinkingParameter, selectedThinking]);
   const selectedOpenclawEndpoint = useMemo(
     () =>
       selectedRuntime?.endpoints?.find((e) => e.name === selectedGateway) ??
@@ -555,6 +648,9 @@ export default function CreateAgentDialog({
             name: trimmedName,
             bio: bio.trim() || undefined,
             runtime: daemonRuntimeId(selectedRuntimeId!),
+            ...(selectedRuntimeModel ? { runtimeModel: selectedRuntimeModel } : {}),
+            ...(selectedReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {}),
+            ...(selectedThinking !== null ? { thinking: selectedThinking } : {}),
             ...(isOpenclawFamilyRuntime(selectedRuntimeId) && selectedGateway
               ? {
                   openclawGateway: selectedGateway,
@@ -578,6 +674,10 @@ export default function CreateAgentDialog({
   const needsHermesProfile = selectedRuntimeId === "hermes-agent";
   const needsOpenclawAgent =
     needsOpenclawGateway && (selectedOpenclawEndpoint?.agents?.length ?? 0) > 0;
+  const hasRuntimeModelOptions =
+    (selectedRuntime?.models?.length ?? 0) > 0 ||
+    !!reasoningParameter ||
+    thinkingParameter?.type === "boolean";
   const canSubmit =
     !!selectedDaemonId &&
     (isCloudAgentSelected || !!selectedRuntimeId) &&
@@ -587,34 +687,58 @@ export default function CreateAgentDialog({
     (isCloudAgentSelected || !needsHermesProfile || !!selectedHermesProfile) &&
     !submitting;
 
-  const selectedRuntimeDetails: ReactNode = needsOpenclawGateway ? (
-    <OpenclawGatewayPicker
-      runtime={selectedRuntime}
-      selectedGateway={selectedGateway}
-      onSelectGateway={(g) => {
-        setSelectedGateway(g);
-        setSelectedOpenclawAgent(null);
-      }}
-      selectedAgent={selectedOpenclawAgent}
-      onSelectAgent={setSelectedOpenclawAgent}
-      labels={{
-        subagentLabel: t.openclawSubagentLabel,
-        subagentInfo: t.openclawSubagentInfo,
-        subagentPlaceholder: t.openclawSubagentPlaceholder,
-        noProfiles: t.openclawNoProfiles,
-        selectProfile: t.openclawSelectProfile,
-        boundProfiles: t.openclawBoundProfiles,
-      }}
-      disabled={submitting}
-    />
-  ) : needsHermesProfile ? (
-    <HermesProfilePicker
-      runtime={selectedRuntime}
-      selectedProfile={selectedHermesProfile}
-      onSelect={setSelectedHermesProfile}
-      disabled={submitting}
-    />
-  ) : null;
+  const selectedRuntimeDetails: ReactNode =
+    hasRuntimeModelOptions || needsOpenclawGateway || needsHermesProfile ? (
+      <div className="ml-5 space-y-2 border-l border-neon-cyan/25 pl-4">
+        <RuntimeModelOptions
+          runtime={selectedRuntime}
+          selectedModel={selectedRuntimeModel}
+          onSelectModel={setSelectedRuntimeModel}
+          reasoningParameter={reasoningParameter}
+          selectedReasoningEffort={selectedReasoningEffort}
+          onSelectReasoningEffort={setSelectedReasoningEffort}
+          thinkingParameter={thinkingParameter}
+          selectedThinking={selectedThinking}
+          onSelectThinking={setSelectedThinking}
+          labels={{
+            modelLabel: t.modelLabel,
+            modelPlaceholder: t.modelPlaceholder,
+            reasoningEffortLabel: t.reasoningEffortLabel,
+            reasoningEffortPlaceholder: t.reasoningEffortPlaceholder,
+            thinkingLabel: t.thinkingLabel,
+          }}
+          disabled={submitting}
+        />
+        {needsOpenclawGateway ? (
+          <OpenclawGatewayPicker
+            runtime={selectedRuntime}
+            selectedGateway={selectedGateway}
+            onSelectGateway={(g) => {
+              setSelectedGateway(g);
+              setSelectedOpenclawAgent(null);
+            }}
+            selectedAgent={selectedOpenclawAgent}
+            onSelectAgent={setSelectedOpenclawAgent}
+            labels={{
+              subagentLabel: t.openclawSubagentLabel,
+              subagentInfo: t.openclawSubagentInfo,
+              subagentPlaceholder: t.openclawSubagentPlaceholder,
+              noProfiles: t.openclawNoProfiles,
+              selectProfile: t.openclawSelectProfile,
+              boundProfiles: t.openclawBoundProfiles,
+            }}
+            disabled={submitting}
+          />
+        ) : needsHermesProfile ? (
+          <HermesProfilePicker
+            runtime={selectedRuntime}
+            selectedProfile={selectedHermesProfile}
+            onSelect={setSelectedHermesProfile}
+            disabled={submitting}
+          />
+        ) : null}
+      </div>
+    ) : null;
 
   return (
     <div
@@ -1172,6 +1296,126 @@ function RuntimeCard({
   );
 }
 
+function RuntimeModelOptions({
+  runtime,
+  selectedModel,
+  onSelectModel,
+  reasoningParameter,
+  selectedReasoningEffort,
+  onSelectReasoningEffort,
+  thinkingParameter,
+  selectedThinking,
+  onSelectThinking,
+  labels,
+  disabled,
+}: {
+  runtime: DaemonRuntime | null;
+  selectedModel: string | null;
+  onSelectModel: (value: string | null) => void;
+  reasoningParameter: DaemonRuntimeParameter | null;
+  selectedReasoningEffort: string | null;
+  onSelectReasoningEffort: (value: string | null) => void;
+  thinkingParameter: DaemonRuntimeParameter | null;
+  selectedThinking: boolean | null;
+  onSelectThinking: (value: boolean | null) => void;
+  labels: {
+    modelLabel: string;
+    modelPlaceholder: string;
+    reasoningEffortLabel: string;
+    reasoningEffortPlaceholder: string;
+    thinkingLabel: string;
+  };
+  disabled: boolean;
+}) {
+  const models = runtime?.models ?? [];
+  const reasoningValues = reasoningParameter?.values?.map(parameterValueKey) ?? [];
+  const hasReasoning =
+    !!reasoningParameter &&
+    (reasoningValues.length > 0 || reasoningParameter.type === "string");
+  const hasThinking = thinkingParameter?.type === "boolean";
+  if (models.length === 0 && !hasReasoning && !hasThinking) return null;
+
+  return (
+    <section className="rounded-xl border border-glass-border bg-glass-bg/30 p-2.5">
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        {models.length > 0 ? (
+          <div className={hasReasoning || hasThinking ? "" : "sm:col-span-2"}>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+              {labels.modelLabel}
+            </label>
+            <DashboardSelect
+              disabled={disabled}
+              value={selectedModel ?? ""}
+              onChange={onSelectModel}
+              placeholder={labels.modelPlaceholder}
+              options={models.map((model) => ({
+                value: model.id,
+                label: modelLabel(model),
+                sublabel: [
+                  model.provider,
+                  model.isDefault ? "default" : null,
+                  model.source,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+              }))}
+            />
+          </div>
+        ) : null}
+
+        {hasReasoning ? (
+          <div className={models.length > 0 ? "" : "sm:col-span-2"}>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+              {labels.reasoningEffortLabel}
+            </label>
+            {reasoningValues.length > 0 ? (
+              <DashboardSelect
+                disabled={disabled}
+                value={selectedReasoningEffort ?? ""}
+                onChange={onSelectReasoningEffort}
+                placeholder={labels.reasoningEffortPlaceholder}
+                options={reasoningValues.map((value) => ({
+                  value,
+                  label: value,
+                  sublabel:
+                    reasoningParameter?.defaultValue !== undefined &&
+                    parameterValueKey(reasoningParameter.defaultValue) === value
+                      ? "default"
+                      : undefined,
+                }))}
+              />
+            ) : (
+              <input
+                disabled={disabled}
+                type="text"
+                value={selectedReasoningEffort ?? ""}
+                placeholder={labels.reasoningEffortPlaceholder}
+                onChange={(event) =>
+                  onSelectReasoningEffort(event.target.value.trim() || null)
+                }
+                className="h-10 w-full rounded-xl border border-glass-border bg-deep-black px-3 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+              />
+            )}
+          </div>
+        ) : null}
+
+        {hasThinking ? (
+          <label className="flex min-h-10 items-center gap-2 rounded-xl border border-glass-border bg-deep-black px-3 text-sm text-text-primary sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={selectedThinking === true}
+              disabled={disabled}
+              onChange={(event) => onSelectThinking(event.target.checked)}
+              className="h-4 w-4 rounded border-glass-border bg-deep-black text-neon-cyan focus:ring-neon-cyan/50"
+            />
+            <span>{labels.thinkingLabel}</span>
+          </label>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function OpenclawGatewayPicker({
   runtime,
   selectedGateway,
@@ -1212,7 +1456,7 @@ function OpenclawGatewayPicker({
     );
   }
   return (
-    <section className="ml-5 border-l border-neon-cyan/25 pl-4">
+    <section>
       <div className="rounded-xl border border-glass-border bg-glass-bg/30 p-2.5">
         <div className="grid gap-2.5">
       <div>

@@ -416,6 +416,32 @@ describe("buildManagedRoutes", () => {
     expect(map.get("ag_one")?.extraArgs).not.toBe(withExtraArgs.extraArgs);
   });
 
+  it("appends per-agent model and reasoning selections to inherited extraArgs", () => {
+    const withExtraArgs: GatewayRoute = {
+      runtime: "codex",
+      cwd: "/home/default",
+      extraArgs: ["--skip-git-repo-check"],
+    };
+    const map = buildManagedRoutes(
+      ["ag_one"],
+      {
+        ag_one: {
+          runtime: "codex",
+          runtimeModel: "gpt-5.2",
+          reasoningEffort: "high",
+        },
+      },
+      withExtraArgs,
+    );
+    expect(map.get("ag_one")?.extraArgs).toEqual([
+      "--skip-git-repo-check",
+      "--model",
+      "gpt-5.2",
+      "-c",
+      'model_reasoning_effort="high"',
+    ]);
+  });
+
   it("omits extraArgs when defaultRoute has none", () => {
     const map = buildManagedRoutes(["ag_one"], {}, defaultRoute);
     expect(map.get("ag_one")).not.toHaveProperty("extraArgs");
@@ -492,4 +518,3 @@ describe("openclawGateways resolution", () => {
     expect(gw.managedRoutes).toEqual([]);
   });
 });
-

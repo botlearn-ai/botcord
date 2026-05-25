@@ -18,10 +18,20 @@ import type {
 import { resolveAgentIds } from "./config.js";
 import { agentWorkspaceDir } from "./agent-workspace.js";
 import { log as daemonLog } from "./log.js";
+import {
+  buildRuntimeSelectionExtraArgs,
+  mergeRuntimeExtraArgs,
+} from "./runtime-route-options.js";
 
 /** Per-agent metadata cached from credentials, used by `buildManagedRoutes`. */
 export interface AgentRuntimeMeta {
   runtime?: string;
+  /** Runtime model id/alias selected for this agent. */
+  runtimeModel?: string;
+  /** Runtime reasoning effort selected for this agent. */
+  reasoningEffort?: string;
+  /** Kimi-style thinking toggle selected for this agent. */
+  thinking?: boolean;
   cwd?: string;
   /** OpenClaw gateway profile name to lookup in the registry. */
   openclawGateway?: string;
@@ -346,10 +356,13 @@ export function buildManagedRoutes(
       match: { accountId: agentId },
       runtime,
       cwd: meta.cwd || agentWorkspaceDir(agentId),
-      // Inherit defaultRoute's extraArgs so synthesized per-agent routes
-      // pick up operator-wide flags (e.g. `--permission-mode bypassPermissions`)
-      // that would otherwise apply only to agents listed in `cfg.routes[]`.
-      ...(defaultRoute.extraArgs ? { extraArgs: defaultRoute.extraArgs.slice() } : {}),
+      ...(() => {
+        const extraArgs = mergeRuntimeExtraArgs(
+          defaultRoute.extraArgs,
+          buildRuntimeSelectionExtraArgs(runtime, meta),
+        );
+        return extraArgs ? { extraArgs } : {};
+      })(),
     };
     if (runtime === "openclaw-acp") {
       // Per RFC §3.4: prefer credentials, fall back to defaultRoute.gateway.

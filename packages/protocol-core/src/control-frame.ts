@@ -169,6 +169,12 @@ export interface ProvisionAgentParams {
    * on both sides.
    */
   runtime?: string;
+  /** Runtime model id/alias selected for this agent. */
+  runtimeModel?: string;
+  /** Runtime reasoning effort selected for this agent, when supported. */
+  reasoningEffort?: string;
+  /** Kimi-style thinking toggle selected for this agent, when supported. */
+  thinking?: boolean;
   /**
    * @deprecated alias for `runtime`, retained for one release so in-flight
    * Hub builds emitting the pre-rename name still work. Daemons prefer
@@ -191,6 +197,12 @@ export interface ProvisionAgentParams {
     displayName?: string;
     /** Runtime bound to the agent, cached by the daemon for offline routing. */
     runtime?: string;
+    /** Runtime model id/alias cached alongside runtime. */
+    runtimeModel?: string;
+    /** Runtime reasoning effort cached alongside runtime. */
+    reasoningEffort?: string;
+    /** Kimi-style thinking toggle cached alongside runtime. */
+    thinking?: boolean;
     /** Working directory cached alongside the runtime, for route synthesis. */
     cwd?: string;
     /**

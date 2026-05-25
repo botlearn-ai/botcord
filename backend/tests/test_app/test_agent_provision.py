@@ -268,6 +268,105 @@ async def test_provision_happy_path_writes_runtime_and_dispatches_frame(
 
 
 @pytest.mark.asyncio
+async def test_provision_dispatches_runtime_model_options(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    instance_id = await _provision_instance(client, seed_user)
+    conn, fake_ws, registry = await _with_connected_daemon(
+        instance_id,
+        seed_user["user_id"],
+        runtimes_snapshot=[
+            {
+                "id": "codex",
+                "available": True,
+                "models": [
+                    {
+                        "id": "gpt-5.2",
+                        "parameters": [
+                            {
+                                "id": "reasoning_effort",
+                                "type": "enum",
+                                "values": ["low", "medium", "high"],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+        db_session=db_session,
+    )
+    try:
+        ack_task = asyncio.create_task(_auto_ack(conn, fake_ws))
+        r = await client.post(
+            "/api/users/me/agents/provision",
+            json={
+                "daemon_instance_id": instance_id,
+                "label": "writer",
+                "runtime": "codex",
+                "runtime_model": "gpt-5.2",
+                "reasoning_effort": "high",
+            },
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        sent = await ack_task
+
+        assert r.status_code == 201, r.text
+        assert sent["params"]["runtimeModel"] == "gpt-5.2"
+        assert sent["params"]["reasoningEffort"] == "high"
+        creds = sent["params"]["credentials"]
+        assert creds["runtimeModel"] == "gpt-5.2"
+        assert creds["reasoningEffort"] == "high"
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_provision_rejects_reasoning_effort_not_supported_by_model(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    instance_id = await _provision_instance(client, seed_user)
+    conn, _, registry = await _with_connected_daemon(
+        instance_id,
+        seed_user["user_id"],
+        runtimes_snapshot=[
+            {
+                "id": "codex",
+                "available": True,
+                "models": [
+                    {
+                        "id": "gpt-5.2",
+                        "parameters": [
+                            {
+                                "id": "reasoning_effort",
+                                "type": "enum",
+                                "values": ["low", "medium"],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+        db_session=db_session,
+    )
+    try:
+        r = await client.post(
+            "/api/users/me/agents/provision",
+            json={
+                "daemon_instance_id": instance_id,
+                "label": "writer",
+                "runtime": "codex",
+                "runtime_model": "gpt-5.2",
+                "reasoning_effort": "xhigh",
+            },
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        assert r.status_code == 409
+        assert r.json()["detail"] == "runtime_unavailable"
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
 async def test_provision_marks_openclaw_profile_bound_in_cached_snapshot(
     client: AsyncClient, seed_user, db_session: AsyncSession
 ):

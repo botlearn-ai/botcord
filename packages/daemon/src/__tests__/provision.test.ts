@@ -660,6 +660,65 @@ describe("provision_agent handler writes runtime + cwd", () => {
     }
   });
 
+  it("persists model options and hot-adds them to the managed route", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+
+    const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), "daemon-provision-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      mockState.cfg = {
+        defaultRoute: {
+          adapter: "codex",
+          cwd: tmp,
+          extraArgs: ["--skip-git-repo-check"],
+        },
+        routes: [],
+        streamBlocks: true,
+      };
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+      const privateKey = Buffer.alloc(32, 8).toString("base64");
+
+      const ack = await provisioner({
+        id: "req_model",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "codex",
+          runtimeModel: "gpt-5.2",
+          reasoningEffort: "high",
+          credentials: {
+            agentId: "ag_model",
+            keyId: "k_model",
+            privateKey,
+            hubUrl: "https://hub.example",
+          },
+        },
+      });
+
+      expect(ack.ok).toBe(true);
+      const credFile = nodePath.join(tmp, ".botcord", "credentials", "ag_model.json");
+      const saved = JSON.parse(fs.readFileSync(credFile, "utf8")) as Record<string, unknown>;
+      expect(saved.runtimeModel).toBe("gpt-5.2");
+      expect(saved.reasoningEffort).toBe("high");
+      expect(gw.listManagedRoutes()[0].extraArgs).toEqual([
+        "--skip-git-repo-check",
+        "--model",
+        "gpt-5.2",
+        "-c",
+        'model_reasoning_effort="high"',
+      ]);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("rejects unknown runtime ids before touching disk", async () => {
     const gw = makeFakeGateway();
     const provisioner = createProvisioner({

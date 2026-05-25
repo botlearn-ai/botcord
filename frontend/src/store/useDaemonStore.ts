@@ -144,6 +144,9 @@ export interface ProvisionAgentInput {
   name: string;
   bio?: string;
   runtime?: string;
+  runtimeModel?: string;
+  reasoningEffort?: string;
+  thinking?: boolean;
   cwd?: string;
   /** OpenClaw gateway profile name (only when runtime === "openclaw-acp"). */
   openclawGateway?: string;
@@ -924,6 +927,9 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
       label,
     };
     if (input.runtime) body.runtime = input.runtime;
+    if (input.runtimeModel) body.runtime_model = input.runtimeModel;
+    if (input.reasoningEffort) body.reasoning_effort = input.reasoningEffort;
+    if (typeof input.thinking === "boolean") body.thinking = input.thinking;
     if (input.cwd) body.cwd = input.cwd;
     if (input.bio) body.bio = input.bio;
     if (input.openclawGateway) body.openclaw_gateway = input.openclawGateway;
