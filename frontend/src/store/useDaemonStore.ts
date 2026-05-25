@@ -49,6 +49,33 @@ export interface DaemonHermesProfile {
   hasSoul?: boolean;
 }
 
+export interface DaemonRuntimeModel {
+  id: string;
+  displayName?: string;
+  provider?: string;
+  source?: "builtin" | "config" | "cli" | "api" | "gateway" | "env";
+  isDefault?: boolean;
+  capabilities?: string[];
+  contextLength?: number;
+  metadata?: Record<string, unknown>;
+  parameters?: DaemonRuntimeParameter[];
+}
+
+export type DaemonRuntimeParameterValue = string | number | boolean;
+
+export interface DaemonRuntimeParameter {
+  id: string;
+  displayName?: string;
+  type: "enum" | "boolean" | "integer" | "string";
+  flag?: string;
+  values?: DaemonRuntimeParameterValue[];
+  defaultValue?: DaemonRuntimeParameterValue;
+  minimum?: number;
+  maximum?: number;
+  source?: "builtin" | "config" | "cli" | "api" | "gateway" | "env";
+  metadata?: Record<string, unknown>;
+}
+
 export interface DaemonRuntime {
   id: string;
   available: boolean;
@@ -60,6 +87,10 @@ export interface DaemonRuntime {
   endpoints?: DaemonRuntimeEndpoint[];
   /** Hermes runtime carries the per-device profile listing (1 BotCord agent : 1 profile). */
   profiles?: DaemonHermesProfile[];
+  /** Runtime-selectable model catalog, when the daemon can discover one. */
+  models?: DaemonRuntimeModel[];
+  /** Runtime-level CLI/config parameters and defaults. */
+  parameters?: DaemonRuntimeParameter[];
 }
 
 export interface DaemonRuntimeHealth {
@@ -113,6 +144,9 @@ export interface ProvisionAgentInput {
   name: string;
   bio?: string;
   runtime?: string;
+  runtimeModel?: string;
+  reasoningEffort?: string;
+  thinking?: boolean;
   cwd?: string;
   /** OpenClaw gateway profile name (only when runtime === "openclaw-acp"). */
   openclawGateway?: string;
@@ -333,6 +367,44 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
       r.health && typeof r.health === "object"
         ? normalizeRuntimeHealth(r.health as Record<string, unknown>)
         : undefined;
+    const models = Array.isArray(r.models)
+      ? ((r.models as unknown[])
+          .map((rawModel) => {
+            if (!rawModel || typeof rawModel !== "object") return null;
+            const m = rawModel as Record<string, unknown>;
+            const id = typeof m.id === "string" ? m.id : null;
+            if (!id) return null;
+            const source =
+              m.source === "builtin" ||
+              m.source === "config" ||
+              m.source === "cli" ||
+              m.source === "api" ||
+              m.source === "gateway" ||
+              m.source === "env"
+                ? m.source
+                : undefined;
+            return {
+              id,
+              displayName:
+                typeof m.displayName === "string" ? m.displayName : undefined,
+              provider: typeof m.provider === "string" ? m.provider : undefined,
+              source,
+              isDefault: m.isDefault === true,
+              capabilities: Array.isArray(m.capabilities)
+                ? m.capabilities.filter((x): x is string => typeof x === "string")
+                : undefined,
+              contextLength:
+                typeof m.contextLength === "number" ? m.contextLength : undefined,
+              metadata:
+                m.metadata && typeof m.metadata === "object" && !Array.isArray(m.metadata)
+                  ? (m.metadata as Record<string, unknown>)
+                  : undefined,
+              parameters: normalizeRuntimeParameters(m.parameters),
+            } as DaemonRuntimeModel;
+          })
+          .filter(Boolean) as DaemonRuntimeModel[])
+      : undefined;
+    const parameters = normalizeRuntimeParameters(r.parameters);
     out.push({
       id,
       available: r.available === true,
@@ -342,9 +414,66 @@ function normalizeRuntimes(raw: unknown): DaemonRuntime[] | null | undefined {
       health,
       endpoints,
       profiles,
+      models,
+      parameters,
     });
   }
   return out;
+}
+
+function normalizeRuntimeParameters(raw: unknown): DaemonRuntimeParameter[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const p = entry as Record<string, unknown>;
+      const id = typeof p.id === "string" ? p.id : null;
+      const type =
+        p.type === "enum" ||
+        p.type === "boolean" ||
+        p.type === "integer" ||
+        p.type === "string"
+          ? p.type
+          : null;
+      if (!id || !type) return null;
+      const source =
+        p.source === "builtin" ||
+        p.source === "config" ||
+        p.source === "cli" ||
+        p.source === "api" ||
+        p.source === "gateway" ||
+        p.source === "env"
+          ? p.source
+          : undefined;
+      const defaultValue =
+        typeof p.defaultValue === "string" ||
+        typeof p.defaultValue === "number" ||
+        typeof p.defaultValue === "boolean"
+          ? p.defaultValue
+          : undefined;
+      return {
+        id,
+        type,
+        displayName: typeof p.displayName === "string" ? p.displayName : undefined,
+        flag: typeof p.flag === "string" ? p.flag : undefined,
+        values: Array.isArray(p.values)
+          ? p.values.filter(
+              (v): v is DaemonRuntimeParameterValue =>
+                typeof v === "string" || typeof v === "number" || typeof v === "boolean",
+            )
+          : undefined,
+        defaultValue,
+        minimum: typeof p.minimum === "number" ? p.minimum : undefined,
+        maximum: typeof p.maximum === "number" ? p.maximum : undefined,
+        source,
+        metadata:
+          p.metadata && typeof p.metadata === "object" && !Array.isArray(p.metadata)
+            ? (p.metadata as Record<string, unknown>)
+            : undefined,
+      } as DaemonRuntimeParameter;
+    })
+    .filter(Boolean) as DaemonRuntimeParameter[];
+  return out.length ? out : undefined;
 }
 
 function normalizeRuntimeHealth(raw: Record<string, unknown>): DaemonRuntimeHealth | undefined {
@@ -798,6 +927,9 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
       label,
     };
     if (input.runtime) body.runtime = input.runtime;
+    if (input.runtimeModel) body.runtime_model = input.runtimeModel;
+    if (input.reasoningEffort) body.reasoning_effort = input.reasoningEffort;
+    if (typeof input.thinking === "boolean") body.thinking = input.thinking;
     if (input.cwd) body.cwd = input.cwd;
     if (input.bio) body.bio = input.bio;
     if (input.openclawGateway) body.openclaw_gateway = input.openclawGateway;

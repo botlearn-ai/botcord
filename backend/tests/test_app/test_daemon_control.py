@@ -1085,6 +1085,58 @@ async def test_runtime_snapshot_caps_nested_runtime_health(
 
 
 @pytest.mark.asyncio
+async def test_runtime_snapshot_caps_nested_models(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    """Nested runtime model arrays are capped before persistence."""
+    from sqlalchemy import select
+
+    from hub.routers.daemon_control import _DaemonConn, _handle_daemon_event
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    fake_ws = _FakeWS()
+    conn = _DaemonConn(
+        ws=fake_ws,  # type: ignore[arg-type]
+        user_id=str(seed_user["user_id"]),
+        daemon_instance_id=instance_id,
+        pending_acks={},
+    )
+
+    models = [{"id": f"model-{i}", "source": "cli"} for i in range(140)]
+    await _handle_daemon_event(
+        conn,
+        {
+            "id": "frm_rs_models",
+            "type": "runtime_snapshot",
+            "params": {
+                "runtimes": [
+                    {
+                        "id": "codex",
+                        "available": True,
+                        "models": models,
+                    }
+                ],
+                "probedAt": _probed_now_ms(),
+            },
+        },
+    )
+    ack = json.loads(fake_ws.sent[-1])
+    assert ack == {"id": "frm_rs_models", "ok": True}
+
+    await db_session.commit()
+    res = await db_session.execute(
+        select(DaemonInstance).where(DaemonInstance.id == instance_id)
+    )
+    inst = res.scalar_one()
+    stored = inst.runtimes_json
+    if isinstance(stored, str):
+        stored = json.loads(stored)
+    assert len(stored[0]["models"]) == 128
+
+
+@pytest.mark.asyncio
 async def test_list_instances_without_runtimes_returns_none(
     client: AsyncClient, seed_user
 ):

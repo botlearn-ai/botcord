@@ -1560,6 +1560,9 @@ class ProvisionAgentBody(BaseModel):
     daemon_instance_id: str
     label: str
     runtime: str
+    runtime_model: str | None = None
+    reasoning_effort: str | None = None
+    thinking: bool | None = None
     cwd: str | None = None
     bio: str | None = None
     # Optional OpenClaw routing selection. Only meaningful when
@@ -1585,6 +1588,9 @@ class ProvisionAgentResponse(BaseModel):
 def _daemon_lists_runtime(
     instance: DaemonInstance,
     runtime: str,
+    runtime_model: str | None = None,
+    reasoning_effort: str | None = None,
+    thinking: bool | None = None,
     openclaw_gateway: str | None = None,
     hermes_profile: str | None = None,
 ) -> bool:
@@ -1610,6 +1616,13 @@ def _daemon_lists_runtime(
         if entry.get("id") != runtime:
             continue
         if entry.get("available") is not True:
+            return False
+        if not _runtime_snapshot_accepts_model_options(
+            entry,
+            runtime_model=runtime_model,
+            reasoning_effort=reasoning_effort,
+            thinking=thinking,
+        ):
             return False
         if runtime == "openclaw-acp" and openclaw_gateway:
             endpoints = entry.get("endpoints")
@@ -1642,6 +1655,60 @@ def _daemon_lists_runtime(
             return False
         return True
     return False
+
+
+def _runtime_snapshot_accepts_model_options(
+    entry: dict,
+    *,
+    runtime_model: str | None,
+    reasoning_effort: str | None,
+    thinking: bool | None,
+) -> bool:
+    selected_model: dict | None = None
+    if runtime_model:
+        models = entry.get("models")
+        if isinstance(models, list) and models:
+            for model in models:
+                if isinstance(model, dict) and model.get("id") == runtime_model:
+                    selected_model = model
+                    break
+            if selected_model is None:
+                return False
+
+    if reasoning_effort:
+        param = _find_runtime_parameter(
+            entry,
+            selected_model,
+            ("reasoning_effort", "effort"),
+        )
+        if param is not None:
+            values = param.get("values")
+            if isinstance(values, list) and values:
+                return reasoning_effort in {str(v) for v in values}
+
+    if thinking is not None:
+        param = _find_runtime_parameter(entry, selected_model, ("thinking",))
+        if param is None:
+            return False
+        if param.get("type") != "boolean":
+            return False
+
+    return True
+
+
+def _find_runtime_parameter(
+    entry: dict,
+    model: dict | None,
+    ids: tuple[str, ...],
+) -> dict | None:
+    for container in (model, entry):
+        params = container.get("parameters") if isinstance(container, dict) else None
+        if not isinstance(params, list):
+            continue
+        for param in params:
+            if isinstance(param, dict) and param.get("id") in ids:
+                return param
+    return None
 
 
 def _mark_daemon_runtime_snapshot_bound(
@@ -1745,6 +1812,9 @@ async def provision_agent(
     if not _daemon_lists_runtime(
         instance,
         runtime,
+        body.runtime_model,
+        body.reasoning_effort,
+        body.thinking,
         body.openclaw_gateway,
         body.hermes_profile,
     ):
@@ -1836,6 +1906,15 @@ async def provision_agent(
             "runtime": runtime,
         },
     }
+    if body.runtime_model:
+        frame_params["runtimeModel"] = body.runtime_model
+        frame_params["credentials"]["runtimeModel"] = body.runtime_model
+    if body.reasoning_effort:
+        frame_params["reasoningEffort"] = body.reasoning_effort
+        frame_params["credentials"]["reasoningEffort"] = body.reasoning_effort
+    if body.thinking is not None:
+        frame_params["thinking"] = body.thinking
+        frame_params["credentials"]["thinking"] = body.thinking
     if body.cwd:
         frame_params["cwd"] = body.cwd
         frame_params["credentials"]["cwd"] = body.cwd

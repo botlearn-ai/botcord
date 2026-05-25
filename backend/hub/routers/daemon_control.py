@@ -1506,6 +1506,19 @@ def _parse_runtime_snapshot_params(
         endpoints = entry.get("endpoints")
         if isinstance(endpoints, list) and len(endpoints) > 32:
             entry["endpoints"] = endpoints[:32]
+        models = entry.get("models")
+        if isinstance(models, list) and len(models) > 128:
+            entry["models"] = models[:128]
+        if isinstance(models, list):
+            for model in models:
+                if not isinstance(model, dict):
+                    continue
+                model_parameters = model.get("parameters")
+                if isinstance(model_parameters, list) and len(model_parameters) > 64:
+                    model["parameters"] = model_parameters[:64]
+        parameters = entry.get("parameters")
+        if isinstance(parameters, list) and len(parameters) > 64:
+            entry["parameters"] = parameters[:64]
         health = entry.get("health")
         if isinstance(health, dict):
             circuit_breakers = health.get("circuitBreakers")

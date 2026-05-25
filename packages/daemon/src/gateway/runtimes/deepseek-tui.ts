@@ -260,6 +260,9 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
       auto_approve: opts.trustLevel !== "public",
       archived: false,
     };
+    const selection = parseDeepseekRuntimeSelection(opts.extraArgs);
+    if (selection.model) body.model = selection.model;
+    if (selection.reasoningEffort) body.reasoning_effort = selection.reasoningEffort;
     if (opts.systemContext) body.system_prompt = opts.systemContext;
     const res = await this.requestJson<any>(`${baseUrl}/v1/threads`, {
       method: "POST",
@@ -306,18 +309,22 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
     });
     let turnId = "";
     try {
+      const selection = parseDeepseekRuntimeSelection(opts.extraArgs);
+      const body: Record<string, unknown> = {
+        prompt: opts.text,
+        mode: "agent",
+        allow_shell: opts.trustLevel !== "public",
+        trust_mode: opts.trustLevel !== "public",
+        auto_approve: opts.trustLevel !== "public",
+      };
+      if (selection.model) body.model = selection.model;
+      if (selection.reasoningEffort) body.reasoning_effort = selection.reasoningEffort;
       const started = await this.requestJson<any>(
         `${baseUrl}/v1/threads/${encodeURIComponent(threadId)}/turns`,
         {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            prompt: opts.text,
-            mode: "agent",
-            allow_shell: opts.trustLevel !== "public",
-            trust_mode: opts.trustLevel !== "public",
-            auto_approve: opts.trustLevel !== "public",
-          }),
+          body: JSON.stringify(body),
           signal,
         },
       );
@@ -533,6 +540,41 @@ function parseSseFrame(raw: string): { event: string; data: any } | null {
 
 function authHeaders(token: string): HeadersInit {
   return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+function parseDeepseekRuntimeSelection(
+  extraArgs: string[] | undefined,
+): { model?: string; reasoningEffort?: string } {
+  const out: { model?: string; reasoningEffort?: string } = {};
+  if (!extraArgs?.length) return out;
+  for (let i = 0; i < extraArgs.length; i += 1) {
+    const arg = extraArgs[i]!;
+    if (arg === "--model") {
+      const value = nextArgValue(extraArgs, i);
+      if (value !== undefined) {
+        out.model = value;
+        i += 1;
+      }
+    } else if (arg.startsWith("--model=")) {
+      out.model = arg.slice("--model=".length);
+    } else if (arg === "--reasoning-effort") {
+      const value = nextArgValue(extraArgs, i);
+      if (value !== undefined) {
+        out.reasoningEffort = value;
+        i += 1;
+      }
+    } else if (arg.startsWith("--reasoning-effort=")) {
+      out.reasoningEffort = arg.slice("--reasoning-effort=".length);
+    }
+  }
+  return out;
+}
+
+function nextArgValue(args: string[], index: number): string | undefined {
+  const next = args[index + 1];
+  if (typeof next !== "string") return undefined;
+  if (!next.startsWith("-")) return next;
+  return /^-\d/.test(next) ? next : undefined;
 }
 
 function poolKey(opts: RuntimeRunOptions): string {

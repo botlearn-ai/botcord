@@ -36,6 +36,12 @@ export interface DiscoveredAgentCredential {
    * in that case.
    */
   runtime?: string;
+  /** Runtime model id/alias selected for this agent. */
+  runtimeModel?: string;
+  /** Runtime reasoning effort selected for this agent. */
+  reasoningEffort?: string;
+  /** Kimi-style thinking toggle selected for this agent. */
+  thinking?: boolean;
   /** Working directory cached alongside `runtime`. */
   cwd?: string;
   /** OpenClaw gateway profile name from credentials (only meaningful for openclaw-acp). */
@@ -181,6 +187,9 @@ export function discoverAgentCredentials(
     };
     if (creds.displayName) entry.displayName = creds.displayName;
     if (creds.runtime) entry.runtime = creds.runtime;
+    if (creds.runtimeModel) entry.runtimeModel = creds.runtimeModel;
+    if (creds.reasoningEffort) entry.reasoningEffort = creds.reasoningEffort;
+    if (typeof creds.thinking === "boolean") entry.thinking = creds.thinking;
     if (creds.cwd) entry.cwd = creds.cwd;
     if (creds.openclawGateway) entry.openclawGateway = creds.openclawGateway;
     if (creds.openclawAgent) entry.openclawAgent = creds.openclawAgent;

@@ -2293,6 +2293,11 @@ export const createAgentDialog: TranslationMap<{
   showUnavailable: string
   hideUnavailable: string
   runtimeNotSupported: string
+  modelLabel: string
+  modelPlaceholder: string
+  reasoningEffortLabel: string
+  reasoningEffortPlaceholder: string
+  thinkingLabel: string
   openclawSubagentLabel: string
   openclawSubagentInfo: string
   openclawSubagentPlaceholder: string
@@ -2356,6 +2361,11 @@ export const createAgentDialog: TranslationMap<{
     showUnavailable: 'Show',
     hideUnavailable: 'Hide',
     runtimeNotSupported: 'not yet supported',
+    modelLabel: 'Model',
+    modelPlaceholder: 'Select a model',
+    reasoningEffortLabel: 'Reasoning effort',
+    reasoningEffortPlaceholder: 'Select effort',
+    thinkingLabel: '思考模式',
     openclawSubagentLabel: 'Subagent',
     openclawSubagentInfo: 'Select a subagent profile from this gateway. Leave it blank to use the main agent configured as defaultAgent.',
     openclawSubagentPlaceholder: "Leave blank to use the gateway's main agent",
@@ -2419,6 +2429,11 @@ export const createAgentDialog: TranslationMap<{
     showUnavailable: '展开',
     hideUnavailable: '收起',
     runtimeNotSupported: '暂不支持',
+    modelLabel: '模型',
+    modelPlaceholder: '选择模型',
+    reasoningEffortLabel: '推理强度',
+    reasoningEffortPlaceholder: '选择强度',
+    thinkingLabel: 'Thinking',
     openclawSubagentLabel: '子 Agent（可选）',
     openclawSubagentInfo: '选择这个网关里的子 Agent。留空时，会使用网关配置里的主 Agent（defaultAgent）。',
     openclawSubagentPlaceholder: '留空则使用网关的主 Agent',

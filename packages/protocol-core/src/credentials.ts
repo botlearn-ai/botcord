@@ -23,6 +23,12 @@ export interface StoredBotCordCredentials {
    * bind-code credentials have no value here. Authoritative source is Hub.
    */
   runtime?: string;
+  /** Runtime model id/alias selected for this agent, if any. */
+  runtimeModel?: string;
+  /** Runtime reasoning effort selected for this agent, if any. */
+  reasoningEffort?: string;
+  /** Kimi-style thinking toggle selected for this agent, if any. */
+  thinking?: boolean;
   /** Working directory pinned for this agent, cached alongside runtime. */
   cwd?: string;
   /**
