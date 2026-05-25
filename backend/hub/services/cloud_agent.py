@@ -1322,7 +1322,7 @@ class CloudAgentService:
         if (count or 0) >= self._max_per_user:
             raise CloudAgentError(
                 "quota_exceeded",
-                f"Cloud Agent quota exceeded (max {self._max_per_user})",
+                f"你最多可以创建 {self._max_per_user} 个云端 Bot。请先删除不再使用的 Bot 后再创建。",
                 http_status=400,
             )
 
@@ -1378,7 +1378,7 @@ class CloudAgentService:
                 if (candidate.active_agent_count or 0) >= candidate.max_agents:
                     raise CloudAgentError(
                         "sandbox_capacity_exceeded",
-                        f"Cloud sandbox capacity exceeded (max {candidate.max_agents})",
+                        f"当前云端运行环境最多可托管 {candidate.max_agents} 个 Bot。请先删除不再使用的 Bot 后再创建。",
                         http_status=400,
                     )
                 return candidate, daemon_row

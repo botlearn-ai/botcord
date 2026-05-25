@@ -307,7 +307,7 @@ CLOUD_AGENT_FEATURE_ENABLED: bool = os.getenv(
     "CLOUD_AGENT_FEATURE_ENABLED", "false"
 ).lower() in ("true", "1", "yes")
 
-CLOUD_AGENT_MAX_PER_USER: int = int(os.getenv("CLOUD_AGENT_MAX_PER_USER", "3"))
+CLOUD_AGENT_MAX_PER_USER: int = int(os.getenv("CLOUD_AGENT_MAX_PER_USER", "5"))
 
 CLOUD_AGENT_DEFAULT_RUNTIME: str = os.getenv(
     "CLOUD_AGENT_DEFAULT_RUNTIME", "deepseek-tui"
@@ -325,7 +325,7 @@ CLOUD_AGENT_DEFAULT_PROVIDER: str = os.getenv("CLOUD_AGENT_DEFAULT_PROVIDER", "e
 # Slot capacity per cloud daemon — schema allows >1 to keep the per-agent
 # sandbox cost down. Conservative default while we observe real load.
 CLOUD_AGENT_DEFAULT_MAX_AGENTS_PER_DAEMON: int = int(
-    os.getenv("CLOUD_AGENT_DEFAULT_MAX_AGENTS_PER_DAEMON", str(CLOUD_AGENT_MAX_PER_USER))
+    os.getenv("CLOUD_AGENT_DEFAULT_MAX_AGENTS_PER_DAEMON", "5")
 )
 
 CLOUD_AGENT_IDLE_PAUSE_SECONDS: float = float(
