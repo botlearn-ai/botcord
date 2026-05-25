@@ -733,3 +733,139 @@ describe("W4: handleLoginStatus accountId ownership check", () => {
     expect(ack.error?.code).toBe("bad_params");
   });
 });
+
+describe("login_missing vs login_expired", () => {
+  it("wechat upsert with an unknown loginId returns login_missing", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+    });
+
+    const ack = await ctrl.handleUpsert({
+      id: uniqId("wx_missing"),
+      type: "wechat",
+      accountId: "ag_alice",
+      enabled: true,
+      loginId: "wxl_never_created",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("login_missing");
+    expect(gw.addChannel).not.toHaveBeenCalled();
+  });
+
+  it("feishu upsert with an unknown loginId returns login_missing", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+    });
+
+    const ack = await ctrl.handleUpsert({
+      id: uniqId("fs_missing"),
+      type: "feishu",
+      accountId: "ag_alice",
+      enabled: true,
+      loginId: "fsl_never_created",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("login_missing");
+    expect(gw.addChannel).not.toHaveBeenCalled();
+  });
+
+  it("recent_senders with an unknown loginId returns login_missing", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+    });
+
+    const ack = await ctrl.handleRecentSenders({
+      provider: "wechat",
+      loginId: "wxl_never_created",
+      accountId: "ag_alice",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("login_missing");
+  });
+
+  it("wechat upsert with a TTL-expired loginId returns login_expired", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    let nowMs = 1_000_000;
+    const sessions = new LoginSessionStore({ now: () => nowMs, ttlMs: 60_000 });
+    sessions.create({
+      loginId: "wxl_aged",
+      accountId: "ag_alice",
+      provider: "wechat",
+      qrcode: "QR",
+      baseUrl: "https://ilinkai.weixin.qq.com",
+      botToken: "wechat-bot-token-aged",
+    });
+    nowMs += 120_000;
+
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+    });
+
+    const ack = await ctrl.handleUpsert({
+      id: uniqId("wx_expired"),
+      type: "wechat",
+      accountId: "ag_alice",
+      enabled: true,
+      loginId: "wxl_aged",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("login_expired");
+    // resolve() also evicts — a follow-up call should now report missing.
+    expect(sessions.resolve("wxl_aged").state).toBe("missing");
+  });
+
+  it("feishu upsert with a TTL-expired loginId returns login_expired", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    let nowMs = 2_000_000;
+    const sessions = new LoginSessionStore({ now: () => nowMs, ttlMs: 60_000 });
+    sessions.create({
+      loginId: "fsl_aged",
+      accountId: "ag_alice",
+      provider: "feishu",
+      appId: "cli_xxx",
+      appSecret: "feishu-secret-aged",
+      domain: "feishu",
+    });
+    nowMs += 120_000;
+
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+    });
+
+    const ack = await ctrl.handleUpsert({
+      id: uniqId("fs_expired"),
+      type: "feishu",
+      accountId: "ag_alice",
+      enabled: true,
+      loginId: "fsl_aged",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("login_expired");
+  });
+});

@@ -21,6 +21,7 @@ import asyncio
 import datetime
 import logging
 import os
+import re
 import time
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -32,6 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
+from app.clients import cloud_gateway_ingress_client as ingress_client
 from hub import config as hub_config
 from hub.database import get_db
 from hub.id_generators import generate_gateway_connection_id
@@ -417,6 +419,243 @@ async def _send_gateway_control_frame(
         ) from exc
 
 
+def _log_setup_event(
+    *,
+    agent: Agent | None,
+    host: _GatewayHost | None,
+    provider: str,
+    login_id: str | None,
+    outcome: str,
+    error_code: str | None = None,
+    ctx: RequestContext | None = None,
+    setup_owner: str = "daemon",
+) -> None:
+    """Emit a structured log line for cloud-gateway setup paths.
+
+    Phase 0 diagnostic instrumentation per
+    ``docs/cloud-gateway-ingress-remediation-plan.md`` §9. Every setup-path
+    request emits at least an ``started`` line and either an ``ok`` or
+    ``error`` line — fields stay flat so they survive JSON log shipping.
+    Secrets (botToken / appSecret / qrcode / cookie) never appear here.
+
+    ``setup_owner`` defaults to ``"daemon"`` for the legacy control-frame
+    path; cloud-agent routes that proxy to gateway-ingress pass
+    ``setup_owner="gateway-ingress"`` so the same dashboard log queries
+    keep working across the Phase 2 cutover.
+    """
+    extra: dict[str, Any] = {
+        "agent_id": getattr(agent, "agent_id", None),
+        "provider": provider,
+        "login_id": login_id,
+        "hosting_kind": getattr(agent, "hosting_kind", None),
+        "daemon_instance_id": getattr(host, "daemon_instance_id", None),
+        "cloud_daemon_instance_id": getattr(host, "cloud_daemon_instance_id", None),
+        "setup_owner": setup_owner,
+        "outcome": outcome,
+        "error_code": error_code,
+    }
+    request_id = getattr(ctx, "request_id", None) if ctx is not None else None
+    if request_id:
+        extra["request_id"] = request_id
+    logger.info("cloud-gateway setup event", extra=extra)
+
+
+def _extract_error_code(exc: HTTPException) -> str | None:
+    """Pull the daemon error code (if any) out of an HTTPException raised by
+    ``_ack_or_raise`` / ``_send_gateway_control_frame``."""
+    detail = exc.detail
+    if isinstance(detail, dict):
+        code = (
+            detail.get("daemon_code")
+            or detail.get("ingress_code")
+            or detail.get("code")
+        )
+        if isinstance(code, str):
+            return code
+    if isinstance(detail, str):
+        return detail
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Cloud-agent ingress proxy helpers (Phase 2)
+# ---------------------------------------------------------------------------
+#
+# The 5 setup routes + 4 CRUD routes share the same scaffolding: rate-limit,
+# load agent, decide branch, log start, call ingress, log ok/error. We keep
+# that scaffolding in the route bodies (so each route still owns its
+# request/response shape) but pull the shared "extract mirror-safe fields"
+# out here so we never accidentally persist a botToken / appSecret / cookie.
+
+# config_json keys we'll persist for cloud-mirror rows. Any key not in this
+# set is dropped — this is the security boundary that keeps provider secrets
+# inside gateway-ingress.
+_CLOUD_MIRROR_SAFE_CONFIG_KEYS = {
+    "baseUrl",
+    "domain",
+    "allowedSenderIds",
+    "allowedChatIds",
+    "splitAt",
+    # Server-mastered display-only fields returned by ingress. None of these
+    # are secrets — tokenFingerprint/tokenPreview are masked digests, the
+    # rest are public provider metadata.
+    "tokenPreview",
+    "tokenFingerprint",
+    "appId",
+    "userOpenId",
+}
+
+
+def _filter_mirror_config(raw: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        k: v
+        for k, v in raw.items()
+        if k in _CLOUD_MIRROR_SAFE_CONFIG_KEYS and v is not None
+    }
+
+
+def _coerce_status(value: Any, *, default: str = "pending") -> str:
+    if isinstance(value, str) and value in ("pending", "active", "disabled", "error"):
+        return value
+    return default
+
+
+# --- Phase 4: warning → mirror.last_error sync ---
+#
+# Belt-and-suspenders redaction: gateway-ingress already scrubs warning
+# messages, but Hub does its own pass before persisting so a regression on
+# the ingress side cannot leak a bot token / app secret into the dashboard
+# DB. Patterns:
+#   - Telegram bot tokens look like ``<digits>:<base64-ish>`` (≥30 chars).
+#   - Long base64 / base32 runs ≥40 chars get nuked too.
+_TELEGRAM_TOKEN_RE = re.compile(r"\b\d{6,}:[A-Za-z0-9_-]{20,}\b")
+_LONG_OPAQUE_RE = re.compile(r"\b[A-Za-z0-9_\-]{40,}\b")
+
+
+def _scrub_ingress_warning_message(message: str | None) -> str | None:
+    if not message:
+        return None
+    scrubbed = _TELEGRAM_TOKEN_RE.sub("[REDACTED]", message)
+    scrubbed = _LONG_OPAQUE_RE.sub("[REDACTED]", scrubbed)
+    return scrubbed[:1000]  # bound DB write — last_error column is not unlimited
+
+
+def _extract_warning_message(
+    response_body: Any,
+) -> str | None:
+    """Pull ``warning.message`` out of an ingress create/patch response."""
+    if not isinstance(response_body, dict):
+        return None
+    warning = response_body.get("warning")
+    if not isinstance(warning, dict):
+        return None
+    message = warning.get("message")
+    if not isinstance(message, str) or not message:
+        return None
+    return _scrub_ingress_warning_message(message)
+
+
+async def _upsert_mirror_from_ingress(
+    db: AsyncSession,
+    *,
+    agent: Agent,
+    user_id: Any,
+    ingress_connection: dict[str, Any],
+    existing_row: AgentGatewayConnection | None = None,
+    warning_message: str | None = None,
+) -> AgentGatewayConnection:
+    """Apply an ingress create/patch response to Hub's mirror table.
+
+    Mirror rules:
+      - id / agent_id / user_id / provider / label / status / enabled come
+        straight from ingress.
+      - config_json is filtered through ``_CLOUD_MIRROR_SAFE_CONFIG_KEYS``,
+        which excludes botToken / appSecret / refreshToken / cookies.
+      - daemon_instance_id is the FK to ``daemon_instances`` — it's NOT NULL
+        in the schema, so we reuse ``agent.daemon_instance_id`` (every cloud
+        agent already has one wired by ``CloudAgentService.provision``).
+    """
+    gateway_id = ingress_connection.get("id")
+    if not isinstance(gateway_id, str) or not gateway_id:
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "cloud_gateway_ingress_unavailable"},
+        )
+    provider = ingress_connection.get("provider") or ingress_connection.get("type")
+    if provider not in ("telegram", "wechat", "feishu"):
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "cloud_gateway_ingress_unavailable"},
+        )
+    label = ingress_connection.get("label")
+    enabled_raw = ingress_connection.get("enabled")
+    enabled = bool(enabled_raw) if enabled_raw is not None else True
+    status_value = _coerce_status(
+        ingress_connection.get("status"),
+        default="active" if enabled else "disabled",
+    )
+    config = _filter_mirror_config(ingress_connection.get("config_json"))
+    if not config:
+        # ingress may inline safe metadata at the top level instead of nesting
+        # it under config_json — pick those up so the dashboard sees them.
+        config = _filter_mirror_config(ingress_connection)
+
+    # ``daemon_instance_id`` is NOT NULL with an FK to ``daemon_instances``.
+    # Cloud agents always have one bound at provision time; if for some
+    # reason this agent doesn't, surface a clear 500 instead of inserting a
+    # broken row.
+    daemon_instance_id = agent.daemon_instance_id
+    if not daemon_instance_id:
+        raise HTTPException(
+            status_code=500,
+            detail="cloud_agent_missing_daemon_instance",
+        )
+
+    if existing_row is None:
+        existing_row = await db.scalar(
+            select(AgentGatewayConnection).where(
+                AgentGatewayConnection.id == gateway_id
+            )
+        )
+
+    if existing_row is None:
+        row = AgentGatewayConnection(
+            id=gateway_id,
+            user_id=user_id,
+            agent_id=agent.agent_id,
+            daemon_instance_id=daemon_instance_id,
+            provider=provider,
+            label=label,
+            enabled=enabled,
+            status=status_value,
+            config_json=config,
+            last_error=warning_message,
+        )
+        db.add(row)
+    else:
+        existing_row.label = label
+        existing_row.enabled = enabled
+        existing_row.status = status_value
+        existing_row.config_json = config
+        # Phase 4: ingress warning → mirror.last_error. When the ingress
+        # returns no warning we clear any prior staleness instead of leaving
+        # it lingering after a successful repair.
+        existing_row.last_error = warning_message
+        row = existing_row
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+def _request_id_for(ctx: RequestContext) -> str | None:
+    # RequestContext currently has no ``request_id`` attribute; the ingress
+    # client mints one on the fly when this is None. Threaded through anyway
+    # so we can flip it on later without touching every call site.
+    return getattr(ctx, "request_id", None)
+
+
 def _ack_or_raise(ack: Any) -> dict[str, Any]:
     """Translate a daemon ack envelope into either ``result`` or HTTPException."""
     if not isinstance(ack, dict) or not ack.get("ok"):
@@ -689,8 +928,11 @@ async def create_gateway(
     if body.provider not in _ALLOWED_PROVIDERS:
         raise HTTPException(status_code=422, detail="unsupported_provider")
 
-    agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
-    await _ensure_gateway_host_online(db, ctx, agent, host)
+    agent = await _load_owned_agent(db, ctx, agent_id)
+    if agent.hosting_kind not in ("daemon", "cloud"):
+        # OpenClaw / other hosting kinds never had third-party gateway support;
+        # surface the same 422 the daemon-only loader produced before Phase 2.
+        raise HTTPException(status_code=422, detail="agent_not_daemon_hosted")
 
     if body.provider == "telegram" and not body.bot_token:
         raise HTTPException(status_code=400, detail="missing_bot_token")
@@ -699,10 +941,68 @@ async def create_gateway(
     if body.provider == "feishu" and not body.login_id:
         raise HTTPException(status_code=400, detail="missing_login_id")
 
-    gateway_id = generate_gateway_connection_id(body.provider)
     config = _filter_config(body.config)
     _validate_base_url(config.get("baseUrl"))
+
+    # ----- Cloud agent: proxy create to gateway-ingress -----
+    if agent.hosting_kind == "cloud":
+        _require_whitelist(body.provider, config)
+        ingress_body: dict[str, Any] = {
+            "provider": body.provider,
+            "label": body.label,
+            "enabled": body.enabled,
+            "config": dict(config),
+        }
+        # Telegram: fresh botToken submitted by frontend — never persisted in
+        # Hub. We forward it to ingress over the authenticated server-to-
+        # server channel; the ingress secret store owns it after this.
+        if body.provider == "telegram":
+            ingress_body["secret"] = {"botToken": body.bot_token}
+        if body.provider in ("wechat", "feishu"):
+            ingress_body["loginId"] = body.login_id
+
+        _log_setup_event(
+            agent=agent, host=None, provider=body.provider,
+            login_id=body.login_id, outcome="started", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        try:
+            result = await ingress_client.create_gateway(
+                agent_id,
+                user_id=ctx.user_id,
+                request_id=_request_id_for(ctx),
+                body=ingress_body,
+            )
+        except HTTPException as exc:
+            _log_setup_event(
+                agent=agent, host=None, provider=body.provider,
+                login_id=body.login_id, outcome="error",
+                error_code=_extract_error_code(exc), ctx=ctx,
+                setup_owner="gateway-ingress",
+            )
+            raise
+
+        connection = result.get("connection") if isinstance(result.get("connection"), dict) else result
+        warning_message = _extract_warning_message(result)
+        row = await _upsert_mirror_from_ingress(
+            db,
+            agent=agent,
+            user_id=ctx.user_id,
+            ingress_connection=connection,
+            warning_message=warning_message,
+        )
+        _log_setup_event(
+            agent=agent, host=None, provider=body.provider,
+            login_id=body.login_id, outcome="ok", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        return _serialize(row)
+
+    # ----- daemon branch (unchanged) -----
+    agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
+    await _ensure_gateway_host_online(db, ctx, agent, host)
     _require_whitelist(body.provider, config)
+    gateway_id = generate_gateway_connection_id(body.provider)
 
     params: dict[str, Any] = {
         "id": gateway_id,
@@ -787,6 +1087,81 @@ async def patch_gateway(
     db: AsyncSession = Depends(get_db),
 ) -> GatewayOut:
     _rate_limit(ctx.user_id, "gateway-write")
+
+    agent = await _load_owned_agent(db, ctx, agent_id)
+
+    # ----- Cloud agent: forward PATCH to gateway-ingress -----
+    if agent.hosting_kind == "cloud":
+        existing = await db.scalar(
+            select(AgentGatewayConnection).where(
+                AgentGatewayConnection.id == gateway_id,
+                AgentGatewayConnection.agent_id == agent_id,
+                AgentGatewayConnection.user_id == ctx.user_id,
+            )
+        )
+        if existing is None:
+            raise HTTPException(status_code=404, detail="gateway_not_found")
+
+        # Validate the user-visible diff before we send it to ingress; that
+        # way SSRF/whitelist guards fire even when the source of truth lives
+        # on the other side of the network.
+        fields = body.model_fields_set
+        merged_config = dict(existing.config_json or {})
+        if "config" in fields:
+            merged_config.update(_filter_config(body.config))
+        _validate_base_url(merged_config.get("baseUrl"))
+        _require_whitelist(existing.provider, merged_config)
+
+        ingress_body: dict[str, Any] = {}
+        if "label" in fields:
+            ingress_body["label"] = body.label
+        if "enabled" in fields and body.enabled is not None:
+            ingress_body["enabled"] = body.enabled
+        if "config" in fields:
+            ingress_body["config"] = _filter_config(body.config)
+        if existing.provider == "telegram" and body.bot_token:
+            # Rotation: forward the new token to ingress, never persisted here.
+            ingress_body["secret"] = {"botToken": body.bot_token}
+
+        _log_setup_event(
+            agent=agent, host=None, provider=existing.provider,
+            login_id=None, outcome="started", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        try:
+            result = await ingress_client.patch_gateway(
+                agent_id, gateway_id,
+                user_id=ctx.user_id,
+                request_id=_request_id_for(ctx),
+                body=ingress_body,
+            )
+        except HTTPException as exc:
+            _log_setup_event(
+                agent=agent, host=None, provider=existing.provider,
+                login_id=None, outcome="error",
+                error_code=_extract_error_code(exc), ctx=ctx,
+                setup_owner="gateway-ingress",
+            )
+            raise
+
+        connection = result.get("connection") if isinstance(result.get("connection"), dict) else result
+        warning_message = _extract_warning_message(result)
+        row = await _upsert_mirror_from_ingress(
+            db,
+            agent=agent,
+            user_id=ctx.user_id,
+            ingress_connection=connection,
+            existing_row=existing,
+            warning_message=warning_message,
+        )
+        _log_setup_event(
+            agent=agent, host=None, provider=existing.provider,
+            login_id=None, outcome="ok", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        return _serialize(row)
+
+    # ----- daemon branch (unchanged) -----
     agent, host, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
     await _ensure_gateway_host_online(db, ctx, agent, host)
 
@@ -885,6 +1260,56 @@ async def delete_gateway(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
+    agent = await _load_owned_agent(db, ctx, agent_id)
+
+    # ----- Cloud agent: forward DELETE to gateway-ingress -----
+    if agent.hosting_kind == "cloud":
+        row = await db.scalar(
+            select(AgentGatewayConnection).where(
+                AgentGatewayConnection.id == gateway_id,
+                AgentGatewayConnection.agent_id == agent_id,
+                AgentGatewayConnection.user_id == ctx.user_id,
+            )
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="gateway_not_found")
+
+        if force:
+            logger.warning(
+                "delete_gateway force=true (cloud): dropping Hub mirror without ingress ack",
+                extra={"agent_id": agent_id, "gateway_id": row.id},
+            )
+        else:
+            _log_setup_event(
+                agent=agent, host=None, provider=row.provider,
+                login_id=None, outcome="started", ctx=ctx,
+                setup_owner="gateway-ingress",
+            )
+            try:
+                await ingress_client.delete_gateway(
+                    agent_id, gateway_id,
+                    user_id=ctx.user_id,
+                    request_id=_request_id_for(ctx),
+                )
+            except HTTPException as exc:
+                _log_setup_event(
+                    agent=agent, host=None, provider=row.provider,
+                    login_id=None, outcome="error",
+                    error_code=_extract_error_code(exc), ctx=ctx,
+                    setup_owner="gateway-ingress",
+                )
+                raise
+            _log_setup_event(
+                agent=agent, host=None, provider=row.provider,
+                login_id=None, outcome="ok", ctx=ctx,
+                setup_owner="gateway-ingress",
+            )
+
+        await db.delete(row)
+        await db.commit()
+        return Response(status_code=204)
+
+    # ----- daemon branch (unchanged) -----
     agent, host, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
     if force:
         # C1: operator opt-in escape hatch — daemon is permanently dead and the
@@ -921,6 +1346,31 @@ async def test_gateway(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     _rate_limit(ctx.user_id, "gateway-test")
+    agent = await _load_owned_agent(db, ctx, agent_id)
+
+    # ----- Cloud agent: forward TEST to gateway-ingress -----
+    if agent.hosting_kind == "cloud":
+        existing = await db.scalar(
+            select(AgentGatewayConnection).where(
+                AgentGatewayConnection.id == gateway_id,
+                AgentGatewayConnection.agent_id == agent_id,
+                AgentGatewayConnection.user_id == ctx.user_id,
+            )
+        )
+        if existing is None:
+            raise HTTPException(status_code=404, detail="gateway_not_found")
+        result = await ingress_client.test_gateway(
+            agent_id, gateway_id,
+            user_id=ctx.user_id,
+            request_id=_request_id_for(ctx),
+        )
+        # ingress shape is the same ``{"ok": True, "result": ...}`` envelope
+        # the daemon path already returns, so the dashboard handles both.
+        if isinstance(result, dict) and "ok" in result and "result" in result:
+            return result
+        return {"ok": True, "result": result}
+
+    # ----- daemon branch (unchanged) -----
     agent, host, row = await _load_owned_connection(db, ctx, agent_id, gateway_id)
     await _ensure_gateway_host_online(db, ctx, agent, host)
 
@@ -949,15 +1399,65 @@ async def wechat_login_start(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Proxy ``gateway_login_start`` (provider=wechat) to the daemon.
+    """Proxy ``gateway_login_start`` (provider=wechat) to the daemon or
+    gateway-ingress depending on hosting kind.
 
     Returns ``{loginId, qrcode, qrcodeUrl, expiresAt}``. Does NOT persist
-    anything — the bot token never leaves the daemon's process memory until
-    the user calls ``POST /gateways`` with the matching ``loginId``.
+    anything — the bot token never leaves the setup owner's secret store
+    until the user calls ``POST /gateways`` with the matching ``loginId``.
     """
     _rate_limit(ctx.user_id, "wechat-login")
+    if body.base_url:
+        _validate_base_url(body.base_url)
+    agent = await _load_owned_agent(db, ctx, agent_id)
+
+    if agent.hosting_kind == "cloud":
+        _log_setup_event(
+            agent=agent, host=None, provider="wechat",
+            login_id=None, outcome="started", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        ingress_body: dict[str, Any] = {}
+        if body.gateway_id:
+            ingress_body["gatewayId"] = body.gateway_id
+        if body.base_url:
+            ingress_body["baseUrl"] = body.base_url
+        try:
+            result = await ingress_client.login_start(
+                agent_id, "wechat",
+                user_id=ctx.user_id,
+                request_id=_request_id_for(ctx),
+                body=ingress_body,
+            )
+        except HTTPException as exc:
+            _log_setup_event(
+                agent=agent, host=None, provider="wechat",
+                login_id=None, outcome="error",
+                error_code=_extract_error_code(exc), ctx=ctx,
+                setup_owner="gateway-ingress",
+            )
+            raise
+        login_id = result.get("loginId") if isinstance(result.get("loginId"), str) else None
+        _log_setup_event(
+            agent=agent, host=None, provider="wechat",
+            login_id=login_id, outcome="ok", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        return {
+            "loginId": result.get("loginId"),
+            "qrcode": result.get("qrcode"),
+            "qrcodeUrl": result.get("qrcodeUrl"),
+            "expiresAt": result.get("expiresAt"),
+        }
+
+    # daemon branch — unchanged behavior
     agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
     await _ensure_gateway_host_online(db, ctx, agent, host)
+
+    _log_setup_event(
+        agent=agent, host=host, provider="wechat",
+        login_id=None, outcome="started", ctx=ctx,
+    )
 
     params: dict[str, Any] = {
         "provider": "wechat",
@@ -966,21 +1466,32 @@ async def wechat_login_start(
     if body.gateway_id:
         params["gatewayId"] = body.gateway_id
     if body.base_url:
-        _validate_base_url(body.base_url)
         params["baseUrl"] = body.base_url
 
-    ack = await _send_gateway_control_frame(
-        host,
-        "gateway_login_start",
-        params,
-        db=db,
-        ctx=ctx,
-        agent=agent,
-        retry_cloud_disconnect=True,
+    try:
+        ack = await _send_gateway_control_frame(
+            host,
+            "gateway_login_start",
+            params,
+            db=db,
+            ctx=ctx,
+            agent=agent,
+            retry_cloud_disconnect=True,
+        )
+        result = _ack_or_raise(ack)
+    except HTTPException as exc:
+        _log_setup_event(
+            agent=agent, host=host, provider="wechat",
+            login_id=None, outcome="error",
+            error_code=_extract_error_code(exc), ctx=ctx,
+        )
+        raise
+
+    login_id = result.get("loginId") if isinstance(result.get("loginId"), str) else None
+    _log_setup_event(
+        agent=agent, host=host, provider="wechat",
+        login_id=login_id, outcome="ok", ctx=ctx,
     )
-    result = _ack_or_raise(ack)
-    # Surface the daemon-reported envelope verbatim — the dashboard already
-    # speaks `{loginId, qrcode, qrcodeUrl, expiresAt}` per the design doc.
     return {
         "loginId": result.get("loginId"),
         "qrcode": result.get("qrcode"),
@@ -997,19 +1508,71 @@ async def wechat_login_status(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     _rate_limit(ctx.user_id, "wechat-login")
+    agent = await _load_owned_agent(db, ctx, agent_id)
+
+    if agent.hosting_kind == "cloud":
+        _log_setup_event(
+            agent=agent, host=None, provider="wechat",
+            login_id=body.login_id, outcome="started", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        try:
+            result = await ingress_client.login_status(
+                agent_id, "wechat",
+                user_id=ctx.user_id,
+                request_id=_request_id_for(ctx),
+                login_id=body.login_id,
+            )
+        except HTTPException as exc:
+            _log_setup_event(
+                agent=agent, host=None, provider="wechat",
+                login_id=body.login_id, outcome="error",
+                error_code=_extract_error_code(exc), ctx=ctx,
+                setup_owner="gateway-ingress",
+            )
+            raise
+        _log_setup_event(
+            agent=agent, host=None, provider="wechat",
+            login_id=body.login_id, outcome="ok", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        return {
+            "status": result.get("status"),
+            "baseUrl": result.get("baseUrl"),
+            "tokenPreview": result.get("tokenPreview"),
+        }
+
     agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
     await _ensure_gateway_host_online(db, ctx, agent, host)
 
-    ack = await _send_gateway_control_frame(
-        host,
-        "gateway_login_status",
-        {"provider": "wechat", "loginId": body.login_id, "accountId": agent_id},
-        db=db,
-        ctx=ctx,
-        agent=agent,
-        retry_cloud_disconnect=True,
+    _log_setup_event(
+        agent=agent, host=host, provider="wechat",
+        login_id=body.login_id, outcome="started", ctx=ctx,
     )
-    result = _ack_or_raise(ack)
+
+    try:
+        ack = await _send_gateway_control_frame(
+            host,
+            "gateway_login_status",
+            {"provider": "wechat", "loginId": body.login_id, "accountId": agent_id},
+            db=db,
+            ctx=ctx,
+            agent=agent,
+            retry_cloud_disconnect=True,
+        )
+        result = _ack_or_raise(ack)
+    except HTTPException as exc:
+        _log_setup_event(
+            agent=agent, host=host, provider="wechat",
+            login_id=body.login_id, outcome="error",
+            error_code=_extract_error_code(exc), ctx=ctx,
+        )
+        raise
+
+    _log_setup_event(
+        agent=agent, host=host, provider="wechat",
+        login_id=body.login_id, outcome="ok", ctx=ctx,
+    )
     return {
         "status": result.get("status"),
         "baseUrl": result.get("baseUrl"),
@@ -1025,8 +1588,54 @@ async def feishu_login_start(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     _rate_limit(ctx.user_id, "wechat-login")
+    agent = await _load_owned_agent(db, ctx, agent_id)
+
+    if agent.hosting_kind == "cloud":
+        _log_setup_event(
+            agent=agent, host=None, provider="feishu",
+            login_id=None, outcome="started", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        ingress_body: dict[str, Any] = {}
+        if body.gateway_id:
+            ingress_body["gatewayId"] = body.gateway_id
+        if body.domain:
+            ingress_body["domain"] = body.domain
+        try:
+            result = await ingress_client.login_start(
+                agent_id, "feishu",
+                user_id=ctx.user_id,
+                request_id=_request_id_for(ctx),
+                body=ingress_body,
+            )
+        except HTTPException as exc:
+            _log_setup_event(
+                agent=agent, host=None, provider="feishu",
+                login_id=None, outcome="error",
+                error_code=_extract_error_code(exc), ctx=ctx,
+                setup_owner="gateway-ingress",
+            )
+            raise
+        login_id = result.get("loginId") if isinstance(result.get("loginId"), str) else None
+        _log_setup_event(
+            agent=agent, host=None, provider="feishu",
+            login_id=login_id, outcome="ok", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        return {
+            "loginId": result.get("loginId"),
+            "qrcode": result.get("qrcode"),
+            "qrcodeUrl": result.get("qrcodeUrl"),
+            "expiresAt": result.get("expiresAt"),
+        }
+
     agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
     await _ensure_gateway_host_online(db, ctx, agent, host)
+
+    _log_setup_event(
+        agent=agent, host=host, provider="feishu",
+        login_id=None, outcome="started", ctx=ctx,
+    )
 
     params: dict[str, Any] = {
         "provider": "feishu",
@@ -1037,16 +1646,30 @@ async def feishu_login_start(
     if body.domain:
         params["domain"] = body.domain
 
-    ack = await _send_gateway_control_frame(
-        host,
-        "gateway_login_start",
-        params,
-        db=db,
-        ctx=ctx,
-        agent=agent,
-        retry_cloud_disconnect=True,
+    try:
+        ack = await _send_gateway_control_frame(
+            host,
+            "gateway_login_start",
+            params,
+            db=db,
+            ctx=ctx,
+            agent=agent,
+            retry_cloud_disconnect=True,
+        )
+        result = _ack_or_raise(ack)
+    except HTTPException as exc:
+        _log_setup_event(
+            agent=agent, host=host, provider="feishu",
+            login_id=None, outcome="error",
+            error_code=_extract_error_code(exc), ctx=ctx,
+        )
+        raise
+
+    login_id = result.get("loginId") if isinstance(result.get("loginId"), str) else None
+    _log_setup_event(
+        agent=agent, host=host, provider="feishu",
+        login_id=login_id, outcome="ok", ctx=ctx,
     )
-    result = _ack_or_raise(ack)
     return {
         "loginId": result.get("loginId"),
         "qrcode": result.get("qrcode"),
@@ -1063,19 +1686,73 @@ async def feishu_login_status(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     _rate_limit(ctx.user_id, "wechat-login")
+    agent = await _load_owned_agent(db, ctx, agent_id)
+
+    if agent.hosting_kind == "cloud":
+        _log_setup_event(
+            agent=agent, host=None, provider="feishu",
+            login_id=body.login_id, outcome="started", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        try:
+            result = await ingress_client.login_status(
+                agent_id, "feishu",
+                user_id=ctx.user_id,
+                request_id=_request_id_for(ctx),
+                login_id=body.login_id,
+            )
+        except HTTPException as exc:
+            _log_setup_event(
+                agent=agent, host=None, provider="feishu",
+                login_id=body.login_id, outcome="error",
+                error_code=_extract_error_code(exc), ctx=ctx,
+                setup_owner="gateway-ingress",
+            )
+            raise
+        _log_setup_event(
+            agent=agent, host=None, provider="feishu",
+            login_id=body.login_id, outcome="ok", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        return {
+            "status": result.get("status"),
+            "appId": result.get("appId"),
+            "domain": result.get("domain"),
+            "userOpenId": result.get("userOpenId"),
+            "tokenPreview": result.get("tokenPreview"),
+        }
+
     agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
     await _ensure_gateway_host_online(db, ctx, agent, host)
 
-    ack = await _send_gateway_control_frame(
-        host,
-        "gateway_login_status",
-        {"provider": "feishu", "loginId": body.login_id, "accountId": agent_id},
-        db=db,
-        ctx=ctx,
-        agent=agent,
-        retry_cloud_disconnect=True,
+    _log_setup_event(
+        agent=agent, host=host, provider="feishu",
+        login_id=body.login_id, outcome="started", ctx=ctx,
     )
-    result = _ack_or_raise(ack)
+
+    try:
+        ack = await _send_gateway_control_frame(
+            host,
+            "gateway_login_status",
+            {"provider": "feishu", "loginId": body.login_id, "accountId": agent_id},
+            db=db,
+            ctx=ctx,
+            agent=agent,
+            retry_cloud_disconnect=True,
+        )
+        result = _ack_or_raise(ack)
+    except HTTPException as exc:
+        _log_setup_event(
+            agent=agent, host=host, provider="feishu",
+            login_id=body.login_id, outcome="error",
+            error_code=_extract_error_code(exc), ctx=ctx,
+        )
+        raise
+
+    _log_setup_event(
+        agent=agent, host=host, provider="feishu",
+        login_id=body.login_id, outcome="ok", ctx=ctx,
+    )
     return {
         "status": result.get("status"),
         "appId": result.get("appId"),
@@ -1092,30 +1769,85 @@ async def wechat_recent_senders(
     ctx: RequestContext = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Proxy recent WeChat sender discovery to the daemon login session.
+    """Proxy recent WeChat sender discovery to the daemon login session or
+    to gateway-ingress for cloud agents.
 
     The dashboard calls this after scan confirmation, before the gateway row is
     saved, so users can whitelist a sender without knowing ``xxx@im.wechat``.
     """
     _rate_limit(ctx.user_id, "wechat-login")
+    agent = await _load_owned_agent(db, ctx, agent_id)
+
+    if agent.hosting_kind == "cloud":
+        _log_setup_event(
+            agent=agent, host=None, provider="wechat",
+            login_id=body.login_id, outcome="started", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        try:
+            result = await ingress_client.discover(
+                agent_id, "wechat",
+                user_id=ctx.user_id,
+                request_id=_request_id_for(ctx),
+                body={
+                    "loginId": body.login_id,
+                    "timeoutSeconds": body.timeout_seconds,
+                },
+            )
+        except HTTPException as exc:
+            _log_setup_event(
+                agent=agent, host=None, provider="wechat",
+                login_id=body.login_id, outcome="error",
+                error_code=_extract_error_code(exc), ctx=ctx,
+                setup_owner="gateway-ingress",
+            )
+            raise
+        _log_setup_event(
+            agent=agent, host=None, provider="wechat",
+            login_id=body.login_id, outcome="ok", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        senders = result.get("senders")
+        if not isinstance(senders, list):
+            senders = result.get("users")
+        return {"senders": senders if isinstance(senders, list) else []}
+
     agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
     await _ensure_gateway_host_online(db, ctx, agent, host)
 
-    ack = await _send_gateway_control_frame(
-        host,
-        "gateway_recent_senders",
-        {
-            "provider": "wechat",
-            "loginId": body.login_id,
-            "accountId": agent_id,
-            "timeoutSeconds": body.timeout_seconds,
-        },
-        db=db,
-        ctx=ctx,
-        agent=agent,
-        retry_cloud_disconnect=True,
+    _log_setup_event(
+        agent=agent, host=host, provider="wechat",
+        login_id=body.login_id, outcome="started", ctx=ctx,
     )
-    result = _ack_or_raise(ack)
+
+    try:
+        ack = await _send_gateway_control_frame(
+            host,
+            "gateway_recent_senders",
+            {
+                "provider": "wechat",
+                "loginId": body.login_id,
+                "accountId": agent_id,
+                "timeoutSeconds": body.timeout_seconds,
+            },
+            db=db,
+            ctx=ctx,
+            agent=agent,
+            retry_cloud_disconnect=True,
+        )
+        result = _ack_or_raise(ack)
+    except HTTPException as exc:
+        _log_setup_event(
+            agent=agent, host=host, provider="wechat",
+            login_id=body.login_id, outcome="error",
+            error_code=_extract_error_code(exc), ctx=ctx,
+        )
+        raise
+
+    _log_setup_event(
+        agent=agent, host=host, provider="wechat",
+        login_id=body.login_id, outcome="ok", ctx=ctx,
+    )
     senders = result.get("senders")
     if not isinstance(senders, list):
         senders = result.get("users")

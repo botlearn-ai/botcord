@@ -85,6 +85,19 @@ function isAckTimeoutError(err: unknown): boolean {
   );
 }
 
+function isLoginExpiredError(err: unknown): boolean {
+  return (
+    err instanceof GatewayApiError &&
+    (err.code === "login_expired" || /login session .+ not found or expired/i.test(err.message))
+  );
+}
+
+function loginExpiredMessage(provider: "wechat" | "feishu"): string {
+  return provider === "wechat"
+    ? "微信临时登录态已过期，请重新扫码。"
+    : "飞书临时登录态已过期，请重新扫码。";
+}
+
 function useExpiryCountdown(expiresAt: number | null): number | null {
   const [now, setNow] = useState(() => Date.now());
 
@@ -254,6 +267,11 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
 
   return (
     <div className="space-y-5">
+      <div className="rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-2 text-[11px] text-text-tertiary">
+        {isCloudAgent
+          ? "Cloud Agent 的第三方接入由云端 ingress 服务托管，setup 不依赖你的本机。"
+          : "Local Agent 的第三方接入运行在你本地 daemon 中。"}
+      </div>
       {daemonOffline && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2.5 text-xs text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1057,7 +1075,17 @@ function FeishuAddForm({
       }, 2500);
     } catch (err) {
       if (!isAckTimeoutError(err)) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (isLoginExpiredError(err)) {
+          setError(loginExpiredMessage("feishu"));
+          setPhase("idle");
+          setLoginId(null);
+          setQrcodeUrl(null);
+          setStatus("expired");
+          if (pollTimer.current) clearInterval(pollTimer.current);
+          pollTimer.current = null;
+        } else {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       }
     } finally {
       setBusy(false);
@@ -1093,7 +1121,20 @@ function FeishuAddForm({
       onCreated();
     } catch (err) {
       if (!isAckTimeoutError(err)) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (isLoginExpiredError(err)) {
+          setError(loginExpiredMessage("feishu"));
+          setPhase("idle");
+          setLoginId(null);
+          setQrcodeUrl(null);
+          setStatus("expired");
+          setAppId(null);
+          setUserOpenId(null);
+          setTokenPreview(null);
+          if (pollTimer.current) clearInterval(pollTimer.current);
+          pollTimer.current = null;
+        } else {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       }
     } finally {
       setBusy(false);
@@ -1305,7 +1346,19 @@ function WechatAddForm({
       }, 2000);
     } catch (err) {
       if (!isAckTimeoutError(err)) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (isLoginExpiredError(err)) {
+          setError(loginExpiredMessage("wechat"));
+          setPhase("idle");
+          setLoginId(null);
+          setQrcode(null);
+          setQrcodeUrl(null);
+          setLoginExpiresAt(null);
+          setStatus("expired");
+          if (pollTimer.current) clearInterval(pollTimer.current);
+          pollTimer.current = null;
+        } else {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       }
     } finally {
       setBusy(false);
@@ -1376,7 +1429,19 @@ function WechatAddForm({
       onCreated();
     } catch (err) {
       if (!isAckTimeoutError(err)) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (isLoginExpiredError(err)) {
+          setError(loginExpiredMessage("wechat"));
+          setPhase("idle");
+          setLoginId(null);
+          setQrcode(null);
+          setQrcodeUrl(null);
+          setLoginExpiresAt(null);
+          setStatus("expired");
+          if (pollTimer.current) clearInterval(pollTimer.current);
+          pollTimer.current = null;
+        } else {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       }
     } finally {
       setBusy(false);
@@ -1421,7 +1486,17 @@ function WechatAddForm({
     } catch (err) {
       if (!isAckTimeoutError(err)) {
         setSenderDiscoverHint(null);
-        setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+        if (isLoginExpiredError(err)) {
+          setSenderDiscoverError(loginExpiredMessage("wechat"));
+          setPhase("idle");
+          setLoginId(null);
+          setQrcode(null);
+          setQrcodeUrl(null);
+          setLoginExpiresAt(null);
+          setStatus("expired");
+        } else {
+          setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+        }
       }
     } finally {
       setDiscoveringSenders(false);
@@ -1939,7 +2014,16 @@ function GatewayEditForm({
       }
     } catch (err) {
       if (!isAckTimeoutError(err)) {
-        setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+        if (isLoginExpiredError(err)) {
+          setSenderDiscoverError(loginExpiredMessage("wechat"));
+          setWechatLoginId(null);
+          setWechatQrcode(null);
+          setWechatQrcodeUrl(null);
+          setWechatLoginExpiresAt(null);
+          setWechatStatus("expired");
+        } else {
+          setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+        }
         if (editPollTimer.current) {
           clearInterval(editPollTimer.current);
           editPollTimer.current = null;
@@ -1986,7 +2070,16 @@ function GatewayEditForm({
     } catch (err) {
       if (!isAckTimeoutError(err)) {
         setSenderDiscoverHint(null);
-        setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+        if (isLoginExpiredError(err)) {
+          setSenderDiscoverError(loginExpiredMessage("wechat"));
+          setWechatLoginId(null);
+          setWechatQrcode(null);
+          setWechatQrcodeUrl(null);
+          setWechatLoginExpiresAt(null);
+          setWechatStatus("expired");
+        } else {
+          setSenderDiscoverError(err instanceof Error ? err.message : String(err));
+        }
       }
     } finally {
       setDiscoveringSenders(false);

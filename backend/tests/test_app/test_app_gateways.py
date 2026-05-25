@@ -480,35 +480,130 @@ async def test_create_telegram_persists_metadata_and_token_preview(
     assert rows[0].config_json.get("tokenPreview") == "1234...wxyz"
 
 
+# ---------------------------------------------------------------------------
+# Phase 2 — Cloud agent routes proxy to gateway-ingress, NOT the cloud daemon
+# ---------------------------------------------------------------------------
+#
+# These tests live next to the daemon-path tests above. They mock the
+# ingress HTTP client via the ``set_http_client`` seam on
+# ``app.clients.cloud_gateway_ingress_client`` so no real network is needed.
+
+
+class _FakeIngressResponse:
+    """Minimal stand-in for ``httpx.Response`` used by the ingress client.
+
+    We only implement the surface the client actually inspects:
+    ``status_code``, ``content``, and ``json()``.
+    """
+
+    def __init__(self, status_code: int, body: dict | None = None):
+        self.status_code = status_code
+        self._body = body
+        # ``content`` is checked for truthiness; bytes(0) or None both signal
+        # "no body" so we keep it None when there's no payload.
+        self.content = b"x" if body is not None else b""
+
+    def json(self) -> dict:
+        if self._body is None:
+            raise ValueError("no body")
+        return self._body
+
+
+class _FakeIngressClient:
+    """Recording fake that satisfies ``httpx.AsyncClient.request``."""
+
+    def __init__(self, responder):
+        self._responder = responder
+        self.calls: list[dict] = []
+
+    async def request(self, method, url, headers=None, json=None, timeout=None):
+        self.calls.append({"method": method, "url": url, "json": json})
+        # responder may return a Response, raise, or be sync — keep contract minimal
+        result = self._responder(method, url, json)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+def _install_ingress(monkeypatch, responder, *, configured: bool = True):
+    import hub.config as hub_config
+    from app.clients import cloud_gateway_ingress_client as client_mod
+
+    if configured:
+        monkeypatch.setattr(
+            hub_config, "CLOUD_GATEWAY_INGRESS_BASE_URL", "http://ingress.test"
+        )
+        monkeypatch.setattr(
+            hub_config, "CLOUD_GATEWAY_INGRESS_SECRET", "test-secret"
+        )
+    else:
+        monkeypatch.setattr(hub_config, "CLOUD_GATEWAY_INGRESS_BASE_URL", None)
+    fake = _FakeIngressClient(responder)
+    client_mod.set_http_client(fake)
+    monkeypatch.setattr(
+        client_mod,
+        "set_http_client",
+        client_mod.set_http_client,  # keep symbol intact
+    )
+    # Auto-restore on teardown.
+    monkeypatch.setattr(
+        client_mod, "_test_http_client", fake, raising=False
+    )
+    monkeypatch.setattr(
+        client_mod, "DEFAULT_TIMEOUT_SECONDS", 10.0
+    )
+    monkeypatch.setattr(client_mod, "set_http_client", client_mod.set_http_client)
+
+    def _restore():
+        client_mod.set_http_client(None)
+
+    monkeypatch.setattr(client_mod, "_restore_after_test", _restore, raising=False)
+    return fake
+
+
 @pytest.mark.asyncio
-async def test_create_telegram_for_cloud_agent_dispatches_to_cloud_daemon(
+async def test_create_telegram_for_cloud_agent_proxies_to_ingress(
     client, seed, db_session, monkeypatch
 ):
-    calls: list[dict] = []
+    """Cloud agent CREATE must call gateway-ingress, never the cloud daemon."""
 
-    async def fake_send(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
-        calls.append(
+    def responder(method, url, body):
+        assert method == "POST"
+        assert "/internal/gateway-ingress/agents/ag_cloud/gateways" in url
+        # Body must carry the safe envelope + the new botToken (transient
+        # forward, not persisted in Hub).
+        assert body["user_id"] == str(seed["user_id"])
+        assert body["hosting_kind"] == "cloud"
+        assert body["secret"] == {"botToken": "1234:abcd"}
+        return _FakeIngressResponse(
+            200,
             {
-                "cloud_daemon_instance_id": cloud_daemon_instance_id,
-                "type": type_,
-                "params": params,
-                "timeout_ms": timeout_ms,
-            }
-        )
-        return {
-            "ok": True,
-            "result": {
-                "id": params["id"],
-                "type": "telegram",
-                "accountId": params["accountId"],
+                "id": "gw_telegram_cloud01",
+                "provider": "telegram",
+                "agent_id": "ag_cloud",
+                "user_id": str(seed["user_id"]),
+                "label": "cloud tg",
+                "status": "active",
                 "enabled": True,
-                "tokenPreview": "1234...wxyz",
-                "status": {"running": True, "authorized": True},
+                "config_json": {
+                    "allowedChatIds": ["111"],
+                    "allowedSenderIds": ["111"],
+                    "tokenPreview": "1234...wxyz",
+                },
             },
-        }
+        )
 
+    fake = _install_ingress(monkeypatch, responder)
+    # Ensure the cloud daemon channel is NOT consulted.
     _patch_daemon(monkeypatch, online=False)
-    _patch_cloud_daemon(monkeypatch, online=True, send=fake_send)
+
+    def _no_cloud(*a, **k):
+        raise AssertionError("cloud daemon control frame must not be used for cloud agent")
+
+    monkeypatch.setattr(
+        "app.routers.gateways.send_cloud_control_frame", _no_cloud
+    )
+
     headers = {"Authorization": f"Bearer {seed['token']}"}
     r = await client.post(
         "/api/agents/ag_cloud/gateways",
@@ -526,253 +621,173 @@ async def test_create_telegram_for_cloud_agent_dispatches_to_cloud_daemon(
 
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["agent_id"] == "ag_cloud"
-    assert body["daemon_instance_id"] == seed["cloud_daemon_row_id"]
+    assert body["provider"] == "telegram"
+    assert body["status"] == "active"
     assert body["config"]["tokenPreview"] == "1234...wxyz"
-    assert calls == [
-        {
-            "cloud_daemon_instance_id": seed["cloud_daemon_id"],
-            "type": "upsert_gateway",
-            "params": {
-                "id": body["id"],
-                "type": "telegram",
-                "accountId": "ag_cloud",
-                "label": "cloud tg",
-                "enabled": True,
-                "settings": {
-                    "allowedSenderIds": ["111"],
-                    "allowedChatIds": ["111"],
-                },
-                "secret": {"botToken": "1234:abcd"},
-            },
-            "timeout_ms": None,
-        }
-    ]
+    assert len(fake.calls) == 1
 
+    # Mirror row: only safe fields, never a botToken / secret payload.
     row = await db_session.scalar(
         select(AgentGatewayConnection).where(
             AgentGatewayConnection.agent_id == "ag_cloud"
         )
     )
     assert row is not None
+    assert "botToken" not in (row.config_json or {})
+    assert row.config_json.get("tokenPreview") == "1234...wxyz"
+    # daemon_instance_id mirror falls back to the cloud agent's
+    # assigned daemon row (FK NOT NULL).
     assert row.daemon_instance_id == seed["cloud_daemon_row_id"]
 
 
 @pytest.mark.asyncio
-async def test_create_wechat_for_cloud_agent_dispatches_to_cloud_daemon(
-    client, seed, db_session, monkeypatch
+async def test_cloud_agent_setup_logs_setup_owner_gateway_ingress(
+    client, seed, monkeypatch, caplog
 ):
-    calls: list[dict] = []
-
-    async def fake_send(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
-        calls.append(
+    def responder(method, url, body):
+        return _FakeIngressResponse(
+            200,
             {
-                "cloud_daemon_instance_id": cloud_daemon_instance_id,
-                "type": type_,
-                "params": params,
-                "timeout_ms": timeout_ms,
-            }
-        )
-        return {
-            "ok": True,
-            "result": {
-                "id": params["id"],
-                "type": "wechat",
-                "accountId": params["accountId"],
-                "enabled": True,
-                "tokenPreview": "wxab...mnop",
-                "status": {"running": True, "authorized": True},
+                "loginId": "wxl_xyz",
+                "qrcode": "QR",
+                "qrcodeUrl": "https://qr",
+                "expiresAt": 1700000000,
             },
-        }
+        )
 
+    _install_ingress(monkeypatch, responder)
     _patch_daemon(monkeypatch, online=False)
-    _patch_cloud_daemon(monkeypatch, online=True, send=fake_send)
+
     headers = {"Authorization": f"Bearer {seed['token']}"}
-    r = await client.post(
-        "/api/agents/ag_cloud/gateways",
-        headers=headers,
-        json={
-            "provider": "wechat",
-            "label": "cloud wx",
-            "login_id": "wxl_cloud",
-            "config": {"allowedSenderIds": ["xxx@im.wechat"]},
-        },
-    )
-
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["agent_id"] == "ag_cloud"
-    assert body["daemon_instance_id"] == seed["cloud_daemon_row_id"]
-    assert body["provider"] == "wechat"
-    assert body["config"]["tokenPreview"] == "wxab...mnop"
-    assert calls == [
-        {
-            "cloud_daemon_instance_id": seed["cloud_daemon_id"],
-            "type": "upsert_gateway",
-            "params": {
-                "id": body["id"],
-                "type": "wechat",
-                "accountId": "ag_cloud",
-                "label": "cloud wx",
-                "enabled": True,
-                "settings": {"allowedSenderIds": ["xxx@im.wechat"]},
-                "loginId": "wxl_cloud",
-            },
-            "timeout_ms": None,
-        }
-    ]
-
-    row = await db_session.scalar(
-        select(AgentGatewayConnection).where(
-            AgentGatewayConnection.agent_id == "ag_cloud"
+    with caplog.at_level("INFO", logger="app.routers.gateways"):
+        r = await client.post(
+            "/api/agents/ag_cloud/gateways/wechat/login/start",
+            headers=headers,
+            json={},
         )
-    )
-    assert row is not None
-    assert row.provider == "wechat"
-    assert row.daemon_instance_id == seed["cloud_daemon_row_id"]
+    assert r.status_code == 200, r.text
+
+    setup_records = [
+        rec for rec in caplog.records
+        if rec.getMessage() == "cloud-gateway setup event"
+    ]
+    assert setup_records, "expected at least one setup event log"
+    for rec in setup_records:
+        assert getattr(rec, "setup_owner", None) == "gateway-ingress"
 
 
 @pytest.mark.asyncio
-async def test_create_telegram_for_cloud_agent_resumes_when_cloud_daemon_offline(
+async def test_cloud_agent_setup_propagates_ingress_error_code(
     client, seed, monkeypatch
 ):
-    import app.routers.gateways as gw
+    """ingress 4xx error codes must reach the user verbatim — that's the
+    whole point of the Phase 2 split. ``login_missing`` is the canonical
+    failure the dashboard branches on."""
 
-    gw._RATE_BUCKETS.clear()
-    online = {"value": False}
-    resume_calls: list[dict] = []
-    send_calls: list[dict] = []
-
-    class FakeCloudAgentService:
-        async def resume_cloud_agent(self, db, *, user_id, agent_id):
-            resume_calls.append({"user_id": user_id, "agent_id": agent_id})
-            online["value"] = True
-            return None
-
-    async def fake_send(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
-        send_calls.append(
-            {
-                "cloud_daemon_instance_id": cloud_daemon_instance_id,
-                "type": type_,
-                "params": params,
-                "timeout_ms": timeout_ms,
-            }
+    def responder(method, url, body):
+        return _FakeIngressResponse(
+            404,
+            {"ok": False, "error": {"code": "login_missing", "message": "..."}},
         )
-        return {
-            "ok": True,
-            "result": {
-                "id": params["id"],
-                "type": "telegram",
-                "accountId": params["accountId"],
-                "enabled": True,
-                "tokenPreview": "1234...wxyz",
-                "status": {"running": True, "authorized": True},
-            },
-        }
 
-    monkeypatch.setattr(gw, "CloudAgentService", lambda: FakeCloudAgentService())
-    monkeypatch.setattr(gw, "is_cloud_daemon_online", lambda _id: online["value"])
-    monkeypatch.setattr(gw, "send_cloud_control_frame", fake_send)
+    _install_ingress(monkeypatch, responder)
     _patch_daemon(monkeypatch, online=False)
 
     headers = {"Authorization": f"Bearer {seed['token']}"}
     r = await client.post(
-        "/api/agents/ag_cloud/gateways",
+        "/api/agents/ag_cloud/gateways/wechat/login/status",
         headers=headers,
-        json={
-            "provider": "telegram",
-            "label": "cloud tg",
-            "bot_token": "1234:abcd",
-            "config": {
-                "allowedChatIds": ["111"],
-                "allowedSenderIds": ["111"],
-            },
-        },
+        json={"loginId": "wxl_missing"},
     )
-
-    assert r.status_code == 200, r.text
-    assert resume_calls == [{"user_id": seed["user_id"], "agent_id": "ag_cloud"}]
-    assert send_calls[0]["cloud_daemon_instance_id"] == seed["cloud_daemon_id"]
-    assert send_calls[0]["type"] == "upsert_gateway"
+    assert r.status_code == 404, r.text
+    detail = r.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["code"] == "login_missing"
 
 
 @pytest.mark.asyncio
-async def test_create_telegram_for_cloud_agent_retries_after_disconnect(
-    client, seed, db_session, monkeypatch
+async def test_cloud_agent_setup_returns_502_when_ingress_unreachable(
+    client, seed, monkeypatch
 ):
-    import app.routers.gateways as gw
+    import httpx
 
-    gw._RATE_BUCKETS.clear()
-    online = {"value": True}
-    resume_calls: list[dict] = []
-    send_calls: list[dict] = []
+    def responder(method, url, body):
+        return httpx.ConnectError("ingress down")
 
-    class FakeCloudAgentService:
-        async def resume_cloud_agent(self, db, *, user_id, agent_id):
-            resume_calls.append({"user_id": user_id, "agent_id": agent_id})
-            online["value"] = True
-            return None
-
-    async def fake_send(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
-        send_calls.append(
-            {
-                "cloud_daemon_instance_id": cloud_daemon_instance_id,
-                "type": type_,
-                "params": params,
-                "timeout_ms": timeout_ms,
-            }
-        )
-        if len(send_calls) == 1:
-            online["value"] = False
-            raise gw.CloudDaemonDispatchError(
-                "cloud_daemon_disconnected",
-                "cloud daemon disconnected",
-            )
-        return {
-            "ok": True,
-            "result": {
-                "id": params["id"],
-                "type": "telegram",
-                "accountId": params["accountId"],
-                "enabled": True,
-                "tokenPreview": "1234...wxyz",
-                "status": {"running": True, "authorized": True},
-            },
-        }
-
-    monkeypatch.setattr(gw, "CloudAgentService", lambda: FakeCloudAgentService())
-    monkeypatch.setattr(gw, "is_cloud_daemon_online", lambda _id: online["value"])
-    monkeypatch.setattr(gw, "send_cloud_control_frame", fake_send)
+    _install_ingress(monkeypatch, responder)
     _patch_daemon(monkeypatch, online=False)
 
     headers = {"Authorization": f"Bearer {seed['token']}"}
     r = await client.post(
-        "/api/agents/ag_cloud/gateways",
+        "/api/agents/ag_cloud/gateways/wechat/login/start",
         headers=headers,
-        json={
-            "provider": "telegram",
-            "label": "cloud tg",
-            "bot_token": "1234:abcd",
-            "config": {
-                "allowedChatIds": ["111"],
-                "allowedSenderIds": ["111"],
-            },
-        },
+        json={},
     )
+    assert r.status_code == 502, r.text
+    detail = r.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["code"] == "cloud_gateway_ingress_unavailable"
 
-    assert r.status_code == 200, r.text
-    assert resume_calls == [{"user_id": seed["user_id"], "agent_id": "ag_cloud"}]
-    assert len(send_calls) == 2
-    assert send_calls[0]["type"] == "upsert_gateway"
-    assert send_calls[1]["type"] == "upsert_gateway"
-    rows = (
-        await db_session.execute(
-            select(AgentGatewayConnection).where(
-                AgentGatewayConnection.agent_id == "ag_cloud"
-            )
+
+@pytest.mark.asyncio
+async def test_cloud_agent_setup_returns_503_when_ingress_unconfigured(
+    client, seed, monkeypatch
+):
+    def responder(method, url, body):  # pragma: no cover — must not be called
+        raise AssertionError("ingress client must short-circuit on missing config")
+
+    _install_ingress(monkeypatch, responder, configured=False)
+    _patch_daemon(monkeypatch, online=False)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_cloud/gateways/wechat/login/start",
+        headers=headers,
+        json={},
+    )
+    assert r.status_code == 503, r.text
+    body = r.json()
+    # FastAPI wraps str detail under "detail" / i18n payload top-level.
+    assert "cloud_gateway_ingress_not_configured" in body.get(
+        "detail", ""
+    ) or body.get("error") == "cloud_gateway_ingress_not_configured"
+
+
+@pytest.mark.asyncio
+async def test_cloud_agent_does_not_require_cloud_daemon_online(
+    client, seed, monkeypatch
+):
+    """Phase 2 core invariant: cloud daemon online check is NOT consulted on
+    cloud-agent setup paths. We assert by making both daemons offline AND
+    making any cloud-daemon-related lookup blow up loudly."""
+
+    def responder(method, url, body):
+        return _FakeIngressResponse(
+            200,
+            {
+                "loginId": "wxl_ok",
+                "qrcode": "QR",
+                "qrcodeUrl": "https://qr",
+                "expiresAt": 0,
+            },
         )
-    ).scalars().all()
-    assert len(rows) == 1
+
+    _install_ingress(monkeypatch, responder)
+    _patch_daemon(monkeypatch, online=False)
+
+    def _boom(*a, **k):
+        raise AssertionError("cloud daemon must not be consulted for cloud setup")
+
+    monkeypatch.setattr("app.routers.gateways.is_cloud_daemon_online", _boom)
+    monkeypatch.setattr("app.routers.gateways._ensure_gateway_host_online", _boom)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_cloud/gateways/wechat/login/start",
+        headers=headers,
+        json={},
+    )
+    assert r.status_code == 200, r.text
 
 
 @pytest.mark.asyncio
@@ -1141,7 +1156,7 @@ async def test_test_endpoint_returns_daemon_result(client, seed, db_session, mon
 
 @pytest.mark.asyncio
 async def test_wechat_login_start_proxies_without_writing_db(
-    client, seed, db_session, monkeypatch
+    client, seed, db_session, monkeypatch, caplog
 ):
     captured: dict = {}
 
@@ -1160,11 +1175,12 @@ async def test_wechat_login_start_proxies_without_writing_db(
 
     _patch_daemon(monkeypatch, online=True, send=fake_send)
     headers = {"Authorization": f"Bearer {seed['token']}"}
-    r = await client.post(
-        "/api/agents/ag_daemon/gateways/wechat/login/start",
-        headers=headers,
-        json={},
-    )
+    with caplog.at_level("INFO", logger="app.routers.gateways"):
+        r = await client.post(
+            "/api/agents/ag_daemon/gateways/wechat/login/start",
+            headers=headers,
+            json={},
+        )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["loginId"] == "wxl_xyz"
@@ -1178,6 +1194,24 @@ async def test_wechat_login_start_proxies_without_writing_db(
         await db_session.execute(select(AgentGatewayConnection))
     ).scalars().all()
     assert rows == []
+
+    # Phase 0 diagnostic logging: started + ok with structured extras.
+    setup_records = [
+        rec for rec in caplog.records
+        if rec.getMessage() == "cloud-gateway setup event"
+    ]
+    outcomes = [getattr(rec, "outcome", None) for rec in setup_records]
+    assert "started" in outcomes
+    assert "ok" in outcomes
+    ok_rec = next(rec for rec in setup_records if getattr(rec, "outcome", None) == "ok")
+    assert getattr(ok_rec, "agent_id", None) == "ag_daemon"
+    assert getattr(ok_rec, "provider", None) == "wechat"
+    assert getattr(ok_rec, "login_id", None) == "wxl_xyz"
+    assert getattr(ok_rec, "setup_owner", None) == "daemon"
+    assert hasattr(ok_rec, "daemon_instance_id")
+    assert hasattr(ok_rec, "cloud_daemon_instance_id")
+    assert hasattr(ok_rec, "hosting_kind")
+    assert getattr(ok_rec, "error_code", "missing") is None
 
 
 @pytest.mark.asyncio
@@ -1290,16 +1324,27 @@ async def test_wechat_recent_senders_proxies(client, seed, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_wechat_login_start_offline_returns_409(client, seed, monkeypatch):
+async def test_wechat_login_start_offline_returns_409(client, seed, monkeypatch, caplog):
     _patch_daemon(monkeypatch, online=False)
     headers = {"Authorization": f"Bearer {seed['token']}"}
-    r = await client.post(
-        "/api/agents/ag_daemon/gateways/wechat/login/start",
-        headers=headers,
-        json={},
-    )
+    with caplog.at_level("INFO", logger="app.routers.gateways"):
+        r = await client.post(
+            "/api/agents/ag_daemon/gateways/wechat/login/start",
+            headers=headers,
+            json={},
+        )
     assert r.status_code == 409
     assert r.json()["detail"] == "daemon_offline"
+
+    # Phase 0: offline rejects before reaching the daemon path, so no setup
+    # event log is expected (the require_online guard short-circuits earlier).
+    # We still assert the harness did not crash trying to emit a log.
+    setup_records = [
+        rec for rec in caplog.records
+        if rec.getMessage() == "cloud-gateway setup event"
+    ]
+    # No started event because _ensure_gateway_host_online raises before logging.
+    assert setup_records == []
 
 
 # ---------------------------------------------------------------------------
@@ -1701,3 +1746,206 @@ async def test_test_gateway_rate_limited_after_burst(client, seed, db_session, m
 
     assert status_codes[-1] == 429, f"expected last to be 429, got {status_codes}"
     assert status_codes[0] != 429, "first request should not be rate limited"
+
+
+# Phase 4 — Hub mirror sync of ingress ``warning.message`` into ``last_error``,
+# and proactive clear when ingress reports no warning.
+
+
+@pytest.mark.asyncio
+async def test_create_cloud_gateway_writes_ingress_warning_to_last_error(
+    client, seed, db_session, monkeypatch
+):
+    """When ingress returns ``{warning: {message}}``, Hub mirror persists it."""
+    import app.routers.gateways as gw
+
+    gw._RATE_BUCKETS.clear()
+
+    def responder(method, url, body):
+        return _FakeIngressResponse(
+            200,
+            {
+                "ok": True,
+                "connection": {
+                    "id": "gw_telegram_warning1",
+                    "provider": "telegram",
+                    "agent_id": "ag_cloud",
+                    "user_id": str(seed["user_id"]),
+                    "label": "cloud tg",
+                    "status": "error",
+                    "enabled": True,
+                    "config_json": {
+                        "allowedChatIds": ["111"],
+                        "allowedSenderIds": ["111"],
+                    },
+                },
+                "warning": {
+                    "code": "adapter_start_failed",
+                    "message": "telegram getUpdates returned non-ok",
+                },
+            },
+        )
+
+    _install_ingress(monkeypatch, responder)
+    _patch_daemon(monkeypatch, online=False)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_cloud/gateways",
+        headers=headers,
+        json={
+            "provider": "telegram",
+            "label": "cloud tg",
+            "bot_token": "1234:abcd",
+            "config": {
+                "allowedChatIds": ["111"],
+                "allowedSenderIds": ["111"],
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["last_error"] == "telegram getUpdates returned non-ok"
+
+    row = await db_session.scalar(
+        select(AgentGatewayConnection).where(
+            AgentGatewayConnection.id == "gw_telegram_warning1"
+        )
+    )
+    assert row is not None
+    assert row.last_error == "telegram getUpdates returned non-ok"
+
+
+@pytest.mark.asyncio
+async def test_create_cloud_gateway_redacts_token_in_warning_message(
+    client, seed, db_session, monkeypatch
+):
+    """Defensive redact: a leaked-style token in warning.message is scrubbed
+    before being written to mirror.last_error."""
+    import app.routers.gateways as gw
+
+    gw._RATE_BUCKETS.clear()
+
+    leaked = "1234567890:AAEhBP0av5cYbnP9aFv7nPaUkUTabcdefghij"
+
+    def responder(method, url, body):
+        return _FakeIngressResponse(
+            200,
+            {
+                "ok": True,
+                "connection": {
+                    "id": "gw_telegram_warning2",
+                    "provider": "telegram",
+                    "agent_id": "ag_cloud",
+                    "user_id": str(seed["user_id"]),
+                    "label": "cloud tg",
+                    "status": "error",
+                    "enabled": True,
+                    "config_json": {
+                        "allowedChatIds": ["111"],
+                        "allowedSenderIds": ["111"],
+                    },
+                },
+                "warning": {
+                    "code": "adapter_start_failed",
+                    "message": f"telegram start failed with token {leaked}",
+                },
+            },
+        )
+
+    _install_ingress(monkeypatch, responder)
+    _patch_daemon(monkeypatch, online=False)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_cloud/gateways",
+        headers=headers,
+        json={
+            "provider": "telegram",
+            "label": "cloud tg",
+            "bot_token": "1234:abcd",
+            "config": {
+                "allowedChatIds": ["111"],
+                "allowedSenderIds": ["111"],
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+    row = await db_session.scalar(
+        select(AgentGatewayConnection).where(
+            AgentGatewayConnection.id == "gw_telegram_warning2"
+        )
+    )
+    assert row is not None
+    assert leaked not in (row.last_error or "")
+    assert "[REDACTED]" in (row.last_error or "")
+
+
+@pytest.mark.asyncio
+async def test_patch_cloud_gateway_clears_last_error_when_no_warning(
+    client, seed, db_session, monkeypatch
+):
+    """A successful patch with no ingress warning clears any stale last_error."""
+    import app.routers.gateways as gw
+
+    gw._RATE_BUCKETS.clear()
+
+    # Seed an existing cloud mirror row with a stale last_error.
+    pre = AgentGatewayConnection(
+        id="gw_telegram_clear1",
+        user_id=seed["user_id"],
+        agent_id="ag_cloud",
+        daemon_instance_id=seed["cloud_daemon_row_id"],
+        provider="telegram",
+        label="cloud tg",
+        enabled=True,
+        status="error",
+        config_json={
+            "allowedChatIds": ["111"],
+            "allowedSenderIds": ["111"],
+        },
+        last_error="old failure",
+    )
+    db_session.add(pre)
+    await db_session.commit()
+
+    def responder(method, url, body):
+        return _FakeIngressResponse(
+            200,
+            {
+                "ok": True,
+                "connection": {
+                    "id": "gw_telegram_clear1",
+                    "provider": "telegram",
+                    "agent_id": "ag_cloud",
+                    "user_id": str(seed["user_id"]),
+                    "label": "cloud tg",
+                    "status": "active",
+                    "enabled": True,
+                    "config_json": {
+                        "allowedChatIds": ["222"],
+                        "allowedSenderIds": ["222"],
+                    },
+                },
+            },
+        )
+
+    _install_ingress(monkeypatch, responder)
+    _patch_daemon(monkeypatch, online=False)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.patch(
+        "/api/agents/ag_cloud/gateways/gw_telegram_clear1",
+        headers=headers,
+        json={"config": {
+            "allowedChatIds": ["222"],
+            "allowedSenderIds": ["222"],
+        }},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["last_error"] is None
+
+    await db_session.refresh(pre)
+    assert pre.last_error is None
+    assert pre.status == "active"

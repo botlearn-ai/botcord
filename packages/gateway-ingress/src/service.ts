@@ -9,6 +9,12 @@ import { ProviderRunner } from "./provider-runner.js";
 import { DEFAULT_PROVIDER_FACTORIES } from "./providers/registry.js";
 import type { ProviderAdapterFactory } from "./providers/types.js";
 import { RuntimeSessionManager, RUNTIME_SOCKET_STATE, type RuntimeSocketFactory } from "./runtime/session.js";
+import { createFeishuSetupAdapter } from "./setup/providers/feishu.js";
+import { createTelegramSetupAdapter } from "./setup/providers/telegram.js";
+import { createWechatSetupAdapter } from "./setup/providers/wechat.js";
+import { startSetupServer, type SetupServer } from "./setup/server.js";
+import { InMemorySetupSessionStore, type IngressSetupSessionStore } from "./setup/sessions.js";
+import type { ProviderSetupAdapter } from "./setup/types.js";
 import { FileSecretStore, type IngressSecretStore } from "./storage/secrets.js";
 import { FileSystemIngressStore, type IngressStore } from "./storage/store.js";
 
@@ -25,6 +31,8 @@ export interface IngressService {
   orchestrator: IngressOrchestrator;
   runner: ProviderRunner;
   health: HealthServer | null;
+  setup: SetupServer | null;
+  setupSessions: IngressSetupSessionStore;
   admin: AdminSyncServer | null;
   config: IngressConfig;
   log: IngressLogger;
@@ -41,6 +49,12 @@ export interface BuildIngressOptions {
   factories?: Record<string, ProviderAdapterFactory>;
   /** Start the HTTP health server. Defaults to true when `config.healthPort > 0`. */
   startHealth?: boolean;
+  /** Start the internal setup HTTP server. Defaults to true when `config.setupPort > 0`. */
+  startSetup?: boolean;
+  /** Inject a setup session store (defaults to in-memory). */
+  setupSessions?: IngressSetupSessionStore;
+  /** Inject setup adapters; overrides built-ins per provider key. */
+  setupAdapters?: Record<string, ProviderSetupAdapter>;
   /** Start the HTTP admin sync server. Defaults to true when `config.adminPort > 0`. */
   startAdmin?: boolean;
 }
@@ -121,6 +135,29 @@ export async function buildIngressService(
     });
   }
 
+  const setupSessions = opts.setupSessions ?? new InMemorySetupSessionStore();
+  const setupAdapters: Record<string, ProviderSetupAdapter> = {
+    wechat: createWechatSetupAdapter(),
+    feishu: createFeishuSetupAdapter(),
+    telegram: createTelegramSetupAdapter(),
+    ...(opts.setupAdapters ?? {}),
+  };
+  const startSetup = opts.startSetup ?? opts.config.setupPort > 0;
+  let setup: SetupServer | null = null;
+  if (startSetup) {
+    setup = await startSetupServer({
+      host: opts.config.setupHost,
+      port: opts.config.setupPort,
+      ingressSecret: opts.config.ingressSecret,
+      sessions: setupSessions,
+      secrets,
+      store,
+      runner,
+      log,
+      adapters: setupAdapters,
+    });
+  }
+
   const startAdmin = opts.startAdmin ?? opts.config.adminPort > 0;
   let admin: AdminSyncServer | null = null;
   if (startAdmin) {
@@ -143,12 +180,15 @@ export async function buildIngressService(
     orchestrator,
     runner,
     health,
+    setup,
+    setupSessions,
     admin,
     config: opts.config,
     log,
     async shutdown(reason = "shutdown"): Promise<void> {
       await runner.stopAll(reason);
       await runtime.closeAll(reason);
+      await setup?.close();
       await health?.close();
       await admin?.close();
     },

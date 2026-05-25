@@ -72,8 +72,22 @@ if ALLOW_PRIVATE_ENDPOINTS and not INTERNAL_API_SECRET:
 # Hub thin lifecycle API (POST /internal/cloud-gateway/...). The ingress
 # service authenticates with this bearer; ``INTERNAL_API_SECRET`` is also
 # accepted so operators can hit the same endpoints from runbooks.
+#
+# Note: this same secret is reused in the OPPOSITE direction below — the Hub
+# bears it when it calls gateway-ingress' /internal/gateway-ingress/* setup
+# API on behalf of a cloud agent. Symmetric bearer is intentional: both ends
+# already trust each other, and rotating one shared value is simpler than
+# tracking two independent secrets per environment.
 CLOUD_GATEWAY_INGRESS_SECRET: str | None = os.getenv(
     "CLOUD_GATEWAY_INGRESS_SECRET", None
+)
+# Base URL of the gateway-ingress setup API as seen from the Hub (e.g.
+# ``http://gateway-ingress.svc.cluster.local:9101``). When unset, Hub→ingress
+# calls fail with 503 — the Hub will NOT silently fall back to dispatching
+# cloud-agent setup through the cloud daemon (that's the very bug Phase 2
+# fixes). Local development typically points at ``http://localhost:9101``.
+CLOUD_GATEWAY_INGRESS_BASE_URL: str | None = os.getenv(
+    "CLOUD_GATEWAY_INGRESS_BASE_URL", None
 )
 # Cloud runtime session tokens are scoped JWTs minted by the Hub for the
 # ingress service. The signing key is derived from ``JWT_SECRET`` unless

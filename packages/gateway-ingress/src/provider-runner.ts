@@ -35,7 +35,18 @@ export class ProviderRunner {
   /** Start every enabled connection currently in the store. */
   async startAll(): Promise<void> {
     for (const conn of this.opts.store.listConnections()) {
-      if (conn.enabled) await this.startOne(conn);
+      if (!conn.enabled) continue;
+      try {
+        await this.startOne(conn);
+      } catch (err) {
+        // startAll is best-effort during boot; one bad connection
+        // (e.g. provider factory missing) must not block the rest.
+        this.opts.log.error("startAll: provider start failed", {
+          gatewayId: conn.id,
+          provider: conn.provider,
+          err: String(err),
+        });
+      }
     }
   }
 
@@ -46,14 +57,28 @@ export class ProviderRunner {
     }
   }
 
-  /** Add/refresh and start one connection. */
+  /**
+   * Add/refresh and start one connection.
+   *
+   * Non-blocking by contract: the adapter's `start(ctx)` runs as a
+   * background task so the caller (e.g. setup-server `finalize`) does
+   * not have to wait for the first poll to land. The promise this
+   * method returns resolves as soon as the adapter is registered.
+   *
+   * Synchronous failures DO throw:
+   *
+   *   - no factory registered for `conn.provider`
+   *   - `factory(conn.id)` itself throws (e.g. provider misconfig)
+   *
+   * The setup-server uses this to mark `connection.status = "error"` and
+   * attach a `warning.code = "adapter_start_failed"` on the HTTP response.
+   */
   async startOne(conn: GatewayConnection): Promise<void> {
     const existing = this.adapters.get(conn.id);
     if (existing) await this.stopOne(conn.id, "restart");
     const factory = this.providerFactories[conn.provider];
     if (!factory) {
-      this.opts.log.error("no provider factory", { provider: conn.provider });
-      return;
+      throw new Error(`no provider factory registered for ${conn.provider}`);
     }
     const adapter = factory(conn.id);
     const abort = new AbortController();
@@ -77,8 +102,11 @@ export class ProviderRunner {
     };
     this.opts.orchestrator.registerProvider(adapter);
     this.adapters.set(conn.id, { adapter, abort });
-    // Run the adapter in the background; errors are logged but never throw.
-    adapter.start(ctx).catch((err) => {
+    // Run the adapter in the background; errors are logged but never
+    // propagate back to the HTTP caller. The adapter is expected to
+    // surface upstream failures via `markActivity({lastError})` so the
+    // dashboard's /status endpoint can pick them up.
+    void adapter.start(ctx).catch((err) => {
       this.opts.log.error("provider adapter crashed", {
         gatewayId: conn.id,
         err: String(err),

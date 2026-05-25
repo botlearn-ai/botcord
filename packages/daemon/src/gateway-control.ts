@@ -313,13 +313,17 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       if (!loginId) {
         return badParams("upsert_gateway: wechat requires loginId");
       }
-      const session = sessions.get(loginId);
-      if (!session) {
+      const resolved = sessions.resolve(loginId);
+      if (resolved.state !== "live") {
         return {
           ok: false,
-          error: { code: "login_expired", message: `wechat login session "${loginId}" not found or expired` },
+          error:
+            resolved.state === "missing"
+              ? { code: "login_missing", message: `wechat login session "${loginId}" not found` }
+              : { code: "login_expired", message: `wechat login session "${loginId}" expired` },
         };
       }
+      const session = resolved.session!;
       if (session.provider !== "wechat") {
         return badParams(`upsert_gateway: login session provider "${session.provider}" != "wechat"`);
       }
@@ -347,13 +351,17 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       if (!loginId) {
         return badParams("upsert_gateway: feishu requires loginId");
       }
-      const session = sessions.get(loginId);
-      if (!session) {
+      const resolved = sessions.resolve(loginId);
+      if (resolved.state !== "live") {
         return {
           ok: false,
-          error: { code: "login_expired", message: `feishu login session "${loginId}" not found or expired` },
+          error:
+            resolved.state === "missing"
+              ? { code: "login_missing", message: `feishu login session "${loginId}" not found` }
+              : { code: "login_expired", message: `feishu login session "${loginId}" expired` },
         };
       }
+      const session = resolved.session!;
       if (session.provider !== "feishu") {
         return badParams(`upsert_gateway: login session provider "${session.provider}" != "feishu"`);
       }
@@ -869,13 +877,17 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     if (!params.accountId || typeof params.accountId !== "string") {
       return badParams("gateway_recent_senders: accountId is required");
     }
-    const session = sessions.get(params.loginId);
-    if (!session) {
+    const resolved = sessions.resolve(params.loginId);
+    if (resolved.state !== "live") {
       return {
         ok: false,
-        error: { code: "login_expired", message: `wechat login session "${params.loginId}" not found or expired` },
+        error:
+          resolved.state === "missing"
+            ? { code: "login_missing", message: `wechat login session "${params.loginId}" not found` }
+            : { code: "login_expired", message: `wechat login session "${params.loginId}" expired` },
       };
     }
+    const session = resolved.session!;
     if (session.provider !== "wechat") {
       return badParams("gateway_recent_senders: provider does not match login session");
     }
