@@ -18,6 +18,13 @@ export interface IngressConfig {
   healthPort: number;
   /** Health server bind host. */
   healthHost: string;
+  /**
+   * Internal setup HTTP server bind port; 0 to disable. Default 9101,
+   * one above healthPort so a single host can run both side-by-side.
+   */
+  setupPort: number;
+  /** Setup server bind host. Defaults to loopback. */
+  setupHost: string;
   /** Optional override for the runtime WS endpoint advertised by Hub. */
   runtimeEndpointOverride?: string;
   /**
@@ -39,6 +46,8 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Ingress
   const secretDir = resolve(env.BOTCORD_INGRESS_SECRET_DIR ?? join(home, DEFAULT_SECRET_DIR));
   const healthPort = Number(env.BOTCORD_INGRESS_HEALTH_PORT ?? "9100");
   const healthHost = env.BOTCORD_INGRESS_HEALTH_HOST ?? "127.0.0.1";
+  const setupPort = Number(env.BOTCORD_INGRESS_SETUP_PORT ?? "9101");
+  const setupHost = env.BOTCORD_INGRESS_SETUP_HOST ?? "127.0.0.1";
   const runtimeEndpointOverride = env.BOTCORD_INGRESS_RUNTIME_ENDPOINT;
   const dedupeCapacity = Number(env.BOTCORD_INGRESS_DEDUPE_CAPACITY ?? "1024");
   return {
@@ -48,6 +57,8 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Ingress
     secretDir,
     healthPort: Number.isFinite(healthPort) ? healthPort : 0,
     healthHost,
+    setupPort: Number.isFinite(setupPort) ? setupPort : 0,
+    setupHost,
     ...(runtimeEndpointOverride ? { runtimeEndpointOverride } : {}),
     dedupeCapacity: Number.isFinite(dedupeCapacity) && dedupeCapacity > 0 ? dedupeCapacity : 1024,
   };

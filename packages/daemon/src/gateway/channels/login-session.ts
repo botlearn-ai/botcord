@@ -77,10 +77,28 @@ export class LoginSessionStore {
     return session;
   }
 
+  /**
+   * Distinguish whether `loginId` is unknown to the store ("missing") vs
+   * known-but-past-TTL ("expired"). When the entry is expired this also
+   * evicts it from the internal map so callers do not need to follow up
+   * with a separate `delete`. Use this when the caller wants to surface
+   * a precise error code to the user; prefer `get` when a single nullable
+   * result is enough.
+   */
+  resolve(loginId: string): { state: "live" | "expired" | "missing"; session?: LoginSession } {
+    const s = this.sessions.get(loginId);
+    if (!s) return { state: "missing" };
+    if (s.expiresAt <= this.now()) {
+      this.sessions.delete(loginId);
+      return { state: "expired" };
+    }
+    return { state: "live", session: s };
+  }
+
   /** Get a non-expired session by id, or `null` when missing/expired. */
   get(loginId: string): LoginSession | null {
-    this.sweep();
-    return this.sessions.get(loginId) ?? null;
+    const { state, session } = this.resolve(loginId);
+    return state === "live" && session ? session : null;
   }
 
   /**

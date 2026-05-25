@@ -36,4 +36,35 @@ describe("useAgentGatewayStore errors", () => {
       code: "provider_unreachable",
     } satisfies Partial<GatewayApiError>);
   });
+
+  it("preserves login_expired daemon codes for QR login recovery", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          detail: {
+            code: "daemon_gateway_failed",
+            daemon_code: "login_expired",
+            daemon_message: 'wechat login session "wxl_1" not found or expired',
+          },
+        }),
+        {
+          status: 502,
+          statusText: "Bad Gateway",
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await expect(
+      useAgentGatewayStore.getState().create("ag_1", {
+        provider: "wechat",
+        loginId: "wxl_1",
+        config: { allowedSenderIds: ["alice@im.wechat"] },
+      }),
+    ).rejects.toMatchObject({
+      message: 'wechat login session "wxl_1" not found or expired',
+      status: 502,
+      code: "login_expired",
+    } satisfies Partial<GatewayApiError>);
+  });
 });

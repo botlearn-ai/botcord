@@ -129,6 +129,48 @@ export class FakeRuntimeSocket implements RuntimeSocketLike {
   }
 }
 
+/**
+ * Minimal `ProviderAdapter` that does nothing. Use this when a test
+ * needs to exercise the setup HTTP server end-to-end (which now starts
+ * adapters after finalize/PATCH) but does NOT actually want to talk to
+ * a third-party provider. Tests that want to observe whether `start`
+ * was called can wrap the factory and flip a flag on entry.
+ */
+import type {
+  ProviderAdapter,
+  ProviderAdapterFactory,
+} from "../providers/types.js";
+import type { OutboundSendRequest, OutboundSendResult } from "../types.js";
+
+export interface RecordingFactory {
+  factory: ProviderAdapterFactory;
+  starts: string[];
+  stops: string[];
+  /** Set to a thrown Error to force `adapter.start()` to reject. */
+  startThrows?: Error;
+}
+
+export function makeRecordingFactory(provider: string): RecordingFactory {
+  const starts: string[] = [];
+  const stops: string[] = [];
+  const rec: RecordingFactory = { factory: () => undefined as never, starts, stops };
+  rec.factory = (gatewayId: string): ProviderAdapter => ({
+    gatewayId,
+    provider: provider as ProviderAdapter["provider"],
+    async start(_ctx) {
+      starts.push(gatewayId);
+      if (rec.startThrows) throw rec.startThrows;
+    },
+    async stop(_reason) {
+      stops.push(gatewayId);
+    },
+    async send(_req: OutboundSendRequest): Promise<OutboundSendResult> {
+      return { providerMessageId: null };
+    },
+  });
+  return rec;
+}
+
 export class FakeSocketFactory {
   sockets: FakeRuntimeSocket[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
