@@ -1,9 +1,10 @@
 "use client";
 
-import { Bot, Brain, Check, Cpu, Loader2, Save, Sparkles } from "lucide-react";
+import { Bot, Brain, Check, Cpu, Loader2, RefreshCw, Save, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { useDaemonStore } from "@/store/useDaemonStore";
 import type {
   DaemonInstance,
   DaemonRuntime,
@@ -187,6 +188,8 @@ export default function BotRuntimeCapabilitiesPanel({
         saving: "保存中",
         saved: "已保存",
         saveFailed: "保存运行配置失败",
+        refresh: "重新嗅探",
+        refreshing: "嗅探中",
       }
     : {
         title: "Runtime settings",
@@ -206,13 +209,27 @@ export default function BotRuntimeCapabilitiesPanel({
         saving: "Saving",
         saved: "Saved",
         saveFailed: "Failed to save runtime settings",
+        refresh: "Refresh",
+        refreshing: "Refreshing",
       };
+
+  const refreshDaemons = useDaemonStore((state) => state.refresh);
+  const refreshRuntimes = useDaemonStore((state) => state.refreshRuntimes);
+  const refreshingRuntimesId = useDaemonStore((state) => state.refreshingRuntimesId);
+  const runtimeErrors = useDaemonStore((state) => state.runtimeErrors);
 
   const runtime = findRuntimeForAgent(agentId, daemon, runtimeId);
   const displayRuntimeId = runtime?.id ?? runtimeId ?? null;
   const hasSnapshot = daemon?.runtimes !== null && daemon?.runtimes !== undefined;
   const canShowCapabilities = !!runtime && runtime.available !== false;
   const models = runtime?.models ?? [];
+  const isRefreshing = !!daemon?.id && refreshingRuntimesId === daemon.id;
+  const refreshError = daemon?.id ? runtimeErrors[daemon.id] : null;
+
+  useEffect(() => {
+    if (!daemon?.id) return;
+    void refreshDaemons({ quiet: true });
+  }, [daemon?.id, refreshDaemons]);
 
   const initialModelId = useMemo(
     () => resolveModelId(runtime, runtimeModel),
@@ -309,6 +326,11 @@ export default function BotRuntimeCapabilitiesPanel({
     }
   }
 
+  function handleRefresh() {
+    if (!daemon?.id || isRefreshing) return;
+    void refreshRuntimes(daemon.id);
+  }
+
   return (
     <section className={`rounded-2xl border border-glass-border bg-glass-bg/30 p-4 ${className ?? ""}`}>
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -325,7 +347,22 @@ export default function BotRuntimeCapabilitiesPanel({
         </Chip>
       </div>
 
+      <div className="mb-4 flex justify-end">
+        <button
+          type="button"
+          disabled={!daemon?.id || isRefreshing}
+          onClick={handleRefresh}
+          title={labels.refresh}
+          className="inline-flex min-h-8 items-center gap-2 rounded-lg border border-glass-border bg-deep-black/50 px-2.5 text-xs font-medium text-text-secondary transition-colors hover:border-neon-cyan/45 hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+          {isRefreshing ? labels.refreshing : labels.refresh}
+        </button>
+      </div>
+
       <div className="space-y-4">
+        {refreshError ? <EmptyText>{refreshError}</EmptyText> : null}
+
         {!daemon ? (
           <EmptyText>{labels.noDevice}</EmptyText>
         ) : !hasSnapshot ? (
