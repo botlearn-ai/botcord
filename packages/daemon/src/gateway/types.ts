@@ -154,6 +154,15 @@ export type MemoryContextBuilder = (
 ) => Promise<MemoryContextSnapshot | null | undefined> | MemoryContextSnapshot | null | undefined;
 
 /**
+ * Optional hook used after a runtime session is discarded and retried fresh.
+ * The daemon implementation can pull recent room messages from Hub; gateway
+ * core treats the returned string as opaque recovery context.
+ */
+export type RuntimeRecoveryContextBuilder = (
+  message: GatewayInboundMessage,
+) => Promise<string | null | undefined> | string | null | undefined;
+
+/**
  * Optional hook fired after the dispatcher dispatches a reply to a channel.
  * Intended for outbound bookkeeping (loop-risk tracking, metrics). Errors
  * are caught and logged so observer failures never break the turn.

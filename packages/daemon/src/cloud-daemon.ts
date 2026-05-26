@@ -32,6 +32,7 @@ import { createDaemonSystemContextBuilder } from "./system-context.js";
 import { readWorkingMemorySnapshot } from "./working-memory.js";
 import { createRoomStaticContextBuilder } from "./room-context.js";
 import { createRoomContextFetcher } from "./room-context-fetcher.js";
+import { createRecentRoomMessagesRecoveryBuilder } from "./room-recovery-context.js";
 import { composeBotCordUserTurn } from "./turn-text.js";
 import { PolicyResolver, type DaemonAttentionPolicy } from "./gateway/policy-resolver.js";
 import { scanMention } from "./mention-scan.js";
@@ -141,6 +142,12 @@ export async function startCloudDaemon(
   });
   const roomContextBuilder = createRoomStaticContextBuilder({
     fetchRoomInfo: roomContextFetcher,
+    log: logger,
+  });
+  const buildRuntimeRecoveryContext = createRecentRoomMessagesRecoveryBuilder({
+    credentialPathByAgentId,
+    hubBaseUrl: cloudCfg.hubUrl,
+    limit: 20,
     log: logger,
   });
 
@@ -258,6 +265,7 @@ export async function startCloudDaemon(
     turnTimeoutMs: DEFAULT_TURN_TIMEOUT_MS,
     buildSystemContext,
     buildMemoryContext,
+    buildRuntimeRecoveryContext,
     onInbound,
     onTurnComplete,
     composeUserTurn: composeBotCordUserTurn,

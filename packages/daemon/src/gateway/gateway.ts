@@ -23,6 +23,7 @@ import type {
   InboundObserver,
   MemoryContextBuilder,
   OutboundObserver,
+  RuntimeRecoveryContextBuilder,
   SystemContextBuilder,
   UserTurnBuilder,
 } from "./types.js";
@@ -49,6 +50,11 @@ export interface GatewayBootOptions {
    * resumed runtime sessions get an explicit prompt when memory changes.
    */
   buildMemoryContext?: MemoryContextBuilder;
+  /**
+   * Recent room context provider used by dispatcher when it must discard a
+   * broken runtime session and retry the same turn in a fresh session.
+   */
+  buildRuntimeRecoveryContext?: RuntimeRecoveryContextBuilder;
   /**
    * Observer called after the dispatcher acks each inbound message. Useful
    * for activity tracking or metrics. Errors are logged and swallowed.
@@ -178,6 +184,7 @@ export class Gateway {
       turnTimeoutMs: opts.turnTimeoutMs,
       buildSystemContext: opts.buildSystemContext,
       buildMemoryContext: opts.buildMemoryContext,
+      buildRuntimeRecoveryContext: opts.buildRuntimeRecoveryContext,
       onInbound: opts.onInbound,
       composeUserTurn: opts.composeUserTurn,
       onOutbound: opts.onOutbound,

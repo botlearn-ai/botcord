@@ -23,6 +23,7 @@ import type {
   OutboundObserver,
   QueueMode,
   RuntimeAdapter,
+  RuntimeRecoveryContextBuilder,
   RuntimeRunResult,
   RuntimeCircuitBreakerSnapshot,
   RuntimeStatusEvent,
@@ -182,6 +183,31 @@ function extractCloudRunBudget(msg: GatewayInboundMessage): CloudRunBudgetCaps |
   return out.maxWallTimeMs !== undefined || out.maxToolCalls !== undefined ? out : undefined;
 }
 
+function looksLikeRecoverableSessionFailure(error: string): boolean {
+  return /compact|compaction|context|token limit|maximum context|too many tokens|conversation found|session .*not found|resume/i
+    .test(error);
+}
+
+function buildRuntimeRecoveryPrompt(args: {
+  userTurn: string;
+  error: string;
+  recoveryContext?: string | null;
+}): string {
+  return [
+    "[BotCord Runtime Recovery Notice]",
+    "The previous Codex runtime session for this room became unrecoverable while resuming or compacting context.",
+    `Previous runtime error: ${truncate(args.error, 1000)}`,
+    "You are now running in a fresh Codex session.",
+    "Use the recent room messages below, current filesystem state, and available BotCord memory/context tools to reconstruct the active task.",
+    "Continue the original user request without asking the user to repeat information unless it is missing from those sources.",
+    "",
+    args.recoveryContext?.trim() || "[Recent Room Messages]\n(unavailable)",
+    "",
+    "[Current User Turn]",
+    args.userTurn,
+  ].join("\n");
+}
+
 /** Factory signature for building a runtime adapter at turn dispatch time. */
 export type RuntimeFactory = (
   runtimeId: string,
@@ -217,6 +243,11 @@ export interface DispatcherOptions {
    * keep following stale memory.
    */
   buildMemoryContext?: MemoryContextBuilder;
+  /**
+   * Optional hook that returns recent room context for a fresh-session retry
+   * after a runtime resume session becomes unrecoverable.
+   */
+  buildRuntimeRecoveryContext?: RuntimeRecoveryContextBuilder;
   /**
    * Optional side-effect hook invoked after ack, before the turn runs.
    * Intended for bookkeeping (e.g. activity tracking). Errors are logged
@@ -381,6 +412,7 @@ export class Dispatcher {
   private readonly runtimeAuthFailureCooldownMs: number;
   private readonly buildSystemContext?: SystemContextBuilder;
   private readonly buildMemoryContext?: MemoryContextBuilder;
+  private readonly buildRuntimeRecoveryContext?: RuntimeRecoveryContextBuilder;
   private readonly onInbound?: InboundObserver;
   private readonly onOutbound?: OutboundObserver;
   private readonly onTurnComplete?: DispatcherOptions["onTurnComplete"];
@@ -415,6 +447,7 @@ export class Dispatcher {
       opts.runtimeAuthFailureCooldownMs ?? DEFAULT_RUNTIME_AUTH_FAILURE_COOLDOWN_MS;
     this.buildSystemContext = opts.buildSystemContext;
     this.buildMemoryContext = opts.buildMemoryContext;
+    this.buildRuntimeRecoveryContext = opts.buildRuntimeRecoveryContext;
     this.onInbound = opts.onInbound;
     this.onOutbound = opts.onOutbound;
     this.onTurnComplete = opts.onTurnComplete;
@@ -1604,33 +1637,96 @@ export class Dispatcher {
     const runtime = this.runtimeFactory(route.runtime, route.extraArgs);
     let result: RuntimeRunResult | undefined;
     let threw: unknown;
+    let activeSessionId: string | null = sessionId;
     const turnStartedAt = Date.now();
     try {
       try {
-        result = await runtime.run({
-          text: runtimeText,
-          sessionId,
-          cwd: route.cwd,
-          accountId: msg.accountId,
-          hubUrl: this.resolveHubUrl?.(msg.accountId),
-          extraArgs: route.extraArgs,
-          signal: controller.signal,
-          trustLevel,
-          systemContext,
-          onBlock,
-          onStatus,
-          context: {
-            turnId,
-            messageId: msg.id,
+        const runRuntime = (textForRun: string, sessionIdForRun: string | null) =>
+          runtime.run({
+            text: textForRun,
+            sessionId: sessionIdForRun,
+            cwd: route.cwd,
+            accountId: msg.accountId,
+            hubUrl: this.resolveHubUrl?.(msg.accountId),
+            extraArgs: route.extraArgs,
+            signal: controller.signal,
+            trustLevel,
+            systemContext,
+            onBlock,
+            onStatus,
+            context: {
+              turnId,
+              messageId: msg.id,
+              roomId: msg.conversation.id,
+              topicId: msg.conversation.threadId ?? null,
+              channel: msg.channel,
+              conversationKind: msg.conversation.kind,
+            },
+            ...(cloudRunBudget ? { budget: cloudRunBudget } : {}),
+            gateway: route.gateway,
+            ...(route.hermesProfile ? { hermesProfile: route.hermesProfile } : {}),
+          });
+
+        result = await runRuntime(runtimeText, sessionId);
+        const firstError = result.error ?? "";
+        const firstReply = (result.text || "").trim();
+        const shouldRetryFresh =
+          route.runtime === "codex" &&
+          !!sessionId &&
+          !!firstError &&
+          !firstReply &&
+          !looksLikeRuntimeAuthFailure(firstError) &&
+          looksLikeRecoverableSessionFailure(firstError) &&
+          !controller.signal.aborted &&
+          !slot.timedOut &&
+          !slot.budgetExceeded;
+
+        if (shouldRetryFresh) {
+          try {
+            await this.sessionStore.delete(key);
+            this.log.info("dispatcher: dropped unrecoverable runtime session before fresh retry", {
+              key,
+              prevRuntimeSessionId: sessionId,
+              runtime: route.runtime,
+              error: firstError,
+            });
+          } catch (err) {
+            this.log.warn("dispatcher: session-store.delete failed before fresh retry", {
+              key,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+
+          let recoveryContext: string | null | undefined;
+          if (this.buildRuntimeRecoveryContext) {
+            try {
+              recoveryContext = await this.buildRuntimeRecoveryContext(msg);
+            } catch (err) {
+              this.log.warn("dispatcher: buildRuntimeRecoveryContext threw — retrying without recent room context", {
+                agentId: msg.accountId,
+                roomId: msg.conversation.id,
+                topicId: msg.conversation.threadId ?? null,
+                turnId,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+
+          activeSessionId = null;
+          runtimeText = buildRuntimeRecoveryPrompt({
+            userTurn: text,
+            error: firstError,
+            recoveryContext,
+          });
+          this.log.info("dispatcher: retrying codex turn in a fresh session with recovery context", {
+            agentId: msg.accountId,
             roomId: msg.conversation.id,
             topicId: msg.conversation.threadId ?? null,
-            channel: msg.channel,
-            conversationKind: msg.conversation.kind,
-          },
-          ...(cloudRunBudget ? { budget: cloudRunBudget } : {}),
-          gateway: route.gateway,
-          ...(route.hermesProfile ? { hermesProfile: route.hermesProfile } : {}),
-        });
+            turnId,
+            queueKey,
+          });
+          result = await runRuntime(runtimeText, null);
+        }
       } catch (err) {
         threw = err;
       } finally {
@@ -1814,12 +1910,12 @@ export class Dispatcher {
       //                                 even when the adapter echoes that id back
       //   result.newSessionId truthy  → upsert the entry
       //   otherwise                   → no-op (e.g. codex intentionally never persists)
-      if (sessionId && effectiveError && !replyText) {
+      if (activeSessionId && effectiveError && !replyText) {
         try {
           await this.sessionStore.delete(key);
           this.log.info("dispatcher: dropped stale runtime session", {
             key,
-            prevRuntimeSessionId: sessionId,
+            prevRuntimeSessionId: activeSessionId,
             nextRuntimeSessionId: result.newSessionId || null,
             error: effectiveError,
           });
@@ -1844,7 +1940,7 @@ export class Dispatcher {
           updatedAt: Date.now(),
         };
         try {
-          const prevRuntimeSessionId = sessionId;
+          const prevRuntimeSessionId = activeSessionId;
           await this.sessionStore.set(session);
           this.log.debug("dispatcher: persisted runtime session", {
             key,
@@ -1857,12 +1953,12 @@ export class Dispatcher {
             error: err instanceof Error ? err.message : String(err),
           });
         }
-      } else if (sessionId && effectiveError) {
+      } else if (activeSessionId && effectiveError) {
         try {
           await this.sessionStore.delete(key);
           this.log.info("dispatcher: dropped stale runtime session", {
             key,
-            prevRuntimeSessionId: sessionId,
+            prevRuntimeSessionId: activeSessionId,
             error: effectiveError,
           });
         } catch (err) {
