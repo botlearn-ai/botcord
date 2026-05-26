@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { PID_PATH } from "./config.js";
 
@@ -28,6 +29,46 @@ export function pidAlive(pid: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+export interface DaemonProcessInfo {
+  pid: number;
+  command: string;
+}
+
+export function parseDaemonProcesses(
+  psOutput: string,
+  currentPid: number = process.pid,
+): DaemonProcessInfo[] {
+  const out: DaemonProcessInfo[] = [];
+  for (const line of psOutput.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    const match = /^(\d+)\s+(.+)$/.exec(trimmed);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    if (!Number.isFinite(pid) || pid <= 0 || pid === currentPid) continue;
+    const command = match[2] ?? "";
+    if (!isBotCordDaemonStartCommand(command)) continue;
+    out.push({ pid, command });
+  }
+  return out;
+}
+
+export function findOtherDaemonProcesses(
+  opts: {
+    currentPid?: number;
+  } = {},
+): DaemonProcessInfo[] {
+  const currentPid = opts.currentPid ?? process.pid;
+  try {
+    const output = execFileSync("ps", ["-axo", "pid=,command="], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return parseDaemonProcesses(output, currentPid).filter((p) => pidAlive(p.pid));
+  } catch {
+    return [];
   }
 }
 
@@ -85,6 +126,41 @@ export async function stopDaemonFromPidFileForRestart(
   }
 }
 
+export async function stopOtherDaemonProcessesForRestart(
+  opts: {
+    currentPid?: number;
+    logger?: SingletonLogger;
+    processes?: DaemonProcessInfo[];
+  } = {},
+): Promise<DaemonProcessInfo[]> {
+  const currentPid = opts.currentPid ?? process.pid;
+  const logger = opts.logger ?? noopLogger;
+  const processes = opts.processes ?? findOtherDaemonProcesses({ currentPid });
+  for (const proc of processes) {
+    logger.info("additional daemon process found; restarting", {
+      pid: proc.pid,
+      command: proc.command,
+    });
+    try {
+      process.kill(proc.pid, "SIGTERM");
+    } catch {
+      continue;
+    }
+    if (!(await waitForPidExit(proc.pid, 5_000))) {
+      logger.warn("additional daemon did not stop after SIGTERM; sending SIGKILL", {
+        pid: proc.pid,
+      });
+      try {
+        process.kill(proc.pid, "SIGKILL");
+      } catch {
+        // ignore
+      }
+      await waitForPidExit(proc.pid, 2_000);
+    }
+  }
+  return processes;
+}
+
 export function ensureNoOtherDaemonFromPidFile(
   opts: {
     pidPath?: string;
@@ -115,6 +191,15 @@ export function removePidFile(pidPath = PID_PATH): void {
   } catch {
     // ignore
   }
+}
+
+function isBotCordDaemonStartCommand(command: string): boolean {
+  if (!/\bstart\b/.test(command)) return false;
+  return (
+    command.includes("botcord-daemon") ||
+    /(?:^|\s)\S*botcord\S*\/daemon\/dist\/index\.js(?:\s|$)/.test(command) ||
+    /(?:^|\s)\S*packages\/daemon\/dist\/index\.js(?:\s|$)/.test(command)
+  );
 }
 
 function delay(ms: number): Promise<void> {

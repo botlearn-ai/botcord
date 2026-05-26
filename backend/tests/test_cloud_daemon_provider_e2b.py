@@ -64,11 +64,17 @@ def _make_provider(
 
 def test_default_startup_command_prefers_configured_npm_spec():
     """Default launch should not prefer a stale daemon baked into the template."""
-    assert "case \"${CLOUD_DAEMON_NPM_SPEC:-}\"" in CLOUD_DAEMON_STARTUP_COMMAND
-    assert "exec npx --yes --package @botcord/daemon@latest" in (
+    assert "old_pids=$(ps -eo pid=,args=" in CLOUD_DAEMON_STARTUP_COMMAND
+    assert "botcord-daemon start --foreground|daemon\\/dist\\/index\\.js start --foreground" in (
         CLOUD_DAEMON_STARTUP_COMMAND
     )
-    assert "exec npx --yes --package \"$CLOUD_DAEMON_NPM_SPEC\"" in (
+    assert "kill -TERM $old_pids" in CLOUD_DAEMON_STARTUP_COMMAND
+    assert "npm_config_prefer_online=true" in CLOUD_DAEMON_STARTUP_COMMAND
+    assert "case \"${CLOUD_DAEMON_NPM_SPEC:-}\"" in CLOUD_DAEMON_STARTUP_COMMAND
+    assert "exec npm exec --yes --package @botcord/daemon@latest --" in (
+        CLOUD_DAEMON_STARTUP_COMMAND
+    )
+    assert "exec npm exec --yes --package \"$CLOUD_DAEMON_NPM_SPEC\" --" in (
         CLOUD_DAEMON_STARTUP_COMMAND
     )
     assert "bundled)" in CLOUD_DAEMON_STARTUP_COMMAND

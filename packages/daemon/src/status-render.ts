@@ -7,6 +7,7 @@ export const STALE_THRESHOLD_MS = 30_000;
 export interface StatusRenderInput {
   pid: number | null;
   alive: boolean;
+  daemonProcesses?: Array<{ pid: number; command?: string }> | null;
   /**
    * Effective list of agent ids the daemon is bound to. Single-agent installs
    * show one entry; multi-agent configs show all. `agentId` (scalar) is kept
@@ -114,10 +115,22 @@ function renderRuntimeCircuitBreakers(
 export function renderStatus(input: StatusRenderInput, now: number = Date.now()): string {
   const lines: string[] = [];
   if (input.pid === null) {
-    lines.push("daemon: stopped");
+    const extras = input.daemonProcesses ?? [];
+    if (extras.length > 0) {
+      lines.push("daemon: no pid file");
+      lines.push(`warning: ${extras.length} daemon process${extras.length === 1 ? "" : "es"} detected without pid file`);
+      lines.push(`pids: ${extras.map((p) => p.pid).join(", ")}`);
+    } else {
+      lines.push("daemon: stopped");
+    }
     return lines.join("\n");
   }
   lines.push(`daemon: pid ${input.pid} (${input.alive ? "alive" : "not alive"})`);
+  const extras = (input.daemonProcesses ?? []).filter((p) => p.pid !== input.pid);
+  if (extras.length > 0) {
+    lines.push(`warning: ${extras.length} additional daemon process${extras.length === 1 ? "" : "es"} detected`);
+    lines.push(`extra pids: ${extras.map((p) => p.pid).join(", ")}`);
+  }
   const agents =
     input.agents && input.agents.length > 0
       ? input.agents

@@ -977,10 +977,13 @@ export { normalizeBlockForHub as __normalizeBlockForHubForTests };
 function normalizeBlockForHub(
   block: { raw?: unknown; kind?: string; seq?: number } | undefined,
   seq: number,
-): { kind: string; seq: number; payload: Record<string, unknown> } {
+): { kind: string; seq: number; payload: Record<string, unknown>; raw?: unknown } {
   const raw = (block?.raw ?? {}) as any;
   const kind = block?.kind ?? "other";
   const payload: Record<string, unknown> = {};
+  const withRaw = (out: { kind: string; seq: number; payload: Record<string, unknown> }) => (
+    block && "raw" in block ? { ...out, raw: block.raw } : out
+  );
 
   if (kind === "assistant_text") {
     // Claude Code: {type:"assistant", message:{content:[{type:"text",text}]}}
@@ -1022,7 +1025,7 @@ function normalizeBlockForHub(
       if (call.id) payload.id = call.id;
       if (call.status) payload.status = call.status;
     }
-    return { kind: "tool_call", seq, payload };
+    return withRaw({ kind: "tool_call", seq, payload });
   }
 
   if (kind === "tool_result") {
@@ -1032,7 +1035,7 @@ function normalizeBlockForHub(
       payload.result = result.result;
       if (result.id) payload.tool_use_id = result.id;
     }
-    return { kind: "tool_result", seq, payload };
+    return withRaw({ kind: "tool_result", seq, payload });
   }
 
   if (kind === "system") {
@@ -1040,7 +1043,7 @@ function normalizeBlockForHub(
     if (typeof raw?.session_id === "string") payload.session_id = raw.session_id;
     if (typeof raw?.model === "string") payload.model = raw.model;
     payload.details = formatBlockDetails(raw);
-    return { kind: "system", seq, payload };
+    return withRaw({ kind: "system", seq, payload });
   }
 
   if (kind === "thinking") {
@@ -1052,7 +1055,7 @@ function normalizeBlockForHub(
     if (typeof raw?.label === "string") payload.label = raw.label;
     if (typeof raw?.source === "string") payload.source = raw.source;
     payload.details = formatBlockDetails(raw);
-    return { kind: "thinking", seq, payload };
+    return withRaw({ kind: "thinking", seq, payload });
   }
 
   // "other" — e.g. Claude Code `type:"result"` end-of-turn summary.
@@ -1062,14 +1065,14 @@ function normalizeBlockForHub(
     const event = typeof raw?.event === "string" ? raw.event : undefined;
     const embedded = typeof raw?.payload?.event === "string" ? raw.payload.event : undefined;
     if (event || embedded) payload.event = event ?? embedded;
-    return { kind: "other", seq, payload };
+    return withRaw({ kind: "other", seq, payload });
   }
   if (raw?.type === "result") {
     if (typeof raw.result === "string") payload.text = raw.result;
     if (typeof raw.subtype === "string") payload.subtype = raw.subtype;
     if (typeof raw.total_cost_usd === "number") payload.total_cost_usd = raw.total_cost_usd;
   }
-  return { kind: "other", seq, payload };
+  return withRaw({ kind: "other", seq, payload });
 }
 
 function isTerminalRuntimeBlock(raw: any): boolean {
@@ -1214,6 +1217,12 @@ function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id
     const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
     const tool = inner.tool && typeof inner.tool === "object" ? inner.tool : item?.tool;
     const itemParams = parseMaybeJson(item?.input ?? item?.arguments ?? item?.detail);
+    const detailParams =
+      itemParams !== undefined
+        ? itemParams
+        : typeof item?.detail === "string" && item.detail.trim()
+          ? item.detail.trim()
+          : undefined;
     return {
       name:
         stringField(tool, "name") ??
@@ -1226,10 +1235,13 @@ function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id
         tool?.input ??
           tool?.rawInput ??
           tool?.arguments ??
+          tool?.params ??
           inner.input ??
+          inner.arguments ??
+          inner.params ??
           item?.input ??
           item?.arguments,
-      ) ?? itemParams ?? tool ?? item,
+      ) ?? detailParams ?? tool ?? item,
       id: stringField(tool, "id") ?? stringField(inner, "id") ?? stringField(item, "id"),
       status: stringField(tool, "status") ?? stringField(inner, "status") ?? stringField(item, "status"),
     };

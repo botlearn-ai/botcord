@@ -18,10 +18,12 @@ import {
 } from "./config.js";
 import {
   ensureNoOtherDaemonFromPidFile,
+  findOtherDaemonProcesses,
   pidAlive,
   readPid,
   removePidFile,
   stopDaemonFromPidFileForRestart,
+  stopOtherDaemonProcessesForRestart,
   writeCurrentPid,
 } from "./daemon-singleton.js";
 import { resolveBootAgents } from "./agent-discovery.js";
@@ -585,6 +587,7 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
   if (process.env.BOTCORD_DAEMON_CHILD !== "1") {
     await ensureUserAuthForStart(args);
     await stopDaemonFromPidFileForRestart({ logger: log });
+    await stopOtherDaemonProcessesForRestart({ logger: log });
   } else {
     const existing = ensureNoOtherDaemonFromPidFile();
     if (existing) {
@@ -603,7 +606,7 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
       env: { ...process.env, BOTCORD_DAEMON_CHILD: "1" },
     });
     child.unref();
-    const deadline = Date.now() + 500;
+    const deadline = Date.now() + 5_000;
     let observed: number | null = null;
     while (Date.now() < deadline) {
       const p = readPid();
@@ -614,7 +617,7 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
       await new Promise((r) => setTimeout(r, 50));
     }
     if (!observed) {
-      console.error(`daemon did not record pid within 500ms (expected child pid ${child.pid})`);
+      console.error(`daemon did not record pid within 5000ms (expected child pid ${child.pid})`);
       process.exit(1);
     }
     console.log(`daemon started (pid ${observed})`);
@@ -659,6 +662,7 @@ async function cmdStartCloud(_args: ParsedArgs): Promise<void> {
     hubUrl: cloudConfig.hubUrl,
   });
   await stopDaemonFromPidFileForRestart({ logger: log });
+  await stopOtherDaemonProcessesForRestart({ logger: log });
   writeCurrentPid();
 
   // Cloud daemons always start with an empty in-memory config — every
@@ -755,6 +759,7 @@ async function cmdStatus(args: ParsedArgs): Promise<void> {
   const file = readSnapshotFile();
   const now = Date.now();
   const snapshotAgeMs = file ? now - file.writtenAt : null;
+  const daemonProcesses = findOtherDaemonProcesses().filter((p) => p.pid !== pid);
 
   if (args.flags.json === true) {
     const payload = {
@@ -780,6 +785,7 @@ async function cmdStatus(args: ParsedArgs): Promise<void> {
       snapshotWrittenAt: file?.writtenAt ?? null,
       snapshotAgeMs,
       snapshotPath: SNAPSHOT_PATH,
+      daemonProcesses,
     };
     console.log(JSON.stringify(payload, null, 2));
     return;
@@ -793,6 +799,7 @@ async function cmdStatus(args: ParsedArgs): Promise<void> {
     configPath,
     snapshot: file?.snapshot ?? null,
     snapshotAgeMs,
+    daemonProcesses,
   };
   console.log(renderStatus(input, now));
   if (userAuth) {

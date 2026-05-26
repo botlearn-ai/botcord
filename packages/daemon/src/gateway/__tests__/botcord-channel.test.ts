@@ -699,7 +699,7 @@ describe("createBotCordChannel — streamBlock()", () => {
         },
         1,
       ),
-    ).toEqual({
+    ).toMatchObject({
       kind: "tool_call",
       seq: 1,
       payload: {
@@ -725,7 +725,7 @@ describe("createBotCordChannel — streamBlock()", () => {
         },
         2,
       ),
-    ).toEqual({
+    ).toMatchObject({
       kind: "tool_call",
       seq: 2,
       payload: {
@@ -758,7 +758,7 @@ describe("createBotCordChannel — streamBlock()", () => {
         },
         3,
       ),
-    ).toEqual({
+    ).toMatchObject({
       kind: "tool_result",
       seq: 3,
       payload: {
@@ -782,7 +782,7 @@ describe("createBotCordChannel — streamBlock()", () => {
         },
         4,
       ),
-    ).toEqual({
+    ).toMatchObject({
       kind: "tool_call",
       seq: 4,
       payload: {
@@ -982,7 +982,7 @@ describe("createBotCordChannel — streamBlock()", () => {
         },
         7,
       ),
-    ).toEqual({
+    ).toMatchObject({
       kind: "tool_call",
       seq: 7,
       payload: {
@@ -990,6 +990,13 @@ describe("createBotCordChannel — streamBlock()", () => {
         name: "web_search",
         params: { query: "上海天气" },
         status: "in_progress",
+      },
+      raw: {
+        event: "item.started",
+        payload: {
+          item: { id: "item_tool", kind: "tool_call", status: "in_progress" },
+          tool: { id: "call_1", name: "web_search", input: { query: "上海天气" } },
+        },
       },
     });
   });
@@ -1015,7 +1022,7 @@ describe("createBotCordChannel — streamBlock()", () => {
         },
         8,
       ),
-    ).toEqual({
+    ).toMatchObject({
       kind: "tool_call",
       seq: 8,
       payload: {
@@ -1023,6 +1030,18 @@ describe("createBotCordChannel — streamBlock()", () => {
         name: "exec_shell",
         params: { cmd: "botcord-daemon --version" },
         status: "in_progress",
+      },
+      raw: {
+        event: "item.started",
+        payload: {
+          item: {
+            id: "item_exec",
+            kind: "tool_call",
+            status: "in_progress",
+            summary: "exec_shell started",
+            detail: "{\"cmd\":\"botcord-daemon --version\"}",
+          },
+        },
       },
     });
   });
@@ -1048,13 +1067,25 @@ describe("createBotCordChannel — streamBlock()", () => {
         },
         9,
       ),
-    ).toEqual({
+    ).toMatchObject({
       kind: "tool_result",
       seq: 9,
       payload: {
         name: "exec_shell",
         result: "botcord-daemon 0.2.78",
         tool_use_id: "item_exec",
+      },
+      raw: {
+        event: "item.completed",
+        payload: {
+          item: {
+            id: "item_exec",
+            kind: "tool_call",
+            status: "completed",
+            summary: "exec_shell: botcord-daemon 0.2.78",
+            detail: "botcord-daemon 0.2.78",
+          },
+        },
       },
     });
   });
@@ -1080,10 +1111,22 @@ describe("createBotCordChannel — streamBlock()", () => {
         },
         8,
       ),
-    ).toEqual({
+    ).toMatchObject({
       kind: "thinking",
       seq: 8,
       payload: { details: "I should answer briefly." },
+      raw: {
+        event: "item.completed",
+        payload: {
+          item: {
+            id: "item_reasoning",
+            kind: "agent_reasoning",
+            status: "completed",
+            summary: "I should answer briefly.",
+            detail: "I should answer briefly.",
+          },
+        },
+      },
     });
   });
 
@@ -1155,10 +1198,11 @@ describe("createBotCordChannel — streamBlock()", () => {
         log: silentLog,
       });
       const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
-      expect(body.block).toEqual({
+      expect(body.block).toMatchObject({
         kind: "thinking",
         seq: 7,
         payload: { phase: "updated", label: "Searching web", source: "runtime", details: "Searching web" },
+        raw: { phase: "updated", label: "Searching web", source: "runtime" },
       });
     } finally {
       globalThis.fetch = realFetch;

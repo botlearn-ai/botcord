@@ -60,4 +60,66 @@ describe("StreamBlocksView", () => {
     expect(html).not.toContain("Composing");
     expect(html).not.toContain("draft answer");
   });
+
+  it("falls back to raw tool input when normalized payload is empty", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(StreamBlocksView, {
+        defaultExpanded: true,
+        blocks: [{
+          trace_id: "tr_2",
+          seq: 1,
+          created_at: "2026-05-25T00:00:00.000Z",
+          block: {
+            kind: "tool_call",
+            payload: {},
+            raw: {
+              event: "item.started",
+              payload: {
+                item: {
+                  id: "item_exec",
+                  kind: "tool_call",
+                  summary: "exec_shell started",
+                  detail: "{\"cmd\":\"botcord-daemon status\"}",
+                },
+              },
+            },
+          },
+        }],
+      }),
+    );
+
+    expect(html).toContain("exec_shell");
+    expect(html).toContain("botcord-daemon status");
+  });
+
+  it("falls back to raw tool output when normalized result is empty", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(StreamBlocksView, {
+        defaultExpanded: true,
+        blocks: [{
+          trace_id: "tr_3",
+          seq: 1,
+          created_at: "2026-05-25T00:00:00.000Z",
+          block: {
+            kind: "tool_result",
+            payload: {},
+            raw: {
+              event: "item.completed",
+              payload: {
+                item: {
+                  id: "item_exec",
+                  kind: "tool_call",
+                  summary: "exec_shell: daemon: pid 49616",
+                  detail: "daemon: pid 49616 (alive)",
+                },
+              },
+            },
+          },
+        }],
+      }),
+    );
+
+    expect(html).toContain("exec_shell");
+    expect(html).toContain("daemon: pid 49616");
+  });
 });
