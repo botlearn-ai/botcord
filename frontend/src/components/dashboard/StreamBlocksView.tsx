@@ -165,6 +165,11 @@ function blockDetails(raw: unknown, payload?: Record<string, unknown>): string {
     typeof rawAny?.text === "string" ? rawAny.text
     : typeof rawAny?.message === "string" ? rawAny.message
     : typeof rawAny?.summary === "string" ? rawAny.summary
+    : typeof rawAny?.payload?.delta === "string" ? rawAny.payload.delta
+    : typeof rawAny?.payload?.item?.detail === "string" ? rawAny.payload.item.detail
+    : typeof rawAny?.payload?.item?.summary === "string" ? rawAny.payload.item.summary
+    : typeof rawAny?.payload?.payload?.item?.detail === "string" ? rawAny.payload.payload.item.detail
+    : typeof rawAny?.payload?.payload?.item?.summary === "string" ? rawAny.payload.payload.item.summary
     : "";
   if (direct) return direct;
   const contentText = extractContentText(rawAny?.content ?? rawAny?.message?.content ?? rawAny?.params?.update?.content);
@@ -264,8 +269,13 @@ function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id
     };
   }
 
-  if (payload.event === "item.started") {
-    const inner = payload.payload && typeof payload.payload === "object" ? payload.payload : {};
+  if (raw?.event === "item.started" || payload.event === "item.started") {
+    const inner =
+      raw?.event === "item.started"
+        ? payload
+        : payload.payload && typeof payload.payload === "object"
+          ? payload.payload
+          : {};
     const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
     const tool = inner.tool && typeof inner.tool === "object" ? inner.tool : item?.tool;
     return {
@@ -344,8 +354,18 @@ function extractDeepseekToolResult(raw: any): { name?: string; result: string; i
     };
   }
 
-  if (payload.event === "item.completed" || payload.event === "item.failed") {
-    const inner = payload.payload && typeof payload.payload === "object" ? payload.payload : {};
+  if (
+    raw?.event === "item.completed" ||
+    raw?.event === "item.failed" ||
+    payload.event === "item.completed" ||
+    payload.event === "item.failed"
+  ) {
+    const inner =
+      raw?.event === "item.completed" || raw?.event === "item.failed"
+        ? payload
+        : payload.payload && typeof payload.payload === "object"
+          ? payload.payload
+          : {};
     const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
     const result =
       item?.output ??
@@ -777,6 +797,20 @@ export default function StreamBlocksView({
         const raw = b.block.raw as any;
         if (k === "assistant_text" && typeof raw?.item?.text === "string") {
           parts.push(raw.item.text);
+          continue;
+        }
+        if (
+          k === "assistant_text" &&
+          raw?.event === "item.delta" &&
+          (raw?.payload?.kind === "agent_message" || raw?.payload?.payload?.kind === "agent_message")
+        ) {
+          parts.push(
+            typeof raw?.payload?.delta === "string"
+              ? raw.payload.delta
+              : typeof raw?.payload?.payload?.delta === "string"
+                ? raw.payload.payload.delta
+                : "",
+          );
           continue;
         }
         const contents = raw?.message?.content;

@@ -51,6 +51,21 @@ function extractAssistantText(blocks: StreamBlockEntry[]): string {
         parts.push(raw.item.text);
         continue;
       }
+      // DeepSeek TUI: raw { event: "item.delta", payload: { kind: "agent_message", delta } }
+      if (
+        kind === "assistant_text" &&
+        raw?.event === "item.delta" &&
+        (raw?.payload?.kind === "agent_message" || raw?.payload?.payload?.kind === "agent_message")
+      ) {
+        parts.push(
+          typeof raw?.payload?.delta === "string"
+            ? raw.payload.delta
+            : typeof raw?.payload?.payload?.delta === "string"
+              ? raw.payload.payload.delta
+              : "",
+        );
+        continue;
+      }
       // Claude-code: raw.message.content[*].text where type === "text"
       const contents = raw?.message?.content;
       if (Array.isArray(contents)) {

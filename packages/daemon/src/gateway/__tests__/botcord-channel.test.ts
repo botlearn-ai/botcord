@@ -925,6 +925,103 @@ describe("createBotCordChannel — streamBlock()", () => {
     }
   });
 
+  it("normalizes current DeepSeek item.delta assistant text", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const client = makeClient({
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+      });
+      await channel.streamBlock!({
+        traceId: "m_trace",
+        accountId: "ag_self",
+        conversationId: "rm_oc_1",
+        block: {
+          kind: "assistant_text",
+          seq: 6,
+          raw: {
+            event: "item.delta",
+            payload: { thread_id: "thr_1", turn_id: "turn_1", kind: "agent_message", delta: "hello" },
+          },
+        },
+        log: silentLog,
+      });
+      const [, init] = fetchSpy.mock.calls[0];
+      const body = JSON.parse(init.body as string);
+      expect(body.block).toEqual({
+        kind: "assistant",
+        seq: 6,
+        payload: { text: "hello" },
+      });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("normalizes current DeepSeek item.started tool input", () => {
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "tool_use",
+          seq: 7,
+          raw: {
+            event: "item.started",
+            payload: {
+              item: { id: "item_tool", kind: "tool_call", status: "in_progress" },
+              tool: { id: "call_1", name: "web_search", input: { query: "上海天气" } },
+            },
+          },
+        },
+        7,
+      ),
+    ).toEqual({
+      kind: "tool_call",
+      seq: 7,
+      payload: {
+        id: "call_1",
+        name: "web_search",
+        params: { query: "上海天气" },
+        status: "in_progress",
+      },
+    });
+  });
+
+  it("normalizes current DeepSeek agent_reasoning details", () => {
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "thinking",
+          seq: 8,
+          raw: {
+            event: "item.completed",
+            payload: {
+              item: {
+                id: "item_reasoning",
+                kind: "agent_reasoning",
+                status: "completed",
+                summary: "I should answer briefly.",
+                detail: "I should answer briefly.",
+              },
+            },
+          },
+        },
+        8,
+      ),
+    ).toEqual({
+      kind: "thinking",
+      seq: 8,
+      payload: { details: "I should answer briefly." },
+    });
+  });
+
   it("marks DeepSeek terminal events for owner-chat stream cleanup", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     const realFetch = globalThis.fetch;

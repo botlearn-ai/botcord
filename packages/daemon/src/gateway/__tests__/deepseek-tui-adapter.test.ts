@@ -175,6 +175,183 @@ describe("DeepseekTuiAdapter", () => {
     }
   });
 
+  it("parses current DeepSeek item.delta agent_message events as assistant text", async () => {
+    const server = await startMockDeepseekServer({
+      events: [
+        {
+          event: "turn.started",
+          data: {
+            seq: 1,
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "turn.started",
+            payload: { turn: { status: "in_progress" } },
+          },
+        },
+        {
+          event: "item.started",
+          data: {
+            seq: 2,
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            item_id: "item_msg",
+            event: "item.started",
+            payload: { item: { id: "item_msg", kind: "agent_message", status: "in_progress" } },
+          },
+        },
+        {
+          event: "item.delta",
+          data: {
+            seq: 3,
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            item_id: "item_msg",
+            event: "item.delta",
+            payload: { kind: "agent_message", delta: "hello " },
+          },
+        },
+        {
+          event: "item.delta",
+          data: {
+            seq: 4,
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            item_id: "item_msg",
+            event: "item.delta",
+            payload: { kind: "agent_message", delta: "deepseek" },
+          },
+        },
+        {
+          event: "turn.completed",
+          data: {
+            seq: 5,
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "turn.completed",
+            payload: { turn: { status: "completed" } },
+          },
+        },
+      ],
+    });
+    try {
+      const { result, blocks, status } = runAdapter(server.baseUrl, server.token);
+      const res = await result;
+      expect(res).toEqual({ text: "hello deepseek", newSessionId: server.threadId });
+      expect(blocks).toContain("assistant_text");
+      expect(status.at(-1)).toEqual({ phase: "stopped", label: undefined });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("parses current DeepSeek item.started/item.completed tool events", async () => {
+    const server = await startMockDeepseekServer({
+      events: [
+        {
+          event: "turn.started",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.started" },
+        },
+        {
+          event: "item.started",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.started",
+            payload: {
+              item: { id: "item_tool", kind: "tool_call", status: "in_progress" },
+              tool: { id: "call_1", name: "web_search", input: { query: "Shanghai weather" } },
+            },
+          },
+        },
+        {
+          event: "item.completed",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.completed",
+            payload: {
+              item: {
+                id: "item_tool",
+                kind: "tool_call",
+                status: "completed",
+                detail: "Found 5 result(s)",
+              },
+            },
+          },
+        },
+        {
+          event: "item.delta",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.delta",
+            payload: { kind: "agent_message", delta: "done" },
+          },
+        },
+        {
+          event: "turn.completed",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.completed" },
+        },
+      ],
+    });
+    try {
+      const { result, blocks, status } = runAdapter(server.baseUrl, server.token);
+      await expect(result).resolves.toMatchObject({ text: "done" });
+      expect(blocks).toEqual(expect.arrayContaining(["tool_use", "tool_result", "assistant_text"]));
+      expect(status).toContainEqual({ phase: "updated", label: "web_search" });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("emits current DeepSeek agent_reasoning completions as thinking blocks", async () => {
+    const server = await startMockDeepseekServer({
+      events: [
+        {
+          event: "turn.started",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.started" },
+        },
+        {
+          event: "item.completed",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.completed",
+            payload: {
+              item: {
+                id: "item_reasoning",
+                kind: "agent_reasoning",
+                status: "completed",
+                summary: "I should answer briefly.",
+                detail: "I should answer briefly.",
+              },
+            },
+          },
+        },
+        {
+          event: "item.delta",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.delta",
+            payload: { kind: "agent_message", delta: "hi" },
+          },
+        },
+        {
+          event: "turn.completed",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.completed" },
+        },
+      ],
+    });
+    try {
+      const { result, blocks } = runAdapter(server.baseUrl, server.token);
+      await expect(result).resolves.toMatchObject({ text: "hi" });
+      expect(blocks).toContain("thinking");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("reuses an existing DeepSeek thread id and patches per-turn system context", async () => {
     const server = await startMockDeepseekServer({ threadId: "thr_existing" });
     try {
