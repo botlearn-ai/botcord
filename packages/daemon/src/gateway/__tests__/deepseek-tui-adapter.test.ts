@@ -304,6 +304,55 @@ describe("DeepseekTuiAdapter", () => {
     }
   });
 
+  it("infers current DeepSeek tool status labels without a payload.tool object", async () => {
+    const server = await startMockDeepseekServer({
+      events: [
+        {
+          event: "turn.started",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.started" },
+        },
+        {
+          event: "item.started",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.started",
+            payload: {
+              item: {
+                id: "item_exec",
+                kind: "tool_call",
+                status: "in_progress",
+                summary: "exec_shell started",
+                detail: "{\"cmd\":\"botcord-daemon --version\"}",
+              },
+            },
+          },
+        },
+        {
+          event: "item.delta",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.delta",
+            payload: { kind: "agent_message", delta: "done" },
+          },
+        },
+        {
+          event: "turn.completed",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.completed" },
+        },
+      ],
+    });
+    try {
+      const { result, blocks, status } = runAdapter(server.baseUrl, server.token);
+      await expect(result).resolves.toMatchObject({ text: "done" });
+      expect(blocks).toEqual(expect.arrayContaining(["tool_use", "assistant_text"]));
+      expect(status).toContainEqual({ phase: "updated", label: "exec_shell" });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("emits current DeepSeek agent_reasoning completions as thinking blocks", async () => {
     const server = await startMockDeepseekServer({
       events: [

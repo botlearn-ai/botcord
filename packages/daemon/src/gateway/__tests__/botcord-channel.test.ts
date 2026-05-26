@@ -994,6 +994,71 @@ describe("createBotCordChannel — streamBlock()", () => {
     });
   });
 
+  it("infers current DeepSeek tool input from item summary and detail", () => {
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "tool_use",
+          seq: 8,
+          raw: {
+            event: "item.started",
+            payload: {
+              item: {
+                id: "item_exec",
+                kind: "tool_call",
+                status: "in_progress",
+                summary: "exec_shell started",
+                detail: "{\"cmd\":\"botcord-daemon --version\"}",
+              },
+            },
+          },
+        },
+        8,
+      ),
+    ).toEqual({
+      kind: "tool_call",
+      seq: 8,
+      payload: {
+        id: "item_exec",
+        name: "exec_shell",
+        params: { cmd: "botcord-daemon --version" },
+        status: "in_progress",
+      },
+    });
+  });
+
+  it("infers current DeepSeek tool result name from item summary", () => {
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "tool_result",
+          seq: 9,
+          raw: {
+            event: "item.completed",
+            payload: {
+              item: {
+                id: "item_exec",
+                kind: "tool_call",
+                status: "completed",
+                summary: "exec_shell: botcord-daemon 0.2.78",
+                detail: "botcord-daemon 0.2.78",
+              },
+            },
+          },
+        },
+        9,
+      ),
+    ).toEqual({
+      kind: "tool_result",
+      seq: 9,
+      payload: {
+        name: "exec_shell",
+        result: "botcord-daemon 0.2.78",
+        tool_use_id: "item_exec",
+      },
+    });
+  });
+
   it("normalizes current DeepSeek agent_reasoning details", () => {
     expect(
       __normalizeBlockForHubForTests(
