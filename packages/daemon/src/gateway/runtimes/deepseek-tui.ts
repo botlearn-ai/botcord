@@ -383,13 +383,17 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
         if (extractedError) errorText = extractedError;
         if (eventName === "message.delta") {
           append(stringField(payload, "content") ?? "");
-        } else if (eventName === "item.delta" && payload?.payload?.kind === "agent_message") {
-          append(stringField(payload.payload, "delta") ?? "");
+        } else if (eventName === "item.delta" && isAgentMessageDelta(payload)) {
+          append(extractDeepseekDelta(payload));
         }
         if (eventName === "turn.started" || embeddedDeepseekEvent(payload) === "turn.started") {
           opts.onStatus?.({ kind: "thinking", phase: "started", label: "Thinking" });
-        } else if (eventName === "tool.started" || isToolStarted(payload)) {
-          const label = stringField(payload, "name") ?? stringField(payload?.payload?.tool, "name") ?? "tool";
+        } else if (eventName === "tool.started" || isToolStarted(eventName, payload)) {
+          const label =
+            stringField(payload, "name") ??
+            stringField(payload?.tool, "name") ??
+            stringField(payload?.payload?.tool, "name") ??
+            "tool";
           opts.onStatus?.({ kind: "thinking", phase: "updated", label });
         } else if (isDeepseekTerminalEvent(eventName, payload)) {
           opts.onStatus?.({ kind: "thinking", phase: "stopped" });
@@ -449,14 +453,17 @@ function normalizeDeepseekEvent(eventName: string, payload: any, seq: number): S
   if (eventName === "message.delta") {
     return { raw: { event: eventName, payload }, kind: "assistant_text", seq };
   }
-  if (eventName === "tool.started" || isToolStarted(payload)) {
+  if (eventName === "tool.started" || isToolStarted(eventName, payload)) {
     return { raw: { event: eventName, payload }, kind: "tool_use", seq };
   }
-  if (eventName === "tool.completed" || isToolCompleted(payload)) {
+  if (eventName === "tool.completed" || isToolCompleted(eventName, payload)) {
     return { raw: { event: eventName, payload }, kind: "tool_result", seq };
   }
-  if (eventName === "item.delta" && payload?.payload?.kind === "agent_message") {
+  if (eventName === "item.delta" && isAgentMessageDelta(payload)) {
     return { raw: { event: eventName, payload }, kind: "assistant_text", seq };
+  }
+  if (eventName === "item.completed" && isAgentReasoningItem(payload)) {
+    return { raw: { event: eventName, payload }, kind: "thinking", seq };
   }
   if (eventName === "turn.started" || eventName === "status" || embeddedDeepseekEvent(payload) === "turn.started") {
     return { raw: { event: eventName, payload }, kind: "system", seq };
@@ -485,16 +492,34 @@ function isDeepseekTerminalEvent(eventName: string, payload: any): boolean {
   );
 }
 
-function isToolStarted(payload: any): boolean {
-  return payload?.event === "item.started" && !!payload?.payload?.tool;
+function isToolStarted(eventName: string, payload: any): boolean {
+  return (
+    (eventName === "item.started" && (!!payload?.tool || payload?.item?.kind === "tool_call")) ||
+    (payload?.event === "item.started" && !!payload?.payload?.tool)
+  );
 }
 
-function isToolCompleted(payload: any): boolean {
-  const kind = payload?.payload?.item?.kind;
+function isToolCompleted(eventName: string, payload: any): boolean {
+  const kind = payload?.payload?.item?.kind ?? payload?.item?.kind;
   return (
-    (payload?.event === "item.completed" || payload?.event === "item.failed") &&
+    (eventName === "item.completed" ||
+      eventName === "item.failed" ||
+      payload?.event === "item.completed" ||
+      payload?.event === "item.failed") &&
     (kind === "tool_call" || kind === "file_change" || kind === "command_execution")
   );
+}
+
+function isAgentMessageDelta(payload: any): boolean {
+  return payload?.kind === "agent_message" || payload?.payload?.kind === "agent_message";
+}
+
+function isAgentReasoningItem(payload: any): boolean {
+  return payload?.item?.kind === "agent_reasoning" || payload?.payload?.item?.kind === "agent_reasoning";
+}
+
+function extractDeepseekDelta(payload: any): string {
+  return stringField(payload, "delta") ?? stringField(payload?.payload, "delta") ?? "";
 }
 
 function extractDeepseekError(eventName: string, payload: any): string | undefined {

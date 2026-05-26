@@ -986,7 +986,7 @@ function normalizeBlockForHub(
     // Claude Code: {type:"assistant", message:{content:[{type:"text",text}]}}
     // Codex:       {type:"item.completed", item:{type:"agent_message", text}}
     // DeepSeek:    {event:"message.delta", payload:{content}} or
-    //              {event:"item.delta", payload:{payload:{kind:"agent_message", delta}}}
+    //              {event:"item.delta", payload:{kind:"agent_message", delta}}
     let text = "";
     const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
     for (const c of contents) {
@@ -999,10 +999,14 @@ function normalizeBlockForHub(
     if (
       !text &&
       raw?.event === "item.delta" &&
-      raw?.payload?.payload?.kind === "agent_message" &&
-      typeof raw?.payload?.payload?.delta === "string"
+      (raw?.payload?.kind === "agent_message" || raw?.payload?.payload?.kind === "agent_message")
     ) {
-      text = raw.payload.payload.delta;
+      text =
+        typeof raw?.payload?.delta === "string"
+          ? raw.payload.delta
+          : typeof raw?.payload?.payload?.delta === "string"
+            ? raw.payload.payload.delta
+            : "";
     }
     return { kind: "assistant", seq, payload: { text } };
   }
@@ -1200,8 +1204,13 @@ function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id
     };
   }
 
-  if (payload.event === "item.started") {
-    const inner = payload.payload && typeof payload.payload === "object" ? payload.payload : {};
+  if (raw?.event === "item.started" || payload.event === "item.started") {
+    const inner =
+      raw?.event === "item.started"
+        ? payload
+        : payload.payload && typeof payload.payload === "object"
+          ? payload.payload
+          : {};
     const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
     const tool = inner.tool && typeof inner.tool === "object" ? inner.tool : item?.tool;
     return {
@@ -1240,8 +1249,18 @@ function extractDeepseekToolResult(raw: any): { name?: string; result: string; i
     };
   }
 
-  if (payload.event === "item.completed" || payload.event === "item.failed") {
-    const inner = payload.payload && typeof payload.payload === "object" ? payload.payload : {};
+  if (
+    raw?.event === "item.completed" ||
+    raw?.event === "item.failed" ||
+    payload.event === "item.completed" ||
+    payload.event === "item.failed"
+  ) {
+    const inner =
+      raw?.event === "item.completed" || raw?.event === "item.failed"
+        ? payload
+        : payload.payload && typeof payload.payload === "object"
+          ? payload.payload
+          : {};
     const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
     const result =
       item?.output ??
@@ -1273,6 +1292,11 @@ function formatBlockDetails(raw: unknown): string {
     : typeof r.message === "string" ? r.message
     : typeof r.summary === "string" ? r.summary
     : typeof r.label === "string" ? r.label
+    : typeof r.payload?.delta === "string" ? r.payload.delta
+    : typeof r.payload?.item?.detail === "string" ? r.payload.item.detail
+    : typeof r.payload?.item?.summary === "string" ? r.payload.item.summary
+    : typeof r.payload?.payload?.item?.detail === "string" ? r.payload.payload.item.detail
+    : typeof r.payload?.payload?.item?.summary === "string" ? r.payload.payload.item.summary
     : "";
   if (direct) return direct;
 
