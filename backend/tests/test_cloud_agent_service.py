@@ -10,6 +10,7 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import hub.services.cloud_agent as cloud_agent_service
 from hub.auth import assert_current_agent_token
 from hub.enums import KeyState, MessageState
 from hub.i18n import I18nHTTPException
@@ -171,6 +172,52 @@ async def test_two_agents_share_a_cloud_daemon(db_session):
     # treats it as a no-op create).
     calls = fake.calls(a.cloud_daemon_instance_id)
     assert calls["create"] == 2
+
+
+@pytest.mark.asyncio
+async def test_create_agent_on_online_cloud_daemon_provisions_without_restart(
+    db_session, monkeypatch
+):
+    user_id = uuid.uuid4()
+    svc, fake = _make_service(max_per_user=4, max_agents_per_daemon=3)
+    first = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+
+    sent_frames: list[tuple[str, str, dict]] = []
+
+    async def fake_send_cloud_control_frame(
+        cloud_daemon_instance_id: str,
+        type_: str,
+        params: dict | None = None,
+        timeout_ms: int | None = None,
+    ) -> dict:
+        sent_frames.append((cloud_daemon_instance_id, type_, params or {}))
+        agent_id = (params or {}).get("credentials", {}).get("agentId")
+        return {"ok": True, "result": {"agentId": agent_id}}
+
+    monkeypatch.setattr(
+        cloud_agent_service,
+        "is_cloud_daemon_online",
+        lambda cloud_daemon_instance_id: cloud_daemon_instance_id
+        == first.cloud_daemon_instance_id,
+    )
+    monkeypatch.setattr(
+        cloud_agent_service,
+        "send_cloud_control_frame",
+        fake_send_cloud_control_frame,
+    )
+
+    second = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
+    )
+
+    assert second.status == "ready"
+    assert second.cloud_daemon_instance_id == first.cloud_daemon_instance_id
+    assert fake.calls(first.cloud_daemon_instance_id)["create"] == 1
+    assert [frame[1] for frame in sent_frames] == ["provision_agent"]
+    assert sent_frames[0][0] == first.cloud_daemon_instance_id
+    assert sent_frames[0][2]["credentials"]["agentId"] == second.agent_id
 
 
 @pytest.mark.asyncio
