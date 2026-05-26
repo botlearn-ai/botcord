@@ -11,9 +11,10 @@ import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, text
+from sqlalchemy import exists, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.auth import RequestContext, require_active_agent, require_user, require_user_with_optional_agent
 from app.auth_room import (
@@ -2291,20 +2292,21 @@ async def get_room_messages(
         if room.visibility != RoomVisibility.public:
             raise HTTPException(status_code=403, detail="Room is not public")
 
-    # Deduplicated message query
-    dedup_sub = (
-        select(
-            MessageRecord.msg_id,
-            func.min(MessageRecord.id).label("min_id"),
+    # Room fan-out creates one MessageRecord per receiver with the same msg_id.
+    # Use the earliest row as the representative, but avoid grouping the whole
+    # room on every page load; this lets the database walk recent room rows and
+    # stop once it has enough representative messages.
+    duplicate = aliased(MessageRecord)
+    representative_filter = ~exists(
+        select(1).where(
+            duplicate.room_id == MessageRecord.room_id,
+            duplicate.msg_id == MessageRecord.msg_id,
+            duplicate.id < MessageRecord.id,
         )
-        .where(MessageRecord.room_id == room_id)
-        .group_by(MessageRecord.msg_id)
-        .subquery()
     )
-
-    stmt = (
-        select(MessageRecord)
-        .where(MessageRecord.id.in_(select(dedup_sub.c.min_id)))
+    stmt = select(MessageRecord).where(
+        MessageRecord.room_id == room_id,
+        representative_filter,
     )
 
     if before is not None:
@@ -2312,7 +2314,7 @@ async def get_room_messages(
             select(MessageRecord.id).where(
                 MessageRecord.hub_msg_id == before,
                 MessageRecord.room_id == room_id,
-                MessageRecord.id.in_(select(dedup_sub.c.min_id)),
+                representative_filter,
             )
         )
         cursor_id = cursor_result.scalar_one_or_none()
@@ -2324,7 +2326,7 @@ async def get_room_messages(
             select(MessageRecord.id).where(
                 MessageRecord.hub_msg_id == after,
                 MessageRecord.room_id == room_id,
-                MessageRecord.id.in_(select(dedup_sub.c.min_id)),
+                representative_filter,
             )
         )
         cursor_id = cursor_result.scalar_one_or_none()
