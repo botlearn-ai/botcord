@@ -211,14 +211,15 @@ export function createWechatSetupAdapter(
       ...(typeof cfg.splitAt === "number" ? { splitAt: cfg.splitAt } : {}),
     };
     const now = ctx.now();
+    const enabled = req.enabled !== false;
     const connection: GatewayConnection = {
       id: gatewayId,
       agentId: req.agentId,
       ...(req.userId ? { userId: req.userId } : {}),
       provider: "wechat",
       ...(req.label ? { label: req.label } : {}),
-      status: "active",
-      enabled: true,
+      status: enabled ? "active" : "disabled",
+      enabled,
       config: safeConfig,
       secretRef: gatewayId,
       createdAt: now,

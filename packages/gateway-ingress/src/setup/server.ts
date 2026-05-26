@@ -220,6 +220,7 @@ async function handle(
           loginId,
           ...(typeof body.label === "string" ? { label: body.label } : {}),
           config: (body.config as Record<string, unknown>) ?? {},
+          ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
         },
         ctx,
       );
@@ -240,7 +241,7 @@ async function handle(
       const agentId = parts[1]!;
       const gatewayId = parts[3]!;
       const body = await readJsonBody(req);
-      parseRequestContext(body, agentId);
+      const reqCtx = parseRequestContext(body, agentId);
       const conn = opts.store.getConnection(gatewayId);
       if (!conn || conn.agentId !== agentId) {
         throw new SetupError("not_found", "gateway not found");
@@ -256,6 +257,38 @@ async function handle(
         }
         next.config = allowed;
       }
+
+      // Provider-specific secret rotation. Adapters that implement
+      // `rotateSecret` (currently telegram) validate the new credential
+      // upstream, run conflict guards, and mutate the secret store. Any
+      // `configPatch` they return (e.g. updated tokenFingerprint) is merged
+      // before we persist.
+      if (body.secret && typeof body.secret === "object" && !Array.isArray(body.secret)) {
+        const adapter = requireAdapter(opts.adapters, conn.provider);
+        if (!adapter.rotateSecret) {
+          throw new SetupError(
+            "bad_request",
+            "secret rotation not supported for this provider",
+          );
+        }
+        const rotation = await adapter.rotateSecret(
+          {
+            ...reqCtx,
+            gatewayId,
+            secret: body.secret as Record<string, unknown>,
+          },
+          ctx,
+        );
+        if (rotation.configPatch) {
+          const allowedRotationKeys = ["tokenFingerprint", "baseUrl"];
+          const merged: Record<string, unknown> = { ...next.config };
+          for (const key of allowedRotationKeys) {
+            if (key in rotation.configPatch) merged[key] = rotation.configPatch[key];
+          }
+          next.config = merged;
+        }
+      }
+
       opts.store.upsertConnection(next);
       // Phase 3: align runner state with the updated `enabled` flag.
       //   prev.enabled && !next.enabled  → stop (idempotent)
@@ -267,6 +300,14 @@ async function handle(
         return;
       }
       if (!conn.enabled && next.enabled) {
+        const outcome = await tryStartConnection(opts, next);
+        sendJson(res, 200, buildConnectionResponse(outcome));
+        return;
+      }
+      // Token rotation on an already-running connection: bounce the runner so
+      // the provider polls/listens with the new credential. startOne is
+      // idempotent — it stops the existing run first.
+      if (next.enabled && opts.runner.isRunning(gatewayId) && body.secret) {
         const outcome = await tryStartConnection(opts, next);
         sendJson(res, 200, buildConnectionResponse(outcome));
         return;

@@ -596,10 +596,14 @@ async def _upsert_mirror_from_ingress(
         ingress_connection.get("status"),
         default="active" if enabled else "disabled",
     )
-    config = _filter_mirror_config(ingress_connection.get("config_json"))
+    # redactConnection() in ingress returns the live field name `config`;
+    # older callers used `config_json`. Try both before falling back to
+    # top-level metadata.
+    config_source = ingress_connection.get("config_json")
+    if not isinstance(config_source, dict):
+        config_source = ingress_connection.get("config")
+    config = _filter_mirror_config(config_source if isinstance(config_source, dict) else None)
     if not config:
-        # ingress may inline safe metadata at the top level instead of nesting
-        # it under config_json — pick those up so the dashboard sees them.
         config = _filter_mirror_config(ingress_connection)
 
     # ``daemon_instance_id`` is NOT NULL with an FK to ``daemon_instances``.
@@ -947,23 +951,48 @@ async def create_gateway(
     # ----- Cloud agent: proxy create to gateway-ingress -----
     if agent.hosting_kind == "cloud":
         _require_whitelist(body.provider, config)
+
+        login_id_for_create = body.login_id
+        # Telegram cloud path: the dashboard posts botToken directly (there is
+        # no scan-then-confirm flow). Ingress finalize requires a loginId, so
+        # mint one server-side by running login_start (which validates the
+        # token via getMe and creates a setup session). The botToken stays
+        # inside gateway-ingress' setup session + secret store — never the Hub.
+        if body.provider == "telegram":
+            try:
+                start_result = await ingress_client.login_start(
+                    agent_id,
+                    "telegram",
+                    user_id=ctx.user_id,
+                    request_id=_request_id_for(ctx),
+                    body={"botToken": body.bot_token},
+                )
+            except HTTPException as exc:
+                _log_setup_event(
+                    agent=agent, host=None, provider=body.provider,
+                    login_id=None, outcome="error",
+                    error_code=_extract_error_code(exc), ctx=ctx,
+                    setup_owner="gateway-ingress",
+                )
+                raise
+            login_id_for_create = start_result.get("loginId") if isinstance(start_result.get("loginId"), str) else None
+            if not login_id_for_create:
+                raise HTTPException(
+                    status_code=502,
+                    detail={"code": "cloud_gateway_ingress_unavailable"},
+                )
+
         ingress_body: dict[str, Any] = {
             "provider": body.provider,
             "label": body.label,
             "enabled": body.enabled,
             "config": dict(config),
+            "loginId": login_id_for_create,
         }
-        # Telegram: fresh botToken submitted by frontend — never persisted in
-        # Hub. We forward it to ingress over the authenticated server-to-
-        # server channel; the ingress secret store owns it after this.
-        if body.provider == "telegram":
-            ingress_body["secret"] = {"botToken": body.bot_token}
-        if body.provider in ("wechat", "feishu"):
-            ingress_body["loginId"] = body.login_id
 
         _log_setup_event(
             agent=agent, host=None, provider=body.provider,
-            login_id=body.login_id, outcome="started", ctx=ctx,
+            login_id=login_id_for_create, outcome="started", ctx=ctx,
             setup_owner="gateway-ingress",
         )
         try:
@@ -976,7 +1005,7 @@ async def create_gateway(
         except HTTPException as exc:
             _log_setup_event(
                 agent=agent, host=None, provider=body.provider,
-                login_id=body.login_id, outcome="error",
+                login_id=login_id_for_create, outcome="error",
                 error_code=_extract_error_code(exc), ctx=ctx,
                 setup_owner="gateway-ingress",
             )
@@ -993,7 +1022,7 @@ async def create_gateway(
         )
         _log_setup_event(
             agent=agent, host=None, provider=body.provider,
-            login_id=body.login_id, outcome="ok", ctx=ctx,
+            login_id=login_id_for_create, outcome="ok", ctx=ctx,
             setup_owner="gateway-ingress",
         )
         return _serialize(row)
@@ -1443,10 +1472,14 @@ async def wechat_login_start(
             login_id=login_id, outcome="ok", ctx=ctx,
             setup_owner="gateway-ingress",
         )
+        # ingress wraps provider-specific fields under publicPayload; the
+        # daemon path returned them flat, so unwrap here to keep the
+        # dashboard contract identical across hosting kinds.
+        public = result.get("publicPayload") if isinstance(result.get("publicPayload"), dict) else {}
         return {
             "loginId": result.get("loginId"),
-            "qrcode": result.get("qrcode"),
-            "qrcodeUrl": result.get("qrcodeUrl"),
+            "qrcode": public.get("qrcode"),
+            "qrcodeUrl": public.get("qrcodeUrl"),
             "expiresAt": result.get("expiresAt"),
         }
 
@@ -1536,10 +1569,11 @@ async def wechat_login_status(
             login_id=body.login_id, outcome="ok", ctx=ctx,
             setup_owner="gateway-ingress",
         )
+        public = result.get("publicPayload") if isinstance(result.get("publicPayload"), dict) else {}
         return {
             "status": result.get("status"),
-            "baseUrl": result.get("baseUrl"),
-            "tokenPreview": result.get("tokenPreview"),
+            "baseUrl": public.get("baseUrl"),
+            "tokenPreview": public.get("tokenPreview"),
         }
 
     agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
@@ -1622,10 +1656,11 @@ async def feishu_login_start(
             login_id=login_id, outcome="ok", ctx=ctx,
             setup_owner="gateway-ingress",
         )
+        public = result.get("publicPayload") if isinstance(result.get("publicPayload"), dict) else {}
         return {
             "loginId": result.get("loginId"),
-            "qrcode": result.get("qrcode"),
-            "qrcodeUrl": result.get("qrcodeUrl"),
+            "qrcode": public.get("qrcode"),
+            "qrcodeUrl": public.get("qrcodeUrl"),
             "expiresAt": result.get("expiresAt"),
         }
 
@@ -1714,12 +1749,13 @@ async def feishu_login_status(
             login_id=body.login_id, outcome="ok", ctx=ctx,
             setup_owner="gateway-ingress",
         )
+        public = result.get("publicPayload") if isinstance(result.get("publicPayload"), dict) else {}
         return {
             "status": result.get("status"),
-            "appId": result.get("appId"),
-            "domain": result.get("domain"),
-            "userOpenId": result.get("userOpenId"),
-            "tokenPreview": result.get("tokenPreview"),
+            "appId": public.get("appId"),
+            "domain": public.get("domain"),
+            "userOpenId": public.get("userOpenId"),
+            "tokenPreview": public.get("tokenPreview"),
         }
 
     agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
@@ -1807,7 +1843,11 @@ async def wechat_recent_senders(
             login_id=body.login_id, outcome="ok", ctx=ctx,
             setup_owner="gateway-ingress",
         )
-        senders = result.get("senders")
+        # ingress returns `candidates` (DiscoverResult shape); daemon path used
+        # `senders` / legacy `users`. Try ingress first, then fall back.
+        senders = result.get("candidates")
+        if not isinstance(senders, list):
+            senders = result.get("senders")
         if not isinstance(senders, list):
             senders = result.get("users")
         return {"senders": senders if isinstance(senders, list) else []}
