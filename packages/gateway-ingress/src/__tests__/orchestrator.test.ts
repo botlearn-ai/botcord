@@ -135,6 +135,43 @@ describe("IngressOrchestrator", () => {
     expect(events[0]!.status).toBe("delivering");
   });
 
+  it("does not reuse a runtime WS across gateway token scopes", async () => {
+    const wechatConn: GatewayConnection = {
+      id: "gw_wc_alpha",
+      agentId: CONN.agentId,
+      provider: "wechat",
+      status: "active",
+      enabled: true,
+      config: {},
+      createdAt: 2,
+      updatedAt: 2,
+    };
+    const wechatMessage: GatewayInboundMessage = {
+      ...NORMALIZED,
+      id: "wechat:alice:1",
+      channel: wechatConn.id,
+      conversation: { id: "wechat:user:alice", kind: "direct" },
+      sender: { id: "wechat:user:alice", name: "alice", kind: "user" },
+      text: "hi from wechat",
+    };
+    h.store.upsertConnection(wechatConn);
+
+    await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:scope");
+    await waitFor(() => h.socketFactory.sockets.length === 1);
+    await h.orchestrator.ingest(wechatConn.id, wechatMessage, "wechat:gw:scope");
+    await waitFor(() => h.socketFactory.sockets.length === 2);
+
+    await waitFor(() => h.socketFactory.sockets.every((sock) => sock.sent.length === 1));
+    const firstFrame = JSON.parse(h.socketFactory.sockets[0]!.sent[0]!) as GatewayInboundFrame;
+    const secondFrame = JSON.parse(h.socketFactory.sockets[1]!.sent[0]!) as GatewayInboundFrame;
+    expect(firstFrame.gateway_id).toBe(CONN.id);
+    expect(secondFrame.gateway_id).toBe(wechatConn.id);
+    expect(h.hub.ensureRunningCalls.map((c) => c.body.gateway_id)).toEqual([
+      CONN.id,
+      wechatConn.id,
+    ]);
+  });
+
   it("dedupes by providerEventId", async () => {
     await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:dup");
     const second = await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:dup");
