@@ -569,12 +569,31 @@ async def test_create_telegram_for_cloud_agent_proxies_to_ingress(
 
     def responder(method, url, body):
         assert method == "POST"
-        assert "/internal/gateway-ingress/agents/ag_cloud/gateways" in url
-        # Body must carry the safe envelope + the new botToken (transient
-        # forward, not persisted in Hub).
+        # Hub now drives Telegram cloud setup via loginStart→finalize so the
+        # bot token never crosses the Hub mirror table. The first call mints
+        # a loginId; the second uses it to finalize the connection.
+        if "/gateways/telegram/login/start" in url:
+            assert body["user_id"] == str(seed["user_id"])
+            assert body["hosting_kind"] == "cloud"
+            assert body["botToken"] == "1234:abcd"
+            return _FakeIngressResponse(
+                200,
+                {
+                    "ok": True,
+                    "loginId": "tgl_cloud01",
+                    "expiresAt": 1700000000,
+                    "publicPayload": {
+                        "tokenPreview": "1234...wxyz",
+                        "botInfo": {"id": 99, "is_bot": True},
+                    },
+                },
+            )
+        assert url.endswith("/internal/gateway-ingress/agents/ag_cloud/gateways")
         assert body["user_id"] == str(seed["user_id"])
         assert body["hosting_kind"] == "cloud"
-        assert body["secret"] == {"botToken": "1234:abcd"}
+        assert body["loginId"] == "tgl_cloud01"
+        # Hub no longer forwards the raw token here — ingress already holds it.
+        assert "secret" not in body
         return _FakeIngressResponse(
             200,
             {
@@ -624,7 +643,8 @@ async def test_create_telegram_for_cloud_agent_proxies_to_ingress(
     assert body["provider"] == "telegram"
     assert body["status"] == "active"
     assert body["config"]["tokenPreview"] == "1234...wxyz"
-    assert len(fake.calls) == 1
+    # loginStart + create
+    assert len(fake.calls) == 2
 
     # Mirror row: only safe fields, never a botToken / secret payload.
     row = await db_session.scalar(
@@ -1762,6 +1782,16 @@ async def test_create_cloud_gateway_writes_ingress_warning_to_last_error(
     gw._RATE_BUCKETS.clear()
 
     def responder(method, url, body):
+        if "/gateways/telegram/login/start" in url:
+            return _FakeIngressResponse(
+                200,
+                {
+                    "ok": True,
+                    "loginId": "tgl_warn1",
+                    "expiresAt": 1700000000,
+                    "publicPayload": {"tokenPreview": "1234...wxyz"},
+                },
+            )
         return _FakeIngressResponse(
             200,
             {
@@ -1829,6 +1859,16 @@ async def test_create_cloud_gateway_redacts_token_in_warning_message(
     leaked = "1234567890:AAEhBP0av5cYbnP9aFv7nPaUkUTabcdefghij"
 
     def responder(method, url, body):
+        if "/gateways/telegram/login/start" in url:
+            return _FakeIngressResponse(
+                200,
+                {
+                    "ok": True,
+                    "loginId": "tgl_warn2",
+                    "expiresAt": 1700000000,
+                    "publicPayload": {"tokenPreview": "1234...wxyz"},
+                },
+            )
         return _FakeIngressResponse(
             200,
             {

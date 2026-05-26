@@ -280,7 +280,7 @@ export function createFeishuSetupAdapter(
     };
 
     const now = ctx.now();
-    const enabled = (req as unknown as { enabled?: unknown }).enabled !== false;
+    const enabled = req.enabled !== false;
     const connection: GatewayConnection = {
       id: gatewayId,
       agentId: req.agentId,

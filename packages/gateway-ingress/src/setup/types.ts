@@ -67,6 +67,12 @@ export interface FinalizeRequest extends SetupRequestContext {
   /** Provider-specific config (label, allowedSenderIds, allowedChatIds, ...). */
   config?: Record<string, unknown>;
   label?: string;
+  /**
+   * Whether the new connection should be started immediately. Defaults to
+   * true when omitted. Adapters must honor this in `connection.enabled`
+   * and pick the right initial `status` ("disabled" when false).
+   */
+  enabled?: boolean;
 }
 
 export interface FinalizeResult {
@@ -81,6 +87,22 @@ export interface TestResult {
   ok: boolean;
   /** Optional provider-specific diagnostic payload. Must NOT include secrets. */
   details?: Record<string, unknown>;
+}
+
+export interface RotateSecretRequest extends SetupRequestContext {
+  gatewayId: string;
+  /**
+   * Provider-specific secret material supplied by the caller. Adapters MUST
+   * validate against the live provider before mutating the secret store and
+   * MUST run any duplicate-token / conflict guards expected at create time.
+   */
+  secret: Record<string, unknown>;
+}
+
+export interface RotateSecretResult {
+  /** Adapter-managed config delta to persist alongside the stored connection
+   *  (e.g. Telegram's `tokenFingerprint`). Does NOT include secrets. */
+  configPatch?: Record<string, unknown>;
 }
 
 export interface SetupContext {
@@ -109,6 +131,13 @@ export interface ProviderSetupAdapter {
    * contract is "did this credential still work?" without leaking it.
    */
   test?(req: TestRequest, ctx: SetupContext): Promise<TestResult>;
+  /**
+   * Provider-specific secret rotation (e.g. Telegram bot-token swap). Adapters
+   * MUST validate the new secret against the upstream provider before
+   * touching the secret store, MUST detect conflicts with other active
+   * connections, and MUST NOT leak the secret into responses or logs.
+   */
+  rotateSecret?(req: RotateSecretRequest, ctx: SetupContext): Promise<RotateSecretResult>;
 }
 
 export type ProviderSetupAdapterFactory = () => ProviderSetupAdapter;

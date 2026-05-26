@@ -40,6 +40,8 @@ import {
   type LoginStatusRequest,
   type LoginStatusResult,
   type ProviderSetupAdapter,
+  type RotateSecretRequest,
+  type RotateSecretResult,
   type SetupContext,
   type TestRequest,
   type TestResult,
@@ -398,14 +400,15 @@ export function createTelegramSetupAdapter(
     };
 
     const now = ctx.now();
+    const enabled = req.enabled !== false;
     const connection: GatewayConnection = {
       id: gatewayId,
       agentId: req.agentId,
       ...(req.userId ? { userId: req.userId } : {}),
       provider: "telegram",
       ...(req.label ? { label: req.label } : {}),
-      status: "pending",
-      enabled: true,
+      status: enabled ? "pending" : "disabled",
+      enabled,
       config: safeConfig,
       secretRef: gatewayId,
       createdAt: now,
@@ -414,6 +417,77 @@ export function createTelegramSetupAdapter(
     ctx.store.upsertConnection(connection);
     ctx.sessions.delete(req.loginId);
     return { connection };
+  }
+
+  async function rotateSecret(
+    req: RotateSecretRequest,
+    ctx: SetupContext,
+  ): Promise<RotateSecretResult> {
+    const conn = ctx.store.getConnection(req.gatewayId);
+    if (!conn || conn.provider !== "telegram") {
+      throw new SetupError("not_found", "gateway not found");
+    }
+    const rawToken =
+      typeof req.secret.botToken === "string"
+        ? req.secret.botToken
+        : typeof req.secret.bot_token === "string"
+          ? (req.secret.bot_token as string)
+          : "";
+    const newToken = rawToken.trim();
+    if (!newToken) {
+      throw new SetupError("bad_request", "botToken is required");
+    }
+    const stored = conn.secretRef
+      ? ctx.secrets.load<{ botToken?: string; baseUrl?: string }>(conn.secretRef)
+      : null;
+    const baseUrl =
+      typeof req.secret.baseUrl === "string" && req.secret.baseUrl.length > 0
+        ? pickBaseUrl({ baseUrl: req.secret.baseUrl })
+        : stored?.baseUrl ?? defaultBaseUrl;
+
+    // Validate the new token live before mutating any state.
+    let resp: TelegramApiResult<TelegramUser>;
+    try {
+      resp = await callApi<TelegramUser>(baseUrl, newToken, "getMe", {}, 5_000);
+    } catch (err) {
+      ctx.log.warn("telegram rotateSecret getMe failed", {
+        gatewayId: req.gatewayId,
+        err: redactToken(String((err as Error)?.message ?? err), newToken),
+      });
+      throw new SetupError("provider_unreachable", "telegram getMe unreachable");
+    }
+    if (!resp.ok) {
+      const code = resp.error_code;
+      if (code === 401 || code === 403 || code === 404) {
+        throw new SetupError("provider_auth_failed", "telegram bot token rejected");
+      }
+      throw new SetupError("provider_unreachable", "telegram getMe returned non-ok");
+    }
+
+    // Conflict detection: refuse if any OTHER active telegram connection
+    // already owns this token fingerprint. Self-rotation to the same token is
+    // a no-op fingerprint match against the current row and is allowed.
+    const fingerprint = tokenFingerprint(newToken);
+    for (const existing of ctx.store.listConnections()) {
+      if (existing.id === conn.id) continue;
+      if (existing.provider !== "telegram") continue;
+      if (!existing.enabled) continue;
+      if (existing.status === "disabled") continue;
+      const existingFp =
+        typeof (existing.config as Record<string, unknown>).tokenFingerprint === "string"
+          ? ((existing.config as Record<string, unknown>).tokenFingerprint as string)
+          : undefined;
+      if (existingFp && existingFp === fingerprint) {
+        throw new SetupError(
+          "gateway_conflict",
+          "telegram bot token already bound to another gateway",
+        );
+      }
+    }
+
+    const secretRef = conn.secretRef ?? conn.id;
+    ctx.secrets.write(secretRef, { botToken: newToken, baseUrl });
+    return { configPatch: { tokenFingerprint: fingerprint, baseUrl } };
   }
 
   async function test(
@@ -453,6 +527,7 @@ export function createTelegramSetupAdapter(
     discover,
     finalize,
     test,
+    rotateSecret,
   };
 }
 
