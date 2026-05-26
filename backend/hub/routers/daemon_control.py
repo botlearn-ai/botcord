@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import secrets
+import time
 import uuid as _uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -1112,6 +1113,47 @@ class _RefreshRuntimesResponse(BaseModel):
 
 
 _REFRESH_RUNTIMES_TIMEOUT_MS = 10000
+_CLOUD_REFRESH_RELAUNCH_WAIT_SECONDS = 20.0
+_CLOUD_REFRESH_RELAUNCH_POLL_SECONDS = 0.5
+
+
+async def _relaunch_cloud_daemon_for_runtime_refresh(
+    db: AsyncSession,
+    *,
+    user_id: _uuid.UUID,
+    cloud_row: CloudDaemonInstance,
+    daemon_instance_id: str,
+) -> None:
+    from hub.routers.cloud_daemon_control import is_cloud_daemon_online
+
+    from hub.services.cloud_agent import CloudAgentError, CloudAgentService
+
+    try:
+        await CloudAgentService().restart_cloud_daemon(
+            db,
+            user_id=user_id,
+            daemon_instance_id=daemon_instance_id,
+        )
+    except CloudAgentError as exc:
+        logger.warning(
+            "cloud runtime refresh relaunch failed: daemon=%s cloud=%s code=%s err=%s",
+            daemon_instance_id,
+            cloud_row.id,
+            exc.code,
+            exc.message,
+        )
+        raise HTTPException(
+            status_code=409 if exc.http_status == 409 else exc.http_status,
+            detail="daemon_offline" if exc.http_status == 409 else exc.code,
+        ) from exc
+
+    deadline = time.monotonic() + _CLOUD_REFRESH_RELAUNCH_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if is_cloud_daemon_online(cloud_row.id):
+            return
+        await asyncio.sleep(_CLOUD_REFRESH_RELAUNCH_POLL_SECONDS)
+
+    raise HTTPException(status_code=409, detail="daemon_offline")
 
 
 @router.post(
@@ -1143,6 +1185,13 @@ async def refresh_instance_runtimes(
         )
         if cloud_row is None:
             raise HTTPException(status_code=409, detail="daemon_offline")
+
+        await _relaunch_cloud_daemon_for_runtime_refresh(
+            db,
+            user_id=ctx.user_id,
+            cloud_row=cloud_row,
+            daemon_instance_id=daemon_instance_id,
+        )
 
         from hub.routers.cloud_daemon_control import (
             CloudDaemonDispatchError,
