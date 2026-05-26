@@ -85,6 +85,8 @@ function deriveIdentityFromHuman(human: HumanInfo | null): ActiveIdentity | null
 }
 
 let authInitRequestId = 0;
+let authInitInFlight: { token: string; promise: Promise<void> } | null = null;
+let humanRoomsInFlight: Promise<void> | null = null;
 
 function resolveDefaultAgentId(user: UserProfile): string | null {
   const defaultAgent = user.agents.find((agent) => agent.is_default) || user.agents[0];
@@ -179,6 +181,9 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
   },
 
   initAuth: async (token: string) => {
+    if (authInitInFlight?.token === token) {
+      return authInitInFlight.promise;
+    }
     const requestId = ++authInitRequestId;
     const current = get();
     const shouldShowBootstrap = !current.authResolved;
@@ -189,75 +194,91 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
       token,
     });
 
-    try {
-      const [user, human, humanRoomsRes] = await Promise.all([
-        userApi.getMe(),
-        // Idempotent — the first call mints the Human identity for brand-new
-        // users; subsequent calls return the existing record. Failure here is
-        // non-fatal: Human-first features degrade but Agent flows keep working.
-        humansApi.createOrGet().catch((err) => {
-          console.warn("[SessionStore] Failed to load Human identity:", err);
-          return null;
-        }),
-        humansApi.listRooms().catch((err) => {
-          console.warn("[SessionStore] Failed to load Human rooms:", err);
-          return { rooms: [] as HumanRoomSummary[] };
-        }),
-      ]);
-      if (requestId !== authInitRequestId) {
-        return;
-      }
-      const activeId = resolveDefaultAgentId(user);
-      const activeIdentity = deriveIdentityFromHuman(human);
-      setStoredActiveIdentity(activeIdentity);
-      syncOwnedAgentsPresence(user.agents);
-      set({
-        authResolved: true,
-        authBootstrapping: false,
-        token,
-        user,
-        human,
-        humanRooms: humanRoomsRes.rooms,
-        ownedAgents: user.agents,
-        activeAgentId: activeId,
-        activeIdentity,
-        viewMode: "human",
-        sessionMode: resolveSessionMode(token, activeId),
-      });
-    } catch (err: any) {
-      if (requestId !== authInitRequestId) {
-        return;
-      }
-      if (err?.status === 401 || err?.status === 403) {
-        setStoredActiveIdentity(null);
+    const promise = (async () => {
+      try {
+        const [user, human, humanRoomsRes] = await Promise.all([
+          userApi.getMe(),
+          // Idempotent — the first call mints the Human identity for brand-new
+          // users; subsequent calls return the existing record. Failure here is
+          // non-fatal: Human-first features degrade but Agent flows keep working.
+          humansApi.createOrGet().catch((err) => {
+            console.warn("[SessionStore] Failed to load Human identity:", err);
+            return null;
+          }),
+          humansApi.listRooms().catch((err) => {
+            console.warn("[SessionStore] Failed to load Human rooms:", err);
+            return { rooms: [] as HumanRoomSummary[] };
+          }),
+        ]);
+        if (requestId !== authInitRequestId) {
+          return;
+        }
+        const activeId = resolveDefaultAgentId(user);
+        const activeIdentity = deriveIdentityFromHuman(human);
+        setStoredActiveIdentity(activeIdentity);
+        syncOwnedAgentsPresence(user.agents);
         set({
-          ...initialSessionState,
           authResolved: true,
           authBootstrapping: false,
+          token,
+          user,
+          human,
+          humanRooms: humanRoomsRes.rooms,
+          ownedAgents: user.agents,
+          activeAgentId: activeId,
+          activeIdentity,
+          viewMode: "human",
+          sessionMode: resolveSessionMode(token, activeId),
         });
-        return;
+      } catch (err: any) {
+        if (requestId !== authInitRequestId) {
+          return;
+        }
+        if (err?.status === 401 || err?.status === 403) {
+          setStoredActiveIdentity(null);
+          set({
+            ...initialSessionState,
+            authResolved: true,
+            authBootstrapping: false,
+          });
+          return;
+        }
+        setStoredActiveIdentity(null);
+        set({
+          authResolved: true,
+          authBootstrapping: false,
+          token,
+          user: null,
+          ownedAgents: [],
+          activeAgentId: null,
+          activeIdentity: null,
+          sessionMode: "authed-no-agent",
+        });
       }
-      setStoredActiveIdentity(null);
-      set({
-        authResolved: true,
-        authBootstrapping: false,
-        token,
-        user: null,
-        ownedAgents: [],
-        activeAgentId: null,
-        activeIdentity: null,
-        sessionMode: "authed-no-agent",
-      });
-    }
+    })().finally(() => {
+      if (authInitInFlight?.token === token) {
+        authInitInFlight = null;
+      }
+    });
+    authInitInFlight = { token, promise };
+    return promise;
   },
 
   refreshHumanRooms: async () => {
-    try {
-      const res = await humansApi.listRooms();
-      set({ humanRooms: res.rooms });
-    } catch (err) {
-      console.warn("[SessionStore] refreshHumanRooms failed:", err);
+    if (humanRoomsInFlight) {
+      return humanRoomsInFlight;
     }
+    humanRoomsInFlight = (async () => {
+      try {
+        const res = await humansApi.listRooms();
+        set({ humanRooms: res.rooms });
+      } catch (err) {
+        console.warn("[SessionStore] refreshHumanRooms failed:", err);
+      }
+    })().finally(() => {
+      humanRoomsInFlight = null;
+    });
+    return humanRoomsInFlight;
   },
 
   refreshUserProfile: async () => {

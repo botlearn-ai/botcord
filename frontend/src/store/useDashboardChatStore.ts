@@ -321,6 +321,8 @@ function hasTransientChatState(state: DashboardChatState): boolean {
 }
 
 let _errorTimerId: ReturnType<typeof setTimeout> | null = null;
+let overviewInFlight: Promise<void> | null = null;
+let ownedAgentRoomsInFlight: Promise<void> | null = null;
 
 export const useDashboardChatStore = create<DashboardChatState>()(
   persist(
@@ -686,6 +688,9 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       refreshOverview: async (opts) => {
+        if (!opts?.reloadOpenedRoom && overviewInFlight) {
+          return overviewInFlight;
+        }
         const { token } = useDashboardSessionStore.getState();
         const openedRoomId = opts?.reloadOpenedRoom
           ? useDashboardUIStore.getState().openedRoomId
@@ -697,26 +702,36 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         }
         // Human-first: /overview resolves the viewer from the Supabase JWT.
 
-        set({ overviewRefreshing: true, overviewErrored: false });
-        try {
-          const overview = await api.getOverview();
-          get().replaceOverview(overview);
-          if (openedRoomId) {
-            void get().loadRoomMessages(openedRoomId);
+        const request = (async () => {
+          set({ overviewRefreshing: true, overviewErrored: false });
+          try {
+            const overview = await api.getOverview();
+            get().replaceOverview(overview);
+            if (openedRoomId) {
+              void get().loadRoomMessages(openedRoomId);
+            }
+          } catch (error: any) {
+            if (isAuthError(error)) {
+              console.warn("[ChatStore] Background overview auth refresh failed:", error);
+              set({ overviewRefreshing: false, overviewErrored: false });
+              return;
+            }
+            if (get().overview && isFetchNetworkError(error)) {
+              console.warn("[ChatStore] Background overview refresh failed:", error);
+              set({ overviewRefreshing: false, overviewErrored: false });
+              return;
+            }
+            set({ error: error?.message || "Failed to refresh", overviewRefreshing: false, overviewErrored: true });
           }
-        } catch (error: any) {
-          if (isAuthError(error)) {
-            console.warn("[ChatStore] Background overview auth refresh failed:", error);
-            set({ overviewRefreshing: false, overviewErrored: false });
-            return;
+        })().finally(() => {
+          if (overviewInFlight === request) {
+            overviewInFlight = null;
           }
-          if (get().overview && isFetchNetworkError(error)) {
-            console.warn("[ChatStore] Background overview refresh failed:", error);
-            set({ overviewRefreshing: false, overviewErrored: false });
-            return;
-          }
-          set({ error: error?.message || "Failed to refresh", overviewRefreshing: false, overviewErrored: true });
+        });
+        if (!opts?.reloadOpenedRoom) {
+          overviewInFlight = request;
         }
+        return request;
       },
 
       loadDiscoverRooms: async () => {
@@ -854,38 +869,46 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       loadOwnedAgentRooms: async () => {
+        if (ownedAgentRoomsInFlight) {
+          return ownedAgentRoomsInFlight;
+        }
         const { token, activeIdentity, ownedAgents } = useDashboardSessionStore.getState();
         if (!token || activeIdentity?.type !== "human") {
           set({ ownedAgentRooms: [], ownedAgentRoomsLoading: false, ownedAgentRoomsLoaded: true });
           return;
         }
-        set({ ownedAgentRoomsLoading: true });
-        try {
-          const result = await humansApi.listAgentRooms();
-          const optimisticOwnerChatRooms = reconcileOptimisticOwnerChatRooms(
-            result.rooms,
-            get().optimisticOwnerChatRooms,
-          );
-          set({
-            ownedAgentRooms: ensureOwnerChatRoomsForOwnedAgents(
-              mergeOptimisticOwnerChatRooms(result.rooms, optimisticOwnerChatRooms),
-              ownedAgents,
-            ),
-            optimisticOwnerChatRooms,
-            ownedAgentRoomsLoading: false,
-            ownedAgentRoomsLoaded: true,
-          });
-        } catch (error) {
-          set({
-            ownedAgentRooms: ensureOwnerChatRoomsForOwnedAgents(
-              get().ownedAgentRooms,
-              ownedAgents,
-            ),
-            ownedAgentRoomsLoading: false,
-            ownedAgentRoomsLoaded: true,
-          });
-          get().setError(error instanceof Error ? error.message : "Failed to load bot rooms");
-        }
+        ownedAgentRoomsInFlight = (async () => {
+          set({ ownedAgentRoomsLoading: true });
+          try {
+            const result = await humansApi.listAgentRooms();
+            const optimisticOwnerChatRooms = reconcileOptimisticOwnerChatRooms(
+              result.rooms,
+              get().optimisticOwnerChatRooms,
+            );
+            set({
+              ownedAgentRooms: ensureOwnerChatRoomsForOwnedAgents(
+                mergeOptimisticOwnerChatRooms(result.rooms, optimisticOwnerChatRooms),
+                ownedAgents,
+              ),
+              optimisticOwnerChatRooms,
+              ownedAgentRoomsLoading: false,
+              ownedAgentRoomsLoaded: true,
+            });
+          } catch (error) {
+            set({
+              ownedAgentRooms: ensureOwnerChatRoomsForOwnedAgents(
+                get().ownedAgentRooms,
+                ownedAgents,
+              ),
+              ownedAgentRoomsLoading: false,
+              ownedAgentRoomsLoaded: true,
+            });
+            get().setError(error instanceof Error ? error.message : "Failed to load bot rooms");
+          }
+        })().finally(() => {
+          ownedAgentRoomsInFlight = null;
+        });
+        return ownedAgentRoomsInFlight;
       },
 
       upsertOptimisticOwnerChatRoom: (agent, roomId) => {

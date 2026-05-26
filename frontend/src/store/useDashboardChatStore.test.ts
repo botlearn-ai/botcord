@@ -195,6 +195,21 @@ describe("useDashboardChatStore message polling", () => {
     expect(useDashboardChatStore.getState().overviewErrored).toBe(false);
   });
 
+  it("deduplicates concurrent overview refreshes", async () => {
+    let resolveOverview!: (overview: DashboardOverview) => void;
+    mocks.getOverview.mockReturnValue(new Promise<DashboardOverview>((resolve) => {
+      resolveOverview = resolve;
+    }));
+
+    const first = useDashboardChatStore.getState().refreshOverview();
+    const second = useDashboardChatStore.getState().refreshOverview();
+
+    expect(mocks.getOverview).toHaveBeenCalledTimes(1);
+    resolveOverview(makeOverview("2026-05-11T08:00:00Z"));
+    await Promise.all([first, second]);
+    expect(useDashboardChatStore.getState().overview?.rooms[0].last_message_at).toBe("2026-05-11T08:00:00Z");
+  });
+
   it("inserts an optimistic owner-chat room immediately", () => {
     useDashboardChatStore.getState().upsertOptimisticOwnerChatRoom({
       agent_id: "ag_bot",
@@ -225,6 +240,21 @@ describe("useDashboardChatStore message polling", () => {
     const state = useDashboardChatStore.getState();
     expect(state.optimisticOwnerChatRooms).toEqual({});
     expect(state.ownedAgentRooms.map((room) => room.room_id)).toEqual(["rm_oc_real_123"]);
+  });
+
+  it("deduplicates concurrent owner-chat room loads", async () => {
+    let resolveRooms!: (result: { rooms: HumanAgentRoomSummary[] }) => void;
+    mocks.listAgentRooms.mockReturnValue(new Promise<{ rooms: HumanAgentRoomSummary[] }>((resolve) => {
+      resolveRooms = resolve;
+    }));
+
+    const first = useDashboardChatStore.getState().loadOwnedAgentRooms();
+    const second = useDashboardChatStore.getState().loadOwnedAgentRooms();
+
+    expect(mocks.listAgentRooms).toHaveBeenCalledTimes(1);
+    resolveRooms({ rooms: [makeOwnedAgentRoom({ room_id: "rm_oc_deduped" })] });
+    await Promise.all([first, second]);
+    expect(useDashboardChatStore.getState().ownedAgentRooms.map((room) => room.room_id)).toEqual(["rm_oc_deduped"]);
   });
 
   it("keeps an owner-chat row for a new owned bot when the backend has no room yet", async () => {

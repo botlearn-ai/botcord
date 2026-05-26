@@ -32,6 +32,7 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 - 进入房间并真正看到最新位置后，必须通过 BFF 写回 `last_viewed_at`；前端本地未读数量只能做短暂覆盖，不能替代后端状态。
 
 变更日志
+- 2026-05-26: `session/chat/contact` store 为鉴权初始化、Human 房间、overview、owned-agent rooms 与联系人请求增加 in-flight 合并，避免首屏多个 effect/StrictMode 同时触发同一接口。
 - 2026-05-14: 移除 dashboard 前端的 Bot 身份切换能力；`userChatAgentId` 只作为 owner-chat 目标，`useDashboardChatStore.ts` 不再按 Bot 边界清空消息列表。
 - 2026-05-11: `useDashboardRealtimeStore.ts` 在 `room_member_added/room_member_removed` 事件后推进 `useDashboardChatStore.ts` 的房间成员刷新版本，打开中的房间会重新拉取成员，让 @ 候选人与 presence 种子及时包含新成员。
 - 2026-04-28: overview 房间摘要新增 `unread_count`，Messages 一级 tab 与 room 列表使用数量徽标替代未读蓝点。
