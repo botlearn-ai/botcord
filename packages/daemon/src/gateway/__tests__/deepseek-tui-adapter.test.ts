@@ -410,6 +410,43 @@ describe("DeepseekTuiAdapter", () => {
     }
   });
 
+  it("surfaces a diagnostic error when DeepSeek completes a turn with no assistant_message", async () => {
+    const server = await startMockDeepseekServer({
+      events: [
+        { event: "turn.started", data: { thread_id: "thr_test", turn_id: "turn_test" } },
+        {
+          event: "item.completed",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.completed",
+            payload: {
+              item: {
+                id: "item_reasoning",
+                kind: "agent_reasoning",
+                status: "completed",
+                summary: "thinking...",
+              },
+            },
+          },
+        },
+        {
+          event: "turn.completed",
+          data: { thread_id: "thr_test", turn_id: "turn_test", payload: { turn: { status: "completed" } } },
+        },
+      ],
+    });
+    try {
+      const { result } = runAdapter(server.baseUrl, server.token);
+      const res = await result;
+      expect(res.text).toBe("");
+      expect(res.newSessionId).toBe("thr_test");
+      expect(res.error).toMatch(/no assistant_message/);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("returns a runtime error when DeepSeek completes the turn as failed", async () => {
     const server = await startMockDeepseekServer({
       events: [
