@@ -386,7 +386,7 @@ E2B_SANDBOX_TIMEOUT_SECONDS: int = int(os.getenv("E2B_SANDBOX_TIMEOUT_SECONDS", 
 # (telegram/wechat/feishu). Set ``CLOUD_DAEMON_NPM_SPEC=bundled`` only for a
 # purpose-built image whose preinstalled ``botcord-daemon`` is known fresh.
 CLOUD_DAEMON_NPM_SPEC: str = os.getenv(
-    "CLOUD_DAEMON_NPM_SPEC", "@botcord/daemon@^0.2.78"
+    "CLOUD_DAEMON_NPM_SPEC", "@botcord/daemon@^0.2.79"
 )
 CLOUD_DAEMON_STARTUP_COMMAND: str = os.getenv(
     "CLOUD_DAEMON_STARTUP_COMMAND",
@@ -399,7 +399,7 @@ CLOUD_DAEMON_STARTUP_COMMAND: str = os.getenv(
         "fi; "
         ";; "
         "\"\") "
-        "exec npx --yes --package @botcord/daemon@^0.2.78 "
+        "exec npx --yes --package @botcord/daemon@^0.2.79 "
         "botcord-daemon start --foreground; "
         ";; "
         "*) "
@@ -407,7 +407,7 @@ CLOUD_DAEMON_STARTUP_COMMAND: str = os.getenv(
         "botcord-daemon start --foreground; "
         ";; "
         "esac; "
-        "exec npx --yes --package @botcord/daemon@^0.2.78 "
+        "exec npx --yes --package @botcord/daemon@^0.2.79 "
         "botcord-daemon start --foreground"
         "'"
     ),

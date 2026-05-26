@@ -143,11 +143,14 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
         signal: turnAbort.signal,
       });
       const text = runResult.text;
+      const error =
+        runResult.error ??
+        (text === "" ? emptyCompletionError(handle.stderrTail) : undefined);
 
       return {
         text,
         newSessionId: threadId,
-        ...(runResult.error ? { error: runResult.error } : {}),
+        ...(error ? { error } : {}),
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -520,6 +523,16 @@ function isAgentReasoningItem(payload: any): boolean {
 
 function extractDeepseekDelta(payload: any): string {
   return stringField(payload, "delta") ?? stringField(payload?.payload, "delta") ?? "";
+}
+
+function emptyCompletionError(stderrTail: string): string {
+  const tail = stderrTail.trim();
+  if (!tail) {
+    return "deepseek runtime completed with no assistant_message (check DEEPSEEK_API_KEY / model availability)";
+  }
+  const lines = tail.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const lastLines = lines.slice(-5).join("\n").slice(-500);
+  return `deepseek runtime completed with no assistant_message; stderr tail: ${lastLines}`;
 }
 
 function extractDeepseekError(eventName: string, payload: any): string | undefined {
