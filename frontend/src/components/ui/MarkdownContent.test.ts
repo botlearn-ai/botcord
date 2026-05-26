@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitPlainMentionText } from "./MarkdownContent";
+import { normalizeMessageContent, splitPlainMentionText } from "./MarkdownContent";
 
 function mentionProps(node: unknown) {
   return (node as { properties?: Record<string, unknown> }).properties;
@@ -32,5 +32,16 @@ describe("splitPlainMentionText", () => {
     ]);
 
     expect(mentionProps(nodes[0])?.["data-mention-id"]).toBe("ag_long");
+  });
+});
+
+describe("normalizeMessageContent", () => {
+  it("converts escaped line breaks from message payloads", () => {
+    expect(normalizeMessageContent("line one\\nline two")).toBe("line one\nline two");
+    expect(normalizeMessageContent("line one\\r\\nline two")).toBe("line one\nline two");
+  });
+
+  it("preserves existing real line breaks", () => {
+    expect(normalizeMessageContent("line one\nline two")).toBe("line one\nline two");
   });
 });

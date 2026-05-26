@@ -22,7 +22,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import { useOwnerChatWs } from "@/hooks/useOwnerChatWs";
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
-import MarkdownContent from "@/components/ui/MarkdownContent";
+import MarkdownContent, { normalizeMessageContent } from "@/components/ui/MarkdownContent";
 import StreamBlocksView from "./StreamBlocksView";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import CopyableId from "@/components/ui/CopyableId";
@@ -45,7 +45,8 @@ function TypewriterText({
   onComplete?: () => void;
   onTick?: () => void;
 }) {
-  const tokens = text.split(/(\s+)/);
+  const normalizedText = normalizeMessageContent(text);
+  const tokens = normalizedText.split(/(\s+)/);
   const [count, setCount] = useState(0);
 
   useEffect(() => {
@@ -60,7 +61,7 @@ function TypewriterText({
     return () => clearTimeout(timer);
   }, [count, tokens.length, onComplete, onTick]);
 
-  return <>{tokens.slice(0, count).join("")}</>;
+  return <span className="whitespace-pre-wrap">{tokens.slice(0, count).join("")}</span>;
 }
 
 // ---------------------------------------------------------------------------
