@@ -39,6 +39,7 @@ import { createDaemonSystemContextBuilder } from "./system-context.js";
 import { readWorkingMemorySnapshot } from "./working-memory.js";
 import { createRoomStaticContextBuilder } from "./room-context.js";
 import { createRoomContextFetcher } from "./room-context-fetcher.js";
+import { createRecentRoomMessagesRecoveryBuilder } from "./room-recovery-context.js";
 import {
   buildLoopRiskPrompt,
   loopRiskSessionKey,
@@ -365,6 +366,13 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     fetchRoomInfo: roomContextFetcher,
     log: logger,
   });
+  const buildRuntimeRecoveryContext = createRecentRoomMessagesRecoveryBuilder({
+    credentialPathByAgentId,
+    ...(opts.credentialsPath ? { defaultCredentialsPath: opts.credentialsPath } : {}),
+    ...(opts.hubBaseUrl ? { hubBaseUrl: opts.hubBaseUrl } : {}),
+    limit: 20,
+    log: logger,
+  });
 
   // Cache one system-context builder per configured agentId. The gateway
   // calls this with each inbound message and we pick the right builder by
@@ -536,6 +544,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     turnTimeoutMs: DEFAULT_TURN_TIMEOUT_MS,
     buildSystemContext,
     buildMemoryContext,
+    buildRuntimeRecoveryContext,
     onInbound,
     onOutbound,
     onRuntimeCircuitBreakerChange: pushLiveRuntimeSnapshot,

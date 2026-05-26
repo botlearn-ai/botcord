@@ -244,6 +244,7 @@ describe("Dispatcher", () => {
     turnTimeoutMs?: number;
     runtimeAuthFailureThreshold?: number;
     runtimeAuthFailureCooldownMs?: number;
+    buildRuntimeRecoveryContext?: (message: GatewayInboundMessage) => Promise<string | null> | string | null;
   }) {
     const { store, dir } = await makeStore();
     tempDirs.push(dir);
@@ -258,6 +259,7 @@ describe("Dispatcher", () => {
       turnTimeoutMs: args.turnTimeoutMs,
       runtimeAuthFailureThreshold: args.runtimeAuthFailureThreshold,
       runtimeAuthFailureCooldownMs: args.runtimeAuthFailureCooldownMs,
+      buildRuntimeRecoveryContext: args.buildRuntimeRecoveryContext,
     });
     return { dispatcher, channel, store };
   }
@@ -458,6 +460,60 @@ describe("Dispatcher", () => {
 
     expect(store.all().length).toBe(0);
     expect(channel.sends[0].message.type).toBe("error");
+  });
+
+  it("codex: retries a poisoned resumed session in a fresh session with recent room context", async () => {
+    let factoryCall = 0;
+    const recoveryRuntime: RuntimeAdapter = {
+      id: "codex",
+      run: vi.fn(async (opts: RuntimeRunOptions): Promise<RuntimeRunResult> => {
+        if ((recoveryRuntime.run as any).mock.calls.length === 1) {
+          expect(opts.sessionId).toBe("sid-1");
+          return {
+            text: "",
+            newSessionId: "sid-1",
+            error: "Codex context compaction failed: maximum context length exceeded",
+          };
+        }
+        expect(opts.sessionId).toBe(null);
+        expect(opts.text).toContain("[BotCord Runtime Recovery Notice]");
+        expect(opts.text).toContain("[Recent Room Messages]");
+        expect(opts.text).toContain("Alice: deploy is failing");
+        expect(opts.text).toContain("[Current User Turn]");
+        expect(opts.text).toContain("continue");
+        return { text: "recovered", newSessionId: "sid-2" };
+      }) as RuntimeAdapter["run"],
+    };
+    const runtimeFactory: RuntimeFactory = () => {
+      factoryCall += 1;
+      if (factoryCall === 1) {
+        return new FakeRuntime({ id: "codex", reply: "ok", newSessionId: "sid-1" });
+      }
+      return recoveryRuntime;
+    };
+    const { dispatcher, store, channel } = await scaffold({
+      config: baseConfig({ defaultRoute: { runtime: "codex", cwd: "/tmp/default" } }),
+      runtimeFactory,
+      buildRuntimeRecoveryContext: () =>
+        "[Recent Room Messages]\n- Alice: deploy is failing\n- Bot: I am checking logs",
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({ id: "msg_1", conversation: { id: "rm_oc_recover", kind: "direct" } }),
+    );
+    expect(store.all()[0].runtimeSessionId).toBe("sid-1");
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "msg_2",
+        text: "continue",
+        conversation: { id: "rm_oc_recover", kind: "direct" },
+      }),
+    );
+
+    expect(recoveryRuntime.run).toHaveBeenCalledTimes(2);
+    expect(store.all()[0].runtimeSessionId).toBe("sid-2");
+    expect(channel.sends.map((s) => s.message.text)).toEqual(["ok", "recovered"]);
   });
 
   it("treats auth failure text as an error and does not persist the failed session", async () => {
