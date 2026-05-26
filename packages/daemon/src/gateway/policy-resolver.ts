@@ -65,18 +65,29 @@ const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const FETCH_FAILED = Symbol("fetch_failed");
 
 /**
- * Force DM rooms (`rm_dm_*`) to `mode: "always"` per design §4.2 — UI never
+ * Force direct conversations to `mode: "always"` per design §4.2 — UI never
  * lets the user mute a DM, but a stale cache from before a UX bug is cheap
- * to defend against here.
+ * to defend against here. Third-party 1:1 gateway chats have the same
+ * expectation: they do not carry BotCord mention metadata, so applying a
+ * global mention-only policy would silently drop ordinary direct messages.
  */
-function maybeForceDm(
+function maybeForceDirectConversation(
   roomId: string | null,
   policy: DaemonAttentionPolicy,
 ): DaemonAttentionPolicy {
-  if (roomId && roomId.startsWith("rm_dm_") && policy.mode !== "always") {
+  if (roomId && isDirectConversation(roomId) && policy.mode !== "always") {
     return { ...policy, mode: "always" };
   }
   return policy;
+}
+
+function isDirectConversation(roomId: string): boolean {
+  return (
+    roomId.startsWith("rm_dm_") ||
+    roomId.startsWith("telegram:user:") ||
+    roomId.startsWith("wechat:user:") ||
+    roomId.startsWith("feishu:user:")
+  );
 }
 
 function defaultPolicy(): DaemonAttentionPolicy {
@@ -115,10 +126,10 @@ export class PolicyResolver implements PolicyResolverLike {
       if (fetched === FETCH_FAILED) return defaultPolicy();
       const policy = fetched ?? defaultPolicy();
       this.cache.set(cacheKey(agentId, roomId), {
-        policy: maybeForceDm(roomId, policy),
+        policy: maybeForceDirectConversation(roomId, policy),
         expiresAt: now + this.ttlMs,
       });
-      return maybeForceDm(roomId, policy);
+      return maybeForceDirectConversation(roomId, policy);
     }
 
     // 3. No room override known — inherit from the cached agent-wide global.
@@ -128,7 +139,7 @@ export class PolicyResolver implements PolicyResolverLike {
     const globalKey = cacheKey(agentId, null);
     const globalHit = this.cache.get(globalKey);
     if (globalHit && globalHit.expiresAt > now) {
-      return maybeForceDm(roomId, globalHit.policy);
+      return maybeForceDirectConversation(roomId, globalHit.policy);
     }
 
     // 4. Cold start for global.
@@ -136,7 +147,7 @@ export class PolicyResolver implements PolicyResolverLike {
     if (fetched === FETCH_FAILED) return defaultPolicy();
     const policy = fetched ?? defaultPolicy();
     this.cache.set(globalKey, { policy, expiresAt: now + this.ttlMs });
-    return maybeForceDm(roomId, policy);
+    return maybeForceDirectConversation(roomId, policy);
   }
 
   private async safeFetch(
@@ -168,7 +179,7 @@ export class PolicyResolver implements PolicyResolverLike {
   put(agentId: string, roomId: string | null, policy: DaemonAttentionPolicy): void {
     const key = cacheKey(agentId, roomId);
     this.cache.set(key, {
-      policy: maybeForceDm(roomId, policy),
+      policy: maybeForceDirectConversation(roomId, policy),
       expiresAt: Date.now() + this.ttlMs,
     });
   }

@@ -65,6 +65,26 @@ describe("PolicyResolver", () => {
     expect(p.mode).toBe("always");
   });
 
+  it.each(["telegram:user:42", "wechat:user:alice", "feishu:user:ou_alice"])(
+    "forces third-party direct chat %s to mode=always",
+    async (conversationId) => {
+      const resolver = new PolicyResolver({ fetchGlobal: async () => undefined });
+      resolver.put("ag_a", null, { mode: "mention_only", keywords: [] });
+      const p = await resolver.resolve("ag_a", conversationId);
+      expect(p.mode).toBe("always");
+    },
+  );
+
+  it.each(["telegram:group:-1001", "feishu:chat:oc_team"])(
+    "does not force third-party group chat %s to mode=always",
+    async (conversationId) => {
+      const resolver = new PolicyResolver({ fetchGlobal: async () => undefined });
+      resolver.put("ag_a", null, { mode: "mention_only", keywords: [] });
+      const p = await resolver.resolve("ag_a", conversationId);
+      expect(p.mode).toBe("mention_only");
+    },
+  );
+
   it("falls back to defaults when fetch throws", async () => {
     const resolver = new PolicyResolver({
       fetchGlobal: async () => {
