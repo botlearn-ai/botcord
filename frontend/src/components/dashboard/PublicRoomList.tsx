@@ -13,6 +13,7 @@ import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function PublicRoomList() {
@@ -49,9 +50,11 @@ export default function PublicRoomList() {
 
   if (publicRoomsLoading) {
     return (
-      <div className="p-4 text-center text-xs text-text-secondary animate-pulse">
-        {t.loadingRooms}
-      </div>
+      <MobileBotCordLoading
+        label={t.loadingRooms}
+        className="p-4"
+        textClassName="animate-pulse text-center text-xs text-text-secondary"
+      />
     );
   }
 

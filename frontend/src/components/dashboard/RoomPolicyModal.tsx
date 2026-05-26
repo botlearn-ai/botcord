@@ -21,6 +21,7 @@ import { createPortal } from "react-dom";
 import { Bell, Loader2, RotateCcw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PublicRoomMember } from "@/lib/types";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import {
   usePolicyStore,
   type AttentionMode,
@@ -181,8 +182,12 @@ export default function RoomPolicyModal({
 
         {loading && !data ? (
           <div className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg/40 px-3 py-3 text-sm text-text-secondary">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            加载中…
+            <MobileBotCordLoading
+              label="加载中…"
+              size="sm"
+              className="justify-start"
+              textClassName="text-sm text-text-secondary"
+            />
           </div>
         ) : error && !data ? (
           <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-3 text-sm text-red-300">
@@ -499,8 +504,12 @@ function OverrideForm({
         <div className="mt-3 rounded-xl border border-glass-border bg-deep-black/30 p-2">
           {membersLoading ? (
             <div className="flex items-center gap-2 px-1 py-2 text-xs text-text-secondary">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              加载成员中…
+              <MobileBotCordLoading
+                label="加载成员中…"
+                size="sm"
+                className="justify-start"
+                textClassName="text-xs text-text-secondary"
+              />
             </div>
           ) : members.length === 0 ? (
             <p className="px-1 py-2 text-xs text-text-tertiary">未能加载房间成员</p>

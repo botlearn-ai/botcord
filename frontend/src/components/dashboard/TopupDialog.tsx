@@ -8,6 +8,7 @@ import type { StripePackageItem } from "@/lib/types";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { saveStripeTopupContext } from "@/lib/stripe-topup-context";
 import { Loader2 } from "lucide-react";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import WalletAccountSelector from "./WalletAccountSelector";
 
 function formatCoin(minorStr: string): string {
@@ -126,9 +127,11 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
         <WalletAccountSelector value={selectedViewer} onChange={setSelectedViewer} />
 
         {packagesLoading ? (
-          <div className="py-8 text-center text-sm text-text-secondary animate-pulse">
-            {t.loadingPackages}
-          </div>
+          <MobileBotCordLoading
+            label={t.loadingPackages}
+            className="py-8"
+            textClassName="animate-pulse text-center text-sm text-text-secondary"
+          />
         ) : packagesError ? (
           <div className="py-8 text-center text-sm text-red-400">{packagesError}</div>
         ) : packages.length === 0 ? (

@@ -14,6 +14,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 export default function DiscoverRoomList() {
@@ -40,9 +41,11 @@ export default function DiscoverRoomList() {
 
   if (discoverLoading && discoverRooms.length === 0) {
     return (
-      <div className="p-4 text-center text-xs text-text-secondary animate-pulse">
-        {t.loadingRooms}
-      </div>
+      <MobileBotCordLoading
+        label={t.loadingRooms}
+        className="p-4"
+        textClassName="text-center text-xs text-text-secondary animate-pulse"
+      />
     );
   }
 

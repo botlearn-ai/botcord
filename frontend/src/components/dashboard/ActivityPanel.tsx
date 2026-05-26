@@ -6,6 +6,7 @@ import type { ActivityStats, ActivityFeedItem } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar } from "@/lib/i18n/translations/dashboard";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { BotCordLoader } from "@/components/ui/BotCordLoader";
 import { DashboardMainSkeleton } from "./DashboardTabSkeleton";
 
 type Period = "today" | "7d" | "30d";
@@ -340,11 +341,23 @@ export default function ActivityPanel() {
                     <button
                       onClick={loadMore}
                       disabled={loadingMore}
-                      className="mt-2 w-full rounded-lg border border-glass-border py-2 text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-glass-border py-2 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                     >
-                      {loadingMore
-                        ? (zh ? "\u52A0\u8F7D\u4E2D\u2026" : "Loading\u2026")
-                        : (zh ? "\u52A0\u8F7D\u66F4\u591A" : "Load more")}
+                      {loadingMore ? (
+                        <>
+                          <BotCordLoader
+                            label={zh ? "\u52A0\u8F7D\u4E2D\u2026" : "Loading\u2026"}
+                            size="xs"
+                            showLabel={false}
+                            className="md:hidden"
+                          />
+                          <span className="hidden md:inline">
+                            {zh ? "\u52A0\u8F7D\u4E2D\u2026" : "Loading\u2026"}
+                          </span>
+                        </>
+                      ) : (
+                        zh ? "\u52A0\u8F7D\u66F4\u591A" : "Load more"
+                      )}
                     </button>
                   )}
                 </div>

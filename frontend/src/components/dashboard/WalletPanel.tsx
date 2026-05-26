@@ -15,6 +15,7 @@ import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import type { WithdrawalResponse } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
 import { ChevronRight, Eye, EyeOff, Loader2 } from "lucide-react";
+import { BotCordLoader, MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import {
   useDashboardWalletStore,
@@ -529,10 +530,22 @@ function MergedLedgerSection({
           <button
             onClick={onLoadMore}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-4 py-1.5 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+            className="inline-flex min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-glass-border px-4 py-1.5 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
           >
-            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-            {loading ? loadingMoreLabel : loadMoreLabel}
+            {loading ? (
+              <>
+                <BotCordLoader
+                  label={loadingMoreLabel}
+                  size="xs"
+                  showLabel={false}
+                  className="md:hidden"
+                />
+                <Loader2 className="hidden h-3 w-3 animate-spin md:inline" />
+                <span className="hidden md:inline">{loadingMoreLabel}</span>
+              </>
+            ) : (
+              loadMoreLabel
+            )}
           </button>
         </div>
       ) : null}
@@ -601,7 +614,11 @@ function RecentWithdrawals({
       </div>
 
       {loading && items.length === 0 ? (
-        <div className="text-sm text-text-secondary">{t.loadingWithdrawals}</div>
+        <MobileBotCordLoading
+          label={t.loadingWithdrawals}
+          className="justify-start"
+          textClassName="text-sm text-text-secondary"
+        />
       ) : error && items.length === 0 ? (
         <div className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">
           {error}

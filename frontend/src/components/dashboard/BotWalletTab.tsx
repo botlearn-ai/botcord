@@ -16,6 +16,7 @@ import { common } from "@/lib/i18n/translations/common";
 import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { BotCordLoader, MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import TransferDialog from "./TransferDialog";
 import TopupDialog from "./TopupDialog";
 import WithdrawDialog from "./WithdrawDialog";
@@ -129,7 +130,10 @@ export default function BotWalletTab({
             </button>
           </>
         ) : (
-          <div className="text-neon-cyan animate-pulse text-sm">{tc.loading}</div>
+          <MobileBotCordLoading
+            label={tc.loading}
+            textClassName="animate-pulse text-sm text-neon-cyan"
+          />
         )}
       </div>
     );
@@ -249,10 +253,22 @@ export default function BotWalletTab({
             <button
               onClick={() => void loadWalletLedger(true)}
               disabled={walletLoading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1 text-[10px] text-text-secondary hover:text-text-primary disabled:opacity-60"
+              className="inline-flex min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-glass-border px-3 py-1 text-[10px] text-text-secondary hover:text-text-primary disabled:opacity-60"
             >
-              {walletLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-              {walletLoading ? t.loadingMore : t.loadMore}
+              {walletLoading ? (
+                <>
+                  <BotCordLoader
+                    label={t.loadingMore}
+                    size="xs"
+                    showLabel={false}
+                    className="md:hidden"
+                  />
+                  <Loader2 className="hidden h-3 w-3 animate-spin md:inline" />
+                  <span className="hidden md:inline">{t.loadingMore}</span>
+                </>
+              ) : (
+                t.loadMore
+              )}
             </button>
           </div>
         ) : null}
@@ -338,7 +354,11 @@ function BotWithdrawals({
         </button>
       </div>
       {!loaded && loading ? (
-        <div className="text-xs text-text-secondary">{t.loadingWithdrawals}</div>
+        <MobileBotCordLoading
+          label={t.loadingWithdrawals}
+          className="py-2"
+          textClassName="text-xs text-text-secondary"
+        />
       ) : error && items.length === 0 ? (
         <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-xs text-red-300">{error}</div>
       ) : items.length === 0 ? (

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, Loader2, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import CopyableId from "@/components/ui/CopyableId";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import { api, humansApi, userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import {
@@ -782,7 +783,11 @@ export default function RoomSettingsModal({
 
                 <div className="max-h-72 overflow-y-auto rounded-xl border border-glass-border bg-deep-black/40">
                   {membersLoading ? (
-                    <p className="px-4 py-4 text-xs text-text-secondary animate-pulse">{tm.loadingMembers}</p>
+                    <MobileBotCordLoading
+                      label={tm.loadingMembers}
+                      className="px-4 py-4 justify-start"
+                      textClassName="text-xs text-text-secondary animate-pulse"
+                    />
                   ) : membersError ? (
                     <p className="px-4 py-4 text-xs text-red-400">{membersError}</p>
                   ) : filteredMembers.length === 0 ? (

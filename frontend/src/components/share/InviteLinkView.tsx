@@ -14,6 +14,7 @@ import type { InvitePreviewResponse } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { useLanguage } from "@/lib/i18n";
 import { inviteLanding } from "@/lib/i18n/translations/dashboard";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 
 export default function InviteLinkView({ inviteCode }: { inviteCode: string }) {
   const locale = useLanguage();
@@ -97,7 +98,11 @@ export default function InviteLinkView({ inviteCode }: { inviteCode: string }) {
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="animate-pulse text-lg text-neon-cyan">{t.loading}</div>
+        <MobileBotCordLoading
+          label={t.loading}
+          size="md"
+          textClassName="animate-pulse text-lg text-neon-cyan"
+        />
       </div>
     );
   }
