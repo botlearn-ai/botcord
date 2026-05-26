@@ -64,7 +64,9 @@ export interface RuntimeSessionManagerOptions {
 }
 
 interface ActiveSession {
+  key: string;
   agentId: string;
+  gatewayId: string;
   socket: RuntimeSocketLike;
   metadata: RuntimeSessionMetadata;
   // Reject any send() attempts after the socket closes; resolved
@@ -92,15 +94,21 @@ export class RuntimeSessionManager {
 
   constructor(private readonly opts: RuntimeSessionManagerOptions) {}
 
+  private sessionKey(agentId: string, gatewayId: string): string {
+    return `${agentId}:${gatewayId}`;
+  }
+
   /** Open or reuse the session for one agent. */
   async ensureSession(
     agentId: string,
+    gatewayId: string,
     metadata: RuntimeSessionMetadata,
   ): Promise<void> {
-    const current = this.sessions.get(agentId);
+    const key = this.sessionKey(agentId, gatewayId);
+    const current = this.sessions.get(key);
     if (current && current.socket.readyState === RUNTIME_SOCKET_STATE.OPEN) return;
 
-    if (current) await this.closeSession(agentId, "stale_socket");
+    if (current) await this.closeSession(agentId, gatewayId, "stale_socket");
 
     const socket = await this.opts.socketFactory(
       metadata.session_endpoint,
@@ -120,7 +128,7 @@ export class RuntimeSessionManager {
     });
 
     socket.on("open", () => {
-      this.opts.log.debug("runtime session open", { agentId });
+      this.opts.log.debug("runtime session open", { agentId, gatewayId });
       resolveReady();
     });
 
@@ -131,35 +139,37 @@ export class RuntimeSessionManager {
       try {
         frame = JSON.parse(raw) as RuntimeOutboundFrame;
       } catch (err) {
-        this.opts.log.warn("runtime session bad frame", { agentId, err: String(err) });
+        this.opts.log.warn("runtime session bad frame", { agentId, gatewayId, err: String(err) });
         return;
       }
       Promise.resolve(this.opts.hooks.onFrame(agentId, frame)).catch((err) => {
-        this.opts.log.error("runtime hook threw", { agentId, err: String(err) });
+        this.opts.log.error("runtime hook threw", { agentId, gatewayId, err: String(err) });
       });
     });
 
     socket.on("close", (code, reason) => {
-      this.opts.log.info("runtime session closed", { agentId, code, reason: String(reason ?? "") });
-      this.sessions.delete(agentId);
+      this.opts.log.info("runtime session closed", { agentId, gatewayId, code, reason: String(reason ?? "") });
+      this.sessions.delete(key);
       this.opts.hooks.onClose(agentId, `code=${code}`);
       resolveClosed();
     });
 
     socket.on("error", (err) => {
-      this.opts.log.warn("runtime session error", { agentId, err: String(err) });
+      this.opts.log.warn("runtime session error", { agentId, gatewayId, err: String(err) });
       rejectReady(err instanceof Error ? err : new Error(String(err)));
     });
 
     const session: ActiveSession = {
+      key,
       agentId,
+      gatewayId,
       socket,
       metadata,
       ready,
       closed,
       resolveClosed,
     };
-    this.sessions.set(agentId, session);
+    this.sessions.set(key, session);
     // If the socket reports OPEN already (test fakes commonly do), resolve immediately.
     if (socket.readyState === RUNTIME_SOCKET_STATE.OPEN) resolveReady();
     await ready;
@@ -167,37 +177,39 @@ export class RuntimeSessionManager {
 
   /** Push a `gateway_inbound` frame down the session. */
   async sendInbound(frame: GatewayInboundFrame): Promise<void> {
-    const session = this.sessions.get(frame.agent_id);
+    const session = this.sessions.get(this.sessionKey(frame.agent_id, frame.gateway_id));
     if (!session) {
-      throw new Error(`no runtime session for ${frame.agent_id}`);
+      throw new Error(`no runtime session for ${frame.agent_id}/${frame.gateway_id}`);
     }
     await session.ready;
     if (session.socket.readyState !== RUNTIME_SOCKET_STATE.OPEN) {
-      throw new Error(`runtime session for ${frame.agent_id} is not open`);
+      throw new Error(`runtime session for ${frame.agent_id}/${frame.gateway_id} is not open`);
     }
     session.socket.send(JSON.stringify(frame));
   }
 
   hasSession(agentId: string): boolean {
-    const s = this.sessions.get(agentId);
-    return !!s && s.socket.readyState === RUNTIME_SOCKET_STATE.OPEN;
+    for (const s of this.sessions.values()) {
+      if (s.agentId === agentId && s.socket.readyState === RUNTIME_SOCKET_STATE.OPEN) return true;
+    }
+    return false;
   }
 
-  async closeSession(agentId: string, reason: string): Promise<void> {
-    const session = this.sessions.get(agentId);
+  async closeSession(agentId: string, gatewayId: string, reason: string): Promise<void> {
+    const session = this.sessions.get(this.sessionKey(agentId, gatewayId));
     if (!session) return;
     try {
       session.socket.close(1000, reason);
     } catch {
       // ignore
     }
-    this.sessions.delete(agentId);
+    this.sessions.delete(session.key);
     session.resolveClosed();
   }
 
   async closeAll(reason: string): Promise<void> {
-    for (const id of [...this.sessions.keys()]) {
-      await this.closeSession(id, reason);
+    for (const session of [...this.sessions.values()]) {
+      await this.closeSession(session.agentId, session.gatewayId, reason);
     }
   }
 }

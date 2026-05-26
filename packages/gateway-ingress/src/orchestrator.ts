@@ -198,7 +198,7 @@ export class IngressOrchestrator {
     }
 
     try {
-      await this.opts.runtime.ensureSession(connection.agentId, runtimeMeta);
+      await this.opts.runtime.ensureSession(connection.agentId, connection.id, runtimeMeta);
     } catch (err) {
       this.opts.store.updateEvent(event.eventId, {
         status: "queued",
