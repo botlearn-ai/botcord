@@ -414,10 +414,16 @@ function normalizeBlock(
 
   // Legacy shape ------------------------------------------------------------
   if (kind === "tool_call") {
-    const params = payload?.params ?? payload?.input ?? payload?.arguments ?? payload?.details;
+    const rawCall = extractToolCall(rawAny);
+    const params =
+      payload?.params ??
+      payload?.input ??
+      payload?.arguments ??
+      payload?.details ??
+      rawCall?.params;
     return {
       kind: "tool_call",
-      toolName: (payload?.name as string) || "tool",
+      toolName: (payload?.name as string) || rawCall?.name || "tool",
       paramHint: summarizeParams(params),
       paramDetails: formatToolParams(params),
       rawKind: kind,
@@ -425,10 +431,11 @@ function normalizeBlock(
   }
   if (kind === "tool_result" && payload) {
     const id = typeof payload.tool_use_id === "string" ? payload.tool_use_id : undefined;
+    const rawResult = extractToolResult(rawAny);
     return {
       kind: "tool_result",
-      toolName: (payload.name as string) || (id && ctx?.toolNameById?.[id]) || "tool",
-      resultStr: String(payload.result ?? ""),
+      toolName: (payload.name as string) || rawResult?.name || (id && ctx?.toolNameById?.[id]) || "tool",
+      resultStr: String(payload.result ?? rawResult?.result ?? ""),
       rawKind: kind,
     };
   }

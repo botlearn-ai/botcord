@@ -5,8 +5,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ensureNoOtherDaemonFromPidFile,
+  parseDaemonProcesses,
   readPid,
   removePidFile,
+  stopOtherDaemonProcessesForRestart,
   stopDaemonFromPidFileForRestart,
   writeCurrentPid,
 } from "../daemon-singleton.js";
@@ -72,6 +74,36 @@ describe("daemon singleton pid helpers", () => {
     removePidFile(pidPath);
 
     expect(readPid(pidPath)).toBeNull();
+  });
+
+  it("finds botcord daemon start commands in ps output", () => {
+    const out = parseDaemonProcesses(
+      [
+        "  111 node /Users/me/.botcord/daemon/node_modules/.bin/botcord-daemon start --foreground",
+        "  222 node /opt/botcord/daemon/dist/index.js start --foreground",
+        "  333 node /tmp/other.js",
+        `  ${process.pid} node /Users/me/.botcord/daemon/node_modules/.bin/botcord-daemon start --foreground`,
+      ].join("\n"),
+      process.pid,
+    );
+
+    expect(out.map((p) => p.pid)).toEqual([111, 222]);
+  });
+
+  it("terminates extra daemon processes discovered outside the pid file", async () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: "ignore",
+    });
+    children.push(child);
+    await waitForPid(child);
+
+    await stopOtherDaemonProcessesForRestart({
+      currentPid: process.pid,
+      processes: [{ pid: child.pid!, command: "node /opt/botcord/daemon/dist/index.js start --foreground" }],
+    });
+
+    await waitForExit(child);
+    expect(child.exitCode === null && child.signalCode === null).toBe(false);
   });
 });
 

@@ -18,6 +18,18 @@ describe("renderStatus", () => {
     expect(out).toContain("stopped");
   });
 
+  it("reports daemon processes even when the pid file is missing", () => {
+    const out = renderStatus({
+      pid: null,
+      alive: false,
+      daemonProcesses: [{ pid: 1342 }, { pid: 1527 }],
+    });
+
+    expect(out).toContain("daemon: no pid file");
+    expect(out).toContain("warning: 2 daemon processes detected without pid file");
+    expect(out).toContain("pids: 1342, 1527");
+  });
+
   it("prints pid + agent + config when only PID state is known (no snapshot)", () => {
     const out = renderStatus(
       {
@@ -93,6 +105,17 @@ describe("renderStatus", () => {
       configPath: "/tmp/c.json",
     });
     expect(out).toContain("agent:  ag_solo");
+  });
+
+  it("warns when extra daemon processes are detected", () => {
+    const out = renderStatus({
+      pid: 42,
+      alive: true,
+      daemonProcesses: [{ pid: 1001 }, { pid: 1002 }],
+    });
+
+    expect(out).toContain("warning: 2 additional daemon processes detected");
+    expect(out).toContain("extra pids: 1001, 1002");
   });
 
   it("surfaces ⚠ stale when snapshotAgeMs exceeds the threshold", () => {
