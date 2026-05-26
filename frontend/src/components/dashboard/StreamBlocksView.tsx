@@ -202,6 +202,16 @@ function stringField(obj: any, key: string): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function inferDeepseekToolName(item: any): string | undefined {
+  const candidates = [stringField(item, "summary"), stringField(item, "detail")];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const match = candidate.match(/^([A-Za-z0-9_.:-]+)\s*(?:started|completed|failed|returned|:)/);
+    if (match?.[1] && match[1] !== "tool_call") return match[1];
+  }
+  return undefined;
+}
+
 function extractToolCall(raw: any): { name: string; params?: unknown; id?: string } | null {
   const contents = Array.isArray(raw?.message?.content) ? raw.message.content : [];
   const tu = contents.find((c: any) => c?.type === "tool_use");
@@ -278,11 +288,13 @@ function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id
           : {};
     const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
     const tool = inner.tool && typeof inner.tool === "object" ? inner.tool : item?.tool;
+    const itemParams = parseMaybeJson(item?.input ?? item?.arguments ?? item?.detail);
     return {
       name:
         stringField(tool, "name") ??
         stringField(inner, "name") ??
         stringField(item, "name") ??
+        inferDeepseekToolName(item) ??
         stringField(item, "type") ??
         "tool",
       params: parseMaybeJson(
@@ -292,7 +304,7 @@ function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id
           inner.input ??
           item?.input ??
           item?.arguments,
-      ) ?? tool ?? item,
+      ) ?? itemParams ?? tool ?? item,
       id: stringField(tool, "id") ?? stringField(inner, "id") ?? stringField(item, "id"),
     };
   }
@@ -380,7 +392,11 @@ function extractDeepseekToolResult(raw: any): { name?: string; result: string; i
       item ??
       inner;
     return {
-      name: stringField(item, "name") ?? stringField(item, "type") ?? stringField(inner, "name"),
+      name:
+        stringField(item, "name") ??
+        inferDeepseekToolName(item) ??
+        stringField(inner, "name") ??
+        stringField(item, "type"),
       result: stringifyDetails(result),
       id: stringField(item, "id") ?? stringField(inner, "id"),
     };

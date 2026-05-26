@@ -396,6 +396,7 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
             stringField(payload, "name") ??
             stringField(payload?.tool, "name") ??
             stringField(payload?.payload?.tool, "name") ??
+            inferDeepseekToolName(payload?.item ?? payload?.payload?.item) ??
             "tool";
           opts.onStatus?.({ kind: "thinking", phase: "updated", label });
         } else if (isDeepseekTerminalEvent(eventName, payload)) {
@@ -497,7 +498,8 @@ function isDeepseekTerminalEvent(eventName: string, payload: any): boolean {
 
 function isToolStarted(eventName: string, payload: any): boolean {
   return (
-    (eventName === "item.started" && (!!payload?.tool || payload?.item?.kind === "tool_call")) ||
+    (eventName === "item.started" &&
+      (!!payload?.tool || payload?.item?.kind === "tool_call" || payload?.payload?.item?.kind === "tool_call")) ||
     (payload?.event === "item.started" && !!payload?.payload?.tool)
   );
 }
@@ -523,6 +525,16 @@ function isAgentReasoningItem(payload: any): boolean {
 
 function extractDeepseekDelta(payload: any): string {
   return stringField(payload, "delta") ?? stringField(payload?.payload, "delta") ?? "";
+}
+
+function inferDeepseekToolName(item: any): string | undefined {
+  const candidates = [stringField(item, "summary"), stringField(item, "detail")];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const match = candidate.match(/^([A-Za-z0-9_.:-]+)\s*(?:started|completed|failed|returned|:)/);
+    if (match?.[1] && match[1] !== "tool_call") return match[1];
+  }
+  return undefined;
 }
 
 function emptyCompletionError(stderrTail: string): string {
