@@ -39,6 +39,8 @@ const initialContactState = {
   sendingContactRequestAgentId: null,
 };
 
+let contactRequestsInFlight: Promise<void> | null = null;
+
 function isHumanContactSurface() {
   const { activeIdentity, viewMode } = useDashboardSessionStore.getState();
   return activeIdentity?.type === "human" || viewMode === "human";
@@ -82,6 +84,9 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
   resetContactState: () => set({ ...initialContactState }),
 
   loadContactRequests: async () => {
+    if (contactRequestsInFlight) {
+      return contactRequestsInFlight;
+    }
     if (!hasReadyContactIdentity()) {
       set({
         contactRequestsReceived: [],
@@ -91,37 +96,42 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
       });
       return;
     }
-    set({ contactRequestsLoading: true });
-    try {
-      const [received, sent, botApprovalCount] = isHumanContactSurface()
-        ? await Promise.all([
-            humansApi.listReceivedContactRequests(),
-            humansApi.listSentContactRequests(),
-            humansApi.listPendingApprovals(),
-          ]).then(([receivedRes, sentRes, approvalsRes]) => [
-            { requests: receivedRes.requests.map(normalizeHumanContactRequest) },
-            { requests: sentRes.requests.map(normalizeHumanContactRequest) },
-            approvalsRes.approvals.filter((approval) => (
-              approval.kind === "contact_request" && !approval.id.startsWith("cr_")
-            )).length,
-          ] as const)
-        : await Promise.all([
-            api.getContactRequestsReceived(),
-            api.getContactRequestsSent(),
-          ]).then(([receivedRes, sentRes]) => [receivedRes, sentRes, 0] as const);
-      const pendingSentTargets = sent.requests
-        .filter((item) => item.state === "pending")
-        .map((item) => item.to_agent_id);
-      set({
-        contactRequestsReceived: received.requests,
-        contactRequestsSent: sent.requests,
-        contactRequestsBotApprovalCount: botApprovalCount,
-        pendingFriendRequests: Array.from(new Set([...get().pendingFriendRequests, ...pendingSentTargets])),
-        contactRequestsLoading: false,
-      });
-    } catch {
-      set({ contactRequestsLoading: false });
-    }
+    contactRequestsInFlight = (async () => {
+      set({ contactRequestsLoading: true });
+      try {
+        const [received, sent, botApprovalCount] = isHumanContactSurface()
+          ? await Promise.all([
+              humansApi.listReceivedContactRequests(),
+              humansApi.listSentContactRequests(),
+              humansApi.listPendingApprovals(),
+            ]).then(([receivedRes, sentRes, approvalsRes]) => [
+              { requests: receivedRes.requests.map(normalizeHumanContactRequest) },
+              { requests: sentRes.requests.map(normalizeHumanContactRequest) },
+              approvalsRes.approvals.filter((approval) => (
+                approval.kind === "contact_request" && !approval.id.startsWith("cr_")
+              )).length,
+            ] as const)
+          : await Promise.all([
+              api.getContactRequestsReceived(),
+              api.getContactRequestsSent(),
+            ]).then(([receivedRes, sentRes]) => [receivedRes, sentRes, 0] as const);
+        const pendingSentTargets = sent.requests
+          .filter((item) => item.state === "pending")
+          .map((item) => item.to_agent_id);
+        set({
+          contactRequestsReceived: received.requests,
+          contactRequestsSent: sent.requests,
+          contactRequestsBotApprovalCount: botApprovalCount,
+          pendingFriendRequests: Array.from(new Set([...get().pendingFriendRequests, ...pendingSentTargets])),
+          contactRequestsLoading: false,
+        });
+      } catch {
+        set({ contactRequestsLoading: false });
+      }
+    })().finally(() => {
+      contactRequestsInFlight = null;
+    });
+    return contactRequestsInFlight;
   },
 
   sendContactRequest: async (toAgentId: string, message?: string) => {
