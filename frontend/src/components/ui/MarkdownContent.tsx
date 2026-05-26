@@ -40,6 +40,13 @@ type HastNode = HastTextNode | HastElementNode | HastRootNode | { type?: string;
 
 const MENTION_WITH_ID_RE = /@([^\n@]*?)\(((?:ag|hu)_[^)]+)\)/g;
 
+export function normalizeMessageContent(content: string): string {
+  return content
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n");
+}
+
 function isMentionStartBoundary(value: string, index: number): boolean {
   if (index === 0) return true;
   return /[\s([{'"“‘]/.test(value[index - 1]);
@@ -319,6 +326,8 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
 }
 
 export default function MarkdownContent({ content, renderMention, mentionCandidates }: MarkdownContentProps) {
+  const normalizedContent = normalizeMessageContent(content);
+
   return (
     <div className="break-words text-sm text-text-primary [&>*:first-child]:mt-0">
       <ReactMarkdown
@@ -326,7 +335,7 @@ export default function MarkdownContent({ content, renderMention, mentionCandida
         rehypePlugins={[[rehypeMentions, { candidates: mentionCandidates ?? [] }]]}
         components={createComponents(renderMention)}
       >
-        {content}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );
