@@ -8,11 +8,12 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Lock, Loader2 } from "lucide-react";
+import { Lock } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PublicRoomMessagePreview } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
 import { chatPane } from "@/lib/i18n/translations/dashboard";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 const PREVIEW_LIMIT = 3;
@@ -100,8 +101,11 @@ export default function PaidRoomPreview({
 
           {loading ? (
             <div className="flex items-center justify-center rounded-lg border border-glass-border bg-deep-black-light px-3 py-5 text-xs text-text-secondary">
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-              {t.loadingPreviewMessages}
+              <MobileBotCordLoading
+                label={t.loadingPreviewMessages}
+                size="sm"
+                textClassName="text-xs text-text-secondary"
+              />
             </div>
           ) : previewMessages.length > 0 ? (
             <div className="space-y-2">

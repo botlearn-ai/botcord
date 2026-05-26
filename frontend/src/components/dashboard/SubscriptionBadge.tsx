@@ -15,6 +15,7 @@ import { api } from "@/lib/api";
 import type { SubscriptionProduct } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
 import { Loader2 } from "lucide-react";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
@@ -281,9 +282,11 @@ export default function SubscriptionBadge({
             </h2>
 
             {loading ? (
-              <div className="py-8 text-center text-sm text-text-secondary animate-pulse">
-                {t.loading}
-              </div>
+              <MobileBotCordLoading
+                label={t.loading}
+                className="py-8"
+                textClassName="text-center text-sm text-text-secondary animate-pulse"
+              />
             ) : productData ? (
               <div className="space-y-4">
                 <div className="flex items-start justify-between gap-3">

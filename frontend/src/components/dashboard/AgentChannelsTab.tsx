@@ -36,6 +36,7 @@ import {
   type GatewayStatus,
   type WechatLoginStatus,
 } from "@/store/useAgentGatewayStore";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 
 interface Props {
   agentId: string;
@@ -319,7 +320,12 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
 
         {loading && list.length === 0 ? (
           <div className="rounded-xl border border-glass-border bg-glass-bg/40 p-4 text-xs text-text-secondary">
-            加载中…
+            <MobileBotCordLoading
+              label="加载中…"
+              size="sm"
+              className="justify-start"
+              textClassName="text-xs text-text-secondary"
+            />
           </div>
         ) : list.length === 0 ? (
           <div className="rounded-xl border border-dashed border-glass-border/60 bg-transparent p-4 text-center text-xs text-text-tertiary">

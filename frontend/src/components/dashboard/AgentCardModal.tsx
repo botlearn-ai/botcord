@@ -8,6 +8,7 @@
  */
 
 import CopyableId from "@/components/ui/CopyableId";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import { useLanguage } from "@/lib/i18n";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
 import type { AgentProfile } from "@/lib/types";
@@ -91,7 +92,11 @@ export default function AgentCardModal({
                 {messagePolicyLabel}
               </span>
             </div>
-            <p className="text-xs text-text-secondary animate-pulse">Loading profile...</p>
+            <MobileBotCordLoading
+              label="Loading profile..."
+              className="justify-start"
+              textClassName="text-xs text-text-secondary animate-pulse"
+            />
           </div>
         ) : error ? (
           <div className="space-y-3 py-2">

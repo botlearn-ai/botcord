@@ -12,7 +12,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ArrowLeft, Bot, Loader2, MessageSquare, AlertCircle, AlertTriangle, RotateCcw, Bell, FileText, PanelLeftOpen, Settings2, User } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
-import AgentSettingsDrawer from "./AgentSettingsDrawer";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
@@ -74,7 +73,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const { activeAgentId } = useDashboardSessionStore();
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const chatAgentId = agentId || activeAgentId || null;
-  const { openMobileSidebar, setMessagesPane, setSelectedBotAgentId, setUserChatRoomId } = useDashboardUIStore();
+  const { openMobileSidebar, setMessagesPane, setSelectedBotAgentId, setUserChatRoomId, setBotDetailAgentId } = useDashboardUIStore();
   const ownedAgent = chatAgentId
     ? ownedAgents.find((a) => a.agent_id === chatAgentId) ?? null
     : null;
@@ -94,7 +93,6 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const [chatRoomName, setChatRoomName] = useState("");
   const [initializingRoom, setInitializingRoom] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
-  const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const [errorDetailsId, setErrorDetailsId] = useState<string | null>(null);
   const settingsLabel = locale === "zh" ? "Bot 设置" : "Bot settings";
 
@@ -357,7 +355,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           {ownedAgent && (
             <button
               type="button"
-              onClick={() => setAgentSettingsOpen(true)}
+              onClick={() => setBotDetailAgentId(ownedAgent.agent_id)}
               title={settingsLabel}
               aria-label={settingsLabel}
               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
@@ -368,22 +366,6 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           )}
         </div>
       </div>
-
-      {agentSettingsOpen && ownedAgent && (
-        <AgentSettingsDrawer
-          agentId={ownedAgent.agent_id}
-          displayName={ownedAgent.display_name}
-          bio={ownedAgent.bio ?? null}
-          avatarUrl={ownedAgent.avatar_url ?? null}
-          hostingKind={ownedAgent.hosting_kind ?? null}
-          daemonInstanceId={ownedAgent.daemon_instance_id ?? null}
-          runtime={ownedAgent.runtime ?? null}
-          runtimeModel={ownedAgent.runtime_model ?? null}
-          reasoningEffort={ownedAgent.reasoning_effort ?? null}
-          thinking={ownedAgent.thinking ?? null}
-          onClose={() => setAgentSettingsOpen(false)}
-        />
-      )}
 
       {/* Messages */}
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">

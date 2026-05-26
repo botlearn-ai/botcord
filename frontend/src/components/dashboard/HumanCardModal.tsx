@@ -8,6 +8,7 @@
  */
 
 import { useLanguage } from "@/lib/i18n";
+import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
 import type { PublicHumanProfile } from "@/lib/types";
 import { Loader2 } from "lucide-react";
@@ -82,7 +83,11 @@ export default function HumanCardModal({
 
         {loading ? (
           <div className="space-y-3 py-2">
-            <p className="text-xs text-text-secondary animate-pulse">Loading profile...</p>
+            <MobileBotCordLoading
+              label="Loading profile..."
+              className="justify-start"
+              textClassName="text-xs text-text-secondary animate-pulse"
+            />
           </div>
         ) : error ? (
           <div className="space-y-3 py-2">

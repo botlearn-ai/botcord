@@ -9,6 +9,7 @@
 
 import { useShallow } from "zustand/react/shallow";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
+import { BotCordLoader, MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -52,7 +53,10 @@ export default function LedgerList() {
   if (walletLoading && walletLedger.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-neon-cyan animate-pulse text-sm">Loading ledger...</div>
+        <MobileBotCordLoading
+          label="Loading ledger..."
+          textClassName="animate-pulse text-sm text-neon-cyan"
+        />
       </div>
     );
   }
@@ -148,9 +152,21 @@ export default function LedgerList() {
           <button
             onClick={() => loadWalletLedger(true)}
             disabled={walletLoading}
-            className="rounded-lg border border-glass-border px-4 py-2 text-xs font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-40"
+            className="inline-flex min-w-[5.5rem] items-center justify-center rounded-lg border border-glass-border px-4 py-2 text-xs font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-40"
           >
-            {walletLoading ? "Loading..." : "Load more"}
+            {walletLoading ? (
+              <>
+                <BotCordLoader
+                  label="Loading..."
+                  size="xs"
+                  showLabel={false}
+                  className="md:hidden"
+                />
+                <span className="hidden md:inline">Loading...</span>
+              </>
+            ) : (
+              "Load more"
+            )}
           </button>
         </div>
       )}
