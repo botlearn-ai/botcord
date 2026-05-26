@@ -484,6 +484,8 @@ class MessageRecord(Base):
         UniqueConstraint("msg_id", "receiver_id"),
         Index("ix_message_records_retry", "state", "next_retry_at"),
         Index("ix_message_records_room_id_created_at_id", "room_id", "created_at", "id"),
+        Index("ix_message_records_room_id_id", "room_id", "id"),
+        Index("ix_message_records_room_msg_id_id", "room_id", "msg_id", "id"),
         Index("ix_message_records_sender_created_room", "sender_id", "created_at", "room_id"),
         Index("ix_message_records_receiver_created_room", "receiver_id", "created_at", "room_id"),
     )
