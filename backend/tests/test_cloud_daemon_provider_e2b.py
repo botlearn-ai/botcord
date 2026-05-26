@@ -41,7 +41,7 @@ def _make_provider(
     client: FakeE2BSandboxClient | None = None,
     deepseek_api_key: str | None = "ds-secret",
     startup_command: str = CLOUD_DAEMON_STARTUP_COMMAND,
-    daemon_npm_spec: str = "@botcord/daemon@^0.2.79",
+    daemon_npm_spec: str = "@botcord/daemon@latest",
 ) -> tuple[E2BCloudDaemonProvider, FakeE2BSandboxClient]:
     client = client or FakeE2BSandboxClient()
     provider = E2BCloudDaemonProvider(
@@ -65,7 +65,7 @@ def _make_provider(
 def test_default_startup_command_prefers_configured_npm_spec():
     """Default launch should not prefer a stale daemon baked into the template."""
     assert "case \"${CLOUD_DAEMON_NPM_SPEC:-}\"" in CLOUD_DAEMON_STARTUP_COMMAND
-    assert "exec npx --yes --package @botcord/daemon@^0.2.79" in (
+    assert "exec npx --yes --package @botcord/daemon@latest" in (
         CLOUD_DAEMON_STARTUP_COMMAND
     )
     assert "exec npx --yes --package \"$CLOUD_DAEMON_NPM_SPEC\"" in (
@@ -103,7 +103,7 @@ async def test_create_or_resume_starts_sandbox_and_injects_env():
     assert env["BOTCORD_CLOUD_DAEMON_INSTANCE_ID"] == "cloud_dm_aaa"
     assert env["BOTCORD_DAEMON_INSTANCE_ID"] == "dm_bbb"
     assert env["DEEPSEEK_API_KEY"] == "ds-secret"
-    assert env["CLOUD_DAEMON_NPM_SPEC"] == "@botcord/daemon@^0.2.79"
+    assert env["CLOUD_DAEMON_NPM_SPEC"] == "@botcord/daemon@latest"
 
     # And the injected access token is a valid cloud-daemon-access JWT.
     claims = _verify_cloud_daemon_access_token(env["BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN"])
@@ -164,6 +164,14 @@ async def test_resume_uses_existing_sandbox_when_provider_sandbox_id_supplied():
     assert second.provider_sandbox_id == first.provider_sandbox_id
     # Only one sandbox record exists — resume reuses it.
     assert len(client.all()) == 1
+    sandbox = client.get(first.provider_sandbox_id)
+    assert sandbox is not None
+    # Resume still relaunches the daemon in the existing sandbox so it can
+    # replace the paused process with the currently published npm package.
+    assert sandbox.commands == [
+        CLOUD_DAEMON_STARTUP_COMMAND,
+        CLOUD_DAEMON_STARTUP_COMMAND,
+    ]
 
 
 @pytest.mark.asyncio
