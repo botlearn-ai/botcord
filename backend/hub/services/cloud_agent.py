@@ -390,6 +390,19 @@ class CloudAgentService:
         cloud_daemon.active_agent_count = (cloud_daemon.active_agent_count or 0) + 1
         await db.flush()
 
+        if is_cloud_daemon_online(cloud_daemon.id):
+            cloud_daemon.status = "ready"
+            cloud_daemon.error_code = None
+            cloud_daemon.error_message = None
+            cloud_daemon.last_seen_at = _now()
+            await db.commit()
+
+            await self._provision_one(db, cloud_agent, agent, cloud_daemon)
+            await db.refresh(cloud_agent)
+            await db.refresh(cloud_daemon)
+            await db.refresh(agent)
+            return _make_view(agent, cloud_agent, cloud_daemon)
+
         # Hand off to the provider. The fake provider returns ready
         # synchronously; the E2B provider will return ``starting`` and
         # transition to ``ready`` once the daemon's hello frame lands.
