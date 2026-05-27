@@ -185,6 +185,24 @@ describe("useOwnerChatStore empty message handling", () => {
 
     expect(useOwnerChatStore.getState().messages).toHaveLength(1);
   });
+
+  it("drops delivered messages that only have hidden system stream blocks", () => {
+    useOwnerChatStore.getState().upsertMessage(makeOwnerChatMessage({
+      hubMsgId: "msg_1",
+      sender: "agent",
+      text: "",
+      status: "delivered",
+      senderName: "Owned bot",
+      streamBlocks: [{
+        trace_id: "tr_1",
+        seq: 1,
+        created_at: "2026-05-19T03:00:00.000Z",
+        block: { kind: "system", payload: { details: "{\"event\":\"turn.started\"}" } },
+      }],
+    }));
+
+    expect(useOwnerChatStore.getState().messages).toHaveLength(0);
+  });
 });
 
 describe("useOwnerChatStore stream terminal handling", () => {

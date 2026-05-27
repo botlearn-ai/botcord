@@ -103,7 +103,7 @@ function hasVisibleOwnerChatContent(msg: OwnerChatMessage): boolean {
   if (msg.status === "streaming" || msg.status === "optimistic" || msg.status === "failed") return true;
   if (msg.text.trim()) return true;
   if ((msg.attachments?.length ?? 0) > 0) return true;
-  return msg.streamBlocks.length > 0;
+  return visibleExecutionBlocks(msg.streamBlocks).length > 0;
 }
 
 function isTerminalStreamBlock(entry: StreamBlockEntry): boolean {
@@ -112,7 +112,12 @@ function isTerminalStreamBlock(entry: StreamBlockEntry): boolean {
 }
 
 function visibleExecutionBlocks(blocks: StreamBlockEntry[]): StreamBlockEntry[] {
-  return blocks.filter((b) => b.block.kind !== "assistant" && b.block.kind !== "assistant_text");
+  return blocks.filter(
+    (b) =>
+      b.block.kind !== "assistant" &&
+      b.block.kind !== "assistant_text" &&
+      b.block.kind !== "system",
+  );
 }
 
 /** In-flight guard + request token to prevent stale loadInitial responses. */
