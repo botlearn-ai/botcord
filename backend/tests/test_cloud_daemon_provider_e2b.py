@@ -64,11 +64,12 @@ def _make_provider(
 
 def test_default_startup_command_prefers_configured_npm_spec():
     """Default launch should not prefer a stale daemon baked into the template."""
-    assert "old_pids=$(ps -eo pid=,args=" in CLOUD_DAEMON_STARTUP_COMMAND
-    assert "botcord-daemon start --foreground|daemon\\/dist\\/index\\.js start --foreground" in (
-        CLOUD_DAEMON_STARTUP_COMMAND
-    )
-    assert "kill -TERM $old_pids" in CLOUD_DAEMON_STARTUP_COMMAND
+    # Shell-level `ps | grep | kill` is intentionally NOT present: its
+    # grep pattern matches the wrapping shell's own command line, so it
+    # ends up killing its own parent. The daemon's in-process singleton
+    # (`packages/daemon/src/daemon-singleton.ts`) is the source of truth.
+    assert "old_pids=" not in CLOUD_DAEMON_STARTUP_COMMAND
+    assert "kill -TERM" not in CLOUD_DAEMON_STARTUP_COMMAND
     assert "npm_config_prefer_online=true" in CLOUD_DAEMON_STARTUP_COMMAND
     assert "case \"${CLOUD_DAEMON_NPM_SPEC:-}\"" in CLOUD_DAEMON_STARTUP_COMMAND
     assert "exec npm exec --yes --package @botcord/daemon@latest --" in (

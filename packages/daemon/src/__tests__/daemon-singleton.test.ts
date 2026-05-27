@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ensureNoOtherDaemonFromPidFile,
+  isBotCordDaemonStartCommand,
   parseDaemonProcesses,
   readPid,
   removePidFile,
@@ -88,6 +89,38 @@ describe("daemon singleton pid helpers", () => {
     );
 
     expect(out.map((p) => p.pid)).toEqual([111, 222]);
+  });
+
+  it("does not match shell wrappers whose argv mentions botcord-daemon as a literal", () => {
+    // These are the wrapper command lines we observed in cloud sandboxes;
+    // they must NOT be classified as the daemon, otherwise the singleton
+    // check kills the wrapper and takes the actual daemon down with it.
+    const wrappers = [
+      "npm exec --yes --package @botcord/daemon@latest -- botcord-daemon start --foreground",
+      "npx --yes --package @botcord/daemon@latest -- botcord-daemon start --foreground",
+      "sh -c botcord-daemon start --foreground",
+      "/bin/bash -l -c export npm_config_cache=/tmp/c; npm exec --yes --package @botcord/daemon@latest -- botcord-daemon start --foreground",
+      "timeout 30 npm exec --yes --package @botcord/daemon@latest -- botcord-daemon start --foreground",
+    ];
+    for (const cmd of wrappers) {
+      expect(isBotCordDaemonStartCommand(cmd), `wrongly matched wrapper: ${cmd}`).toBe(false);
+    }
+  });
+
+  it("matches the actual daemon entry processes", () => {
+    const matches = [
+      // node running the published daemon (npx / npm exec resolution under _npx)
+      "node /tmp/botcord-npm-cache/_npx/abc123/node_modules/@botcord/daemon/dist/index.js start --foreground",
+      // node running the resolved bin shim
+      "node /Users/me/.botcord/daemon/node_modules/.bin/botcord-daemon start --foreground",
+      // direct invocation of the bin
+      "/usr/local/bin/botcord-daemon start --foreground",
+      // monorepo dev: node running packages/daemon/dist/index.js
+      "node /home/dev/botcord/packages/daemon/dist/index.js start --foreground",
+    ];
+    for (const cmd of matches) {
+      expect(isBotCordDaemonStartCommand(cmd), `failed to match daemon: ${cmd}`).toBe(true);
+    }
   });
 
   it("terminates extra daemon processes discovered outside the pid file", async () => {

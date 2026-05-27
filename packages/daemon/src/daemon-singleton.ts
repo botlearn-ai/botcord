@@ -193,12 +193,28 @@ export function removePidFile(pidPath = PID_PATH): void {
   }
 }
 
-function isBotCordDaemonStartCommand(command: string): boolean {
+export function isBotCordDaemonStartCommand(command: string): boolean {
   if (!/\bstart\b/.test(command)) return false;
+  // Only treat a row as "the daemon" when argv[0] is the real entry point:
+  // either the node interpreter (running `dist/index.js`) or the resolved
+  // `botcord-daemon` bin shim. Reject shell wrappers (`sh`, `bash`, `npm`,
+  // `npx`, `timeout`, ...) — their argv mentions `botcord-daemon` only as a
+  // literal arg, not as the executable being run. Killing a wrapper takes
+  // out the actual daemon it started, which is exactly the bug we want
+  // to avoid in cloud sandboxes.
+  const exe = (command.trim().split(/\s+/, 1)[0] ?? "").split("/").pop() ?? "";
+  const isNode = /^node(\d.*)?$/.test(exe);
+  const isDaemonBin = exe === "botcord-daemon";
+  if (!isNode && !isDaemonBin) return false;
   return (
-    command.includes("botcord-daemon") ||
-    /(?:^|\s)\S*botcord\S*\/daemon\/dist\/index\.js(?:\s|$)/.test(command) ||
-    /(?:^|\s)\S*packages\/daemon\/dist\/index\.js(?:\s|$)/.test(command)
+    // node-resolved bin shim, e.g. .../node_modules/.bin/botcord-daemon
+    /\/\.?bin\/botcord-daemon(?:\s|$)/.test(command) ||
+    // direct bin invocation, e.g. /usr/local/bin/botcord-daemon or argv[0]=botcord-daemon
+    /(?:^|\s)\S*botcord-daemon(?:\s|$)/.test(command) ||
+    // node running the published daemon entry script
+    /\bbotcord\S*\/daemon\/dist\/index\.js(?:\s|$)/.test(command) ||
+    // node running the in-repo daemon entry script (dev / monorepo)
+    /\bpackages\/daemon\/dist\/index\.js(?:\s|$)/.test(command)
   );
 }
 
