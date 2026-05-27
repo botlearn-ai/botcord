@@ -1,4 +1,10 @@
-name: Publish Package
+name: Publish Package (manual / emergency)
+
+# ⚠️ Primary release path is release-packages.yml (changesets-driven).
+# Use this manual workflow ONLY for emergency hotfixes when the
+# changesets Release PR flow is unavailable. Successive uses risk
+# diverging from changesets' state — follow with a manual
+# `pnpm changeset` to record the bump.
 
 on:
   workflow_dispatch:

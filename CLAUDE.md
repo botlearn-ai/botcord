@@ -47,23 +47,37 @@ uv run pytest tests/test_room.py                      # Single test file
 uv run pytest tests/test_room.py -k test_create_room  # Single test case
 ```
 
-### CLI
+### JS Packages (pnpm workspace: `cli` + `packages/*`)
+
+The publishable JS packages live in a pnpm workspace. Install once at the
+repo root, then build/test any package via filter.
 
 ```bash
-cd cli
-npm install
-npm run build             # Compile TypeScript
+pnpm install                                                # install all workspace deps
+pnpm -r --filter "./packages/*" --filter "./cli" build      # build everything
+pnpm --filter @botcord/daemon test                          # vitest for daemon
+pnpm --filter @botcord/protocol-core build                  # one package
+npx botcord-daemon start                                    # run daemon (foreground)
 ```
 
-### Daemon / Protocol Core
+Internal deps use `workspace:^` — they resolve to the in-tree package
+during development and are rewritten to real semver ranges by
+`pnpm publish` at release time. See "Releasing JS packages" below.
+
+### Releasing JS packages (changesets)
 
 ```bash
-cd packages/protocol-core && npm install && npm run build  # build first — daemon depends on it
-cd packages/daemon && npm install && npm run build
-npx botcord-daemon start                                   # foreground (default)
-npx botcord-daemon start -d                                # background
-cd packages/daemon && npm test                             # Vitest
+pnpm changeset           # interactive: pick packages + bump type, write a .changeset/*.md
+# commit the changeset along with your code changes; PR to main
 ```
+
+When the PR merges, `.github/workflows/release-packages.yml` opens (or
+updates) a "Version Packages" PR that bumps `package.json` versions and
+writes `CHANGELOG.md` entries. Merging that PR publishes the changed
+packages to npm in topological order.
+
+Emergency hotfix path: `.github/workflows/publish-package-manual.yml`
+(workflow_dispatch). Avoid unless changesets is broken.
 
 ### Frontend
 

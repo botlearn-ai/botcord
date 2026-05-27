@@ -43,10 +43,16 @@ jobs:
             packages:
               - 'cli/**'
               - 'packages/**'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
               - '.github/workflows/ci.yml'
             gateway_ingress:
               - 'packages/gateway-ingress/**'
               - 'packages/protocol-core/**'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
               - '.github/workflows/ci.yml'
               - '.github/workflows/deploy-gateway-ingress.yml'
 
@@ -93,7 +99,7 @@ jobs:
       - name: Run vitest
         run: pnpm test -- --run
 
-  # ── Packages: protocol-core build, cli build ────────────────────────────────
+  # ── Packages: protocol-core + cli + daemon build ────────────────────────────
   packages-ci:
     name: Packages CI
     runs-on: self-hosted
@@ -102,20 +108,18 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+        with:
+          version: '9'
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - name: protocol-core build
-        working-directory: packages/protocol-core
-        run: |
-          npm install
-          npm run build
-      - name: cli build
-        working-directory: cli
-        run: |
-          npm install
-          npm install ../packages/protocol-core
-          npm run build
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm -r --filter "./packages/protocol-core" --filter "./cli" --filter "./packages/daemon" build
+      - name: Test
+        run: pnpm -r --filter "./packages/protocol-core" --filter "./packages/daemon" test
 
   # ── Gateway ingress: vitest ──────────────────────────────────────────────────
   gateway-ingress-ci:
@@ -126,21 +130,19 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+        with:
+          version: '9'
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - name: protocol-core build
-        working-directory: packages/protocol-core
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Build + test
         run: |
-          npm install
-          npm run build
-      - name: gateway-ingress build + test
-        working-directory: packages/gateway-ingress
-        run: |
-          npm install
-          npm install ../protocol-core
-          npm run build
-          npm test
+          pnpm --filter @botcord/protocol-core build
+          pnpm --filter @botcord/gateway-ingress build
+          pnpm --filter @botcord/gateway-ingress test
 
   # ── Deploy backend preview (shared across all PRs + main) ────────────────────
   deploy-backend-preview:
