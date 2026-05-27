@@ -9,7 +9,7 @@ import type {
 } from "@botcord/protocol-core";
 import { RUNTIME_FRAME_TYPES } from "@botcord/protocol-core";
 
-import type { HubClient } from "./hub-client.js";
+import { HubClientError, type HubClient } from "./hub-client.js";
 import type { IngressLogger } from "./log.js";
 import { RuntimeSessionManager } from "./runtime/session.js";
 import type { ProviderAdapter } from "./providers/types.js";
@@ -33,14 +33,28 @@ export interface OrchestratorOptions {
   runtime: RuntimeSessionManager;
   log: IngressLogger;
   dedupeCapacity?: number;
+  retryIntervalMs?: number;
+  retryBaseDelayMs?: number;
+  retryMaxDelayMs?: number;
   /**
    * Optional clock override for tests. Defaults to `Date.now`.
    */
   now?: () => number;
 }
 
+const DEFAULT_RETRY_INTERVAL_MS = 1000;
+const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
+const DEFAULT_RETRY_MAX_DELAY_MS = 30_000;
+
 export class IngressOrchestrator {
   private readonly now: () => number;
+  private readonly retryBaseDelayMs: number;
+  private readonly retryMaxDelayMs: number;
+  private readonly retryIntervalMs: number;
+  private retryTimer: ReturnType<typeof setInterval> | null = null;
+  private retryRunning = false;
+  private readonly dispatchingEvents = new Set<string>();
+  private readonly ensureRunningByAgent = new Map<string, Promise<EnsureRunningResponse>>();
   /** Track provider adapters so we can call their `send()` for outbound. */
   private readonly providers = new Map<string, ProviderAdapter>();
   /** Pending acks keyed by event id. */
@@ -51,6 +65,9 @@ export class IngressOrchestrator {
 
   constructor(private readonly opts: OrchestratorOptions) {
     this.now = opts.now ?? (() => Date.now());
+    this.retryIntervalMs = opts.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
+    this.retryBaseDelayMs = opts.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
+    this.retryMaxDelayMs = opts.retryMaxDelayMs ?? DEFAULT_RETRY_MAX_DELAY_MS;
   }
 
   // -------------------------------------------------------------------
@@ -129,82 +146,193 @@ export class IngressOrchestrator {
   /**
    * Resume queued events that were left in `queued` / `delivering` on
    * boot. Each event triggers a fresh ensure-running + runtime delivery
-   * attempt. Failures move the event to `failed` after a single retry.
+   * attempt. Retryable failures stay queued with backoff.
    */
   async resumePending(): Promise<void> {
-    for (const event of this.opts.store.listEventsByStatus("queued", "delivering")) {
-      await this.dispatchEvent(event.eventId);
+    await this.retryPending({ force: true });
+  }
+
+  startRetryWorker(): void {
+    if (this.retryTimer) return;
+    this.retryTimer = setInterval(() => {
+      void this.retryPending().catch((err) => {
+        this.opts.log.error("retryPending failed", { err: String(err) });
+      });
+    }, this.retryIntervalMs);
+    this.retryTimer.unref?.();
+  }
+
+  stopRetryWorker(): void {
+    if (!this.retryTimer) return;
+    clearInterval(this.retryTimer);
+    this.retryTimer = null;
+  }
+
+  async retryPending(opts: { force?: boolean } = {}): Promise<number> {
+    if (this.retryRunning) return 0;
+    this.retryRunning = true;
+    let dispatched = 0;
+    try {
+      const now = this.now();
+      for (const event of this.opts.store.listEventsByStatus("queued", "delivering")) {
+        if (!opts.force && !this.isDue(event, now)) continue;
+        await this.dispatchEvent(event.eventId);
+        dispatched += 1;
+      }
+      return dispatched;
+    } finally {
+      this.retryRunning = false;
     }
   }
 
-  /**
-   * Core delivery path:
-   *
-   * 1. ensure-running (Hub API) — refreshes the sandbox + runtime
-   *    metadata.
-   * 2. Open / reuse the runtime WS session.
-   * 3. Send the `gateway_inbound` frame.
-   * 4. Wait for the daemon's `gateway_inbound_ack` and mark the event
-   *    as `delivering`. Outbound completion frames will move it
-   *    further along.
-   */
-  async dispatchEvent(eventId: string): Promise<void> {
+  private isDue(event: InboundEvent, now: number): boolean {
+    if (this.dispatchingEvents.has(event.eventId)) return false;
+    if (event.nextAttemptAt != null) return event.nextAttemptAt <= now;
+    if (event.attemptCount <= 0) return true;
+    return event.updatedAt + this.retryDelayMs(event.attemptCount) <= now;
+  }
+
+  private retryDelayMs(attemptCount: number): number {
+    const exponent = Math.max(0, Math.min(attemptCount - 1, 8));
+    return Math.min(this.retryMaxDelayMs, this.retryBaseDelayMs * 2 ** exponent);
+  }
+
+  private requeueEvent(event: InboundEvent, lastError: string): void {
+    const attemptCount = event.attemptCount + 1;
+    this.opts.store.updateEvent(event.eventId, {
+      status: "queued",
+      attemptCount,
+      nextAttemptAt: this.now() + this.retryDelayMs(attemptCount),
+      lastError,
+    });
+  }
+
+  private failEvent(eventId: string, lastError: string): void {
+    this.opts.store.updateEvent(eventId, {
+      status: "failed",
+      nextAttemptAt: null,
+      lastError,
+    });
+  }
+
+  private async ensureRunningForEvent(
+    connection: GatewayConnection,
+    event: InboundEvent,
+  ): Promise<EnsureRunningResponse> {
+    const existing = this.ensureRunningByAgent.get(connection.agentId);
+    if (existing) {
+      const first = await existing;
+      if (first.status === "ready") {
+        return this.opts.hub.getRuntime(connection.agentId, {
+          gatewayId: connection.id,
+          eventId: event.eventId,
+        });
+      }
+      return first;
+    }
+
+    const promise = this.opts.hub.ensureRunning(connection.agentId, {
+      gateway_id: connection.id,
+      reason: "third_party_inbound",
+      event_id: event.eventId,
+    });
+    this.ensureRunningByAgent.set(connection.agentId, promise);
+    try {
+      return await promise;
+    } finally {
+      if (this.ensureRunningByAgent.get(connection.agentId) === promise) {
+        this.ensureRunningByAgent.delete(connection.agentId);
+      }
+    }
+  }
+
+  private async resolveRuntimeMetadata(
+    connection: GatewayConnection,
+    event: InboundEvent,
+  ): Promise<EnsureRunningResponse> {
+    if (this.shouldPollRuntimeFirst(event)) {
+      const runtime = await this.opts.hub.getRuntime(connection.agentId, {
+        gatewayId: connection.id,
+        eventId: event.eventId,
+      });
+      if (runtime.status !== "paused") return runtime;
+    }
+    return this.ensureRunningForEvent(connection, event);
+  }
+
+  private shouldPollRuntimeFirst(event: InboundEvent): boolean {
+    if (event.lastError?.startsWith("hub_status_provisioning")) return true;
+    return this.opts.store
+      .listEventsByStatus("queued", "delivering")
+      .some(
+        (other) =>
+          other.eventId !== event.eventId &&
+          other.agentId === event.agentId &&
+          other.lastError?.startsWith("hub_status_provisioning"),
+      );
+  }
+
+  private shouldFailHubClientError(err: unknown): err is HubClientError {
+    return err instanceof HubClientError && (err.status === 404 || err.status === 409);
+  }
+
+  private hubErrorCode(err: unknown): string {
+    if (err instanceof HubClientError) return `${err.code || `http_${err.status}`}`;
+    return String(err);
+  }
+
+  private async dispatchEventLocked(eventId: string): Promise<void> {
     const event = this.opts.store.getEvent(eventId);
     if (!event) return;
-    if (event.status === "delivered") return;
+    if (
+      event.status === "delivered" ||
+      event.status === "failed" ||
+      event.status === "dead_letter"
+    ) {
+      return;
+    }
 
     const connection = this.opts.store.getConnection(event.gatewayId);
     if (!connection) {
-      this.opts.store.updateEvent(event.eventId, {
-        status: "failed",
-        lastError: "gateway_not_found",
-      });
+      this.failEvent(event.eventId, "gateway_not_found");
       return;
     }
 
     let runtimeMeta: RuntimeSessionMetadata | null = null;
     let cloudDaemonInstanceId: string | undefined;
     try {
-      const res = await this.opts.hub.ensureRunning(connection.agentId, {
-        gateway_id: connection.id,
-        reason: "third_party_inbound",
-        event_id: event.eventId,
-      });
+      const res = await this.resolveRuntimeMetadata(connection, event);
       ({ runtime: runtimeMeta = null, cloud_daemon_instance_id: cloudDaemonInstanceId } =
         res as EnsureRunningResponse & { runtime?: RuntimeSessionMetadata | null });
-      if (res.status === "failed") {
-        this.opts.store.updateEvent(event.eventId, {
-          status: "failed",
-          lastError: `hub_status_failed:${res.error?.code ?? "unknown"}`,
-        });
+      if (res.status === "failed" || res.status === "deleted") {
+        this.failEvent(
+          event.eventId,
+          res.status === "failed"
+            ? `hub_status_failed:${res.error?.code ?? "unknown"}`
+            : "hub_status_deleted",
+        );
         return;
       }
       if (res.status !== "ready" || !runtimeMeta) {
-        // Sandbox not ready yet — leave queued for the next pass.
-        this.opts.store.updateEvent(event.eventId, {
-          status: "queued",
-          attemptCount: event.attemptCount + 1,
-          lastError: `hub_status_${res.status}`,
-        });
+        // Sandbox not ready yet. Keep the durable event and let the retry worker
+        // poll `/runtime` instead of repeatedly kicking E2B start.
+        this.requeueEvent(event, `hub_status_${res.status}`);
         return;
       }
     } catch (err) {
-      this.opts.store.updateEvent(event.eventId, {
-        status: "queued",
-        attemptCount: event.attemptCount + 1,
-        lastError: `ensure_running_failed: ${String(err)}`,
-      });
+      const lastError = `ensure_running_failed: ${this.hubErrorCode(err)}`;
+      if (this.shouldFailHubClientError(err)) {
+        this.failEvent(event.eventId, lastError);
+        return;
+      }
+      this.requeueEvent(event, lastError);
       return;
     }
 
     try {
       await this.opts.runtime.ensureSession(connection.agentId, connection.id, runtimeMeta);
     } catch (err) {
-      this.opts.store.updateEvent(event.eventId, {
-        status: "queued",
-        attemptCount: event.attemptCount + 1,
-        lastError: `runtime_session_failed: ${String(err)}`,
-      });
+      this.requeueEvent(event, `runtime_session_failed: ${String(err)}`);
       return;
     }
 
@@ -238,15 +366,13 @@ export class IngressOrchestrator {
     this.opts.store.updateEvent(event.eventId, {
       status: "delivering",
       attemptCount: event.attemptCount + 1,
+      nextAttemptAt: null,
     });
 
     try {
       await this.opts.runtime.sendInbound(frame);
     } catch (err) {
-      this.opts.store.updateEvent(event.eventId, {
-        status: "queued",
-        lastError: `send_failed: ${String(err)}`,
-      });
+      this.requeueEvent(event, `send_failed: ${String(err)}`);
       return;
     }
 
@@ -256,6 +382,21 @@ export class IngressOrchestrator {
         eventId: event.eventId,
         cloudDaemonInstanceId,
       });
+    }
+  }
+
+  /**
+   * Drive one durable event through ensure-running → runtime delivery.
+   * Retryable failures stay queued with backoff unless the Hub reports a
+   * terminal agent/gateway state.
+   */
+  async dispatchEvent(eventId: string): Promise<void> {
+    if (this.dispatchingEvents.has(eventId)) return;
+    this.dispatchingEvents.add(eventId);
+    try {
+      await this.dispatchEventLocked(eventId);
+    } finally {
+      this.dispatchingEvents.delete(eventId);
     }
   }
 

@@ -132,10 +132,14 @@ async def _ack_frame_when_sent(
     raise AssertionError("no frame was dispatched")
 
 
-def _make_e2b_service(*, max_agents_per_daemon: int = 2) -> CloudAgentService:
+def _make_e2b_service(
+    *,
+    client: FakeE2BSandboxClient | None = None,
+    max_agents_per_daemon: int = 2,
+) -> CloudAgentService:
     return CloudAgentService(
         provider=E2BCloudDaemonProvider(
-            client=FakeE2BSandboxClient(),
+            client=client or FakeE2BSandboxClient(),
             template_id="tpl_test",
             default_region="us-east-1",
             sandbox_timeout_seconds=120,
@@ -435,6 +439,48 @@ async def test_resume_ready_agent_offline_rotates_key_for_reprovision(db_session
     assert provisioning["private_key_b64"]
     assert provisioning["public_key_b64"]
     assert provisioning["key_id"]
+
+
+@pytest.mark.asyncio
+async def test_resume_while_starting_reuses_inflight_start(db_session):
+    client = FakeE2BSandboxClient()
+    service = _make_e2b_service(client=client)
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+
+    conn, ws = await _register_fake_conn(view.cloud_daemon_instance_id, "dm_once")
+    try:
+        t = asyncio.create_task(
+            _ack_frame_when_sent(conn, ws, expected_type="provision_agent")
+        )
+        await service.provision_pending_for_cloud_daemon(
+            db_session, cloud_daemon_instance_id=view.cloud_daemon_instance_id
+        )
+        await t
+    finally:
+        await _registry_for_tests().unregister(conn)
+
+    sandbox_id = view.provider_sandbox_id
+    assert sandbox_id is not None
+    sandbox = client.get(sandbox_id)
+    assert sandbox is not None
+    assert len(sandbox.commands) == 1
+
+    first_resume = await service.resume_cloud_agent(
+        db_session, user_id=user_id, agent_id=view.agent_id
+    )
+    assert first_resume.status == "provisioning"
+    assert first_resume.cloud_daemon_status == "starting"
+    assert len(sandbox.commands) == 2
+
+    second_resume = await service.resume_cloud_agent(
+        db_session, user_id=user_id, agent_id=view.agent_id
+    )
+    assert second_resume.status == "provisioning"
+    assert second_resume.cloud_daemon_status == "starting"
+    assert len(sandbox.commands) == 2
 
 
 @pytest.mark.asyncio

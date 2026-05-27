@@ -17,6 +17,7 @@ import { RUNTIME_SOCKET_STATE, type RuntimeSocketLike } from "../runtime/session
 
 export class FakeHubClient implements HubClient {
   ensureRunningCalls: { agentId: string; body: EnsureRunningRequest }[] = [];
+  getRuntimeCalls: { agentId: string; params: { gatewayId: string; eventId?: string } }[] = [];
   touchCalls: { agentId: string; body: TouchRuntimeRequest }[] = [];
   ensureResponse: (req: EnsureRunningRequest) => EnsureRunningResponse = () => ({
     agent_id: "ag_test",
@@ -24,6 +25,7 @@ export class FakeHubClient implements HubClient {
     cloud_daemon_instance_id: "cloud_dm_fake",
     runtime: this.defaultRuntime(),
   });
+  runtimeResponse?: (params: { gatewayId: string; eventId?: string }) => EnsureRunningResponse;
 
   defaultRuntime(): RuntimeSessionMetadata {
     return {
@@ -42,6 +44,8 @@ export class FakeHubClient implements HubClient {
   }
 
   async getRuntime(agentId: string, params: { gatewayId: string; eventId?: string }): Promise<EnsureRunningResponse> {
+    this.getRuntimeCalls.push({ agentId, params });
+    if (this.runtimeResponse) return this.runtimeResponse(params);
     return this.ensureResponse({
       gateway_id: params.gatewayId,
       reason: "manual_resume",

@@ -73,6 +73,7 @@ export interface InboundEvent {
   normalizedMessage: GatewayInboundMessage;
   status: InboundEventStatus;
   attemptCount: number;
+  nextAttemptAt?: number | null;
   lastError?: string | null;
   createdAt: number;
   updatedAt: number;
