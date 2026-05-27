@@ -16,6 +16,7 @@ import { api } from "@/lib/api";
 import type {
   Attachment,
   OwnerChatMessage,
+  ReplyPreview,
   StreamBlockEntry,
   DashboardMessage,
 } from "@/lib/types";
@@ -164,6 +165,7 @@ export interface OwnerChatState {
     senderName: string;
     createdAt: string;
     attachments?: Attachment[];
+    replyPreview?: ReplyPreview | null;
   }) => void;
 
   // Connection state
@@ -172,6 +174,10 @@ export interface OwnerChatState {
   onDisconnect: () => void;
   reconcileAfterReconnect: () => Promise<void>;
   reset: () => void;
+
+  // Quote-reply
+  replyingTo: OwnerChatMessage | null;
+  setReplyingTo: (msg: OwnerChatMessage | null) => void;
 }
 
 const initialState = {
@@ -184,6 +190,7 @@ const initialState = {
   wsConnected: false,
   agentTyping: false,
   activeTraceId: null as string | null,
+  replyingTo: null as OwnerChatMessage | null,
 };
 
 // ---------------------------------------------------------------------------
@@ -196,6 +203,8 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
   // ------ Initialization ------
 
   setRoom: (roomId, agentName) => set({ roomId, agentName }),
+
+  setReplyingTo: (msg) => set({ replyingTo: msg }),
 
   loadInitial: async (roomId) => {
     // Allow re-entry if room changed (e.g. onAuthOk correction) — the stale
@@ -531,6 +540,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           senderName: finalData.senderName,
           type: "message",
           traceId,
+          replyPreview: finalData.replyPreview ?? undefined,
         };
 
         // Dedup
@@ -579,6 +589,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         status: "delivered",
         // Keep only execution blocks (assistant text now lives in `text`)
         streamBlocks: visibleStreamBlocks,
+        replyPreview: finalData.replyPreview ?? existing.replyPreview ?? undefined,
       };
 
       const newMessages = [...state.messages];

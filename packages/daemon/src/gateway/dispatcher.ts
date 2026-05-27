@@ -208,6 +208,31 @@ function buildRuntimeRecoveryPrompt(args: {
   ].join("\n");
 }
 
+/**
+ * Pick the canonical reply_to value to attach to outbound replies for a given
+ * inbound `GatewayInboundMessage`. Priority:
+ *
+ *   1. `msg.replyTo` — the inbound was itself a reply; preserve the chain so
+ *      receipts and threaded replies point at the original target.
+ *   2. `raw.envelope.msg_id` — the wire-protocol identifier (UUID per a2a/0.1).
+ *      This is the canonical form the hub stores in `reply_to_msg_id`.
+ *   3. `msg.id` — fallback to the hub_msg_id (`h_*`) the BotCord channel
+ *      stamps on every inbound. The hub accepts this form via
+ *      `_load_reply_target`'s prefix-based discriminator, but emitting it is
+ *      lossy because the hub then has to resolve it back to msg_id.
+ *
+ * Exported for unit testing; production code paths use Dispatcher.providerReplyTo.
+ */
+export function pickReplyToTarget(msg: GatewayInboundMessage): string {
+  if (msg.replyTo) return msg.replyTo;
+  const raw = msg.raw as { envelope?: { msg_id?: unknown } } | null | undefined;
+  const envMsgId =
+    raw && typeof raw.envelope?.msg_id === "string" && raw.envelope.msg_id
+      ? raw.envelope.msg_id
+      : null;
+  return envMsgId ?? msg.id;
+}
+
 /** Factory signature for building a runtime adapter at turn dispatch time. */
 export type RuntimeFactory = (
   runtimeId: string,
@@ -2132,7 +2157,7 @@ export class Dispatcher {
   }
 
   private providerReplyTo(msg: GatewayInboundMessage): string {
-    return msg.replyTo ?? msg.id;
+    return pickReplyToTarget(msg);
   }
 
   private emitInbound(turnId: string, msg: GatewayInboundEnvelope["message"]): void {

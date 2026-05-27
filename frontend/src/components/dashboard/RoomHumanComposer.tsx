@@ -11,7 +11,7 @@ import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useShallow } from "zustand/react/shallow";
 import MessageComposer from "./MessageComposer";
 import { useMentionCandidates } from "@/hooks/useMentionCandidates";
-import { Loader2, X } from "lucide-react";
+import { CornerUpLeft, Loader2, X } from "lucide-react";
 import DashboardSelect from "./DashboardSelect";
 
 interface RoomHumanComposerProps {
@@ -231,6 +231,8 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     pollNewMessages: s.pollNewMessages,
     refreshOverview: s.refreshOverview,
   })));
+  const replyingTo = useDashboardChatStore((s) => s.replyingTo[roomId] ?? null);
+  const setReplyingTo = useDashboardChatStore((s) => s.setReplyingTo);
   const hasRoomInOverview = useDashboardChatStore(
     (s) => Boolean(s.overview?.rooms.some((r) => r.room_id === roomId)),
   );
@@ -331,6 +333,18 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     const clientTempId = `tmp_${crypto.randomUUID()}`;
     const now = new Date().toISOString();
     const displayText = text || (attachments ? `[${attachments.length} file(s)]` : "");
+    const replyTargetMsgId = replyingTo?.msg_id ?? null;
+    const optimisticReplyPreview = replyingTo
+      ? {
+          msg_id: replyingTo.msg_id,
+          sender_id: replyingTo.sender_id,
+          sender_display_name:
+            replyingTo.display_sender_name || replyingTo.sender_name || null,
+          text_preview: (replyingTo.text || "").slice(0, 120) || null,
+          topic_id: replyingTo.topic_id,
+          deleted: false,
+        }
+      : null;
     const optimistic: DashboardMessage = {
       hub_msg_id: clientTempId,
       msg_id: clientTempId,
@@ -353,12 +367,18 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
       source_user_id: user?.id ?? null,
       source_user_name: displayName,
       is_mine: true,
+      reply_preview: optimisticReplyPreview,
     };
 
     insertMessage(roomId, optimistic);
+    // Clear the quote bar as soon as the message is in flight — server-side
+    // validation is mirrored in the optimistic preview already.
+    if (replyTargetMsgId) setReplyingTo(roomId, null);
 
     try {
-      const result = await api.sendRoomHumanMessage(roomId, text, mentions, topicId, attachments);
+      const result = await api.sendRoomHumanMessage(
+        roomId, text, mentions, topicId, attachments, replyTargetMsgId,
+      );
       patchRoom(roomId, {
         last_message_preview: displayText,
         last_message_at: now,
@@ -377,7 +397,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send");
     }
-  }, [uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms]);
+  }, [uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms, replyingTo, setReplyingTo, human?.avatar_url, user?.avatar_url]);
 
   if (sendDenied) {
     return (
@@ -395,6 +415,13 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
             ? `代 ${activeAgentId} 发言（以你的 Human 身份）`
             : `Speaking on behalf of ${activeAgentId} (as you, the Human)`}
         </p>
+      )}
+      {replyingTo && (
+        <ReplyingToBar
+          target={replyingTo}
+          locale={locale}
+          onCancel={() => setReplyingTo(roomId, null)}
+        />
       )}
       <MessageComposer
         key={`${roomId}:${prefillNonce}`}
@@ -426,6 +453,41 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
           }}
         />
       ) : null}
+    </div>
+  );
+}
+
+interface ReplyingToBarProps {
+  target: DashboardMessage;
+  locale: "zh" | "en";
+  onCancel: () => void;
+}
+
+function ReplyingToBar({ target, locale, onCancel }: ReplyingToBarProps) {
+  const name = target.display_sender_name || target.sender_name || target.sender_id;
+  const preview = (target.text || "").slice(0, 80);
+  const replyingLabel = locale === "zh" ? "正在回复" : "Replying to";
+  const cancelLabel = locale === "zh" ? "取消引用" : "Cancel reply";
+  return (
+    <div className="mx-1 flex items-start gap-2 rounded-md border-l-2 border-neon-cyan/60 bg-glass-bg/60 pl-2 pr-1 py-1.5 text-xs">
+      <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-neon-cyan/80" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[11px] font-medium text-neon-cyan/90">
+          {replyingLabel} · {name}
+        </div>
+        {preview && (
+          <div className="truncate text-[11px] text-text-secondary/80">{preview}</div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded p-0.5 text-text-secondary/60 hover:bg-glass-bg hover:text-text-secondary transition-colors"
+        aria-label={cancelLabel}
+        title={cancelLabel}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }

@@ -370,3 +370,124 @@ describe("composeBotCordUserTurn", () => {
     expect(headerLines.length).toBe(1);
   });
 });
+
+describe("composeBotCordUserTurn quote-reply", () => {
+  it("inserts a [quoting …] line above the body when reply_preview is present", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "agreed, ship it",
+        sender: { id: "ag_alice", name: "Alice", kind: "agent" },
+        raw: {
+          reply_preview: {
+            msg_id: "h_orig",
+            sender_id: "ag_bob",
+            sender_display_name: "Bob",
+            text_preview: "We should ship the feature next sprint",
+            topic_id: null,
+            deleted: false,
+          },
+        },
+      }),
+    );
+    expect(out).toContain('<agent-message sender="ag_alice" sender_kind="agent">');
+    expect(out).toContain('[quoting Bob: "We should ship the feature next sprint"]');
+    expect(out).toContain("agreed, ship it");
+    // Quote line precedes body inside the tag block.
+    const quoteIdx = out.indexOf("[quoting Bob");
+    const bodyIdx = out.indexOf("agreed, ship it");
+    expect(quoteIdx).toBeGreaterThan(-1);
+    expect(quoteIdx).toBeLessThan(bodyIdx);
+  });
+
+  it("renders a tombstone line when the quote target was deleted", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "RE: that thing",
+        sender: { id: "ag_alice", kind: "agent" },
+        raw: {
+          reply_preview: {
+            msg_id: "h_gone",
+            sender_id: null,
+            sender_display_name: null,
+            text_preview: null,
+            topic_id: null,
+            deleted: true,
+          },
+        },
+      }),
+    );
+    expect(out).toContain("[quoting (deleted message)]");
+    expect(out).toContain("RE: that thing");
+  });
+
+  it("falls back to sender_id when display name is missing", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "ack",
+        sender: { id: "ag_alice", kind: "agent" },
+        raw: {
+          reply_preview: {
+            msg_id: "h_orig",
+            sender_id: "ag_bob",
+            sender_display_name: null,
+            text_preview: "hi",
+            topic_id: null,
+            deleted: false,
+          },
+        },
+      }),
+    );
+    expect(out).toContain('[quoting ag_bob: "hi"]');
+  });
+
+  it("emits no quote line when reply_preview is absent (regression guard)", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "just a normal message",
+        sender: { id: "ag_alice", kind: "agent" },
+      }),
+    );
+    expect(out).not.toContain("[quoting");
+  });
+
+  it("renders per-entry quote lines in a batched turn", () => {
+    const batchedRaw = {
+      batch: [
+        {
+          hub_msg_id: "h_1",
+          text: "first reply",
+          envelope: { from: "ag_alice", type: "message" },
+          source_type: "agent",
+          reply_preview: {
+            msg_id: "h_orig1",
+            sender_id: "ag_bob",
+            sender_display_name: "Bob",
+            text_preview: "the plan",
+            topic_id: null,
+            deleted: false,
+          },
+        },
+        {
+          hub_msg_id: "h_2",
+          text: "second reply (no quote)",
+          envelope: { from: "ag_alice", type: "message" },
+          source_type: "agent",
+        },
+      ],
+    };
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "ignored — batch path reads raw.batch",
+        sender: { id: "ag_alice", kind: "agent" },
+        raw: batchedRaw,
+      }),
+    );
+    expect(out).toContain("[BotCord Messages (2 new)]");
+    expect(out).toContain('[quoting Bob: "the plan"]');
+    expect(out).toContain("first reply");
+    expect(out).toContain("second reply (no quote)");
+    // The second entry has no quote line.
+    const quoteCount = (out.match(/\[quoting /g) || []).length;
+    expect(quoteCount).toBe(1);
+  });
+});

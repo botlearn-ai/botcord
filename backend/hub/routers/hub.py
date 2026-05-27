@@ -79,6 +79,7 @@ from hub.schemas import (
     MessageStatusResponse,
     MessageType,
     ReceiptResponse,
+    ReplyPreview,
     SendResponse,
     TypingRequest,
 )
@@ -271,6 +272,8 @@ def build_message_realtime_event(
     source_type: str | None = None,
     source_user_id: str | None = None,
     source_user_name: str | None = None,
+    reply_to: str | None = None,
+    reply_preview: ReplyPreview | None = None,
 ) -> dict[str, Any]:
     ext: dict[str, Any] = {
         "sender_id": sender_id,
@@ -285,6 +288,10 @@ def build_message_realtime_event(
         ext["source_user_id"] = source_user_id
     if source_user_name is not None:
         ext["source_user_name"] = source_user_name
+    if reply_to is not None:
+        ext["reply_to"] = reply_to
+    if reply_preview is not None:
+        ext["reply_preview"] = reply_preview.model_dump(mode="json")
     return build_agent_realtime_event(
         type=type,
         agent_id=agent_id,
@@ -802,6 +809,164 @@ async def _resolve_or_create_topic(
 # ---------------------------------------------------------------------------
 
 
+def _message_reply_to(envelope: MessageEnvelope) -> str | None:
+    """Return the quote-reply target msg_id for type=message envelopes.
+
+    `reply_to` on receipt envelopes (ack/result/error) is a receipt link, not a
+    quote-reply pointer — keep them separate so MessageRecord.reply_to_msg_id
+    only carries user-facing quote relationships.
+    """
+    if envelope.type != MessageType.message:
+        return None
+    return envelope.reply_to or None
+
+
+async def _load_reply_target(
+    db: AsyncSession,
+    *,
+    room_id: str,
+    reply_to_value: str,
+) -> MessageRecord:
+    """Validate a quote-reply target reference and return the representative record.
+
+    Accepts EITHER the envelope ``msg_id`` (UUID) OR a ``hub_msg_id`` (``h_*``).
+    The legacy daemon dispatcher (`providerReplyTo`) emits ``hub_msg_id`` as
+    ``envelope.reply_to`` for non-receipt replies; rejecting that would break
+    every already-deployed daemon. The resolver discriminates by prefix —
+    UUIDs never start with ``h_`` — and returns a record whose ``.msg_id`` is
+    the canonical envelope id that callers should persist into
+    ``reply_to_msg_id`` so downstream preview/jump consumers see one stable id.
+
+    Caller has already verified that the sender is allowed to post into
+    ``room_id`` (room membership / DM peer). So same-room check is sufficient
+    as the visibility gate.
+
+    `MessageRecord` is a fan-out table: a single ``msg_id`` may have many
+    rows (one per receiver). The msg_id path picks the earliest by id for a
+    stable representative; the hub_msg_id path is unique by construction.
+    """
+    if reply_to_value.startswith("h_"):
+        target = await db.scalar(
+            select(MessageRecord)
+            .where(MessageRecord.hub_msg_id == reply_to_value)
+            .limit(1)
+        )
+    else:
+        target = await db.scalar(
+            select(MessageRecord)
+            .where(MessageRecord.msg_id == reply_to_value)
+            .order_by(MessageRecord.id.asc())
+            .limit(1)
+        )
+    if target is None:
+        raise I18nHTTPException(status_code=400, message_key="reply_target_not_found")
+    if target.room_id != room_id:
+        raise I18nHTTPException(status_code=400, message_key="reply_target_cross_room")
+    return target
+
+
+_REPLY_PREVIEW_MAX_CHARS = 120
+
+
+def _extract_envelope_text(envelope_json: str) -> str:
+    """Best-effort body text extraction from a stored envelope JSON blob."""
+    try:
+        data = json.loads(envelope_json)
+    except (ValueError, TypeError):
+        return ""
+    payload = data.get("payload") if isinstance(data, dict) else None
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("text", "body", "message"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+async def _load_reply_previews(
+    db: AsyncSession,
+    reply_to_msg_ids: set[str],
+) -> dict[str, ReplyPreview]:
+    """Batch-load ReplyPreview structs for the given target msg_ids.
+
+    Returns one entry per requested id. Missing targets are returned with
+    ``deleted=True`` so the caller can render a tombstone instead of dropping
+    the reference. MessageRecord is a fan-out table: dedupe by msg_id, picking
+    the earliest row as the representative.
+    """
+    if not reply_to_msg_ids:
+        return {}
+
+    min_id_subq = (
+        select(func.min(MessageRecord.id).label("min_id"))
+        .where(MessageRecord.msg_id.in_(reply_to_msg_ids))
+        .group_by(MessageRecord.msg_id)
+        .subquery()
+    )
+    target_result = await db.execute(
+        select(MessageRecord).where(
+            MessageRecord.id.in_(select(min_id_subq.c.min_id))
+        )
+    )
+    targets = {t.msg_id: t for t in target_result.scalars()}
+
+    # Sender display name resolution must mirror the dashboard message-shaping
+    # layer; otherwise human-room senders (hu_*) render as raw IDs and
+    # owner-chat user messages render as the bot's name (sender_id is the
+    # agent_id, but the real author is in source_user_id).
+    agent_sender_ids: set[str] = set()
+    user_id_lookups: set[str] = set()  # mix of UUID source_user_id + hu_* sender_id
+    for t in targets.values():
+        if t.source_type == "dashboard_user_chat" and t.source_user_id:
+            # Owner-chat: real author is the human user, not the agent
+            user_id_lookups.add(t.source_user_id)
+        elif t.sender_id.startswith("hu_"):
+            user_id_lookups.add(t.sender_id)
+        elif t.sender_id.startswith("ag_"):
+            agent_sender_ids.add(t.sender_id)
+
+    agent_names: dict[str, str | None] = {}
+    if agent_sender_ids:
+        name_rows = await db.execute(
+            select(Agent.agent_id, Agent.display_name).where(
+                Agent.agent_id.in_(agent_sender_ids)
+            )
+        )
+        agent_names = {row[0]: row[1] for row in name_rows.all()}
+
+    user_names: dict[str, str | None] = {}
+    if user_id_lookups:
+        user_names = await load_user_display_names(db, user_id_lookups)  # type: ignore[assignment]
+
+    def _resolve_sender_name(t: MessageRecord) -> str | None:
+        if t.source_type == "dashboard_user_chat" and t.source_user_id:
+            return user_names.get(t.source_user_id)
+        if t.sender_id.startswith("hu_"):
+            return user_names.get(t.sender_id)
+        if t.sender_id.startswith("ag_"):
+            return agent_names.get(t.sender_id)
+        return None
+
+    previews: dict[str, ReplyPreview] = {}
+    for reply_id in reply_to_msg_ids:
+        target = targets.get(reply_id)
+        if target is None:
+            previews[reply_id] = ReplyPreview(msg_id=reply_id, deleted=True)
+            continue
+        raw_text = _extract_envelope_text(target.envelope_json)
+        preview_text = raw_text[:_REPLY_PREVIEW_MAX_CHARS] if raw_text else None
+        previews[reply_id] = ReplyPreview(
+            msg_id=reply_id,
+            sender_id=target.sender_id,
+            sender_display_name=_resolve_sender_name(target),
+            text_preview=preview_text,
+            topic_id=target.topic_id,
+            deleted=False,
+        )
+    return previews
+
+
 async def _ensure_dm_room(
     sender_id: str, receiver_id: str, db: AsyncSession
 ) -> str:
@@ -938,6 +1103,19 @@ async def _send_direct_message(
     if envelope.type != MessageType.contact_request:
         room_id = await _ensure_dm_room(envelope.from_, envelope.to, db)
 
+    # Validate quote-reply target (after room_id is known). Resolves the
+    # canonical envelope msg_id so we always persist that into the column even
+    # when the sender supplied a hub_msg_id (see _load_reply_target docstring).
+    reply_to_raw = _message_reply_to(envelope)
+    reply_to_msg_id: str | None = None
+    if reply_to_raw is not None:
+        if room_id is None:
+            # contact_request + reply_to is meaningless — reject so the client
+            # surfaces the issue instead of silently dropping the reference.
+            raise I18nHTTPException(status_code=400, message_key="reply_target_cross_room")
+        target = await _load_reply_target(db, room_id=room_id, reply_to_value=reply_to_raw)
+        reply_to_msg_id = target.msg_id
+
     # Resolve topic entity
     topic_id: str | None = None
     if topic and room_id:
@@ -961,6 +1139,7 @@ async def _send_direct_message(
         envelope_json=envelope_json,
         ttl_sec=envelope.ttl_sec,
         mentioned=True,
+        reply_to_msg_id=reply_to_msg_id,
     )
     try:
         async with db.begin_nested():
@@ -1010,6 +1189,11 @@ async def _send_direct_message(
     )
     _sender_display_name = _sender_name_result.scalar_one_or_none()
 
+    _reply_preview_dm: ReplyPreview | None = None
+    if reply_to_msg_id:
+        _previews = await _load_reply_previews(db, {reply_to_msg_id})
+        _reply_preview_dm = _previews.get(reply_to_msg_id)
+
     # Notify inbox listeners
     try:
         await notify_inbox(
@@ -1026,6 +1210,8 @@ async def _send_direct_message(
                 mentioned=True,
                 payload=envelope.payload,
                 sender_name=_sender_display_name,
+                reply_to=reply_to_msg_id,
+                reply_preview=_reply_preview_dm,
             ),
         )
     except Exception as exc:
@@ -1161,6 +1347,15 @@ async def _send_room_message(
     # All anti-spam checks passed — record timestamp for slow mode
     _record_slow_mode_send(room_id, envelope.from_)
 
+    # Validate quote-reply target (sender already verified as a member above).
+    # See _load_reply_target docstring on hub_msg_id-vs-msg_id leniency; we
+    # always store the canonical envelope msg_id in the column.
+    reply_to_raw = _message_reply_to(envelope)
+    reply_to_msg_id: str | None = None
+    if reply_to_raw is not None:
+        target = await _load_reply_target(db, room_id=room_id, reply_to_value=reply_to_raw)
+        reply_to_msg_id = target.msg_id
+
     # Block check: find members who have blocked the sender
     block_result = await db.execute(
         select(Block.owner_id).where(
@@ -1257,6 +1452,7 @@ async def _send_room_message(
             envelope_json=envelope_json,
             ttl_sec=envelope.ttl_sec,
             mentioned=is_mentioned,
+            reply_to_msg_id=reply_to_msg_id,
         )
         try:
             async with db.begin_nested():
@@ -1307,6 +1503,11 @@ async def _send_room_message(
 
     await db.commit()
 
+    _reply_preview_room: ReplyPreview | None = None
+    if reply_to_msg_id:
+        _previews = await _load_reply_previews(db, {reply_to_msg_id})
+        _reply_preview_room = _previews.get(reply_to_msg_id)
+
     # Notify all receivers
     for receiver_id in receivers:
         try:
@@ -1320,6 +1521,8 @@ async def _send_room_message(
                 mentioned=receiver_id in (envelope.mentions or []) or "@all" in (envelope.mentions or []),
                 payload=envelope.payload,
                 sender_name=_sender_display_name,
+                reply_to=reply_to_msg_id,
+                reply_preview=_reply_preview_room,
             )
             if _self_delivery and receiver_id == envelope.from_:
                 # Self-delivery: publish realtime event for the dashboard
@@ -1355,6 +1558,11 @@ async def _send_room_message(
             hub_msg_id=first_hub_msg_id or "",
             sender_id=envelope.from_,
             text=_oc_text,
+            reply_preview=(
+                _reply_preview_room.model_dump(mode="json")
+                if _reply_preview_room is not None
+                else None
+            ),
         )
 
     # Notify the sender's dashboard so the frontend refreshes in real-time
@@ -1371,6 +1579,8 @@ async def _send_room_message(
             mentioned=False,
             payload=envelope.payload,
             sender_name=_sender_display_name,
+            reply_to=reply_to_msg_id,
+            reply_preview=_reply_preview_room,
         )
         await _publish_agent_realtime_event(db, sender_rt_event)
 
@@ -1750,6 +1960,10 @@ async def poll_inbox(
     }
     user_name_map: dict[str, str | None] = await load_user_display_names(db, dashboard_user_ids)
 
+    reply_preview_map = await _load_reply_previews(
+        db, {rec.reply_to_msg_id for rec in rows if rec.reply_to_msg_id}
+    )
+
     # Build response
     messages: list[InboxMessage] = []
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -1785,6 +1999,11 @@ async def poll_inbox(
                 source_user_id=rec.source_user_id,
                 source_user_name=user_name_map.get(rec.source_user_id) if rec.source_user_id else None,
                 source_session_kind=rec.source_session_kind,
+                reply_preview=(
+                    reply_preview_map.get(rec.reply_to_msg_id)
+                    if rec.reply_to_msg_id
+                    else None
+                ),
             )
         )
         if ack:
@@ -1982,6 +2201,10 @@ async def query_history(
     has_more = len(rows) > limit
     rows = rows[:limit]
 
+    reply_preview_map = await _load_reply_previews(
+        db, {rec.reply_to_msg_id for rec in rows if rec.reply_to_msg_id}
+    )
+
     messages: list[HistoryMessage] = []
     for rec in rows:
         envelope_data = json.loads(rec.envelope_json)
@@ -1999,6 +2222,11 @@ async def query_history(
                 state=rec.state.value,
                 created_at=ca,
                 mentioned=rec.mentioned,
+                reply_preview=(
+                    reply_preview_map.get(rec.reply_to_msg_id)
+                    if rec.reply_to_msg_id
+                    else None
+                ),
             )
         )
 

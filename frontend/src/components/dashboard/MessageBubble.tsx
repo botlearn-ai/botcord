@@ -3,8 +3,10 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, Forward, MoreHorizontal, User } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Forward, MoreHorizontal, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
+import ReplyQuoteBlock from "./ReplyQuoteBlock";
+import { emitJumpToMessage } from "./messageNavigation";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useLanguage } from '@/lib/i18n';
@@ -355,6 +357,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const overview = useDashboardChatStore((state) => state.overview);
   const publicAgents = useDashboardChatStore((state) => state.publicAgents);
   const publicHumans = useDashboardChatStore((state) => state.publicHumans);
+  const setReplyingTo = useDashboardChatStore((state) => state.setReplyingTo);
   const human = useDashboardSessionStore((state) => state.human);
   const user = useDashboardSessionStore((state) => state.user);
   const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
@@ -463,6 +466,22 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     if (displayText) setForwardQuote(buildQuote());
   };
 
+  const canQuoteReply =
+    message.type === "message"
+    && Boolean(message.room_id)
+    && Boolean(message.msg_id)
+    && !message.hub_msg_id?.startsWith("tmp_");
+
+  const handleReplyClick = () => {
+    setMenuOpen(false);
+    if (!canQuoteReply || !message.room_id) return;
+    setReplyingTo(message.room_id, message);
+  };
+
+  const handleJumpToReplyTarget = (targetMsgId: string) => {
+    emitJumpToMessage({ msgId: targetMsgId, roomId: message.room_id ?? undefined });
+  };
+
   const handleCopyClick = useCallback(async () => {
     if (!displayText) return;
     try {
@@ -497,6 +516,16 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
       </button>
       {menuOpen && (
         <div className={`absolute top-full mt-1 z-30 min-w-[80px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl ${isOwn ? "right-0" : "left-0"}`}>
+          {canQuoteReply && (
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); handleReplyClick(); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+            >
+              <CornerUpLeft className="h-3.5 w-3.5 text-zinc-500" />
+              引用回复
+            </button>
+          )}
           <button
             type="button"
             onMouseDown={(e) => { e.preventDefault(); handleForwardClick(); }}
@@ -569,6 +598,11 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           </span>
           {!isHuman && <CopyableId value={message.sender_id} />}
         </div>
+
+        {/* Quote-reply preview */}
+        {message.reply_preview && (
+          <ReplyQuoteBlock preview={message.reply_preview} onJump={handleJumpToReplyTarget} />
+        )}
 
         {/* Goal badge */}
         {message.goal && (

@@ -74,6 +74,20 @@ export type SourceType =
   // Hub-issued, owner-trust posture.
   | "cloud_agent_run";
 
+/** Compact preview of the message that another message is replying to.
+ *  Attached to InboxMessage when the envelope's reply_to (for type=message)
+ *  points at a known target. `deleted=true` is a tombstone: the referenced
+ *  msg_id was found in the envelope but no record exists for it anymore.
+ */
+export type ReplyPreview = {
+  msg_id: string;
+  sender_id: string | null;
+  sender_display_name: string | null;
+  text_preview: string | null;
+  topic_id: string | null;
+  deleted: boolean;
+};
+
 export type InboxMessage = {
   hub_msg_id: string;
   envelope: BotCordMessageEnvelope;
@@ -93,6 +107,7 @@ export type InboxMessage = {
   source_user_id?: string | null;
   source_user_name?: string | null;
   source_session_kind?: string | null;
+  reply_preview?: ReplyPreview | null;
 };
 
 export type InboxPollResponse = {

@@ -819,13 +819,21 @@ export const api = {
     );
   },
 
-  sendUserChatMessage(text: string, attachments?: Attachment[], agentId?: string | null) {
+  sendUserChatMessage(
+    text: string,
+    attachments?: Attachment[],
+    agentId?: string | null,
+    replyTo?: string | null,
+  ) {
     const body: Record<string, unknown> = { text };
     if (agentId) {
       body.agent_id = agentId;
     }
     if (attachments && attachments.length > 0) {
       body.attachments = attachments;
+    }
+    if (replyTo) {
+      body.reply_to = replyTo;
     }
     return apiPost<UserChatSendResponse>("/api/dashboard/chat/send", body);
   },
@@ -836,11 +844,13 @@ export const api = {
     mentions?: string[],
     topicId?: string | null,
     attachments?: Attachment[],
+    replyTo?: string | null,
   ) {
     const body: Record<string, unknown> = { text };
     if (mentions && mentions.length > 0) body.mentions = mentions;
     if (topicId) body.topic_id = topicId;
     if (attachments && attachments.length > 0) body.attachments = attachments;
+    if (replyTo) body.reply_to = replyTo;
     return apiPost<RoomHumanSendResponse>(`/api/dashboard/rooms/${roomId}/send`, body);
   },
 

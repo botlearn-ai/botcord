@@ -10,7 +10,7 @@ import uuid as _uuid
 import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import exists, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,11 +61,14 @@ from hub.routers.hub import (
     _can_send as _room_can_send,
     _check_duplicate_content,
     _check_slow_mode,
+    _load_reply_previews,
+    _load_reply_target,
     _record_slow_mode_send,
     build_message_realtime_event,
     is_agent_ws_online,
     notify_inbox,
 )
+from hub.schemas import ReplyPreview
 from hub.services.cloud_agent_activity import maybe_bump_for_inbound_many
 from hub.share_payloads import SHARE_MESSAGE_PREVIEW_LIMIT, share_create_payload
 from hub.validators import normalize_file_url
@@ -2374,6 +2377,10 @@ async def get_room_messages(
     if room_id.startswith("rm_oc_"):
         viewer_agent_id = None
 
+    reply_preview_map = await _load_reply_previews(
+        db, {rec.reply_to_msg_id for rec in records if rec.reply_to_msg_id}
+    )
+
     messages = []
     for rec in records:
         parsed = extract_text_from_envelope(rec.envelope_json)
@@ -2386,6 +2393,7 @@ async def get_room_messages(
             viewer_agent_id=viewer_agent_id,
             viewer_user_id=viewer_user_id,
         )
+        rp = reply_preview_map.get(rec.reply_to_msg_id) if rec.reply_to_msg_id else None
         msg = {
             "hub_msg_id": rec.hub_msg_id,
             "msg_id": rec.msg_id,
@@ -2399,6 +2407,7 @@ async def get_room_messages(
             "topic_title": topic_info.get(rec.topic_id, {}).get("title") if rec.topic_id else None,
             "created_at": rec.created_at.isoformat() if rec.created_at else None,
             "source_type": rec.source_type,
+            "reply_preview": rp.model_dump(mode="json") if rp else None,
             **extra,
         }
         if is_member:
@@ -2600,11 +2609,14 @@ async def open_dm_room(
 
 
 class HumanRoomSendBody(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     text: str = Field(default="", max_length=8000)
     mentions: list[str] | None = None
     topic: str | None = None
     topic_id: str | None = None
     attachments: list[ChatAttachment] | None = Field(default=None, max_length=10)
+    reply_to: str | None = Field(default=None, alias="replyTo", max_length=64)
 
 
 @router.post("/rooms/{room_id}/send", status_code=202)
@@ -2824,6 +2836,14 @@ async def human_room_send(
     ]
     receiver_ids = [m.agent_id for m in receivers]
 
+    # Validate quote-reply target (sender is already a room member or
+    # owner-anchor at this point, so same-room check is the visibility gate).
+    # Persist the canonical envelope msg_id even if the client gave a hub_msg_id.
+    canonical_reply_msg_id: str | None = None
+    if body.reply_to is not None:
+        target = await _load_reply_target(db, room_id=room_id, reply_to_value=body.reply_to)
+        canonical_reply_msg_id = target.msg_id
+
     msg_id = str(_uuid.uuid4())
     ts = int(_time.time())
     payload: dict = {"text": text}
@@ -2836,7 +2856,7 @@ async def human_room_send(
         "from": sender_id,
         "to": room_id,
         "type": "message",
-        "reply_to": None,
+        "reply_to": canonical_reply_msg_id,
         "topic": topic_title,
         "ttl_sec": 3600,
         "payload": payload,
@@ -2871,6 +2891,7 @@ async def human_room_send(
             source_session_kind="room_human",
             source_ip=request.client.host if request.client else None,
             source_user_agent=(request.headers.get("user-agent") or "")[:256] or None,
+            reply_to_msg_id=canonical_reply_msg_id,
         )
         try:
             async with db.begin_nested():
@@ -2909,6 +2930,11 @@ async def human_room_send(
     )
     user_display_name = user_row.scalar_one_or_none() or "User"
 
+    _reply_preview_human: ReplyPreview | None = None
+    if canonical_reply_msg_id:
+        _previews = await _load_reply_previews(db, {canonical_reply_msg_id})
+        _reply_preview_human = _previews.get(canonical_reply_msg_id)
+
     for receiver_id in receiver_ids:
         try:
             rt_event = build_message_realtime_event(
@@ -2923,6 +2949,8 @@ async def human_room_send(
                 source_type="dashboard_human_room",
                 source_user_id=source_user_id_str,
                 source_user_name=user_display_name,
+                reply_to=canonical_reply_msg_id,
+                reply_preview=_reply_preview_human,
             )
             await notify_inbox(
                 receiver_id,
@@ -3236,6 +3264,10 @@ async def get_inbox(
     has_more = len(records) > limit
     records = records[:limit]
 
+    reply_preview_map = await _load_reply_previews(
+        db, {rec.reply_to_msg_id for rec in records if rec.reply_to_msg_id}
+    )
+
     messages = []
     for rec in records:
         try:
@@ -3243,12 +3275,14 @@ async def get_inbox(
         except (json.JSONDecodeError, TypeError):
             envelope = {}
 
+        rp = reply_preview_map.get(rec.reply_to_msg_id) if rec.reply_to_msg_id else None
         messages.append({
             "hub_msg_id": rec.hub_msg_id,
             "envelope": envelope,
             "room_id": rec.room_id,
             "topic": rec.topic,
             "topic_id": rec.topic_id,
+            "reply_preview": rp.model_dump(mode="json") if rp else None,
         })
 
     # Mark as delivered if ack=True
@@ -3275,9 +3309,12 @@ async def get_inbox(
 
 
 class ChatSendBody(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     text: str = ""
     agent_id: str | None = Field(default=None, max_length=64)
     attachments: list[ChatAttachment] | None = Field(default=None, max_length=10)
+    reply_to: str | None = Field(default=None, alias="replyTo", max_length=64)
 
 
 async def _resolve_owner_chat_agent(
@@ -3455,6 +3492,13 @@ async def send_chat_message(
     # Ensure room exists
     room_id = await _ensure_owner_chat_room(db, user_id, agent_id, agent_display_name)
 
+    # Validate quote-reply target (must live inside the same owner-chat room).
+    # Persist the canonical envelope msg_id even if the client gave a hub_msg_id.
+    canonical_reply_msg_id: str | None = None
+    if body.reply_to is not None:
+        target = await _load_reply_target(db, room_id=room_id, reply_to_value=body.reply_to)
+        canonical_reply_msg_id = target.msg_id
+
     # Build a synthetic envelope JSON
     msg_id = str(uuid.uuid4())
     ts = int(time.time())
@@ -3468,7 +3512,7 @@ async def send_chat_message(
         "from": agent_id,
         "to": agent_id,
         "type": "message",
-        "reply_to": None,
+        "reply_to": canonical_reply_msg_id,
         "ttl_sec": 3600,
         "payload": payload,
         "payload_hash": "",
@@ -3492,6 +3536,7 @@ async def send_chat_message(
         source_session_kind="owner_chat",
         source_ip=request.client.host if request.client else None,
         source_user_agent=(request.headers.get("user-agent") or "")[:256] or None,
+        reply_to_msg_id=canonical_reply_msg_id,
     )
     try:
         async with db.begin_nested():
@@ -3501,6 +3546,11 @@ async def send_chat_message(
         raise HTTPException(status_code=409, detail="Duplicate message")
 
     await db.commit()
+
+    _reply_preview_oc: ReplyPreview | None = None
+    if canonical_reply_msg_id:
+        _previews = await _load_reply_previews(db, {canonical_reply_msg_id})
+        _reply_preview_oc = _previews.get(canonical_reply_msg_id)
 
     # Notify inbox listeners so connected agents pick up the message
     await notify_inbox(
@@ -3515,6 +3565,8 @@ async def send_chat_message(
             created_at=record.created_at,
             payload=payload,
             sender_name=agent_display_name,
+            reply_to=canonical_reply_msg_id,
+            reply_preview=_reply_preview_oc,
         ),
         resume_cloud=not cloud_resume_ok,
     )

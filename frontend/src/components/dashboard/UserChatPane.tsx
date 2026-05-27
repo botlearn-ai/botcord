@@ -27,6 +27,7 @@ import StreamBlocksView from "./StreamBlocksView";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import CopyableId from "@/components/ui/CopyableId";
 import MessageComposer from "./MessageComposer";
+import ReplyQuoteBlock from "./ReplyQuoteBlock";
 
 const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
@@ -583,6 +584,9 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                         </>
                       )}
                     </div>
+                    {msg.replyPreview && (
+                      <ReplyQuoteBlock preview={msg.replyPreview} />
+                    )}
                     {/* Typewriter for new agent messages; skip if already animated or was streamed */}
                     {(() => {
                       const wasStreamed = msg.traceId && streamedTraceIds.current?.has(msg.traceId);

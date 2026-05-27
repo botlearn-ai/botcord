@@ -220,6 +220,9 @@ interface DashboardChatState {
   ownedAgentRoomsLoading: boolean;
   ownedAgentRoomsLoaded: boolean;
   roomMemberVersions: Record<string, number>;
+  /** Quote-reply: per-room "currently replying to" target (null when not replying). */
+  replyingTo: Record<string, DashboardMessage | null>;
+  setReplyingTo: (roomId: string, message: DashboardMessage | null) => void;
 
   setError: (error: string | null) => void;
   addRecentPublicRoom: (room: PublicRoom) => void;
@@ -291,6 +294,7 @@ const initialChatState = {
   ownedAgentRoomsLoading: false,
   ownedAgentRoomsLoaded: false,
   roomMemberVersions: {},
+  replyingTo: {} as Record<string, DashboardMessage | null>,
 };
 
 function hasTransientChatState(state: DashboardChatState): boolean {
@@ -350,6 +354,11 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             room,
             ...state.recentVisitedRooms.filter((item) => item.room_id !== room.room_id),
           ].slice(0, 20),
+        })),
+
+      setReplyingTo: (roomId, message) =>
+        set((state) => ({
+          replyingTo: { ...state.replyingTo, [roomId]: message },
         })),
 
       resetChatState: () =>
