@@ -1,12 +1,12 @@
 "use client";
 
-import { startTransition, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 // messagesFilter is in useDashboardUIStore so ChatPane can also read it.
 import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
-import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
+import { buildVisibleMessageRooms, isOwnerChatRoom } from "@/store/dashboard-shared";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -24,6 +24,16 @@ interface MessagesPanelProps {
   isGuest: boolean;
   onCreateRoom: () => void;
   onAddFriend: () => void;
+}
+
+const PREFETCH_VISIBLE_ROOM_LIMIT = 6;
+
+function rankPrefetchRooms(a: DashboardRoom, b: DashboardRoom): number {
+  const unreadDelta = Number(Boolean(b.has_unread)) - Number(Boolean(a.has_unread));
+  if (unreadDelta !== 0) return unreadDelta;
+  const bTime = b.last_message_at ? Date.parse(b.last_message_at) : 0;
+  const aTime = a.last_message_at ? Date.parse(a.last_message_at) : 0;
+  return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
 }
 
 export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: MessagesPanelProps) {
@@ -112,10 +122,41 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     });
   }, [messages, normalizedMessageQuery, categorizedRooms]);
 
-  // (filter chips moved into MessagesGroupingSidebar as expandable children)
-
   const showOverviewSkeleton = sessionMode === "authed-ready" && !overview && sidebarTab === "messages";
   const showRoomListSkeleton = showOverviewSkeleton;
+
+  useEffect(() => {
+    if (isGuest || sidebarTab !== "messages" || showOverviewSkeleton) return;
+    if (messagesShowRequests || messagesPane === "user-chat") return;
+
+    const candidateRooms = (normalizedMessageQuery ? filteredMessageRooms : categorizedRooms)
+      .filter((room) => !isOwnerChatRoom(room.room_id) && (room.last_message_at || room.has_unread))
+      .slice()
+      .sort(rankPrefetchRooms)
+      .slice(0, PREFETCH_VISIBLE_ROOM_LIMIT);
+
+    if (candidateRooms.length === 0) return;
+
+    const timer = window.setTimeout(() => {
+      const { prefetchRoomMessages } = useDashboardChatStore.getState();
+      for (const room of candidateRooms) {
+        void prefetchRoomMessages(room.room_id);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    categorizedRooms,
+    filteredMessageRooms,
+    isGuest,
+    messagesPane,
+    messagesShowRequests,
+    normalizedMessageQuery,
+    showOverviewSkeleton,
+    sidebarTab,
+  ]);
+
+  // (filter chips moved into MessagesGroupingSidebar as expandable children)
 
   // When the search toggles off, clear the query so the room list isn't accidentally
   // left filtered behind the scenes.

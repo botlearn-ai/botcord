@@ -215,7 +215,18 @@ export default function RoomList({
     setFocusedRoomId(room.room_id);
     setOpenedRoomId(room.room_id);
     closeMobileSidebar();
+    const chatStore = useDashboardChatStore.getState();
+    if (Object.prototype.hasOwnProperty.call(chatStore.messages, room.room_id)) {
+      void chatStore.pollNewMessages(room.room_id);
+    } else {
+      void chatStore.loadRoomMessages(room.room_id);
+    }
     router.push("/chats/messages");
+  };
+
+  const prefetchRoom = (room: DashboardRoom) => {
+    if (isOwnerChatRoom(room.room_id)) return;
+    void useDashboardChatStore.getState().prefetchRoomMessages(room.room_id);
   };
 
   const handleRoomKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, room: DashboardRoom) => {
@@ -362,6 +373,8 @@ export default function RoomList({
             aria-label={`Open room ${displayName}`}
             aria-current={isSelected ? "page" : undefined}
             onClick={() => void handleSelect(room)}
+            onMouseEnter={() => prefetchRoom(room)}
+            onFocus={() => prefetchRoom(room)}
             onKeyDown={(event) => handleRoomKeyDown(event, room)}
             className={`w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
               isSelected

@@ -237,6 +237,7 @@ interface DashboardChatState {
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
   loadRoomMessages: (roomId: string, opts?: { force?: boolean }) => Promise<void>;
+  prefetchRoomMessages: (roomId: string) => Promise<void>;
   pollNewMessages: (roomId: string, opts?: { expectedHubMsgId?: string | null; retries?: number }) => Promise<void>;
   loadMoreMessages: (roomId: string) => Promise<void>;
   loadRoomMembers: (roomId: string, opts?: { force?: boolean }) => Promise<PublicRoomMember[]>;
@@ -525,6 +526,13 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             void get().loadRoomMessages(roomId, { force: true });
           }
         }
+      },
+
+      prefetchRoomMessages: async (roomId: string) => {
+        const state = get();
+        if (Object.prototype.hasOwnProperty.call(state.messages, roomId)) return;
+        if (state.messagesLoading[roomId] || roomMessagesInFlight.has(roomId)) return;
+        await get().loadRoomMessages(roomId);
       },
 
       pollNewMessages: async (roomId: string, opts) => {

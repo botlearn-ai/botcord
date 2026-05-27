@@ -136,6 +136,16 @@ describe("useDashboardChatStore message polling", () => {
     expect(mocks.getRoomMessages).toHaveBeenCalledTimes(2);
   });
 
+  it("prefetches messages only when a room has no cached page", async () => {
+    mocks.getRoomMessages.mockResolvedValue({ messages: [], has_more: false });
+
+    await useDashboardChatStore.getState().prefetchRoomMessages("rm_empty");
+    await useDashboardChatStore.getState().prefetchRoomMessages("rm_empty");
+
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(1);
+    expect(useDashboardChatStore.getState().messages.rm_empty).toEqual([]);
+  });
+
   it("clears the opened room and cached messages after leaving the current room", async () => {
     const overviewAfterLeave = { ...makeOverview(), rooms: [] };
     mocks.leaveRoom.mockResolvedValue(undefined);
