@@ -495,6 +495,12 @@ class MessageRecord(Base):
         Index("ix_message_records_room_msg_id_id", "room_id", "msg_id", "id"),
         Index("ix_message_records_sender_created_room", "sender_id", "created_at", "room_id"),
         Index("ix_message_records_receiver_created_room", "receiver_id", "created_at", "room_id"),
+        Index(
+            "ix_message_records_room_reply_to",
+            "room_id",
+            "reply_to_msg_id",
+            postgresql_where=sa_text("reply_to_msg_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -538,6 +544,7 @@ class MessageRecord(Base):
     source_session_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     source_user_agent: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    reply_to_msg_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class Contact(Base):

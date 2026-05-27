@@ -10,7 +10,7 @@ import time
 import uuid
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +46,10 @@ router = APIRouter(prefix="/dashboard/chat", tags=["dashboard-chat"])
 
 
 class ChatSendRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     text: str = Field(..., min_length=1, max_length=8000)
+    reply_to: str | None = Field(default=None, alias="replyTo", max_length=64)
 
 
 class ChatSendResponse(BaseModel):
@@ -247,6 +250,11 @@ async def send_chat_message(
     # Ensure room exists
     room_id = await _ensure_owner_chat_room(db, user_id, agent_id, agent_display_name)
 
+    # Validate quote-reply target (same owner-chat room only)
+    if body.reply_to is not None:
+        from hub.routers.hub import _load_reply_target
+        await _load_reply_target(db, room_id=room_id, reply_to_msg_id=body.reply_to)
+
     # Build a synthetic envelope JSON for the message record.
     # This isn't a real A2A envelope (no crypto signing), which is intentional —
     # the source_type field distinguishes it from real A2A traffic.
@@ -260,7 +268,7 @@ async def send_chat_message(
         "from": agent_id,
         "to": agent_id,
         "type": "message",
-        "reply_to": None,
+        "reply_to": body.reply_to,
         "ttl_sec": 3600,
         "payload": payload,
         "payload_hash": "",
@@ -287,6 +295,7 @@ async def send_chat_message(
         source_session_kind="owner_chat",
         source_ip=request.client.host if request.client else None,
         source_user_agent=(request.headers.get("user-agent") or "")[:256] or None,
+        reply_to_msg_id=body.reply_to,
     )
     try:
         async with db.begin_nested():

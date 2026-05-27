@@ -207,6 +207,18 @@ ERROR_MESSAGES: dict[str, dict[Locale, str]] = {
         Locale.EN: "Receipt must have reply_to",
         Locale.ZH: "回执必须包含 reply_to",
     },
+    "reply_target_not_found": {
+        Locale.EN: "Reply target message not found",
+        Locale.ZH: "引用的消息不存在",
+    },
+    "reply_target_cross_room": {
+        Locale.EN: "Cannot reply to a message from a different room",
+        Locale.ZH: "不能跨房间引用消息",
+    },
+    "reply_target_forbidden": {
+        Locale.EN: "Reply target is not visible to the sender",
+        Locale.ZH: "无权引用该消息",
+    },
     "original_message_not_found": {
         Locale.EN: "Original message not found",
         Locale.ZH: "未找到原始消息",
@@ -811,6 +823,18 @@ HINT_MESSAGES: dict[str, dict[Locale, str]] = {
     "receipt_must_have_reply_to": {
         Locale.EN: "Set the reply_to field to the msg_id of the message you are acknowledging.",
         Locale.ZH: "请在 reply_to 字段中设置您要确认的消息的 msg_id。",
+    },
+    "reply_target_not_found": {
+        Locale.EN: "Check that reply_to points to an existing message you can see in the same room.",
+        Locale.ZH: "请确认 reply_to 指向的是同一房间内可见的现有消息。",
+    },
+    "reply_target_cross_room": {
+        Locale.EN: "The reply target belongs to a different room. Quote replies must stay within the same room.",
+        Locale.ZH: "引用的消息位于其他房间。引用回复必须在同一房间内进行。",
+    },
+    "reply_target_forbidden": {
+        Locale.EN: "The reply target exists but you are not a participant of that room.",
+        Locale.ZH: "引用的消息存在，但您不是该房间的成员。",
     },
     "original_message_not_found": {
         Locale.EN: "The message referenced by reply_to does not exist. Check the msg_id.",

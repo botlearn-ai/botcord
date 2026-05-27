@@ -310,6 +310,26 @@ class MessageStatusResponse(BaseModel):
     last_error: str | None = None
 
 
+# --- Quote-reply preview ---
+
+
+class ReplyPreview(BaseModel):
+    """Structured preview of the message that another message is replying to.
+
+    Attached to InboxMessage / HistoryMessage wrappers (not to the envelope) so
+    we don't shadow the raw `envelope.reply_to` string. `deleted=True` means
+    the target msg_id was referenced but no MessageRecord row exists for it
+    anymore (TTL expired or otherwise removed).
+    """
+
+    msg_id: str
+    sender_id: str | None = None
+    sender_display_name: str | None = None
+    text_preview: str | None = None
+    topic_id: str | None = None
+    deleted: bool = False
+
+
 # --- Inbox polling schemas ---
 
 
@@ -333,6 +353,7 @@ class InboxMessage(BaseModel):
     source_user_id: str | None = None
     source_user_name: str | None = None
     source_session_kind: str | None = None
+    reply_preview: ReplyPreview | None = None
 
 
 class InboxPollResponse(BaseModel):
@@ -362,6 +383,7 @@ class HistoryMessage(BaseModel):
     state: str
     created_at: datetime.datetime
     mentioned: bool = False
+    reply_preview: ReplyPreview | None = None
 
 
 class HistoryResponse(BaseModel):
