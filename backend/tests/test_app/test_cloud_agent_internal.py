@@ -410,14 +410,16 @@ async def test_settle_rejects_cross_daemon_jwt(client, db_session):
         agent_id=agent_a_id,
     )
 
-    # daemon B is unrelated; its JWT must be rejected for run-cross.
+    # daemon B is unrelated; the singleton model allows only one active
+    # cloud daemon per user, so seed B under a different user.
+    other_user_id = uuid.uuid4()
     cloud_b_id, daemon_b_id, _ = await _seed_cloud_daemon_hosting_agent(
-        db_session, user_id=user_id, pubkey_seed="settle-jwt-B"
+        db_session, user_id=other_user_id, pubkey_seed="settle-jwt-B"
     )
     token_b, _ = _create_cloud_daemon_access_token(
         cloud_daemon_instance_id=cloud_b_id,
         daemon_instance_id=daemon_b_id,
-        user_id=str(user_id),
+        user_id=str(other_user_id),
     )
     assert cloud_a_id != cloud_b_id
 
