@@ -465,8 +465,16 @@ async function scrollToMessage(msgId: string) {
 
 ### 5.2 E2E（`e2e/`）
 
-新增 `e2e/scenarios/quote-reply.ts`：
-- A 发送一条普通消息 → B 引用回复 → A 拉 inbox 看到 `reply_to` 字段 → 历史接口同样可见。
+原计划新增 `e2e/scenarios/quote-reply.yaml`，覆盖 A 发送 → B 引用 → A 拉 inbox/history 校验。
+
+**实施时的范围调整**：YAML runner 当前只暴露 `extract_room_id` / `extract_approval_id` 等定向 extractor，没有通用 `msg_id` 提取或 `reply_preview` 断言；加上需要 ~50 行 runner 扩展。
+
+权衡后**本期延后**该场景：
+- 后端 `tests/test_quote_reply.py` 已用 FastAPI ASGI transport 走完整 HTTP 栈，覆盖 send/history/inbox 全链路（8 用例）；
+- daemon `__tests__/turn-text.test.ts` 覆盖了 prompt 注入 + tombstone（5 用例）；
+- frontend vitest 套件 120 用例无回归。
+
+YAML e2e 留作后续 P1 — 需要先扩 runner DSL（generic `extract_field` + `assert_response_path`）。
 
 ### 5.3 前端
 

@@ -112,6 +112,18 @@ interface BatchedEntry {
   source_type?: unknown;
   source_user_name?: unknown;
   mentioned?: unknown;
+  reply_preview?: ReplyPreviewRaw | null;
+}
+
+/** Structural mirror of protocol-core ReplyPreview — kept local so the
+ * composer has no cross-package import. */
+interface ReplyPreviewRaw {
+  msg_id?: unknown;
+  sender_id?: unknown;
+  sender_display_name?: unknown;
+  text_preview?: unknown;
+  topic_id?: unknown;
+  deleted?: unknown;
 }
 
 interface RoomContextRaw {
@@ -194,6 +206,40 @@ function entryText(e: BatchedEntry): string {
   if (typeof e.text === "string") return e.text;
   if (typeof e.envelope?.payload?.text === "string") return e.envelope.payload.text;
   return "";
+}
+
+/**
+ * Format the inline quote-reply context line that prefixes a message body
+ * when the inbound envelope replies to another message. Single layer — we
+ * never render a quote-of-a-quote chain. Returns `null` when the source
+ * carries no reply_preview, so the caller can skip emitting an empty line.
+ *
+ * Both sender label and preview body are sanitized; the preview is hard-
+ * capped at 120 chars to mirror the backend truncation.
+ */
+function formatReplyQuoteLine(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const rp = (raw as { reply_preview?: ReplyPreviewRaw | null }).reply_preview;
+  if (!rp || typeof rp !== "object") return null;
+  if (rp.deleted === true) {
+    return "[quoting (deleted message)]";
+  }
+  const senderRaw =
+    typeof rp.sender_display_name === "string" && rp.sender_display_name
+      ? rp.sender_display_name
+      : typeof rp.sender_id === "string" && rp.sender_id
+        ? rp.sender_id
+        : "unknown";
+  const sender = sanitizeSenderName(senderRaw);
+  const previewRaw =
+    typeof rp.text_preview === "string" ? rp.text_preview : "";
+  const previewClean = sanitizeUntrustedContent(previewRaw)
+    .replace(/[\r\n]+/g, " ")
+    .slice(0, 120);
+  if (!previewClean) {
+    return `[quoting ${sender}]`;
+  }
+  return `[quoting ${sender}: "${previewClean}"]`;
 }
 
 function formatRoomContext(raw: unknown, fallback: { id: string; title?: string }): string[] {
@@ -293,11 +339,13 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
       "agent ID and any message they attached.]"
     : null;
 
+  const quoteLine = formatReplyQuoteLine(msg.raw);
   const lines: string[] = [
     headerFields.join(" | "),
     ...formatScheduleContext(msg.raw),
     ...(isGroup ? formatRoomContext(msg.raw, { id: conversation.id, title: roomTitle }) : []),
     `<${tag} sender="${sanitizedSenderLabel}" sender_kind="${senderKindAttr}">`,
+    ...(quoteLine ? [quoteLine] : []),
     trimmed,
     `</${tag}>`,
     "",
@@ -350,8 +398,10 @@ function composeBatchedTurn(
     // non-owner. Still sanitize defensively.
     const safeBody = sanitizeUntrustedContent(raw);
     const tag = kind === "human" ? "human-message" : "agent-message";
+    const quoteLine = formatReplyQuoteLine(entry);
+    const inner = quoteLine ? `${quoteLine}\n${safeBody}` : safeBody;
     blocks.push(
-      `<${tag} sender="${safeLabel}" sender_kind="${kind}">\n${safeBody}\n</${tag}>`,
+      `<${tag} sender="${safeLabel}" sender_kind="${kind}">\n${inner}\n</${tag}>`,
     );
     if (envelopeType === "contact_request") {
       contactRequestSenders.push(safeLabel);
