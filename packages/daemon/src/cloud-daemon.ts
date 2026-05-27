@@ -235,12 +235,15 @@ export async function startCloudDaemon(
   };
 
   const installedAgentIds = new Set<string>();
+  const runtimeByAgentId = new Map<string, string>();
   let controlChannel: ControlChannel | null = null;
   const pushInstalledAgentSkillSnapshot = (agentId: string, reason: string): void => {
     if (!controlChannel) return;
-    const pushed = pushAgentSkillSnapshot(controlChannel, agentId);
+    const runtime = runtimeByAgentId.get(agentId) ?? opts.config.defaultRoute.adapter;
+    const pushed = pushAgentSkillSnapshot(controlChannel, agentId, { runtime });
     logger.info("cloud control-channel: agent_skill_snapshot pushed", {
       agentId,
+      runtime,
       reason,
       ok: pushed,
     });
@@ -248,6 +251,7 @@ export async function startCloudDaemon(
 
   const onAgentInstalled: OnAgentInstalledHook = (info: InstalledAgentInfo) => {
     installedAgentIds.add(info.agentId);
+    if (info.runtime) runtimeByAgentId.set(info.agentId, info.runtime);
     credentialPathByAgentId.set(info.agentId, info.credentialsFile);
     if (info.hubUrl) hubUrlByAgentId.set(info.agentId, info.hubUrl);
     if (info.displayName) displayNameByAgent.set(info.agentId, info.displayName);
