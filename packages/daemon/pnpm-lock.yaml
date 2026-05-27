@@ -12,8 +12,8 @@ importers:
         specifier: ^0.1.7
         version: 0.1.9
       '@botcord/protocol-core':
-        specifier: ^0.2.2
-        version: 0.2.2
+        specifier: ^0.2.13
+        version: 0.2.13
       ws:
         specifier: ^8.18.0
         version: 8.20.0
@@ -38,8 +38,8 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  '@botcord/protocol-core@0.2.2':
-    resolution: {integrity: sha512-YNhyGCiC9r0zfwCGaJkB8uX25l2mJVp7TTnUU8OZtfQCjQskA+MMNjVMw+yGAM+40DKSdNpJ+f9IICQeZhMR2w==}
+  '@botcord/protocol-core@0.2.13':
+    resolution: {integrity: sha512-Q4Fz/DmDuCd5odgf2DY4cLmvoxpse7bkld4flC5USBAGGFgLmGmamiZxDmVnSH7GVJCS33vKS7hSjd8HuM0ZXw==}
     engines: {node: '>=18'}
 
   '@emnapi/core@1.10.0':
@@ -498,9 +498,9 @@ snapshots:
 
   '@botcord/cli@0.1.9':
     dependencies:
-      '@botcord/protocol-core': 0.2.2
+      '@botcord/protocol-core': 0.2.13
 
-  '@botcord/protocol-core@0.2.2': {}
+  '@botcord/protocol-core@0.2.13': {}
 
   '@emnapi/core@1.10.0':
     dependencies:
