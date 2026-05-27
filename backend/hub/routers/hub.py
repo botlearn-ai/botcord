@@ -825,23 +825,39 @@ async def _load_reply_target(
     db: AsyncSession,
     *,
     room_id: str,
-    reply_to_msg_id: str,
+    reply_to_value: str,
 ) -> MessageRecord:
-    """Validate a quote-reply target msg_id and return the representative record.
+    """Validate a quote-reply target reference and return the representative record.
+
+    Accepts EITHER the envelope ``msg_id`` (UUID) OR a ``hub_msg_id`` (``h_*``).
+    The legacy daemon dispatcher (`providerReplyTo`) emits ``hub_msg_id`` as
+    ``envelope.reply_to`` for non-receipt replies; rejecting that would break
+    every already-deployed daemon. The resolver discriminates by prefix —
+    UUIDs never start with ``h_`` — and returns a record whose ``.msg_id`` is
+    the canonical envelope id that callers should persist into
+    ``reply_to_msg_id`` so downstream preview/jump consumers see one stable id.
 
     Caller has already verified that the sender is allowed to post into
     ``room_id`` (room membership / DM peer). So same-room check is sufficient
     as the visibility gate.
 
-    `MessageRecord` is a fan-out table: a single msg_id may have many rows
-    (one per receiver). Picking the earliest by id gives a stable representative.
+    `MessageRecord` is a fan-out table: a single ``msg_id`` may have many
+    rows (one per receiver). The msg_id path picks the earliest by id for a
+    stable representative; the hub_msg_id path is unique by construction.
     """
-    target = await db.scalar(
-        select(MessageRecord)
-        .where(MessageRecord.msg_id == reply_to_msg_id)
-        .order_by(MessageRecord.id.asc())
-        .limit(1)
-    )
+    if reply_to_value.startswith("h_"):
+        target = await db.scalar(
+            select(MessageRecord)
+            .where(MessageRecord.hub_msg_id == reply_to_value)
+            .limit(1)
+        )
+    else:
+        target = await db.scalar(
+            select(MessageRecord)
+            .where(MessageRecord.msg_id == reply_to_value)
+            .order_by(MessageRecord.id.asc())
+            .limit(1)
+        )
     if target is None:
         raise I18nHTTPException(status_code=400, message_key="reply_target_not_found")
     if target.room_id != room_id:
@@ -895,17 +911,42 @@ async def _load_reply_previews(
     )
     targets = {t.msg_id: t for t in target_result.scalars()}
 
-    agent_sender_ids = {
-        t.sender_id for t in targets.values() if t.sender_id.startswith("ag_")
-    }
-    sender_names: dict[str, str | None] = {}
+    # Sender display name resolution must mirror the dashboard message-shaping
+    # layer; otherwise human-room senders (hu_*) render as raw IDs and
+    # owner-chat user messages render as the bot's name (sender_id is the
+    # agent_id, but the real author is in source_user_id).
+    agent_sender_ids: set[str] = set()
+    user_id_lookups: set[str] = set()  # mix of UUID source_user_id + hu_* sender_id
+    for t in targets.values():
+        if t.source_type == "dashboard_user_chat" and t.source_user_id:
+            # Owner-chat: real author is the human user, not the agent
+            user_id_lookups.add(t.source_user_id)
+        elif t.sender_id.startswith("hu_"):
+            user_id_lookups.add(t.sender_id)
+        elif t.sender_id.startswith("ag_"):
+            agent_sender_ids.add(t.sender_id)
+
+    agent_names: dict[str, str | None] = {}
     if agent_sender_ids:
         name_rows = await db.execute(
             select(Agent.agent_id, Agent.display_name).where(
                 Agent.agent_id.in_(agent_sender_ids)
             )
         )
-        sender_names = {row[0]: row[1] for row in name_rows.all()}
+        agent_names = {row[0]: row[1] for row in name_rows.all()}
+
+    user_names: dict[str, str | None] = {}
+    if user_id_lookups:
+        user_names = await load_user_display_names(db, user_id_lookups)  # type: ignore[assignment]
+
+    def _resolve_sender_name(t: MessageRecord) -> str | None:
+        if t.source_type == "dashboard_user_chat" and t.source_user_id:
+            return user_names.get(t.source_user_id)
+        if t.sender_id.startswith("hu_"):
+            return user_names.get(t.sender_id)
+        if t.sender_id.startswith("ag_"):
+            return agent_names.get(t.sender_id)
+        return None
 
     previews: dict[str, ReplyPreview] = {}
     for reply_id in reply_to_msg_ids:
@@ -918,7 +959,7 @@ async def _load_reply_previews(
         previews[reply_id] = ReplyPreview(
             msg_id=reply_id,
             sender_id=target.sender_id,
-            sender_display_name=sender_names.get(target.sender_id),
+            sender_display_name=_resolve_sender_name(target),
             text_preview=preview_text,
             topic_id=target.topic_id,
             deleted=False,
@@ -1062,14 +1103,18 @@ async def _send_direct_message(
     if envelope.type != MessageType.contact_request:
         room_id = await _ensure_dm_room(envelope.from_, envelope.to, db)
 
-    # Validate quote-reply target (after room_id is known)
-    reply_to_msg_id = _message_reply_to(envelope)
-    if reply_to_msg_id is not None:
+    # Validate quote-reply target (after room_id is known). Resolves the
+    # canonical envelope msg_id so we always persist that into the column even
+    # when the sender supplied a hub_msg_id (see _load_reply_target docstring).
+    reply_to_raw = _message_reply_to(envelope)
+    reply_to_msg_id: str | None = None
+    if reply_to_raw is not None:
         if room_id is None:
             # contact_request + reply_to is meaningless — reject so the client
             # surfaces the issue instead of silently dropping the reference.
             raise I18nHTTPException(status_code=400, message_key="reply_target_cross_room")
-        await _load_reply_target(db, room_id=room_id, reply_to_msg_id=reply_to_msg_id)
+        target = await _load_reply_target(db, room_id=room_id, reply_to_value=reply_to_raw)
+        reply_to_msg_id = target.msg_id
 
     # Resolve topic entity
     topic_id: str | None = None
@@ -1302,10 +1347,14 @@ async def _send_room_message(
     # All anti-spam checks passed — record timestamp for slow mode
     _record_slow_mode_send(room_id, envelope.from_)
 
-    # Validate quote-reply target (sender already verified as a member above)
-    reply_to_msg_id = _message_reply_to(envelope)
-    if reply_to_msg_id is not None:
-        await _load_reply_target(db, room_id=room_id, reply_to_msg_id=reply_to_msg_id)
+    # Validate quote-reply target (sender already verified as a member above).
+    # See _load_reply_target docstring on hub_msg_id-vs-msg_id leniency; we
+    # always store the canonical envelope msg_id in the column.
+    reply_to_raw = _message_reply_to(envelope)
+    reply_to_msg_id: str | None = None
+    if reply_to_raw is not None:
+        target = await _load_reply_target(db, room_id=room_id, reply_to_value=reply_to_raw)
+        reply_to_msg_id = target.msg_id
 
     # Block check: find members who have blocked the sender
     block_result = await db.execute(
@@ -1509,6 +1558,11 @@ async def _send_room_message(
             hub_msg_id=first_hub_msg_id or "",
             sender_id=envelope.from_,
             text=_oc_text,
+            reply_preview=(
+                _reply_preview_room.model_dump(mode="json")
+                if _reply_preview_room is not None
+                else None
+            ),
         )
 
     # Notify the sender's dashboard so the frontend refreshes in real-time

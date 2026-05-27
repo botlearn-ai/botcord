@@ -250,10 +250,13 @@ async def send_chat_message(
     # Ensure room exists
     room_id = await _ensure_owner_chat_room(db, user_id, agent_id, agent_display_name)
 
-    # Validate quote-reply target (same owner-chat room only)
+    # Validate quote-reply target (same owner-chat room only). Persist the
+    # canonical envelope msg_id even if the client gave a hub_msg_id.
+    canonical_reply_msg_id: str | None = None
     if body.reply_to is not None:
         from hub.routers.hub import _load_reply_target
-        await _load_reply_target(db, room_id=room_id, reply_to_msg_id=body.reply_to)
+        target = await _load_reply_target(db, room_id=room_id, reply_to_value=body.reply_to)
+        canonical_reply_msg_id = target.msg_id
 
     # Build a synthetic envelope JSON for the message record.
     # This isn't a real A2A envelope (no crypto signing), which is intentional —
@@ -268,7 +271,7 @@ async def send_chat_message(
         "from": agent_id,
         "to": agent_id,
         "type": "message",
-        "reply_to": body.reply_to,
+        "reply_to": canonical_reply_msg_id,
         "ttl_sec": 3600,
         "payload": payload,
         "payload_hash": "",
@@ -295,7 +298,7 @@ async def send_chat_message(
         source_session_kind="owner_chat",
         source_ip=request.client.host if request.client else None,
         source_user_agent=(request.headers.get("user-agent") or "")[:256] or None,
-        reply_to_msg_id=body.reply_to,
+        reply_to_msg_id=canonical_reply_msg_id,
     )
     try:
         async with db.begin_nested():

@@ -11,7 +11,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
-import type { Attachment, OwnerChatMessage } from "@/lib/types";
+import type { Attachment, OwnerChatMessage, ReplyPreview } from "@/lib/types";
 
 const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
@@ -90,6 +90,7 @@ export function useOwnerChatWs({
             senderName: agentName,
             createdAt: msg.created_at,
             attachments: msg.ext?.attachments as Attachment[] | undefined,
+            replyPreview: (msg.ext?.reply_preview ?? null) as ReplyPreview | null,
           });
         } else if (msg.sender === "agent") {
           // Agent message without trace_id — insert directly
@@ -107,6 +108,7 @@ export function useOwnerChatWs({
             createdAt: msg.created_at,
             senderName: agentName,
             type: "message",
+            replyPreview: (msg.ext?.reply_preview ?? undefined) as ReplyPreview | undefined,
           };
           store.getState().upsertMessage(agentMsg);
         } else {
@@ -123,6 +125,7 @@ export function useOwnerChatWs({
             createdAt: msg.created_at,
             senderName: "You",
             type: "message",
+            replyPreview: (msg.ext?.reply_preview ?? undefined) as ReplyPreview | undefined,
           };
           store.getState().upsertMessage(userMsg);
         }

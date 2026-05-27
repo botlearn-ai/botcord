@@ -2838,8 +2838,11 @@ async def human_room_send(
 
     # Validate quote-reply target (sender is already a room member or
     # owner-anchor at this point, so same-room check is the visibility gate).
+    # Persist the canonical envelope msg_id even if the client gave a hub_msg_id.
+    canonical_reply_msg_id: str | None = None
     if body.reply_to is not None:
-        await _load_reply_target(db, room_id=room_id, reply_to_msg_id=body.reply_to)
+        target = await _load_reply_target(db, room_id=room_id, reply_to_value=body.reply_to)
+        canonical_reply_msg_id = target.msg_id
 
     msg_id = str(_uuid.uuid4())
     ts = int(_time.time())
@@ -2853,7 +2856,7 @@ async def human_room_send(
         "from": sender_id,
         "to": room_id,
         "type": "message",
-        "reply_to": body.reply_to,
+        "reply_to": canonical_reply_msg_id,
         "topic": topic_title,
         "ttl_sec": 3600,
         "payload": payload,
@@ -2888,7 +2891,7 @@ async def human_room_send(
             source_session_kind="room_human",
             source_ip=request.client.host if request.client else None,
             source_user_agent=(request.headers.get("user-agent") or "")[:256] or None,
-            reply_to_msg_id=body.reply_to,
+            reply_to_msg_id=canonical_reply_msg_id,
         )
         try:
             async with db.begin_nested():
@@ -2928,9 +2931,9 @@ async def human_room_send(
     user_display_name = user_row.scalar_one_or_none() or "User"
 
     _reply_preview_human: ReplyPreview | None = None
-    if body.reply_to:
-        _previews = await _load_reply_previews(db, {body.reply_to})
-        _reply_preview_human = _previews.get(body.reply_to)
+    if canonical_reply_msg_id:
+        _previews = await _load_reply_previews(db, {canonical_reply_msg_id})
+        _reply_preview_human = _previews.get(canonical_reply_msg_id)
 
     for receiver_id in receiver_ids:
         try:
@@ -2946,7 +2949,7 @@ async def human_room_send(
                 source_type="dashboard_human_room",
                 source_user_id=source_user_id_str,
                 source_user_name=user_display_name,
-                reply_to=body.reply_to,
+                reply_to=canonical_reply_msg_id,
                 reply_preview=_reply_preview_human,
             )
             await notify_inbox(
@@ -3489,9 +3492,12 @@ async def send_chat_message(
     # Ensure room exists
     room_id = await _ensure_owner_chat_room(db, user_id, agent_id, agent_display_name)
 
-    # Validate quote-reply target (must live inside the same owner-chat room)
+    # Validate quote-reply target (must live inside the same owner-chat room).
+    # Persist the canonical envelope msg_id even if the client gave a hub_msg_id.
+    canonical_reply_msg_id: str | None = None
     if body.reply_to is not None:
-        await _load_reply_target(db, room_id=room_id, reply_to_msg_id=body.reply_to)
+        target = await _load_reply_target(db, room_id=room_id, reply_to_value=body.reply_to)
+        canonical_reply_msg_id = target.msg_id
 
     # Build a synthetic envelope JSON
     msg_id = str(uuid.uuid4())
@@ -3506,7 +3512,7 @@ async def send_chat_message(
         "from": agent_id,
         "to": agent_id,
         "type": "message",
-        "reply_to": body.reply_to,
+        "reply_to": canonical_reply_msg_id,
         "ttl_sec": 3600,
         "payload": payload,
         "payload_hash": "",
@@ -3530,7 +3536,7 @@ async def send_chat_message(
         source_session_kind="owner_chat",
         source_ip=request.client.host if request.client else None,
         source_user_agent=(request.headers.get("user-agent") or "")[:256] or None,
-        reply_to_msg_id=body.reply_to,
+        reply_to_msg_id=canonical_reply_msg_id,
     )
     try:
         async with db.begin_nested():
@@ -3542,9 +3548,9 @@ async def send_chat_message(
     await db.commit()
 
     _reply_preview_oc: ReplyPreview | None = None
-    if body.reply_to:
-        _previews = await _load_reply_previews(db, {body.reply_to})
-        _reply_preview_oc = _previews.get(body.reply_to)
+    if canonical_reply_msg_id:
+        _previews = await _load_reply_previews(db, {canonical_reply_msg_id})
+        _reply_preview_oc = _previews.get(canonical_reply_msg_id)
 
     # Notify inbox listeners so connected agents pick up the message
     await notify_inbox(
@@ -3559,7 +3565,7 @@ async def send_chat_message(
             created_at=record.created_at,
             payload=payload,
             sender_name=agent_display_name,
-            reply_to=body.reply_to,
+            reply_to=canonical_reply_msg_id,
             reply_preview=_reply_preview_oc,
         ),
         resume_cloud=not cloud_resume_ok,

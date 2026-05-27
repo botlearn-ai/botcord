@@ -9,7 +9,7 @@ import logging
 import time
 import uuid
 from collections import deque
-from typing import Sequence
+from typing import Any, Sequence
 
 import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -172,11 +172,16 @@ async def notify_oc_ws_message(
     sender_id: str,
     text: str,
     created_at: datetime.datetime | None = None,
+    reply_preview: dict[str, Any] | None = None,
 ) -> None:
     """Push an agent reply to connected owner-chat WS clients.
 
     Called from the room fan-out path when a message lands in an rm_oc_* room.
     Also cleans up any matching trace subscription.
+
+    ``reply_preview`` is the serialized ReplyPreview struct (or None). When
+    present the frontend stamps it onto OwnerChatMessage.replyPreview so the
+    quote block renders live, instead of waiting for the next REST reload.
     """
     target_keys: list[tuple[str, str]] = []
     for (uid, aid), ws_set in _oc_ws_connections.items():
@@ -205,7 +210,7 @@ async def notify_oc_ws_message(
     for tid in matched_traces:
         _cleanup_trace(tid)
 
-    msg_data = {
+    msg_data: dict[str, Any] = {
         "type": "message",
         "hub_msg_id": hub_msg_id,
         "sender": "agent",
@@ -213,8 +218,13 @@ async def notify_oc_ws_message(
         "text": text,
         "created_at": ts,
     }
+    ext: dict[str, Any] = {}
     if trace_id:
-        msg_data["ext"] = {"trace_id": trace_id}
+        ext["trace_id"] = trace_id
+    if reply_preview is not None:
+        ext["reply_preview"] = reply_preview
+    if ext:
+        msg_data["ext"] = ext
 
     for uid, aid in target_keys:
         await _send_to_oc_ws(uid, aid, msg_data)

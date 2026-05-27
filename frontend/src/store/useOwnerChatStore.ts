@@ -16,6 +16,7 @@ import { api } from "@/lib/api";
 import type {
   Attachment,
   OwnerChatMessage,
+  ReplyPreview,
   StreamBlockEntry,
   DashboardMessage,
 } from "@/lib/types";
@@ -164,6 +165,7 @@ export interface OwnerChatState {
     senderName: string;
     createdAt: string;
     attachments?: Attachment[];
+    replyPreview?: ReplyPreview | null;
   }) => void;
 
   // Connection state
@@ -538,6 +540,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           senderName: finalData.senderName,
           type: "message",
           traceId,
+          replyPreview: finalData.replyPreview ?? undefined,
         };
 
         // Dedup
@@ -586,6 +589,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         status: "delivered",
         // Keep only execution blocks (assistant text now lives in `text`)
         streamBlocks: visibleStreamBlocks,
+        replyPreview: finalData.replyPreview ?? existing.replyPreview ?? undefined,
       };
 
       const newMessages = [...state.messages];

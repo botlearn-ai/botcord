@@ -215,6 +215,39 @@ async def test_room_quote_reply_cross_room_rejected(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_room_quote_reply_accepts_hub_msg_id(client: AsyncClient, db_session: AsyncSession):
+    """Backwards-compat: daemons currently emit envelope.reply_to = hub_msg_id
+    (h_*) instead of envelope msg_id. The hub must accept the hub_msg_id form
+    and persist the *canonical* envelope msg_id into reply_to_msg_id so that
+    history / preview / scroll-to-message stay consistent."""
+    sk_a, a_id, a_key, a_tok = await _create_agent(client, "alice")
+    sk_b, b_id, b_key, b_tok = await _create_agent(client, "bob")
+    room_id = await _create_room(client, a_tok, [b_id])
+
+    # Alice posts original; capture its hub_msg_id from the send response
+    env_orig = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "hi from alice"})
+    resp = await client.post("/hub/send", json=env_orig, headers=_auth(a_tok))
+    assert resp.status_code == 202
+    orig_hub_msg_id = resp.json()["hub_msg_id"]
+    assert orig_hub_msg_id.startswith("h_")
+    orig_msg_id = env_orig["msg_id"]
+
+    # Bob replies — using hub_msg_id as reply_to (the way daemons currently emit)
+    env_reply = _build_envelope(
+        sk_b, b_key, b_id, room_id, reply_to=orig_hub_msg_id, payload={"text": "got it"},
+    )
+    resp = await client.post("/hub/send", json=env_reply, headers=_auth(b_tok))
+    assert resp.status_code == 202, resp.text
+
+    # MessageRecord.reply_to_msg_id should hold the *envelope* msg_id, not hub_msg_id
+    row = (await db_session.execute(
+        select(MessageRecord).where(MessageRecord.msg_id == env_reply["msg_id"])
+    )).scalar_one()
+    assert row.reply_to_msg_id == orig_msg_id
+    assert row.reply_to_msg_id != orig_hub_msg_id
+
+
+@pytest.mark.asyncio
 async def test_room_quote_reply_target_not_found(client: AsyncClient):
     sk_a, a_id, a_key, a_tok = await _create_agent(client, "alice")
     sk_b, b_id, b_key, b_tok = await _create_agent(client, "bob")
