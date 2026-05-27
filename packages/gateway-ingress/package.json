@@ -34,7 +34,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@botcord/protocol-core": "file:../protocol-core",
+    "@botcord/protocol-core": "workspace:^",
     "@larksuiteoapi/node-sdk": "^1.63.1",
     "ws": "^8.20.1"
   },
