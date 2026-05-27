@@ -89,6 +89,12 @@ interface ListAgentSkillsParams {
   agentId: string;
 }
 
+function runtimeForLoadedAgent(gateway: Gateway, agentId: string): string | undefined {
+  return gateway.listManagedRoutes()
+    .find((route) => route.match?.accountId === agentId)
+    ?.runtime;
+}
+
 /**
  * Information passed to {@link OnAgentInstalledHook} after a successful
  * provision. Mirrors the credential fields the daemon's per-agent caches
@@ -510,9 +516,11 @@ export function createProvisioner(opts: ProvisionerOptions): (
             },
           };
         }
-        const result = collectAgentSkillSnapshot(params.agentId);
+        const runtime = runtimeForLoadedAgent(gateway, params.agentId);
+        const result = collectAgentSkillSnapshot(params.agentId, { runtime });
         daemonLog.debug("list_agent_skills", {
           agentId: params.agentId,
+          runtime,
           count: result.skills.length,
         });
         return { ok: true, result };

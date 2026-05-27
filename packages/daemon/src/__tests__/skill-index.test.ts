@@ -62,6 +62,45 @@ describe("skill snapshots", () => {
     expect(snapshot.probedAt).toBeGreaterThan(0);
   });
 
+  it("scans Codex .system skills and prefers Codex copies for Codex agents", () => {
+    const agentId = "ag_codex_system";
+    writeSkill(path.join(agentWorkspaceDir(agentId), ".claude", "skills"), "shared", "Claude copy");
+    writeSkill(path.join(agentCodexHomeDir(agentId), "skills"), "shared", "Codex copy");
+    writeSkill(
+      path.join(agentCodexHomeDir(agentId), "skills", ".system"),
+      "agent-system",
+      "Agent Codex system skill",
+    );
+    writeSkill(
+      path.join(tmpDir, ".codex", "skills", ".system"),
+      "imagegen",
+      "Codex global system skill",
+    );
+
+    const codexScanned = scanSoftSkills(agentId, { runtime: "codex" });
+    expect(codexScanned.map((s) => s.name).sort()).toEqual([
+      "agent-system",
+      "imagegen",
+      "shared",
+    ]);
+    expect(codexScanned.find((s) => s.name === "shared")).toMatchObject({
+      source: "agent-codex",
+      description: "Codex copy",
+    });
+
+    const claudeScanned = scanSoftSkills(agentId, { runtime: "claude-code" });
+    expect(claudeScanned.find((s) => s.name === "shared")).toMatchObject({
+      source: "agent-claude",
+      description: "Claude copy",
+    });
+
+    const snapshot = collectAgentSkillSnapshot(agentId, { runtime: "codex" });
+    expect(snapshot.skills.find((s) => s.name === "agent-system")?.source)
+      .toBe("workspace");
+    expect(snapshot.skills.find((s) => s.name === "imagegen")?.source)
+      .toBe("runtime-global");
+  });
+
   it("returns complete snapshots while keeping the prompt soft index capped", () => {
     const agentId = "ag_manyskills";
     const workspaceSkills = path.join(agentWorkspaceDir(agentId), ".claude", "skills");

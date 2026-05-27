@@ -249,8 +249,9 @@ export function pushRuntimeSnapshot(
 export function pushAgentSkillSnapshot(
   sink: RuntimeSnapshotSink,
   agentId: string,
+  opts: { runtime?: string } = {},
 ): boolean {
-  const snap = collectAgentSkillSnapshot(agentId);
+  const snap = collectAgentSkillSnapshot(agentId, opts);
   const ok = sink.send({
     id: `skill_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     type: "agent_skill_snapshot",
@@ -529,6 +530,12 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     // next room-context fetch re-loads the BotCordClient against the new
     // credential file.
     credentialPathByAgentId.set(info.agentId, info.credentialsFile);
+    if (info.runtime) {
+      agentRuntimes[info.agentId] = {
+        ...(agentRuntimes[info.agentId] ?? {}),
+        runtime: info.runtime,
+      };
+    }
     if (info.hubUrl) hubUrlByAgentId.set(info.agentId, info.hubUrl);
     if (info.displayName) displayNameByAgent.set(info.agentId, info.displayName);
     if (!scBuilders.has(info.agentId)) {
@@ -670,9 +677,11 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
         ok: pushed,
       });
       for (const agentId of agentIds) {
-        const skillsPushed = pushAgentSkillSnapshot(controlChannel, agentId);
+        const runtime = agentRuntimes[agentId]?.runtime ?? opts.config.defaultRoute.adapter;
+        const skillsPushed = pushAgentSkillSnapshot(controlChannel, agentId, { runtime });
         logger.info("control-channel: initial agent_skill_snapshot push", {
           agentId,
+          runtime,
           ok: skillsPushed,
         });
       }

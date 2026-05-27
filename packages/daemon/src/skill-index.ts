@@ -39,6 +39,7 @@ export interface AgentSkillSnapshot {
 export interface SkillIndexOptions {
   extraDirs?: string[];
   includeGlobal?: boolean;
+  runtime?: string;
 }
 
 export function defaultSkillDirs(
@@ -46,21 +47,26 @@ export function defaultSkillDirs(
   opts: SkillIndexOptions = {},
 ): Array<{ dir: string; source: string }> {
   const includeGlobal = opts.includeGlobal !== false;
-  const dirs: Array<{ dir: string; source: string }> = [
-    {
-      dir: path.join(agentWorkspaceDir(agentId), ".claude", "skills"),
-      source: "agent-claude",
-    },
-    {
-      dir: path.join(agentCodexHomeDir(agentId), "skills"),
-      source: "agent-codex",
-    },
-  ];
+  const agentClaude = {
+    dir: path.join(agentWorkspaceDir(agentId), ".claude", "skills"),
+    source: "agent-claude",
+  };
+  const agentCodex = {
+    dir: path.join(agentCodexHomeDir(agentId), "skills"),
+    source: "agent-codex",
+  };
+  const dirs: Array<{ dir: string; source: string }> =
+    runtimeFamily(opts.runtime) === "codex"
+      ? [agentCodex, agentClaude]
+      : [agentClaude, agentCodex];
 
   if (includeGlobal) {
+    const globalClaude = { dir: path.join(homedir(), ".claude", "skills"), source: "global-claude" };
+    const globalCodex = { dir: path.join(homedir(), ".codex", "skills"), source: "global-codex" };
     dirs.push(
-      { dir: path.join(homedir(), ".claude", "skills"), source: "global-claude" },
-      { dir: path.join(homedir(), ".codex", "skills"), source: "global-codex" },
+      ...(runtimeFamily(opts.runtime) === "codex"
+        ? [globalCodex, globalClaude]
+        : [globalClaude, globalCodex]),
     );
   }
 
@@ -69,7 +75,7 @@ export function defaultSkillDirs(
     dirs.push({ dir, source: "external" });
   }
 
-  return dedupeDirs(dirs);
+  return dedupeDirs(expandSkillRoots(dirs));
 }
 
 export function scanSoftSkills(
@@ -111,7 +117,7 @@ export function scanSoftSkills(
         description: parsed.description,
         mtimeMs: st.mtimeMs,
       };
-      if (!existing || priority(root.source) < priority(existing.source)) {
+      if (!existing || priority(root.source, opts.runtime) < priority(existing.source, opts.runtime)) {
         byName.set(entry.name, entry);
       }
     }
@@ -224,7 +230,41 @@ function dedupeDirs(
   return out;
 }
 
-function priority(source: string): number {
+function expandSkillRoots(
+  dirs: Array<{ dir: string; source: string }>,
+): Array<{ dir: string; source: string }> {
+  const out: Array<{ dir: string; source: string }> = [];
+  for (const entry of dirs) {
+    out.push(entry);
+    if (entry.source.includes("codex")) {
+      out.push({ dir: path.join(entry.dir, ".system"), source: entry.source });
+    }
+  }
+  return out;
+}
+
+function runtimeFamily(runtime: string | undefined): "codex" | "claude" | "other" {
+  if (runtime === "codex") return "codex";
+  if (runtime === "claude-code") return "claude";
+  return "other";
+}
+
+function priority(source: string, runtime: string | undefined): number {
+  if (runtimeFamily(runtime) === "codex") {
+    switch (source) {
+      case "agent-codex":
+        return 0;
+      case "global-codex":
+        return 1;
+      case "agent-claude":
+        return 2;
+      case "global-claude":
+        return 3;
+      default:
+        return 4;
+    }
+  }
+
   switch (source) {
     case "agent-claude":
       return 0;
