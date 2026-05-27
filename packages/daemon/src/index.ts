@@ -17,6 +17,7 @@ import {
   type RouteRuleMatch,
 } from "./config.js";
 import {
+  acquireDaemonSingletonLock,
   ensureNoOtherDaemonFromPidFile,
   findOtherDaemonProcesses,
   pidAlive,
@@ -625,13 +626,22 @@ async function cmdStart(args: ParsedArgs): Promise<void> {
   }
 
   // Foreground: we ARE the daemon.
+  const singletonLock = await acquireDaemonSingletonLock({ logger: log });
   writeCurrentPid();
-  const handle = await startDaemon({ config: cfg, configPath: CONFIG_FILE_PATH });
+  let handle: Awaited<ReturnType<typeof startDaemon>>;
+  try {
+    handle = await startDaemon({ config: cfg, configPath: CONFIG_FILE_PATH });
+  } catch (err) {
+    removePidFile();
+    singletonLock.release();
+    throw err;
+  }
 
   const shutdown = async (sig: string) => {
     log.info("signal received", { sig });
     await handle.stop(sig);
     removePidFile();
+    singletonLock.release();
     process.exit(0);
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
@@ -661,6 +671,7 @@ async function cmdStartCloud(_args: ParsedArgs): Promise<void> {
     daemonInstanceId: cloudConfig.daemonInstanceId,
     hubUrl: cloudConfig.hubUrl,
   });
+  const singletonLock = await acquireDaemonSingletonLock({ logger: log });
   await stopDaemonFromPidFileForRestart({ logger: log });
   await stopOtherDaemonProcessesForRestart({ logger: log });
   writeCurrentPid();
@@ -676,16 +687,24 @@ async function cmdStartCloud(_args: ParsedArgs): Promise<void> {
   saveConfig(cfg);
   log.info("cloud mode config initialized", { configPath: CONFIG_FILE_PATH });
 
-  const handle = await startCloudDaemon({
-    cloudConfig,
-    config: cfg,
-    configPath: CONFIG_FILE_PATH,
-  });
+  let handle: Awaited<ReturnType<typeof startCloudDaemon>>;
+  try {
+    handle = await startCloudDaemon({
+      cloudConfig,
+      config: cfg,
+      configPath: CONFIG_FILE_PATH,
+    });
+  } catch (err) {
+    removePidFile();
+    singletonLock.release();
+    throw err;
+  }
 
   const shutdown = async (sig: string): Promise<void> => {
     log.info("signal received", { sig });
     await handle.stop(sig);
     removePidFile();
+    singletonLock.release();
     process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));

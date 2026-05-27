@@ -1773,6 +1773,17 @@ class CloudDaemonInstance(Base):
             name="ck_cloud_daemon_instances_active_agent_count",
         ),
         UniqueConstraint("daemon_instance_id", name="uq_cloud_daemon_instances_daemon_instance_id"),
+        Index(
+            "uq_cloud_daemon_instances_user_active",
+            "user_id",
+            unique=True,
+            postgresql_where=sa_text(
+                "status IN ('creating', 'starting', 'ready', 'paused')"
+            ),
+            sqlite_where=sa_text(
+                "status IN ('creating', 'starting', 'ready', 'paused')"
+            ),
+        ),
         Index("ix_cloud_daemon_instances_user", "user_id"),
         Index("ix_cloud_daemon_instances_status", "status"),
     )

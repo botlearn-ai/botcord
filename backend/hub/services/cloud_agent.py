@@ -200,6 +200,7 @@ class CloudAgentUsageView:
 # Cap on the prompt so a misuse doesn't fill the column / blow the
 # envelope wire size. Generous default — model context is the real cap.
 _RUN_PROMPT_MAX_CHARS = 64 * 1024
+_ACTIVE_CLOUD_DAEMON_STATUSES = ("creating", "starting", "ready", "paused")
 
 
 def _now() -> datetime.datetime:
@@ -604,6 +605,7 @@ class CloudAgentService:
         user_id: uuid.UUID,
         agent_id: str,
     ) -> CloudAgentView:
+        await _lock_cloud_daemon_lifecycle(db, user_id)
         cai, agent, cdi = await self._load_owned(db, user_id=user_id, agent_id=agent_id)
         if cai.status in {"deleted", "deleting"}:
             raise CloudAgentError(
@@ -626,6 +628,11 @@ class CloudAgentService:
 
         provider = self._get_provider()
         if cdi.status != "ready" or not daemon_online:
+            await _ensure_no_other_active_cloud_daemon(
+                db,
+                user_id=user_id,
+                cloud_daemon_instance_id=cdi.id,
+            )
             if not daemon_online:
                 _ensure_provisioning_metadata(db, cai, agent)
                 cai.status = "provisioning"
@@ -718,6 +725,7 @@ class CloudAgentService:
         marked for reprovisioning before the provider relaunches the process.
         """
         self._require_feature_enabled()
+        await _lock_cloud_daemon_lifecycle(db, user_id)
         row = (
             await db.execute(
                 select(CloudDaemonInstance, DaemonInstance)
@@ -751,6 +759,11 @@ class CloudAgentService:
                 "cannot restart cloud daemon while a cloud agent run is active",
                 http_status=409,
             )
+        await _ensure_no_other_active_cloud_daemon(
+            db,
+            user_id=user_id,
+            cloud_daemon_instance_id=cdi.id,
+        )
 
         agent_rows = (
             await db.execute(
@@ -1584,20 +1597,14 @@ class CloudAgentService:
         this sandbox instead of creating a second per-runtime sandbox; the
         per-agent runtime is still recorded on ``cloud_agent_instances``.
         """
-        if db.bind is not None and db.bind.dialect.name == "postgresql":
-            await db.execute(
-                sa_text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
-                {"lock_key": f"cloud_agent_sandbox:{user_id}"},
-            )
+        await _lock_cloud_daemon_lifecycle(db, user_id)
         await self._enforce_per_user_quota(db, user_id)
 
         stmt = (
             select(CloudDaemonInstance)
             .where(
                 CloudDaemonInstance.user_id == user_id,
-                CloudDaemonInstance.status.in_(
-                    ("creating", "starting", "ready", "paused")
-                ),
+                CloudDaemonInstance.status.in_(_ACTIVE_CLOUD_DAEMON_STATUSES),
             )
             .order_by(CloudDaemonInstance.created_at.asc())
             .limit(1)
@@ -1684,6 +1691,47 @@ class CloudAgentService:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+async def _lock_cloud_daemon_lifecycle(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+) -> None:
+    """Serialize cloud daemon allocation/resume/restart per user on Postgres.
+
+    The transaction-scoped advisory lock closes the race where two independent
+    control paths both decide to relaunch the same sandbox. SQLite test runs
+    skip it because they do not support advisory locks.
+    """
+    if db.bind is None or db.bind.dialect.name != "postgresql":
+        return
+    await db.execute(
+        sa_text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+        {"lock_key": f"cloud_agent_sandbox:{user_id}"},
+    )
+
+
+async def _ensure_no_other_active_cloud_daemon(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    cloud_daemon_instance_id: str,
+) -> None:
+    other = await db.scalar(
+        select(CloudDaemonInstance.id)
+        .where(
+            CloudDaemonInstance.user_id == user_id,
+            CloudDaemonInstance.id != cloud_daemon_instance_id,
+            CloudDaemonInstance.status.in_(_ACTIVE_CLOUD_DAEMON_STATUSES),
+        )
+        .limit(1)
+    )
+    if other is not None:
+        raise CloudAgentError(
+            "active_sandbox_exists",
+            "user already has another active cloud daemon sandbox",
+            http_status=409,
+        )
 
 
 async def _notify_inbox(agent_id: str, db: AsyncSession) -> int:

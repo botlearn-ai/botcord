@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { PID_PATH } from "./config.js";
 
@@ -17,11 +17,27 @@ const noopLogger: SingletonLogger = {
   },
 };
 
+const DEFAULT_LOCK_WAIT_MS = 15_000;
+const DEFAULT_LOCK_RETRY_MS = 50;
+
+export interface DaemonSingletonLock {
+  lockPath: string;
+  release(): void;
+}
+
+export function defaultLockPath(pidPath = PID_PATH): string {
+  return `${pidPath}.lock`;
+}
+
 export function readPid(pidPath = PID_PATH): number | null {
   if (!existsSync(pidPath)) return null;
   const raw = readFileSync(pidPath, "utf8").trim();
   const pid = Number(raw);
   return Number.isFinite(pid) && pid > 0 ? pid : null;
+}
+
+function readLockOwner(lockPath: string): number | null {
+  return readPid(path.join(lockPath, "owner.pid"));
 }
 
 export function pidAlive(pid: number): boolean {
@@ -127,6 +143,78 @@ export async function stopDaemonFromPidFileForRestart(
   }
 }
 
+export async function acquireDaemonSingletonLock(
+  opts: {
+    lockPath?: string;
+    pidPath?: string;
+    currentPid?: number;
+    logger?: SingletonLogger;
+    timeoutMs?: number;
+  } = {},
+): Promise<DaemonSingletonLock> {
+  const pidPath = opts.pidPath ?? PID_PATH;
+  const lockPath = opts.lockPath ?? defaultLockPath(pidPath);
+  const currentPid = opts.currentPid ?? process.pid;
+  const logger = opts.logger ?? noopLogger;
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_LOCK_WAIT_MS;
+  const deadline = Date.now() + timeoutMs;
+
+  ensureParentDir(lockPath);
+  while (true) {
+    try {
+      mkdirSync(lockPath, { mode: 0o700 });
+      writeFileSync(path.join(lockPath, "owner.pid"), String(currentPid), { mode: 0o600 });
+      return {
+        lockPath,
+        release() {
+          const owner = readLockOwner(lockPath);
+          if (owner !== null && owner !== currentPid) return;
+          try {
+            rmSync(lockPath, { recursive: true, force: true });
+          } catch {
+            // ignore
+          }
+        },
+      };
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") throw err;
+    }
+
+    const owner = readLockOwner(lockPath);
+    if (owner === currentPid) {
+      return {
+        lockPath,
+        release() {
+          try {
+            rmSync(lockPath, { recursive: true, force: true });
+          } catch {
+            // ignore
+          }
+        },
+      };
+    }
+    if (owner !== null && pidAlive(owner)) {
+      logger.info("daemon singleton lock owner found; restarting", { pid: owner });
+      await stopExistingDaemonForRestart(owner, { pidPath, currentPid, logger });
+    }
+
+    const refreshedOwner = readLockOwner(lockPath);
+    if (refreshedOwner === null || !pidAlive(refreshedOwner)) {
+      try {
+        rmSync(lockPath, { recursive: true, force: true });
+      } catch {
+        // another starter may have removed/recreated it
+      }
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error(`timed out acquiring daemon singleton lock at ${lockPath}`);
+    }
+    await delay(DEFAULT_LOCK_RETRY_MS);
+  }
+}
+
 export async function stopOtherDaemonProcessesForRestart(
   opts: {
     currentPid?: number;
@@ -187,11 +275,7 @@ export function writeCurrentPid(
   // Cloud-mode startup writes the PID file before `saveConfig` runs, so
   // the daemon dir may not exist yet. mkdir its parent (0700) so the
   // first write doesn't crash with ENOENT.
-  try {
-    mkdirSync(path.dirname(pidPath), { recursive: true, mode: 0o700 });
-  } catch {
-    // best-effort — writeFileSync below will surface the real error
-  }
+  ensureParentDir(pidPath);
   writeFileSync(pidPath, String(opts.currentPid ?? process.pid), { mode: 0o600 });
 }
 
@@ -230,4 +314,12 @@ export function isBotCordDaemonStartCommand(command: string): boolean {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function ensureParentDir(filePath: string): void {
+  try {
+    mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  } catch {
+    // best-effort — the next filesystem operation will surface real errors
+  }
 }
