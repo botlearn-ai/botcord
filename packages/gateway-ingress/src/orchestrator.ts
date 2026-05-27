@@ -18,6 +18,7 @@ import type { GatewayInboundMessage } from "@botcord/protocol-core";
 import type {
   GatewayConnection,
   InboundEvent,
+  InboundEventStatus,
   OutboundSendRequest,
 } from "./types.js";
 
@@ -54,6 +55,7 @@ export class IngressOrchestrator {
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private retryRunning = false;
   private readonly dispatchingEvents = new Set<string>();
+  private readonly completingEvents = new Set<string>();
   private readonly ensureRunningByAgent = new Map<string, Promise<EnsureRunningResponse>>();
   /** Track provider adapters so we can call their `send()` for outbound. */
   private readonly providers = new Map<string, ProviderAdapter>();
@@ -174,7 +176,10 @@ export class IngressOrchestrator {
     let dispatched = 0;
     try {
       const now = this.now();
-      for (const event of this.opts.store.listEventsByStatus("queued", "delivering")) {
+      const statuses: InboundEventStatus[] = opts.force
+        ? ["queued", "delivering"]
+        : ["queued"];
+      for (const event of this.opts.store.listEventsByStatus(...statuses)) {
         if (!opts.force && !this.isDue(event, now)) continue;
         await this.dispatchEvent(event.eventId);
         dispatched += 1;
@@ -446,6 +451,25 @@ export class IngressOrchestrator {
         return;
       }
       case RUNTIME_FRAME_TYPES.GATEWAY_OUTBOUND_COMPLETE: {
+        const event = this.opts.store.getEvent(frame.event_id);
+        if (
+          event &&
+          (event.status === "delivered" ||
+            event.status === "failed" ||
+            event.status === "dead_letter")
+        ) {
+          this.opts.log.debug("outbound complete skipped — event already terminal", {
+            eventId: frame.event_id,
+            status: event.status,
+          });
+          return;
+        }
+        if (this.completingEvents.has(frame.event_id)) {
+          this.opts.log.debug("outbound complete skipped — send already in progress", {
+            eventId: frame.event_id,
+          });
+          return;
+        }
         const provider = this.providers.get(frame.gateway_id);
         if (!provider) {
           this.opts.log.error("no provider for outbound complete", {
@@ -472,6 +496,7 @@ export class IngressOrchestrator {
           final: true,
         };
 
+        this.completingEvents.add(frame.event_id);
         try {
           const result = await provider.send(sendRequest);
           this.opts.store.updateDelivery(delivery.deliveryId, {
@@ -500,6 +525,8 @@ export class IngressOrchestrator {
             status: "failed",
             lastError: `provider_send_failed: ${String(err)}`,
           });
+        } finally {
+          this.completingEvents.delete(frame.event_id);
         }
         return;
       }

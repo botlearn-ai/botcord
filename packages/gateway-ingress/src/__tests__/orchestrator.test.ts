@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { noopLogger } from "../log.js";
-import { IngressOrchestrator } from "../orchestrator.js";
+import { IngressOrchestrator, type OrchestratorOptions } from "../orchestrator.js";
 import { HubClientError } from "../hub-client.js";
 import { RuntimeSessionManager } from "../runtime/session.js";
 import { FileSystemIngressStore } from "../storage/store.js";
@@ -56,7 +56,12 @@ interface Harness {
   providerSends: { gatewayId: string; text: string; turnId?: string }[];
 }
 
-function makeHarness(): Harness {
+type HarnessOptions = Pick<
+  Partial<OrchestratorOptions>,
+  "retryBaseDelayMs" | "retryMaxDelayMs" | "retryIntervalMs" | "now"
+>;
+
+function makeHarness(options: HarnessOptions = {}): Harness {
   const dir = tmp();
   const store = new FileSystemIngressStore(dir);
   store.upsertConnection(CONN);
@@ -78,6 +83,7 @@ function makeHarness(): Harness {
     hub,
     runtime,
     log: noopLogger,
+    ...options,
   });
   const providerSends: Harness["providerSends"] = [];
   orchestrator.registerProvider({
@@ -134,6 +140,23 @@ describe("IngressOrchestrator", () => {
     const events = h.store.listEventsByStatus("delivering");
     expect(events).toHaveLength(1);
     expect(events[0]!.status).toBe("delivering");
+  });
+
+  it("does not retry an in-flight delivering event during the normal retry loop", async () => {
+    rmSync(h.dir, { recursive: true, force: true });
+    h = makeHarness({ retryBaseDelayMs: 0, retryMaxDelayMs: 0 });
+
+    await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:in-flight");
+    await waitFor(() => h.socketFactory.sockets.length === 1);
+    const sock = h.socketFactory.sockets[0]!;
+    await waitFor(() => sock.sent.length === 1);
+
+    const dispatched = await h.orchestrator.retryPending();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(dispatched).toBe(0);
+    expect(sock.sent).toHaveLength(1);
+    expect(h.hub.ensureRunningCalls).toHaveLength(1);
   });
 
   it("does not reuse a runtime WS across gateway token scopes", async () => {
@@ -311,6 +334,81 @@ describe("IngressOrchestrator", () => {
     // Touch was called after the outbound send.
     expect(h.hub.touchCalls).toHaveLength(1);
     expect(h.hub.touchCalls[0]!.body.gateway_id).toBe(CONN.id);
+  });
+
+  it("ignores duplicate outbound complete after an event is delivered", async () => {
+    await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:dup-complete");
+    await waitFor(() => h.socketFactory.sockets.length === 1);
+    const sock = h.socketFactory.sockets[0]!;
+    await waitFor(() => sock.sent.length === 1);
+    const inboundFrame = JSON.parse(sock.sent[0]!) as GatewayInboundFrame;
+    const complete = {
+      type: RUNTIME_FRAME_TYPES.GATEWAY_OUTBOUND_COMPLETE,
+      event_id: inboundFrame.event_id,
+      turn_id: "turn_dup",
+      gateway_id: CONN.id,
+      agent_id: CONN.agentId,
+      conversation_id: NORMALIZED.conversation.id,
+      final_text: "only once",
+    } as const;
+
+    sock.incoming(complete);
+    await waitFor(() => h.store.listEventsByStatus("delivered").length === 1);
+    sock.incoming(complete);
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(h.providerSends).toHaveLength(1);
+    expect(h.providerSends[0]!.text).toBe("only once");
+  });
+
+  it("coalesces duplicate outbound complete while provider send is still running", async () => {
+    let sendCalls = 0;
+    let releaseSend: (() => void) | null = null;
+    let sendStarted: (() => void) | null = null;
+    const sendStartedPromise = new Promise<void>((resolve) => {
+      sendStarted = resolve;
+    });
+    const releaseSendPromise = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+
+    h.orchestrator.registerProvider({
+      gatewayId: CONN.id,
+      provider: "telegram",
+      async start() {},
+      async stop() {},
+      async send() {
+        sendCalls += 1;
+        sendStarted?.();
+        await releaseSendPromise;
+        return { providerMessageId: "telegram:42:slow" };
+      },
+    });
+
+    await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:complete-race");
+    await waitFor(() => h.socketFactory.sockets.length === 1);
+    const sock = h.socketFactory.sockets[0]!;
+    await waitFor(() => sock.sent.length === 1);
+    const inboundFrame = JSON.parse(sock.sent[0]!) as GatewayInboundFrame;
+    const complete = {
+      type: RUNTIME_FRAME_TYPES.GATEWAY_OUTBOUND_COMPLETE,
+      event_id: inboundFrame.event_id,
+      turn_id: "turn_race",
+      gateway_id: CONN.id,
+      agent_id: CONN.agentId,
+      conversation_id: NORMALIZED.conversation.id,
+      final_text: "slow send",
+    } as const;
+
+    sock.incoming(complete);
+    await sendStartedPromise;
+    sock.incoming(complete);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sendCalls).toBe(1);
+
+    releaseSend?.();
+    await waitFor(() => h.store.listEventsByStatus("delivered").length === 1);
+    expect(sendCalls).toBe(1);
   });
 
   it("requeues delivering events on runtime close", async () => {
