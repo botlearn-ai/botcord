@@ -269,26 +269,45 @@ function extractToolCall(raw: any): { name: string; params?: unknown; id?: strin
 function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id?: string } | null {
   const payload = raw?.payload;
   if (!payload || typeof payload !== "object") return null;
+  const innerPayload = unwrapDeepseekPayload(raw);
+  const event = stringField(raw, "event") ?? stringField(payload, "event");
 
-  if (raw?.event === "tool.started") {
-    const tool = payload.tool && typeof payload.tool === "object" ? payload.tool : undefined;
+  if (event === "tool.started") {
+    const tool = innerPayload?.tool && typeof innerPayload.tool === "object" ? innerPayload.tool : undefined;
     return {
-      name: stringField(payload, "name") ?? stringField(tool, "name") ?? "tool",
-      params: parseMaybeJson(payload.input ?? payload.arguments ?? payload.params ?? tool?.input ?? tool?.rawInput),
-      id: stringField(payload, "id") ?? stringField(tool, "id"),
+      name: stringField(innerPayload, "name") ?? stringField(tool, "name") ?? "tool",
+      params: parseMaybeJson(
+        innerPayload?.input ??
+          innerPayload?.arguments ??
+          innerPayload?.params ??
+          tool?.input ??
+          tool?.rawInput ??
+          tool?.arguments ??
+          tool?.params,
+      ),
+      id: stringField(innerPayload, "id") ?? stringField(tool, "id"),
     };
   }
 
-  if (raw?.event === "item.started" || payload.event === "item.started") {
-    const inner =
-      raw?.event === "item.started"
-        ? payload
-        : payload.payload && typeof payload.payload === "object"
-          ? payload.payload
-          : {};
+  if (event === "item.started") {
+    const inner = innerPayload ?? {};
     const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
     const tool = inner.tool && typeof inner.tool === "object" ? inner.tool : item?.tool;
-    const itemParams = parseMaybeJson(item?.input ?? item?.arguments ?? item?.detail);
+    const metadata = item?.metadata && typeof item.metadata === "object" ? item.metadata : undefined;
+    const metadataCommand =
+      metadata && (metadata.command ?? metadata.cmd)
+        ? { [metadata.command ? "command" : "cmd"]: metadata.command ?? metadata.cmd }
+        : undefined;
+    const itemParams = parseMaybeJson(
+      item?.input ??
+        item?.arguments ??
+        item?.params ??
+        metadata?.input ??
+        metadata?.arguments ??
+        metadata?.params ??
+        metadataCommand ??
+        item?.detail,
+    );
     return {
       name:
         stringField(tool, "name") ??
@@ -301,11 +320,23 @@ function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id
         tool?.input ??
           tool?.rawInput ??
           tool?.arguments ??
+          tool?.params ??
           inner.input ??
+          inner.arguments ??
+          inner.params ??
           item?.input ??
-          item?.arguments,
+          item?.arguments ??
+          item?.params ??
+          metadata?.input ??
+          metadata?.arguments ??
+          metadata?.params ??
+          metadataCommand,
       ) ?? itemParams ?? tool ?? item,
-      id: stringField(tool, "id") ?? stringField(inner, "id") ?? stringField(item, "id"),
+      id:
+        stringField(tool, "id") ??
+        stringField(inner, "id") ??
+        stringField(item, "id") ??
+        stringField(payload, "item_id"),
     };
   }
 
@@ -356,28 +387,26 @@ function extractToolResult(raw: any): { name?: string; result: string; id?: stri
 function extractDeepseekToolResult(raw: any): { name?: string; result: string; id?: string } | null {
   const payload = raw?.payload;
   if (!payload || typeof payload !== "object") return null;
+  const innerPayload = unwrapDeepseekPayload(raw);
+  const event = stringField(raw, "event") ?? stringField(payload, "event");
 
-  if (raw?.event === "tool.completed") {
-    const result = payload.output ?? payload.result ?? payload.content ?? payload.error ?? payload;
+  if (event === "tool.completed") {
+    const result =
+      innerPayload?.output ??
+      innerPayload?.result ??
+      innerPayload?.content ??
+      innerPayload?.error ??
+      innerPayload ??
+      payload;
     return {
-      name: stringField(payload, "name"),
+      name: stringField(innerPayload, "name"),
       result: stringifyDetails(result),
-      id: stringField(payload, "id"),
+      id: stringField(innerPayload, "id"),
     };
   }
 
-  if (
-    raw?.event === "item.completed" ||
-    raw?.event === "item.failed" ||
-    payload.event === "item.completed" ||
-    payload.event === "item.failed"
-  ) {
-    const inner =
-      raw?.event === "item.completed" || raw?.event === "item.failed"
-        ? payload
-        : payload.payload && typeof payload.payload === "object"
-          ? payload.payload
-          : {};
+  if (event === "item.completed" || event === "item.failed") {
+    const inner = innerPayload ?? {};
     const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
     const result =
       item?.output ??
@@ -398,11 +427,33 @@ function extractDeepseekToolResult(raw: any): { name?: string; result: string; i
         stringField(inner, "name") ??
         stringField(item, "type"),
       result: stringifyDetails(result),
-      id: stringField(item, "id") ?? stringField(inner, "id"),
+      id: stringField(item, "id") ?? stringField(inner, "id") ?? stringField(payload, "item_id"),
     };
   }
 
   return null;
+}
+
+function unwrapDeepseekPayload(raw: any): any {
+  const payload = raw?.payload;
+  if (!payload || typeof payload !== "object") return undefined;
+  const nested = payload.payload;
+  if (nested && typeof nested === "object") {
+    const outerEvent = stringField(payload, "event");
+    if (
+      outerEvent ||
+      nested.item ||
+      nested.tool ||
+      nested.turn ||
+      nested.kind ||
+      nested.output ||
+      nested.result ||
+      nested.error
+    ) {
+      return nested;
+    }
+  }
+  return payload;
 }
 
 function normalizeBlock(
@@ -419,8 +470,8 @@ function normalizeBlock(
       payload?.params ??
       payload?.input ??
       payload?.arguments ??
-      payload?.details ??
-      rawCall?.params;
+      rawCall?.params ??
+      payload?.details;
     return {
       kind: "tool_call",
       toolName: (payload?.name as string) || rawCall?.name || "tool",
@@ -800,8 +851,11 @@ export default function StreamBlocksView({
 
   // Build tool_use_id → name map so tool_result rows can show the real tool name.
   const toolNameById = buildToolNameById(blocks);
+  const displayBlocks = executionBlocks.filter(
+    (b) => normalizeBlock(b.block, { toolNameById }).kind !== "system",
+  );
 
-  const normalized = executionBlocks.map((b) => normalizeBlock(b.block, { toolNameById }).kind);
+  const normalized = displayBlocks.map((b) => normalizeBlock(b.block, { toolNameById }).kind);
   const toolCallCount = normalized.filter((k) => k === "tool_call").length;
   const reasoningCount = normalized.filter((k) => k === "reasoning").length;
 
@@ -859,17 +913,17 @@ export default function StreamBlocksView({
     }
   }, [composingText]);
 
-  if (blocks.length === 0) return null;
+  if (blocks.length === 0 || displayBlocks.length === 0) return null;
 
   const summaryParts: string[] = [];
   if (toolCallCount > 0) summaryParts.push(`${toolCallCount} tool call${toolCallCount !== 1 ? "s" : ""}`);
   if (reasoningCount > 0) summaryParts.push(`${reasoningCount} reasoning`);
-  if (summaryParts.length === 0) summaryParts.push(`${executionBlocks.length} step${executionBlocks.length !== 1 ? "s" : ""}`);
+  if (summaryParts.length === 0) summaryParts.push(`${displayBlocks.length} step${displayBlocks.length !== 1 ? "s" : ""}`);
 
   return (
     <div className="flex justify-start">
       <div className="max-w-[85%] space-y-2">
-        {executionBlocks.length > 0 && (
+        {displayBlocks.length > 0 && (
           <div className="rounded-lg border border-zinc-700/40 bg-zinc-900/40 overflow-hidden">
             <button
               onClick={() => setExpanded(!expanded)}
@@ -885,7 +939,7 @@ export default function StreamBlocksView({
             </button>
             {expanded && (
               <div className="border-t border-zinc-800/60 px-3 py-1 divide-y divide-zinc-800/40">
-                {executionBlocks.map((block) => (
+                {displayBlocks.map((block) => (
                   <StreamBlockItem
                     key={`${block.trace_id}-${block.seq}`}
                     block={block}

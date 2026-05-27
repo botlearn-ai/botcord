@@ -92,6 +92,42 @@ describe("StreamBlocksView", () => {
     expect(html).toContain("botcord-daemon status");
   });
 
+  it("prefers wrapped DeepSeek raw tool input over generic payload details", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(StreamBlocksView, {
+        defaultExpanded: true,
+        blocks: [{
+          trace_id: "tr_2b",
+          seq: 1,
+          created_at: "2026-05-25T00:00:00.000Z",
+          block: {
+            kind: "tool_call",
+            payload: { details: "exec_shell" },
+            raw: {
+              event: "item.started",
+              payload: {
+                seq: 922,
+                event: "item.started",
+                payload: {
+                  item: {
+                    id: "item_exec",
+                    kind: "tool_call",
+                    status: "in_progress",
+                    summary: "exec_shell started",
+                    detail: "{\"cmd\":\"botcord-daemon status\"}",
+                  },
+                },
+              },
+            },
+          },
+        }],
+      }),
+    );
+
+    expect(html).toContain("exec_shell");
+    expect(html).toContain("botcord-daemon status");
+  });
+
   it("falls back to raw tool output when normalized result is empty", () => {
     const html = renderToStaticMarkup(
       React.createElement(StreamBlocksView, {
@@ -121,5 +157,38 @@ describe("StreamBlocksView", () => {
 
     expect(html).toContain("exec_shell");
     expect(html).toContain("daemon: pid 49616");
+  });
+
+  it("hides system stream blocks", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(StreamBlocksView, {
+        defaultExpanded: true,
+        blocks: [
+          {
+            trace_id: "tr_4",
+            seq: 1,
+            created_at: "2026-05-25T00:00:00.000Z",
+            block: {
+              kind: "system",
+              payload: { details: "{\"event\":\"turn.started\"}" },
+              raw: { event: "turn.started" },
+            },
+          },
+          {
+            trace_id: "tr_4",
+            seq: 2,
+            created_at: "2026-05-25T00:00:01.000Z",
+            block: {
+              kind: "tool_call",
+              payload: { name: "exec_shell", params: { cmd: "pwd" } },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(html).not.toContain("turn.started");
+    expect(html).toContain("exec_shell");
+    expect(html).toContain("pwd");
   });
 });

@@ -793,6 +793,85 @@ describe("createBotCordChannel — streamBlock()", () => {
     });
   });
 
+  it("normalizes wrapped DeepSeek item.started tool input from the runtime event stream", () => {
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "tool_use",
+          seq: 5,
+          raw: {
+            event: "item.started",
+            payload: {
+              seq: 922,
+              thread_id: "thr_test",
+              turn_id: "turn_test",
+              item_id: "item_exec",
+              event: "item.started",
+              payload: {
+                item: {
+                  id: "item_exec",
+                  kind: "tool_call",
+                  status: "in_progress",
+                  summary: "exec_shell started",
+                  detail: "{\"cmd\":\"botcord-daemon status\"}",
+                },
+              },
+            },
+          },
+        },
+        5,
+      ),
+    ).toMatchObject({
+      kind: "tool_call",
+      seq: 5,
+      payload: {
+        id: "item_exec",
+        name: "exec_shell",
+        params: { cmd: "botcord-daemon status" },
+        status: "in_progress",
+      },
+    });
+  });
+
+  it("normalizes wrapped DeepSeek item.completed output without showing the event envelope", () => {
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "tool_result",
+          seq: 6,
+          raw: {
+            event: "item.completed",
+            payload: {
+              seq: 955,
+              thread_id: "thr_test",
+              turn_id: "turn_test",
+              item_id: "item_exec",
+              event: "item.completed",
+              payload: {
+                item: {
+                  id: "item_exec",
+                  kind: "command_execution",
+                  status: "completed",
+                  summary: "exec_shell: daemon: pid 49616",
+                  detail: "daemon: pid 49616 (alive)",
+                },
+              },
+            },
+          },
+        },
+        6,
+      ),
+    ).toMatchObject({
+      kind: "tool_result",
+      seq: 6,
+      payload: {
+        name: "exec_shell",
+        result: "daemon: pid 49616 (alive)",
+        tool_use_id: "item_exec",
+      },
+    });
+  });
+
   it("POSTs to /hub/stream-block with the right trace_id + block", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     const realFetch = globalThis.fetch;

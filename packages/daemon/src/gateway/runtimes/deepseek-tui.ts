@@ -497,9 +497,15 @@ function isDeepseekTerminalEvent(eventName: string, payload: any): boolean {
 }
 
 function isToolStarted(eventName: string, payload: any): boolean {
+  const itemKind = payload?.payload?.item?.kind ?? payload?.item?.kind;
   return (
     (eventName === "item.started" &&
-      (!!payload?.tool || payload?.item?.kind === "tool_call" || payload?.payload?.item?.kind === "tool_call")) ||
+      (
+        !!payload?.tool ||
+        itemKind === "tool_call" ||
+        itemKind === "command_execution" ||
+        itemKind === "file_change"
+      )) ||
     (payload?.event === "item.started" && !!payload?.payload?.tool)
   );
 }

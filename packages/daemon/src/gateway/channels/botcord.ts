@@ -1196,27 +1196,46 @@ function extractToolResult(raw: any): { name?: string; result: string; id?: stri
 function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id?: string; status?: string } | null {
   const payload = raw?.payload;
   if (!payload || typeof payload !== "object") return null;
+  const innerPayload = unwrapDeepseekPayload(raw);
+  const event = stringField(raw, "event") ?? stringField(payload, "event");
 
-  if (raw?.event === "tool.started") {
-    const tool = payload.tool && typeof payload.tool === "object" ? payload.tool : undefined;
+  if (event === "tool.started") {
+    const tool = innerPayload?.tool && typeof innerPayload.tool === "object" ? innerPayload.tool : undefined;
     return {
-      name: stringField(payload, "name") ?? stringField(tool, "name") ?? "tool",
-      params: parseMaybeJson(payload.input ?? payload.arguments ?? payload.params ?? tool?.input ?? tool?.rawInput),
-      id: stringField(payload, "id") ?? stringField(tool, "id"),
-      status: stringField(payload, "status") ?? stringField(tool, "status"),
+      name: stringField(innerPayload, "name") ?? stringField(tool, "name") ?? "tool",
+      params: parseMaybeJson(
+        innerPayload?.input ??
+          innerPayload?.arguments ??
+          innerPayload?.params ??
+          tool?.input ??
+          tool?.rawInput ??
+          tool?.arguments ??
+          tool?.params,
+      ),
+      id: stringField(innerPayload, "id") ?? stringField(tool, "id"),
+      status: stringField(innerPayload, "status") ?? stringField(tool, "status"),
     };
   }
 
-  if (raw?.event === "item.started" || payload.event === "item.started") {
-    const inner =
-      raw?.event === "item.started"
-        ? payload
-        : payload.payload && typeof payload.payload === "object"
-          ? payload.payload
-          : {};
+  if (event === "item.started") {
+    const inner = innerPayload ?? {};
     const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
     const tool = inner.tool && typeof inner.tool === "object" ? inner.tool : item?.tool;
-    const itemParams = parseMaybeJson(item?.input ?? item?.arguments ?? item?.detail);
+    const metadata = item?.metadata && typeof item.metadata === "object" ? item.metadata : undefined;
+    const metadataCommand =
+      metadata && (metadata.command ?? metadata.cmd)
+        ? { [metadata.command ? "command" : "cmd"]: metadata.command ?? metadata.cmd }
+        : undefined;
+    const itemParams = parseMaybeJson(
+      item?.input ??
+        item?.arguments ??
+        item?.params ??
+        metadata?.input ??
+        metadata?.arguments ??
+        metadata?.params ??
+        metadataCommand ??
+        item?.detail,
+    );
     const detailParams =
       itemParams !== undefined
         ? itemParams
@@ -1240,9 +1259,18 @@ function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id
           inner.arguments ??
           inner.params ??
           item?.input ??
-          item?.arguments,
+          item?.arguments ??
+          item?.params ??
+          metadata?.input ??
+          metadata?.arguments ??
+          metadata?.params ??
+          metadataCommand,
       ) ?? detailParams ?? tool ?? item,
-      id: stringField(tool, "id") ?? stringField(inner, "id") ?? stringField(item, "id"),
+      id:
+        stringField(tool, "id") ??
+        stringField(inner, "id") ??
+        stringField(item, "id") ??
+        stringField(payload, "item_id"),
       status: stringField(tool, "status") ?? stringField(inner, "status") ?? stringField(item, "status"),
     };
   }
@@ -1253,28 +1281,26 @@ function extractDeepseekToolCall(raw: any): { name: string; params?: unknown; id
 function extractDeepseekToolResult(raw: any): { name?: string; result: string; id?: string } | null {
   const payload = raw?.payload;
   if (!payload || typeof payload !== "object") return null;
+  const innerPayload = unwrapDeepseekPayload(raw);
+  const event = stringField(raw, "event") ?? stringField(payload, "event");
 
-  if (raw?.event === "tool.completed") {
-    const result = payload.output ?? payload.result ?? payload.content ?? payload.error ?? payload;
+  if (event === "tool.completed") {
+    const result =
+      innerPayload?.output ??
+      innerPayload?.result ??
+      innerPayload?.content ??
+      innerPayload?.error ??
+      innerPayload ??
+      payload;
     return {
-      name: stringField(payload, "name"),
+      name: stringField(innerPayload, "name"),
       result: stringifyToolResult(result),
-      id: stringField(payload, "id"),
+      id: stringField(innerPayload, "id"),
     };
   }
 
-  if (
-    raw?.event === "item.completed" ||
-    raw?.event === "item.failed" ||
-    payload.event === "item.completed" ||
-    payload.event === "item.failed"
-  ) {
-    const inner =
-      raw?.event === "item.completed" || raw?.event === "item.failed"
-        ? payload
-        : payload.payload && typeof payload.payload === "object"
-          ? payload.payload
-          : {};
+  if (event === "item.completed" || event === "item.failed") {
+    const inner = innerPayload ?? {};
     const item = inner.item && typeof inner.item === "object" ? inner.item : undefined;
     const result =
       item?.output ??
@@ -1295,11 +1321,33 @@ function extractDeepseekToolResult(raw: any): { name?: string; result: string; i
         stringField(inner, "name") ??
         stringField(item, "type"),
       result: stringifyToolResult(result),
-      id: stringField(item, "id") ?? stringField(inner, "id"),
+      id: stringField(item, "id") ?? stringField(inner, "id") ?? stringField(payload, "item_id"),
     };
   }
 
   return null;
+}
+
+function unwrapDeepseekPayload(raw: any): any {
+  const payload = raw?.payload;
+  if (!payload || typeof payload !== "object") return undefined;
+  const nested = payload.payload;
+  if (nested && typeof nested === "object") {
+    const outerEvent = stringField(payload, "event");
+    if (
+      outerEvent ||
+      nested.item ||
+      nested.tool ||
+      nested.turn ||
+      nested.kind ||
+      nested.output ||
+      nested.result ||
+      nested.error
+    ) {
+      return nested;
+    }
+  }
+  return payload;
 }
 
 function formatBlockDetails(raw: unknown): string {
