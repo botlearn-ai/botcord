@@ -36,7 +36,9 @@ from hub.routers.daemon_control import (
     _build_signed_frame,
     _load_agent_identity_snapshot,
     _now,
+    _parse_agent_skill_snapshot_params,
     _parse_runtime_snapshot_params,
+    _persist_agent_skill_snapshot,
     _persist_runtime_snapshot,
 )
 
@@ -277,6 +279,7 @@ _DAEMON_INITIATED_TYPES = {
     # typing indicator before the final reply arrives. See
     # ``cloud_gateway_internal._INFLIGHT_RUNTIME_WS``.
     "cloud_gateway_runtime_status",
+    "agent_skill_snapshot",
 }
 
 
@@ -504,6 +507,22 @@ async def _handle_cloud_daemon_event(
             except Exception:
                 pass
             return
+    if msg_type == "agent_skill_snapshot":
+        parsed = _parse_agent_skill_snapshot_params(params)
+        if parsed is None:
+            err = {
+                "id": msg_id,
+                "ok": False,
+                "error": {
+                    "code": "bad_params",
+                    "message": "agent_skill_snapshot requires {agentId:str, skills:list, probedAt:int}",
+                },
+            }
+            try:
+                await conn.ws.send_text(json.dumps(err))
+            except Exception:
+                pass
+            return
 
     if msg_type == "cloud_gateway_runtime_status":
         # Best-effort relay to the live ingress runtime WS. Late import
@@ -541,6 +560,12 @@ async def _handle_cloud_daemon_event(
                 daemon_row.last_seen_at = now
                 if msg_type == "runtime_snapshot":
                     await _persist_runtime_snapshot(db, daemon_row, params)  # type: ignore[arg-type]
+                if msg_type == "agent_skill_snapshot":
+                    await _persist_agent_skill_snapshot(
+                        db,
+                        daemon_instance_id=conn.daemon_instance_id,
+                        params=params,  # type: ignore[arg-type]
+                    )
             if cloud_row is not None:
                 cloud_row.last_seen_at = now
             await db.commit()

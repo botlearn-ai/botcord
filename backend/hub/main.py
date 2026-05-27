@@ -74,6 +74,7 @@ from app.routers.policy import router as app_policy_router
 from app.routers.gateways import router as app_gateways_router
 from app.routers.prompts import router as app_prompts_router
 from app.routers.runtime_files import router as app_runtime_files_router
+from app.routers.runtime_skills import router as app_runtime_skills_router
 from app.routers.schedules import router as app_schedules_router
 from app.routers.auth import router as app_auth_router
 from app.routers.telegram import router as app_telegram_router
@@ -311,6 +312,7 @@ app.include_router(app_cloud_agents_router, dependencies=_beta_gate)
 app.include_router(app_gateways_router, dependencies=_beta_gate)
 app.include_router(app_telegram_router, dependencies=_beta_gate)
 app.include_router(app_runtime_files_router, dependencies=_beta_gate)
+app.include_router(app_runtime_skills_router, dependencies=_beta_gate)
 app.include_router(app_schedules_router, dependencies=_beta_gate)
 app.include_router(app_prompts_router)
 app.include_router(app_presence_router, dependencies=_beta_gate)

@@ -81,6 +81,13 @@ export const CONTROL_FRAME_TYPES = {
    */
   LIST_AGENT_FILES: "list_agent_files",
   /**
+   * Hub→daemon: scan the BotCord agent's runtime/workspace skill directories
+   * and return the current soft-skill snapshot. The Hub authorizes ownership
+   * before sending this frame; daemon accepts only `agentId` and resolves
+   * all paths from its local agent layout.
+   */
+  LIST_AGENT_SKILLS: "list_agent_skills",
+  /**
    * Daemon→Hub: event frame carrying the latest runtime-probe snapshot.
    * Pushed on first control-WS connect (P0) and on reconnect/diff (P1).
    * Hub persists the payload onto `daemon_instances.runtimes_json` so the
@@ -88,6 +95,12 @@ export const CONTROL_FRAME_TYPES = {
    * daemon is offline. Plan §8.5 "push" path.
    */
   RUNTIME_SNAPSHOT: "runtime_snapshot",
+  /**
+   * Daemon→Hub: event frame carrying the latest per-agent soft-skill
+   * snapshot. Hub persists the payload onto the owning agent row so the
+   * dashboard can render the Skills tab while the daemon is offline.
+   */
+  AGENT_SKILL_SNAPSHOT: "agent_skill_snapshot",
   /**
    * Hub→daemon: invalidate the daemon's cached attention policy for a given
    * agent (and optionally a single room override). Sent by the BFF after
@@ -401,6 +414,27 @@ export interface ListAgentFilesResult {
   agentId: string;
   runtime?: string;
   files: AgentRuntimeFile[];
+}
+
+/** Payload shape for `list_agent_skills`. */
+export interface ListAgentSkillsParams {
+  agentId: string;
+}
+
+export interface AgentSkillProbe {
+  /** Skill manifest name, usually from SKILL.md frontmatter. */
+  name: string;
+  /** UI-facing source bucket: agent workspace or runtime-global skill dir. */
+  source: string;
+  description?: string;
+  /** SKILL.md mtime as unix milliseconds. */
+  mtimeMs: number;
+}
+
+export interface ListAgentSkillsResult {
+  agentId: string;
+  skills: AgentSkillProbe[];
+  probedAt: number;
 }
 
 /** Payload shape for `revoke_agent`. */

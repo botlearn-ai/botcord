@@ -27,7 +27,7 @@ import { ControlChannel } from "./control-channel.js";
 import { toGatewayConfig } from "./daemon-config-map.js";
 import { log as daemonLog } from "./log.js";
 import { createProvisioner } from "./provision.js";
-import { createDaemonChannel, pushRuntimeSnapshot } from "./daemon.js";
+import { createDaemonChannel, pushAgentSkillSnapshot, pushRuntimeSnapshot } from "./daemon.js";
 import { SnapshotWriter } from "./snapshot-writer.js";
 import { createDaemonSystemContextBuilder } from "./system-context.js";
 import { readWorkingMemorySnapshot } from "./working-memory.js";
@@ -234,7 +234,20 @@ export async function startCloudDaemon(
     });
   };
 
+  const installedAgentIds = new Set<string>();
+  let controlChannel: ControlChannel | null = null;
+  const pushInstalledAgentSkillSnapshot = (agentId: string, reason: string): void => {
+    if (!controlChannel) return;
+    const pushed = pushAgentSkillSnapshot(controlChannel, agentId);
+    logger.info("cloud control-channel: agent_skill_snapshot pushed", {
+      agentId,
+      reason,
+      ok: pushed,
+    });
+  };
+
   const onAgentInstalled: OnAgentInstalledHook = (info: InstalledAgentInfo) => {
+    installedAgentIds.add(info.agentId);
     credentialPathByAgentId.set(info.agentId, info.credentialsFile);
     if (info.hubUrl) hubUrlByAgentId.set(info.agentId, info.hubUrl);
     if (info.displayName) displayNameByAgent.set(info.agentId, info.displayName);
@@ -251,6 +264,7 @@ export async function startCloudDaemon(
         }),
       );
     }
+    pushInstalledAgentSkillSnapshot(info.agentId, "agent_installed");
   };
 
   const gateway = new Gateway({
@@ -281,7 +295,6 @@ export async function startCloudDaemon(
   await gateway.start();
   logger.info("cloud daemon gateway started (zero agents at boot)");
 
-  let controlChannel: ControlChannel | null = null;
   if (!opts.disableControlChannel) {
     const auth = asUserAuthManager(new CloudAuthManager(cloudCfg));
     const provisionerFactory = opts.provisionerFactory ?? createProvisioner;
@@ -330,6 +343,9 @@ export async function startCloudDaemon(
       logger.info("cloud control-channel started; runtime_snapshot pushed", {
         ok: pushed,
       });
+      for (const agentId of installedAgentIds) {
+        pushInstalledAgentSkillSnapshot(agentId, "control_channel_started");
+      }
     } catch (err) {
       logger.warn("cloud control-channel start failed; daemon will retry", {
         error: err instanceof Error ? err.message : String(err),

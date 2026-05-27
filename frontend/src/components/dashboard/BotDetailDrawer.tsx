@@ -11,6 +11,7 @@ import {
   Pencil,
   RefreshCw,
   Settings2,
+  Sparkles,
   Trash2,
   Wallet as WalletIcon,
   X,
@@ -41,14 +42,16 @@ import BotAvatar from "./BotAvatar";
 import { CompositeAvatar } from "./CompositeAvatar";
 import BotWalletTab from "./BotWalletTab";
 import DashboardSelect from "./DashboardSelect";
+import AgentSkillsTab from "./AgentSkillsTab";
 
-type TabKey = "overview" | "wallet" | "settings" | "files";
+type TabKey = "overview" | "wallet" | "settings" | "skills" | "files";
 type BotDetailDrawerCopy = typeof botDetailDrawer["en"];
 
 const TABS: { key: TabKey; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "overview", icon: Eye },
   { key: "wallet", icon: WalletIcon },
   { key: "settings", icon: Settings2 },
+  { key: "skills", icon: Sparkles },
   { key: "files", icon: FileText },
 ];
 
@@ -265,7 +268,7 @@ export default function BotDetailDrawer() {
         </div>
 
         {/* Tab strip */}
-        <div className="grid grid-cols-4 border-b border-glass-border">
+        <div className="grid grid-cols-5 border-b border-glass-border">
           {TABS.map(({ key, icon: Icon }) => {
             const active = tab === key;
             return (
@@ -317,6 +320,7 @@ export default function BotDetailDrawer() {
               t={t}
             />
           )}
+          {tab === "skills" && <AgentSkillsTab agentId={bot.agent_id} />}
           {tab === "files" && <FilesTab agentId={bot.agent_id} t={t} />}
           {tab === "wallet" && <BotWalletTab agentId={bot.agent_id} displayName={bot.display_name} />}
         </div>

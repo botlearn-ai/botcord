@@ -74,6 +74,7 @@ import { log as daemonLog } from "./log.js";
 import { discoverAgentCredentials } from "./agent-discovery.js";
 import { resolveMemoryDir } from "./working-memory.js";
 import { discoverRuntimeModelCatalog } from "./runtime-models.js";
+import { collectAgentSkillSnapshot } from "./skill-index.js";
 import {
   buildRuntimeSelectionExtraArgs,
   mergeRuntimeExtraArgs,
@@ -82,6 +83,10 @@ import {
   handleCloudGatewayRuntimeInbound,
   type CloudGatewayTypingEmitter,
 } from "./cloud-gateway-runtime.js";
+
+interface ListAgentSkillsParams {
+  agentId: string;
+}
 
 /**
  * Information passed to {@link OnAgentInstalledHook} after a successful
@@ -482,6 +487,32 @@ export function createProvisioner(opts: ProvisionerOptions): (
           agentId: params.agentId,
           fileId: params.fileId ?? null,
           count: result.files.length,
+        });
+        return { ok: true, result };
+      }
+
+      case "list_agent_skills": {
+        const params = (frame.params ?? {}) as unknown as ListAgentSkillsParams;
+        if (!params.agentId) {
+          return {
+            ok: false,
+            error: { code: "bad_params", message: "list_agent_skills requires params.agentId" },
+          };
+        }
+        const channels = gateway.snapshot().channels;
+        if (!channels[params.agentId]) {
+          return {
+            ok: false,
+            error: {
+              code: "agent_not_loaded",
+              message: `agent ${params.agentId} is not loaded in daemon gateway`,
+            },
+          };
+        }
+        const result = collectAgentSkillSnapshot(params.agentId);
+        daemonLog.debug("list_agent_skills", {
+          agentId: params.agentId,
+          count: result.skills.length,
         });
         return { ok: true, result };
       }

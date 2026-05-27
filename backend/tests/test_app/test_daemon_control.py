@@ -1186,6 +1186,58 @@ async def test_runtime_snapshot_caps_nested_models(
 
 
 @pytest.mark.asyncio
+async def test_agent_skill_snapshot_accepts_and_persists_full_list_over_128(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    from sqlalchemy import select
+
+    from hub.routers.daemon_control import _DaemonConn, _handle_daemon_event
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+    await _seed_hosted_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        daemon_instance_id=instance_id,
+        agent_id="ag_many_skills",
+    )
+
+    fake_ws = _FakeWS()
+    conn = _DaemonConn(
+        ws=fake_ws,  # type: ignore[arg-type]
+        user_id=str(seed_user["user_id"]),
+        daemon_instance_id=instance_id,
+        pending_acks={},
+    )
+
+    skills = [
+        {"name": f"skill-{i}", "source": "runtime-global", "mtimeMs": _probed_now_ms()}
+        for i in range(129)
+    ]
+    await _handle_daemon_event(
+        conn,
+        {
+            "id": "frm_skills_many",
+            "type": "agent_skill_snapshot",
+            "params": {
+                "agentId": "ag_many_skills",
+                "skills": skills,
+                "probedAt": _probed_now_ms(),
+            },
+        },
+    )
+    ack = json.loads(fake_ws.sent[-1])
+    assert ack == {"id": "frm_skills_many", "ok": True}
+
+    await db_session.commit()
+    agent = await db_session.scalar(select(Agent).where(Agent.agent_id == "ag_many_skills"))
+    assert agent is not None
+    assert len(agent.skills_json) == 129
+    assert agent.skills_json[-1]["name"] == "skill-128"
+    assert agent.skills_probed_at is not None
+
+
+@pytest.mark.asyncio
 async def test_list_instances_without_runtimes_returns_none(
     client: AsyncClient, seed_user
 ):

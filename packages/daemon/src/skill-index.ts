@@ -23,6 +23,19 @@ export interface SoftSkillEntry {
   mtimeMs: number;
 }
 
+export interface AgentSkillSnapshotEntry {
+  name: string;
+  source: string;
+  description?: string;
+  mtimeMs: number;
+}
+
+export interface AgentSkillSnapshot {
+  agentId: string;
+  skills: AgentSkillSnapshotEntry[];
+  probedAt: number;
+}
+
 export interface SkillIndexOptions {
   extraDirs?: string[];
   includeGlobal?: boolean;
@@ -70,7 +83,7 @@ export function scanSoftSkills(
     if (!existsSync(root.dir)) continue;
     let children: string[];
     try {
-      children = readdirSync(root.dir);
+      children = readdirSync(root.dir).sort((a, b) => a.localeCompare(b));
     } catch {
       continue;
     }
@@ -105,15 +118,30 @@ export function scanSoftSkills(
   }
 
   return Array.from(byName.values())
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, MAX_SKILLS);
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function collectAgentSkillSnapshot(
+  agentId: string,
+  opts: SkillIndexOptions = {},
+): AgentSkillSnapshot {
+  return {
+    agentId,
+    skills: scanSoftSkills(agentId, opts).map((skill) => ({
+      name: skill.name,
+      source: skill.source.startsWith("agent-") ? "workspace" : "runtime-global",
+      ...(skill.description ? { description: skill.description } : {}),
+      mtimeMs: skill.mtimeMs,
+    })),
+    probedAt: Date.now(),
+  };
 }
 
 export function buildSoftSkillIndexPrompt(
   agentId: string,
   opts: SkillIndexOptions = {},
 ): string | null {
-  const skills = scanSoftSkills(agentId, opts);
+  const skills = scanSoftSkills(agentId, opts).slice(0, MAX_SKILLS);
   if (skills.length === 0) return null;
 
   const lines = [
