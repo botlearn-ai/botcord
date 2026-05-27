@@ -186,6 +186,7 @@ export async function buildIngressService(
     config: opts.config,
     log,
     async shutdown(reason = "shutdown"): Promise<void> {
+      orchestrator.stopRetryWorker();
       await runner.stopAll(reason);
       await runtime.closeAll(reason);
       await setup?.close();
@@ -199,8 +200,9 @@ export async function buildIngressService(
 /** Convenience: build + start providers + resume queue. */
 export async function startIngress(opts: BuildIngressOptions): Promise<IngressService> {
   const service = await buildIngressService(opts);
-  await service.orchestrator.resumePending();
   await service.runner.startAll();
+  await service.orchestrator.resumePending();
+  service.orchestrator.startRetryWorker();
   return service;
 }
 

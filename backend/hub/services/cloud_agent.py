@@ -201,6 +201,7 @@ class CloudAgentUsageView:
 # envelope wire size. Generous default — model context is the real cap.
 _RUN_PROMPT_MAX_CHARS = 64 * 1024
 _ACTIVE_CLOUD_DAEMON_STATUSES = ("creating", "starting", "ready", "paused")
+_RESUME_START_COALESCE_SECONDS = 30
 
 
 def _now() -> datetime.datetime:
@@ -231,6 +232,28 @@ def _cloud_agent_last_activity_at(
         _as_aware_utc(cdi.created_at),
     ]
     return max(ts for ts in candidates if ts is not None)
+
+
+def _cloud_daemon_start_requested_at(
+    cdi: CloudDaemonInstance,
+) -> datetime.datetime | None:
+    return _as_aware_utc(cdi.last_started_at) or _as_aware_utc(cdi.created_at)
+
+
+def _is_recent_inflight_start(
+    cdi: CloudDaemonInstance,
+    *,
+    now: datetime.datetime,
+) -> bool:
+    if cdi.status != "starting" or not cdi.provider_sandbox_id:
+        return False
+    started_at = _cloud_daemon_start_requested_at(cdi)
+    if started_at is None:
+        return False
+    return (
+        now - started_at
+        <= datetime.timedelta(seconds=_RESUME_START_COALESCE_SECONDS)
+    )
 
 
 def _placeholder_refresh_hash() -> str:
@@ -445,6 +468,8 @@ class CloudAgentService:
             ) from exc
 
         _apply_handle_to_rows(cloud_daemon, handle)
+        if handle.status == "starting":
+            cloud_daemon.last_started_at = _now()
         if handle.status == "ready":
             # Fake-provider shortcut: the in-memory provider stands in for
             # the full sandbox+WS dance, so we mark ready immediately and
@@ -633,6 +658,18 @@ class CloudAgentService:
                 user_id=user_id,
                 cloud_daemon_instance_id=cdi.id,
             )
+            if _is_recent_inflight_start(cdi, now=_now()):
+                _ensure_provisioning_metadata(db, cai, agent)
+                cai.status = "provisioning"
+                cai.error_code = None
+                cai.error_message = None
+                cdi.error_code = None
+                cdi.error_message = None
+                await db.commit()
+                await db.refresh(cai)
+                await db.refresh(cdi)
+                await db.refresh(agent)
+                return _make_view(agent, cai, cdi)
             if not daemon_online:
                 _ensure_provisioning_metadata(db, cai, agent)
                 cai.status = "provisioning"

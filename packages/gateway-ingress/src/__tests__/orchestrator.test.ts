@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { noopLogger } from "../log.js";
 import { IngressOrchestrator } from "../orchestrator.js";
+import { HubClientError } from "../hub-client.js";
 import { RuntimeSessionManager } from "../runtime/session.js";
 import { FileSystemIngressStore } from "../storage/store.js";
 import type { GatewayInboundMessage } from "@botcord/protocol-core";
@@ -185,10 +186,90 @@ describe("IngressOrchestrator", () => {
       cloud_daemon_instance_id: "cloud_dm_fake",
     });
     await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:slow");
-    await waitFor(() => h.store.listEventsByStatus("queued").length === 1);
+    await waitFor(() => h.store.listEventsByStatus("queued")[0]?.attemptCount === 1);
     const e = h.store.listEventsByStatus("queued")[0]!;
     expect(e.attemptCount).toBe(1);
+    expect(e.nextAttemptAt).toBeGreaterThan(Date.now());
     expect(e.lastError).toContain("hub_status_provisioning");
+  });
+
+  it("retries a provisioning event by polling runtime metadata", async () => {
+    h.hub.ensureResponse = () => ({
+      agent_id: CONN.agentId,
+      status: "provisioning",
+      cloud_daemon_instance_id: "cloud_dm_fake",
+    });
+    await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:retry-ready");
+    await waitFor(() => h.store.listEventsByStatus("queued")[0]?.attemptCount === 1);
+    const queued = h.store.listEventsByStatus("queued")[0]!;
+
+    h.hub.runtimeResponse = (params) => ({
+      agent_id: CONN.agentId,
+      status: "ready",
+      cloud_daemon_instance_id: "cloud_dm_fake",
+      runtime: {
+        ...h.hub.defaultRuntime(),
+        session_token: `tok_${params.eventId}`,
+      },
+    });
+
+    await h.orchestrator.retryPending({ force: true });
+    await waitFor(() => h.socketFactory.sockets.length === 1);
+    const sock = h.socketFactory.sockets[0]!;
+    await waitFor(() => sock.sent.length === 1);
+    const frame = JSON.parse(sock.sent[0]!) as GatewayInboundFrame;
+
+    expect(frame.event_id).toBe(queued.eventId);
+    expect(h.hub.ensureRunningCalls).toHaveLength(1);
+    expect(h.hub.getRuntimeCalls).toEqual([
+      {
+        agentId: CONN.agentId,
+        params: { gatewayId: CONN.id, eventId: queued.eventId },
+      },
+    ]);
+    expect(h.store.getEvent(queued.eventId)?.status).toBe("delivering");
+  });
+
+  it("uses runtime polling for new events while the agent is already provisioning", async () => {
+    h.hub.ensureResponse = () => ({
+      agent_id: CONN.agentId,
+      status: "provisioning",
+      cloud_daemon_instance_id: "cloud_dm_fake",
+    });
+    await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:first-provisioning");
+    await waitFor(() => h.store.listEventsByStatus("queued")[0]?.attemptCount === 1);
+
+    h.hub.runtimeResponse = () => ({
+      agent_id: CONN.agentId,
+      status: "provisioning",
+      cloud_daemon_instance_id: "cloud_dm_fake",
+    });
+    await h.orchestrator.ingest(CONN.id, {
+      ...NORMALIZED,
+      id: "telegram:42:2",
+      text: "second while booting",
+    }, "tg:gw:second-provisioning");
+    await waitFor(() => h.store.listEventsByStatus("queued").length === 2);
+    await waitFor(() =>
+      h.store
+        .listEventsByStatus("queued")
+        .some((event) => event.providerEventId === "tg:gw:second-provisioning" && event.attemptCount === 1),
+    );
+
+    expect(h.hub.ensureRunningCalls).toHaveLength(1);
+    expect(h.hub.getRuntimeCalls).toHaveLength(1);
+    expect(h.hub.getRuntimeCalls[0]!.params.gatewayId).toBe(CONN.id);
+  });
+
+  it("marks non-retryable Hub lookup failures as failed", async () => {
+    h.hub.ensureResponse = () => {
+      throw new HubClientError(404, "not_found", "agent missing");
+    };
+    await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:not-found");
+    await waitFor(() => h.store.listEventsByStatus("failed").length === 1);
+    const e = h.store.listEventsByStatus("failed")[0]!;
+    expect(e.lastError).toContain("ensure_running_failed: not_found");
+    expect(h.store.listEventsByStatus("queued")).toHaveLength(0);
   });
 
   it("e2e: ack → outbound complete → provider sent → delivered", async () => {
