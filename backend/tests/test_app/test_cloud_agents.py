@@ -412,6 +412,134 @@ async def test_cloud_daemon_reconnect_skips_agent_already_loaded(
 
 
 @pytest.mark.asyncio
+async def test_resume_ready_online_agent_reprovisions_missing_daemon_channel(
+    db_session, seed_user, monkeypatch
+):
+    import hub.services.cloud_agent as cloud_agent_mod
+
+    provider = FakeCloudDaemonProvider()
+    service = CloudAgentService(provider=provider, feature_enabled=True)
+    created = await service.create_cloud_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        body=CreateCloudAgentInput(name="Bot"),
+    )
+
+    monkeypatch.setattr(
+        cloud_agent_mod,
+        "is_cloud_daemon_online",
+        lambda cloud_daemon_instance_id: (
+            cloud_daemon_instance_id == created.cloud_daemon_instance_id
+        ),
+    )
+    calls: list[tuple[str, dict | None]] = []
+
+    async def fake_send_cloud_control_frame(
+        _cloud_daemon_instance_id: str,
+        type_: str,
+        params: dict | None = None,
+        timeout_ms: int | None = None,
+    ) -> dict:
+        calls.append((type_, params))
+        if type_ == "list_agents":
+            return {"ok": True, "result": {"agents": []}}
+        if type_ == "provision_agent":
+            assert params is not None
+            assert params["credentials"]["agentId"] == created.agent_id
+            assert params["credentials"]["privateKey"]
+            return {"ok": True, "result": {"agentId": created.agent_id}}
+        raise AssertionError(f"unexpected frame {type_}")
+
+    monkeypatch.setattr(
+        cloud_agent_mod,
+        "send_cloud_control_frame",
+        fake_send_cloud_control_frame,
+    )
+
+    resumed = await service.resume_cloud_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        agent_id=created.agent_id,
+    )
+
+    assert [call[0] for call in calls] == ["list_agents", "provision_agent"]
+    assert resumed.status == "ready"
+    row = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == created.agent_id
+        )
+    )
+    assert row is not None
+    assert row.status == "ready"
+    assert "provisioning" not in (row.metadata_json or {})
+
+
+@pytest.mark.asyncio
+async def test_resume_paused_online_agent_reprovisions_missing_daemon_channel(
+    db_session, seed_user, monkeypatch
+):
+    import hub.services.cloud_agent as cloud_agent_mod
+
+    provider = FakeCloudDaemonProvider()
+    service = CloudAgentService(provider=provider, feature_enabled=True)
+    created = await service.create_cloud_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        body=CreateCloudAgentInput(name="Bot"),
+    )
+
+    row = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == created.agent_id
+        )
+    )
+    assert row is not None
+    row.status = "paused"
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        cloud_agent_mod,
+        "is_cloud_daemon_online",
+        lambda cloud_daemon_instance_id: (
+            cloud_daemon_instance_id == created.cloud_daemon_instance_id
+        ),
+    )
+    calls: list[tuple[str, dict | None]] = []
+
+    async def fake_send_cloud_control_frame(
+        _cloud_daemon_instance_id: str,
+        type_: str,
+        params: dict | None = None,
+        timeout_ms: int | None = None,
+    ) -> dict:
+        calls.append((type_, params))
+        if type_ == "list_agents":
+            return {"ok": True, "result": {"agents": []}}
+        if type_ == "provision_agent":
+            assert params is not None
+            assert params["credentials"]["agentId"] == created.agent_id
+            assert params["credentials"]["privateKey"]
+            return {"ok": True, "result": {"agentId": created.agent_id}}
+        raise AssertionError(f"unexpected frame {type_}")
+
+    monkeypatch.setattr(
+        cloud_agent_mod,
+        "send_cloud_control_frame",
+        fake_send_cloud_control_frame,
+    )
+
+    resumed = await service.resume_cloud_agent(
+        db_session,
+        user_id=seed_user["user_id"],
+        agent_id=created.agent_id,
+    )
+
+    assert [call[0] for call in calls] == ["list_agents", "provision_agent"]
+    assert resumed.status == "ready"
+    assert provider.calls(created.cloud_daemon_instance_id)["create"] == 1
+
+
+@pytest.mark.asyncio
 async def test_delete_removes_from_list(client_factory, seed_user):
     client, provider = await client_factory()
     headers = {"Authorization": f"Bearer {seed_user['token']}"}
