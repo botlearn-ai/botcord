@@ -241,8 +241,14 @@ async def signup(request: Request) -> JSONResponse:
         return _json_error("signup_failed", status_code, message)
 
     properties = data.get("properties") if isinstance(data.get("properties"), dict) else {}
-    confirm_url = properties.get("action_link") or properties.get("actionLink")
+    confirm_url = (
+        properties.get("action_link")
+        or properties.get("actionLink")
+        or data.get("action_link")
+        or data.get("actionLink")
+    )
     if not isinstance(confirm_url, str) or not confirm_url:
+        logger.warning("supabase generate_link returned no action_link: %s", data)
         return _json_error("confirmation_link_missing", 502)
 
     try:
@@ -250,7 +256,7 @@ async def signup(request: Request) -> JSONResponse:
     except Exception as exc:
         logger.exception("failed to send signup confirmation email")
         user = data.get("user") if isinstance(data.get("user"), dict) else {}
-        user_id = user.get("id")
+        user_id = user.get("id") or data.get("id")
         if isinstance(user_id, str) and user_id:
             await _delete_supabase_user(user_id)
         return _json_error("confirmation_email_failed", 502, str(exc))
