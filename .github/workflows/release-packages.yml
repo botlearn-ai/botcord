@@ -57,8 +57,38 @@ jobs:
       - name: Build packages
         run: pnpm -r --filter "./packages/*" --filter "./cli" build
 
+      # Guard against surprise auto-publish.
+      #
+      # changesets/action falls back to `changeset publish` whenever no
+      # pending changesets exist; that scans every workspace package and
+      # publishes anything whose local version is missing from npm — which
+      # silently first-published @botcord/gateway-ingress on the migration
+      # commit (see incident on 2026-05-27). Only run the action when
+      # either:
+      #   - pending changesets exist (→ open/update Version PR), OR
+      #   - this push merged the Version PR (→ publish bumped versions).
+      - name: Decide whether to run changesets action
+        id: decide
+        run: |
+          HAS_CHANGESETS=false
+          if ls .changeset/*.md 2>/dev/null | grep -v -E '/README\.md$' | grep -q .; then
+            HAS_CHANGESETS=true
+          fi
+          IS_RELEASE_COMMIT=false
+          if git log -1 --pretty=%s | grep -q "^chore(release): version packages"; then
+            IS_RELEASE_COMMIT=true
+          fi
+          if [ "$HAS_CHANGESETS" = "true" ] || [ "$IS_RELEASE_COMMIT" = "true" ]; then
+            echo "run=true" >> $GITHUB_OUTPUT
+          else
+            echo "run=false" >> $GITHUB_OUTPUT
+          fi
+          echo "has_changesets=$HAS_CHANGESETS" >> $GITHUB_OUTPUT
+          echo "is_release_commit=$IS_RELEASE_COMMIT" >> $GITHUB_OUTPUT
+
       - name: Create Release PR or Publish
         id: changesets
+        if: steps.decide.outputs.run == 'true'
         uses: changesets/action@v1
         with:
           version: pnpm exec changeset version
