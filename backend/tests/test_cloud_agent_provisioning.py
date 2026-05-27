@@ -8,6 +8,7 @@ ack on ``/cloud/daemon/ws``.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import uuid
 
@@ -287,6 +288,11 @@ async def test_provision_pending_dispatches_provision_agent_and_marks_ready(
             assert creds["keyId"]
             assert creds["hubUrl"].startswith("http")
             assert creds["token"]
+            token_expires_at = agent.token_expires_at.replace(
+                tzinfo=datetime.timezone.utc
+            )
+            assert creds["tokenExpiresAt"] == int(token_expires_at.timestamp())
+            assert creds["tokenExpiresAt"] < 10_000_000_000
             assert creds["runtime"] == "deepseek-tui"
             assert params["runtime"] == "deepseek-tui"
             assert params["name"] == "A"

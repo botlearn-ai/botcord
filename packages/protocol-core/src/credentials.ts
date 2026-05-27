@@ -61,6 +61,16 @@ function normalizeCredentialValue(raw: any, keys: string[]): string | undefined 
   return undefined;
 }
 
+const TOKEN_EXPIRES_AT_MILLISECONDS_THRESHOLD = 10_000_000_000;
+
+export function normalizeTokenExpiresAt(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (value > TOKEN_EXPIRES_AT_MILLISECONDS_THRESHOLD) {
+    return Math.floor(value / 1000);
+  }
+  return value;
+}
+
 export function resolveCredentialsFilePath(credentialsFile: string): string {
   if (credentialsFile === "~") return os.homedir();
   if (credentialsFile.startsWith("~/")) {
@@ -95,11 +105,9 @@ export function loadStoredCredentials(credentialsFile: string): StoredBotCordCre
   const displayName = normalizeCredentialValue(raw, ["displayName", "display_name"]);
   const savedAt = normalizeCredentialValue(raw, ["savedAt", "saved_at"]);
   const token = normalizeCredentialValue(raw, ["token"]);
-  const tokenExpiresAt = typeof raw.tokenExpiresAt === "number"
-    ? raw.tokenExpiresAt
-    : typeof raw.token_expires_at === "number"
-      ? raw.token_expires_at
-      : undefined;
+  const tokenExpiresAt = normalizeTokenExpiresAt(
+    typeof raw.tokenExpiresAt === "number" ? raw.tokenExpiresAt : raw.token_expires_at,
+  );
 
   if (!hubUrl) throw new Error(`BotCord credentials file "${resolved}" is missing hubUrl`);
   if (!agentId) throw new Error(`BotCord credentials file "${resolved}" is missing agentId`);

@@ -719,6 +719,48 @@ describe("provision_agent handler writes runtime + cwd", () => {
     }
   });
 
+  it("normalizes Hub-supplied millisecond tokenExpiresAt before writing credentials", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+
+    const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), "daemon-provision-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      const gw = makeFakeGateway();
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+      const privateKey = Buffer.alloc(32, 9).toString("base64");
+
+      const ack = await provisioner({
+        id: "req_token_expiry",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "codex",
+          credentials: {
+            agentId: "ag_token_expiry",
+            keyId: "k_token_expiry",
+            privateKey,
+            hubUrl: "https://hub.example",
+            token: "agent-token",
+            tokenExpiresAt: 1_779_856_985_546,
+          },
+        },
+      });
+
+      expect(ack.ok).toBe(true);
+      const credFile = nodePath.join(tmp, ".botcord", "credentials", "ag_token_expiry.json");
+      const saved = JSON.parse(fs.readFileSync(credFile, "utf8")) as Record<string, unknown>;
+      expect(saved.tokenExpiresAt).toBe(1_779_856_985);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("rejects unknown runtime ids before touching disk", async () => {
     const gw = makeFakeGateway();
     const provisioner = createProvisioner({

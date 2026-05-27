@@ -13,6 +13,7 @@ import {
   defaultCredentialsFile,
   derivePublicKey,
   loadStoredCredentials,
+  normalizeTokenExpiresAt,
   writeCredentialsFile,
   type AgentIdentitySnapshot,
   type ControlAck,
@@ -1258,7 +1259,8 @@ async function materializeCredentials(
     };
     if (c.displayName) record.displayName = c.displayName;
     if (c.token) record.token = c.token;
-    if (typeof c.tokenExpiresAt === "number") record.tokenExpiresAt = c.tokenExpiresAt;
+    const tokenExpiresAt = normalizeTokenExpiresAt(c.tokenExpiresAt);
+    if (tokenExpiresAt !== undefined) record.tokenExpiresAt = tokenExpiresAt;
     if (runtime) record.runtime = runtime;
     const runtimeSelection = pickRuntimeSelection(params);
     if (runtimeSelection.runtimeModel) record.runtimeModel = runtimeSelection.runtimeModel;

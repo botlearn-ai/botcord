@@ -1987,7 +1987,7 @@ async def provision_agent(
             "hubUrl": hub_config.HUB_PUBLIC_BASE_URL,
             "displayName": label,
             "token": agent_token,
-            "tokenExpiresAt": token_expires_at * 1000,
+            "tokenExpiresAt": token_expires_at,
             "runtime": runtime,
         },
     }

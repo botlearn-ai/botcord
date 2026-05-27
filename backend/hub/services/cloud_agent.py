@@ -92,6 +92,16 @@ class CloudAgentError(Exception):
         self.http_status = http_status
 
 
+def _agent_token_expires_at_seconds(
+    expires_at: datetime.datetime | None,
+) -> int | None:
+    if expires_at is None:
+        return None
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+    return int(expires_at.timestamp())
+
+
 @dataclass
 class CreateCloudAgentInput:
     name: str
@@ -1366,11 +1376,7 @@ class CloudAgentService:
             await db.commit()
             return
 
-        token_expires_at_ms = (
-            int(agent.token_expires_at.timestamp() * 1000)
-            if agent.token_expires_at is not None
-            else None
-        )
+        token_expires_at = _agent_token_expires_at_seconds(agent.token_expires_at)
         params: dict[str, Any] = {
             "name": agent.display_name,
             "runtime": cai.runtime,
@@ -1382,7 +1388,7 @@ class CloudAgentService:
                 "hubUrl": HUB_PUBLIC_BASE_URL,
                 "displayName": agent.display_name,
                 "token": agent.agent_token,
-                "tokenExpiresAt": token_expires_at_ms,
+                "tokenExpiresAt": token_expires_at,
                 "runtime": cai.runtime,
             },
         }
