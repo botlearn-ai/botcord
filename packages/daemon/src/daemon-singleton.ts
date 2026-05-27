@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { PID_PATH } from "./config.js";
 
 export interface SingletonLogger {
@@ -182,7 +183,16 @@ export function writeCurrentPid(
     currentPid?: number;
   } = {},
 ): void {
-  writeFileSync(opts.pidPath ?? PID_PATH, String(opts.currentPid ?? process.pid), { mode: 0o600 });
+  const pidPath = opts.pidPath ?? PID_PATH;
+  // Cloud-mode startup writes the PID file before `saveConfig` runs, so
+  // the daemon dir may not exist yet. mkdir its parent (0700) so the
+  // first write doesn't crash with ENOENT.
+  try {
+    mkdirSync(path.dirname(pidPath), { recursive: true, mode: 0o700 });
+  } catch {
+    // best-effort — writeFileSync below will surface the real error
+  }
+  writeFileSync(pidPath, String(opts.currentPid ?? process.pid), { mode: 0o600 });
 }
 
 export function removePidFile(pidPath = PID_PATH): void {

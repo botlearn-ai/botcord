@@ -45,6 +45,17 @@ describe("daemon singleton pid helpers", () => {
     expect(readFileSync(pidPath, "utf8")).toBe("12345");
   });
 
+  it("creates the parent directory if missing (cloud-mode first boot)", () => {
+    // Cloud-mode start writes the PID file before `saveConfig` runs, so
+    // ~/.botcord/daemon/ may not exist yet. Without the mkdir the daemon
+    // crashes immediately with ENOENT.
+    const pidPath = path.join(tmpDir, "fresh-cloud-home", "daemon", "daemon.pid");
+
+    writeCurrentPid({ pidPath, currentPid: 7890 });
+
+    expect(readPid(pidPath)).toBe(7890);
+  });
+
   it("does not report the current process as another daemon", () => {
     const pidPath = path.join(tmpDir, "daemon.pid");
     writeCurrentPid({ pidPath, currentPid: process.pid });
