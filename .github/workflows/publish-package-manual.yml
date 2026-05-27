@@ -61,48 +61,30 @@ jobs:
           esac
           echo "display_name=$DISPLAY_NAME" >> $GITHUB_OUTPUT
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
           registry-url: "https://registry.npmjs.org"
 
-      - name: Build protocol-core (workspace dependency)
-        if: env.PKG != 'protocol-core'
-        working-directory: packages/protocol-core
-        run: |
-          npm install
-          npm run build
-
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
-
-      - name: Override @botcord/protocol-core with local build
-        if: env.PKG == 'daemon' || env.PKG == 'cli'
-        run: |
-          rm -rf node_modules/@botcord/protocol-core
-          mkdir -p node_modules/@botcord
-          # daemon lives in packages/daemon → ../protocol-core
-          # cli lives at repo root → ../packages/protocol-core
-          if [ -d ../protocol-core/dist ]; then
-            cp -R ../protocol-core node_modules/@botcord/protocol-core
-          else
-            cp -R ../packages/protocol-core node_modules/@botcord/protocol-core
-          fi
-          ls node_modules/@botcord/protocol-core/dist | head -5
+        working-directory: .
+        run: pnpm install --frozen-lockfile
 
       - name: Build
         if: env.PKG == 'cli' || env.PKG == 'protocol-core' || env.PKG == 'daemon'
-        run: npm run build
+        working-directory: .
+        run: pnpm --filter "${{ steps.meta.outputs.npm_name }}..." build
 
       - name: Run tests
         if: env.PKG == 'daemon'
-        run: npm test
+        working-directory: .
+        run: pnpm --filter "${{ steps.meta.outputs.npm_name }}" test
 
       - name: Configure git
         run: |
@@ -146,15 +128,39 @@ jobs:
           ")
 
           # Set package.json to the higher version, then bump
-          npm version "$HIGHER" --no-git-tag-version --allow-same-version > /dev/null
-          npm version ${{ github.event.inputs.bump }} --no-git-tag-version > /dev/null
-          NEW_VERSION="v$(node -p "require('./package.json').version")"
+          NEXT_VERSION=$(node -e "
+            const bump = '${{ github.event.inputs.bump }}';
+            const parts = '$HIGHER'.split('.').map(Number);
+            if (bump === 'major') {
+              parts[0] += 1;
+              parts[1] = 0;
+              parts[2] = 0;
+            } else if (bump === 'minor') {
+              parts[1] += 1;
+              parts[2] = 0;
+            } else {
+              parts[2] += 1;
+            }
+            console.log(parts.join('.'));
+          ")
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$NEXT_VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          NEW_VERSION="v$NEXT_VERSION"
 
           if [ "${{ github.event.inputs.channel }}" = "beta" ]; then
             # Append -beta.<timestamp> prerelease suffix
             BASE="${NEW_VERSION#v}"
             BETA_VERSION="${BASE}-beta.$(date +%Y%m%d%H%M%S)"
-            npm version "$BETA_VERSION" --no-git-tag-version --allow-same-version > /dev/null
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              pkg.version = '$BETA_VERSION';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
             NEW_VERSION="v${BETA_VERSION}"
           fi
           printf 'new_version=%s\n' "$NEW_VERSION" >> "$GITHUB_OUTPUT"
@@ -162,21 +168,22 @@ jobs:
       - name: Publish to npm
         run: |
           if [ "${{ github.event.inputs.channel }}" = "beta" ]; then
-            npm publish --access public --tag beta
+            pnpm publish --access public --tag beta --no-git-checks
           else
-            npm publish --access public
+            pnpm publish --access public --no-git-checks
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Commit and tag
         if: github.event.inputs.channel == 'stable'
+        working-directory: .
         run: |
-          git add package.json
-          if git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
-            git add package-lock.json
+          git add "$PKG_DIR/package.json"
+          if git ls-files --error-unmatch pnpm-lock.yaml >/dev/null 2>&1; then
+            git add pnpm-lock.yaml
           fi
-          git add -u .
+          git add -u "$PKG_DIR"
           case "$PKG" in
             cli) TAG_PREFIX="cli-" ;;
             protocol-core) TAG_PREFIX="protocol-core-" ;;
