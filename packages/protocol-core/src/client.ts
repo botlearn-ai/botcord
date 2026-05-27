@@ -5,6 +5,7 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { buildSignedEnvelope, derivePublicKey, generateKeypair, signChallenge } from "./crypto.js";
+import { normalizeTokenExpiresAt } from "./credentials.js";
 import { normalizeAndValidateHubUrl } from "./hub-url.js";
 import type {
   BotCordMessageEnvelope,
@@ -64,7 +65,7 @@ export class BotCordClient {
     this.privateKey = config.privateKey;
     if (config.token) {
       this.jwtToken = config.token;
-      this.tokenExpiresAt = config.tokenExpiresAt ?? 0;
+      this.tokenExpiresAt = normalizeTokenExpiresAt(config.tokenExpiresAt) ?? 0;
     }
   }
 
@@ -115,7 +116,7 @@ export class BotCordClient {
   // ── Authenticated fetch with rate-limit retry ─────────────────
 
   private async hubFetch(path: string, init: RequestInit = {}): Promise<Response> {
-    const token = await this.ensureToken();
+    let token = await this.ensureToken();
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const headers: Record<string, string> = {
@@ -135,7 +136,7 @@ export class BotCordClient {
       if (resp.ok) return resp;
 
       if (resp.status === 401 && attempt === 0) {
-        await this.refreshToken();
+        token = await this.refreshToken();
         continue;
       }
 

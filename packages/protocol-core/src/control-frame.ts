@@ -222,6 +222,7 @@ export interface ProvisionAgentParams {
     privateKey: string;
     publicKey?: string;
     token?: string;
+    /** Unix timestamp in seconds. Daemons normalize older millisecond values. */
     tokenExpiresAt?: number;
     hubUrl?: string;
     displayName?: string;

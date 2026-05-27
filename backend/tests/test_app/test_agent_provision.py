@@ -257,6 +257,10 @@ async def test_provision_happy_path_writes_runtime_and_dispatches_frame(
         assert agent.user_id == seed_user["user_id"]
 
         # Signing key activated + hub-issued token stored.
+        assert agent.token_expires_at is not None
+        token_expires_at = agent.token_expires_at.replace(tzinfo=datetime.timezone.utc)
+        assert creds["tokenExpiresAt"] == int(token_expires_at.timestamp())
+        assert creds["tokenExpiresAt"] < 10_000_000_000
         key_res = await db_session.execute(
             select(SigningKey).where(SigningKey.agent_id == body["agent_id"])
         )
