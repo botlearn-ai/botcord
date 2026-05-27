@@ -391,16 +391,14 @@ CLOUD_DAEMON_NPM_SPEC: str = os.getenv(
 CLOUD_DAEMON_STARTUP_COMMAND: str = os.getenv(
     "CLOUD_DAEMON_STARTUP_COMMAND",
     (
+        # Singleton enforcement lives in the daemon itself (see
+        # `packages/daemon/src/daemon-singleton.ts`): the new daemon stops
+        # any prior daemon via PID file + ps scan before claiming the slot.
+        # Doing a shell-level `ps | grep | kill` here in addition is unsafe
+        # because the grep pattern matches the surrounding shell command
+        # line — the shell ends up killing its own parent. Trust the
+        # daemon's singleton and just exec.
         "sh -lc '"
-        "old_pids=$(ps -eo pid=,args= | "
-        "awk -v self=$$ '\\''$1 != self && "
-        "$0 ~ /botcord-daemon start --foreground|daemon\\/dist\\/index\\.js start --foreground/ "
-        "{print $1}'\\''); "
-        "if [ -n \"$old_pids\" ]; then "
-        "kill -TERM $old_pids 2>/dev/null || true; "
-        "sleep 2; "
-        "kill -KILL $old_pids 2>/dev/null || true; "
-        "fi; "
         "export npm_config_prefer_online=true; "
         "export npm_config_cache=/tmp/botcord-npm-cache; "
         "case \"${CLOUD_DAEMON_NPM_SPEC:-}\" in "
