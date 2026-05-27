@@ -33,6 +33,7 @@ contract.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import logging
@@ -195,6 +196,84 @@ class TouchResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# In-flight runtime WS registry
+#
+# Holds the live ingress runtime WS for every event currently being
+# processed by a cloud daemon. The cloud daemon emits a best-effort
+# ``cloud_gateway_runtime_status`` control frame mid-turn (e.g. typing);
+# the cloud_daemon_control handler looks the WS up here and forwards the
+# matching ``gateway_outbound_typing`` frame so the third-party provider
+# can render a typing indicator before the final reply arrives.
+#
+# Keyed on (cloud_daemon_instance_id, event_id) — both come from the
+# ingress runtime token so collisions across daemons are impossible.
+# ---------------------------------------------------------------------------
+
+
+_InflightKey = tuple[str, str]
+_INFLIGHT_RUNTIME_WS: dict[_InflightKey, WebSocket] = {}
+_INFLIGHT_LOCK = asyncio.Lock()
+
+
+async def _register_inflight_runtime_ws(
+    key: _InflightKey, ws: WebSocket
+) -> None:
+    async with _INFLIGHT_LOCK:
+        _INFLIGHT_RUNTIME_WS[key] = ws
+
+
+async def _unregister_inflight_runtime_ws(
+    key: _InflightKey, ws: WebSocket
+) -> None:
+    async with _INFLIGHT_LOCK:
+        current = _INFLIGHT_RUNTIME_WS.get(key)
+        if current is ws:
+            _INFLIGHT_RUNTIME_WS.pop(key, None)
+
+
+async def relay_runtime_status_to_ingress(
+    *, cloud_daemon_instance_id: str, params: dict[str, Any]
+) -> bool:
+    """Forward a daemon-emitted runtime status frame to the live ingress WS.
+
+    Best-effort: returns ``False`` silently if the event has already
+    finished, the WS has been torn down, or required fields are missing.
+    """
+    event_id = str(params.get("eventId") or "")
+    kind = str(params.get("kind") or "")
+    if not event_id or kind != "typing":
+        return False
+    async with _INFLIGHT_LOCK:
+        ws = _INFLIGHT_RUNTIME_WS.get((cloud_daemon_instance_id, event_id))
+    if ws is None:
+        return False
+    phase = str(params.get("phase") or "started")
+    if phase not in ("started", "stopped"):
+        phase = "started"
+    frame = {
+        "type": "gateway_outbound_typing",
+        "event_id": event_id,
+        "turn_id": str(params.get("turnId") or f"turn_{event_id}"),
+        "gateway_id": str(params.get("gatewayId") or ""),
+        "agent_id": str(params.get("agentId") or ""),
+        "conversation_id": str(params.get("conversationId") or ""),
+        "phase": phase,
+        "trace_id": params.get("traceId"),
+    }
+    try:
+        await ws.send_text(json.dumps(frame))
+        return True
+    except Exception as exc:  # noqa: BLE001 — relay is best-effort
+        logger.debug(
+            "cloud-gateway runtime status relay failed: cloud=%s event=%s err=%s",
+            cloud_daemon_instance_id,
+            event_id,
+            exc,
+        )
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Runtime relay WebSocket
 # ---------------------------------------------------------------------------
 
@@ -269,6 +348,9 @@ async def cloud_gateway_runtime_ws(ws: WebSocket) -> None:
                 )
                 continue
 
+            inflight_key = (cloud_daemon_instance_id, event_id) if event_id else None
+            if inflight_key is not None:
+                await _register_inflight_runtime_ws(inflight_key, ws)
             try:
                 ack = await send_cloud_control_frame(
                     cloud_daemon_instance_id,
@@ -291,6 +373,11 @@ async def cloud_gateway_runtime_ws(ws: WebSocket) -> None:
                     message=str(exc),
                 )
                 continue
+            finally:
+                # Deregister as soon as the daemon ack returns (or fails):
+                # typing frames after this point belong to a different turn.
+                if inflight_key is not None:
+                    await _unregister_inflight_runtime_ws(inflight_key, ws)
 
             result = ack.get("result") if isinstance(ack, dict) else None
             if not isinstance(ack, dict) or ack.get("ok") is not True or not isinstance(result, dict):

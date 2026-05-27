@@ -140,7 +140,37 @@ export const CONTROL_FRAME_TYPES = {
    * before the gateway row is saved.
    */
   GATEWAY_RECENT_SENDERS: "gateway_recent_senders",
+  /**
+   * Daemon→Hub: in-flight runtime status hint emitted while the cloud
+   * gateway runtime is processing one ingress-originated turn. The Hub
+   * looks up the live ingress runtime WS by `eventId` and forwards a
+   * matching `gateway_outbound_typing` frame so the third-party provider
+   * can render a typing indicator before the final reply arrives.
+   *
+   * Best-effort: dropped silently if the runtime WS has already closed
+   * or no such event is in flight.
+   */
+  CLOUD_GATEWAY_RUNTIME_STATUS: "cloud_gateway_runtime_status",
 } as const;
+
+/**
+ * Payload shape for {@link CONTROL_FRAME_TYPES.CLOUD_GATEWAY_RUNTIME_STATUS}.
+ * Emitted by the cloud daemon while one `cloud_gateway_runtime_inbound`
+ * dispatch is mid-flight.
+ */
+export interface CloudGatewayRuntimeStatusParams {
+  eventId: string;
+  turnId: string;
+  gatewayId: string;
+  agentId: string;
+  conversationId: string;
+  /** `typing` is the only kind today; reserved for richer presence later. */
+  kind: "typing";
+  /** Mirrors {@link GatewayOutboundTypingFrame.phase}. */
+  phase: "started" | "stopped";
+  /** Provider trace id, when available — e.g. the inbound message id. */
+  traceId?: string | null;
+}
 
 export type ControlFrameType = (typeof CONTROL_FRAME_TYPES)[keyof typeof CONTROL_FRAME_TYPES];
 

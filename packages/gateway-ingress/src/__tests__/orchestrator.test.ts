@@ -263,6 +263,60 @@ describe("IngressOrchestrator", () => {
     expect(e.lastError).toContain("runtime_failed");
   });
 
+  it("outbound typing frame routes to provider.typing()", async () => {
+    const typingCalls: {
+      gatewayId: string;
+      conversationId: string;
+      turnId: string;
+      phase: string;
+      traceId?: string | null;
+    }[] = [];
+    // Re-register the provider with a typing() method — the default
+    // harness adapter intentionally omits it so other tests stay terse.
+    h.orchestrator.registerProvider({
+      gatewayId: CONN.id,
+      provider: "telegram",
+      async start() {},
+      async stop() {},
+      async send() {
+        return { providerMessageId: null };
+      },
+      async typing(request) {
+        typingCalls.push({
+          gatewayId: request.gatewayId,
+          conversationId: request.conversationId,
+          turnId: request.turnId,
+          phase: request.phase,
+          traceId: request.traceId,
+        });
+      },
+    });
+
+    await h.orchestrator.ingest(CONN.id, NORMALIZED, "tg:gw:typing");
+    await waitFor(() => h.socketFactory.sockets.length === 1);
+    const sock = h.socketFactory.sockets[0]!;
+    await waitFor(() => sock.sent.length === 1);
+    const inboundFrame = JSON.parse(sock.sent[0]!) as GatewayInboundFrame;
+    sock.incoming({
+      type: RUNTIME_FRAME_TYPES.GATEWAY_OUTBOUND_TYPING,
+      event_id: inboundFrame.event_id,
+      turn_id: "turn_typing",
+      gateway_id: CONN.id,
+      agent_id: CONN.agentId,
+      conversation_id: NORMALIZED.conversation.id,
+      phase: "started",
+      trace_id: "telegram:42:1",
+    });
+    await waitFor(() => typingCalls.length === 1);
+    expect(typingCalls[0]).toEqual({
+      gatewayId: CONN.id,
+      conversationId: NORMALIZED.conversation.id,
+      turnId: "turn_typing",
+      phase: "started",
+      traceId: "telegram:42:1",
+    });
+  });
+
   it("hub failure surfaces as failed event", async () => {
     h.hub.ensureResponse = () => ({
       agent_id: CONN.agentId,

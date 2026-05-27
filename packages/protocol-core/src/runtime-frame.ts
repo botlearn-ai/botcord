@@ -185,6 +185,27 @@ export interface RuntimeHeartbeatFrame {
 }
 
 /**
+ * Ephemeral presence hint: the runtime is "thinking" / about to reply.
+ * ingress maps this to the provider's typing affordance (Telegram
+ * `sendChatAction`, WeChat `sendtyping`, Feishu reaction). There is no
+ * paired `stopped` frame on the wire — provider typing states naturally
+ * clear when the outbound complete/error arrives, and most providers
+ * (WeChat especially) treat typing as a short-lived one-shot.
+ */
+export interface GatewayOutboundTypingFrame {
+  type: "gateway_outbound_typing";
+  event_id: string;
+  turn_id: string;
+  gateway_id: string;
+  agent_id: string;
+  conversation_id: string;
+  /** `started` is the only value emitted today; reserved for future stop semantics. */
+  phase: "started" | "stopped";
+  /** Provider trace id (iLink `context_token` lookup, Feishu message id, …). */
+  trace_id?: string | null;
+}
+
+/**
  * Union of all outbound (cloud daemon → ingress) frames the ingress
  * reads on the runtime WS. Each frame is line-delimited JSON.
  */
@@ -194,6 +215,7 @@ export type RuntimeOutboundFrame =
   | GatewayOutboundDeltaFrame
   | GatewayOutboundCompleteFrame
   | GatewayOutboundErrorFrame
+  | GatewayOutboundTypingFrame
   | RuntimeHeartbeatFrame;
 
 /**
@@ -211,6 +233,7 @@ export const RUNTIME_FRAME_TYPES = {
   GATEWAY_OUTBOUND_DELTA: "gateway_outbound_delta",
   GATEWAY_OUTBOUND_COMPLETE: "gateway_outbound_complete",
   GATEWAY_OUTBOUND_ERROR: "gateway_outbound_error",
+  GATEWAY_OUTBOUND_TYPING: "gateway_outbound_typing",
   RUNTIME_HEARTBEAT: "runtime_heartbeat",
 } as const;
 

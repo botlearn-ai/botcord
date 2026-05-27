@@ -271,6 +271,12 @@ _DAEMON_INITIATED_TYPES = {
     "agent_revoked",
     "pong",
     "runtime_snapshot",
+    # Best-effort in-flight presence hint emitted while a
+    # cloud_gateway_runtime_inbound dispatch is running. Forwarded to the
+    # matching ingress runtime WS so the third-party provider can render a
+    # typing indicator before the final reply arrives. See
+    # ``cloud_gateway_internal._INFLIGHT_RUNTIME_WS``.
+    "cloud_gateway_runtime_status",
 }
 
 
@@ -498,6 +504,24 @@ async def _handle_cloud_daemon_event(
             except Exception:
                 pass
             return
+
+    if msg_type == "cloud_gateway_runtime_status":
+        # Best-effort relay to the live ingress runtime WS. Late import
+        # avoids the cloud_daemon_control <-> cloud_gateway_internal cycle.
+        from hub.routers.cloud_gateway_internal import (
+            relay_runtime_status_to_ingress,
+        )
+
+        await relay_runtime_status_to_ingress(
+            cloud_daemon_instance_id=conn.cloud_daemon_instance_id,
+            params=params if isinstance(params, dict) else {},
+        )
+        ack = {"id": msg_id, "ok": True}
+        try:
+            await conn.ws.send_text(json.dumps(ack))
+        except Exception:
+            pass
+        return
 
     # Bump last_seen on both rows; persist snapshot when applicable.
     try:

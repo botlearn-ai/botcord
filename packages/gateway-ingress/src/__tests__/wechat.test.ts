@@ -236,6 +236,135 @@ describe("WeChat provider adapter", () => {
     ]);
   });
 
+  it("typing() fetches typing_ticket via getconfig and posts sendtyping", async () => {
+    let pollCount = 0;
+    const getConfigBodies: unknown[] = [];
+    const sendTypingBodies: unknown[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/ilink/bot/getupdates")) {
+        pollCount += 1;
+        if (pollCount === 1) {
+          return new Response(
+            JSON.stringify({
+              ret: 0,
+              get_updates_buf: "buf-typing",
+              msgs: [
+                {
+                  message_type: 1,
+                  from_user_id: "alice",
+                  context_token: "ctx-tok-typing",
+                  client_id: "wc_client_typing",
+                  item_list: [{ type: 1, text_item: { text: "hi" } }],
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Promise<Response>((_res, rej) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => rej(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        });
+      }
+      if (url.endsWith("/ilink/bot/getconfig")) {
+        getConfigBodies.push(JSON.parse(init?.body as string));
+        return new Response(
+          JSON.stringify({ ret: 0, typing_ticket: "ticket-xyz" }),
+          { status: 200 },
+        );
+      }
+      if (url.endsWith("/ilink/bot/sendtyping")) {
+        sendTypingBodies.push(JSON.parse(init?.body as string));
+        return new Response(JSON.stringify({ ret: 0 }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const provider = createWechatProvider({
+      gatewayId: conn.id,
+      fetchImpl,
+    });
+    const abort = new AbortController();
+    const { ctx, emits } = makeCtx({ botToken: "tok" }, abort);
+    const running = provider.start(ctx);
+    const deadline = Date.now() + 1_000;
+    while (Date.now() < deadline && emits.length === 0) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    // First typing call hits getconfig + sendtyping.
+    await provider.typing!({
+      gatewayId: conn.id,
+      conversationId: "wechat:user:alice",
+      turnId: "turn_t1",
+      phase: "started",
+    });
+    // Second call reuses the cached typing_ticket — only one getconfig.
+    await provider.typing!({
+      gatewayId: conn.id,
+      conversationId: "wechat:user:alice",
+      turnId: "turn_t2",
+      phase: "started",
+    });
+
+    abort.abort();
+    await running;
+
+    expect(getConfigBodies).toHaveLength(1);
+    expect((getConfigBodies[0] as { ilink_user_id: string }).ilink_user_id).toBe("alice");
+    expect(sendTypingBodies).toHaveLength(2);
+    for (const body of sendTypingBodies) {
+      expect(body).toMatchObject({
+        ilink_user_id: "alice",
+        typing_ticket: "ticket-xyz",
+        status: 1,
+      });
+    }
+  });
+
+  it("typing() is a no-op when no trace exists for the conversation", async () => {
+    let sendTypingCalls = 0;
+    let getConfigCalls = 0;
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/ilink/bot/getupdates")) {
+        return new Promise<Response>((_res, rej) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => rej(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        });
+      }
+      if (url.endsWith("/ilink/bot/getconfig")) getConfigCalls += 1;
+      if (url.endsWith("/ilink/bot/sendtyping")) sendTypingCalls += 1;
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const provider = createWechatProvider({
+      gatewayId: conn.id,
+      fetchImpl,
+    });
+    const abort = new AbortController();
+    const { ctx } = makeCtx({ botToken: "tok" }, abort);
+    const running = provider.start(ctx);
+    await new Promise((r) => setTimeout(r, 30));
+
+    await provider.typing!({
+      gatewayId: conn.id,
+      conversationId: "wechat:user:nobody",
+      turnId: "turn_x",
+      phase: "started",
+    });
+
+    abort.abort();
+    await running;
+    expect(getConfigCalls).toBe(0);
+    expect(sendTypingCalls).toBe(0);
+  });
+
   it("send() throws when no trace is cached for the conversation", async () => {
     const fetchImpl = (async (_url: string, init?: RequestInit) => {
       // Hold the poll open so loop survives until abort.

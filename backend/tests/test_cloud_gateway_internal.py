@@ -527,6 +527,72 @@ async def test_touch_updates_last_run_at(
 
 
 @pytest.mark.asyncio
+async def test_relay_runtime_status_forwards_typing_to_registered_ws():
+    """Daemon-emitted typing status reaches the live ingress runtime WS."""
+    import json
+
+    from hub.routers.cloud_gateway_internal import (
+        _register_inflight_runtime_ws,
+        _unregister_inflight_runtime_ws,
+        relay_runtime_status_to_ingress,
+    )
+
+    sent: list[str] = []
+
+    class _FakeWs:
+        async def send_text(self, payload: str) -> None:
+            sent.append(payload)
+
+    ws = _FakeWs()
+    key = ("cloud_inst_typing", "evt_typing")
+    await _register_inflight_runtime_ws(key, ws)
+    try:
+        ok = await relay_runtime_status_to_ingress(
+            cloud_daemon_instance_id="cloud_inst_typing",
+            params={
+                "eventId": "evt_typing",
+                "turnId": "turn_typing",
+                "gatewayId": "gw_wc",
+                "agentId": "ag_typing",
+                "conversationId": "wechat:user:alice",
+                "kind": "typing",
+                "phase": "started",
+                "traceId": "wechat:alice:1",
+            },
+        )
+    finally:
+        await _unregister_inflight_runtime_ws(key, ws)
+    assert ok is True
+    assert len(sent) == 1
+    frame = json.loads(sent[0])
+    assert frame["type"] == "gateway_outbound_typing"
+    assert frame["event_id"] == "evt_typing"
+    assert frame["gateway_id"] == "gw_wc"
+    assert frame["agent_id"] == "ag_typing"
+    assert frame["conversation_id"] == "wechat:user:alice"
+    assert frame["phase"] == "started"
+    assert frame["trace_id"] == "wechat:alice:1"
+
+
+@pytest.mark.asyncio
+async def test_relay_runtime_status_drops_when_no_registered_ws():
+    """No registered WS for the event → relay is a silent no-op."""
+    from hub.routers.cloud_gateway_internal import (
+        relay_runtime_status_to_ingress,
+    )
+
+    ok = await relay_runtime_status_to_ingress(
+        cloud_daemon_instance_id="cloud_inst_missing",
+        params={
+            "eventId": "evt_missing",
+            "kind": "typing",
+            "phase": "started",
+        },
+    )
+    assert ok is False
+
+
+@pytest.mark.asyncio
 async def test_runtime_session_token_rejects_wrong_kind():
     import jwt as pyjwt
 

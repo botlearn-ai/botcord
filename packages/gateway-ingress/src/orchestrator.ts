@@ -376,6 +376,26 @@ export class IngressOrchestrator {
         }
         return;
       }
+      case RUNTIME_FRAME_TYPES.GATEWAY_OUTBOUND_TYPING: {
+        const provider = this.providers.get(frame.gateway_id);
+        if (!provider || typeof provider.typing !== "function") return;
+        try {
+          await provider.typing({
+            gatewayId: frame.gateway_id,
+            conversationId: frame.conversation_id,
+            turnId: frame.turn_id,
+            phase: frame.phase,
+            traceId: frame.trace_id ?? null,
+          });
+        } catch (err) {
+          this.opts.log.warn("provider typing failed", {
+            gatewayId: frame.gateway_id,
+            eventId: frame.event_id,
+            err: String(err),
+          });
+        }
+        return;
+      }
       case RUNTIME_FRAME_TYPES.RUNTIME_HEARTBEAT: {
         // Heartbeats are observed only.
         return;

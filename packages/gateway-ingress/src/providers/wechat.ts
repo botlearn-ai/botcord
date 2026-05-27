@@ -5,6 +5,7 @@ import type { GatewayInboundMessage } from "@botcord/protocol-core";
 
 import type { OutboundSendRequest, OutboundSendResult } from "../types.js";
 import type {
+  OutboundTypingRequest,
   ProviderAdapter,
   ProviderAdapterFactory,
   ProviderRuntimeContext,
@@ -31,8 +32,9 @@ import type {
  *     for outbound `sendmessage`. iLink does NOT accept unsolicited
  *     replies — outbound must reuse the inbound `context_token`, so
  *     this cache is load-bearing. TTL 30 min mirrors daemon doc.
- *   - typing (`sendtyping`): omitted from MVP. Phase 4 can re-add when
- *     the ingress contract has a typing concept.
+ *   - typing (`sendtyping`): fired from `typing()` when the daemon emits
+ *     a `gateway_outbound_typing` runtime frame. Per-user `typing_ticket`
+ *     is fetched via `getconfig` and cached in-process keyed by ilink uid.
  *   - media upload (encrypted CDN flow, AES-128-ECB): omitted from
  *     MVP. iLink media is text-only-aware for now.
  *
@@ -137,6 +139,10 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
   let stopController: AbortController | null = null;
   let sweepTimer: ReturnType<typeof setInterval> | null = null;
   const traceContexts = new Map<string, TraceContext>();
+  /** Per-ilink-user typing_ticket cache. iLink returns the same ticket for
+   * the lifetime of a context_token, so caching avoids an extra round-trip
+   * before every typing ping. */
+  const typingTickets = new Map<string, string>();
 
   function pruneTraceContexts(): void {
     const cutoff = now() - TRACE_CONTEXT_TTL_MS;
@@ -362,6 +368,51 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
     }
   }
 
+  async function getTypingTicket(userId: string, contextToken: string): Promise<string> {
+    const cached = typingTickets.get(userId);
+    if (cached) return cached;
+    try {
+      const resp = await callApi<{ ret?: number; typing_ticket?: string }>(
+        "ilink/bot/getconfig",
+        { ilink_user_id: userId, context_token: contextToken },
+        10_000,
+      );
+      const ticket = typeof resp.typing_ticket === "string" ? resp.typing_ticket : "";
+      if (ticket) typingTickets.set(userId, ticket);
+      return ticket;
+    } catch {
+      return "";
+    }
+  }
+
+  async function typing(request: OutboundTypingRequest): Promise<void> {
+    // Best-effort: a stale trace, missing token, or iLink hiccup must not
+    // break the turn. Errors are logged at debug level inside the adapter.
+    if (!botToken) return;
+    if (request.phase !== "started") return;
+    const trace =
+      lookupTrace(request.traceId ?? undefined) ??
+      lookupTraceByConversation(request.conversationId);
+    if (!trace) return;
+    try {
+      const ticket = await getTypingTicket(trace.fromUserId, trace.contextToken);
+      if (!ticket) return;
+      await callApi(
+        "ilink/bot/sendtyping",
+        {
+          ilink_user_id: trace.fromUserId,
+          typing_ticket: ticket,
+          status: 1,
+        },
+        10_000,
+      );
+    } catch (err) {
+      activeCtx?.log.debug("wechat typing failed", {
+        err: redactToken(String(err), botToken),
+      });
+    }
+  }
+
   async function send(request: OutboundSendRequest): Promise<OutboundSendResult> {
     if (!botToken) throw new Error("wechat bot token not loaded");
     // OutboundSendRequest carries no traceId today, so fall back to a
@@ -416,6 +467,7 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
       stopController?.abort();
     },
     send,
+    typing,
   };
 }
 
