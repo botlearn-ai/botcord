@@ -602,8 +602,17 @@ class CloudAgentService:
                 http_status=409,
             )
         daemon_online = is_cloud_daemon_online(cdi.id)
-        if cai.status == "ready" and daemon_online:
-            return _make_view(agent, cai, cdi)
+        if cdi.status == "ready" and daemon_online:
+            handled = await self._ensure_agent_loaded_in_online_daemon(
+                db, cai, agent, cdi
+            )
+            if handled:
+                await db.refresh(cai)
+                await db.refresh(cdi)
+                await db.refresh(agent)
+                return _make_view(agent, cai, cdi)
+            if cai.status == "ready":
+                return _make_view(agent, cai, cdi)
 
         provider = self._get_provider()
         if cdi.status != "ready" or not daemon_online:
@@ -642,6 +651,48 @@ class CloudAgentService:
         await db.refresh(cai)
         await db.refresh(cdi)
         return _make_view(agent, cai, cdi)
+
+    async def _ensure_agent_loaded_in_online_daemon(
+        self,
+        db: AsyncSession,
+        cai: CloudAgentInstance,
+        agent: Agent,
+        cdi: CloudDaemonInstance,
+    ) -> bool:
+        """Ensure an online cloud daemon has the target agent channel loaded.
+
+        Cloud sandboxes boot with an empty daemon config. A resumed daemon can
+        therefore be online while the Hub DB still says the agent is ``ready``.
+        Probe the live daemon before treating resume as complete; if the agent
+        is missing, rotate provisioning metadata and dispatch ``provision_agent``.
+
+        Returns ``False`` only when the live-agent probe failed, in which case
+        callers keep the previous best-effort behavior instead of risking a
+        duplicate install on a merely flaky control channel.
+        """
+        live_agent_ids = await self._list_cloud_daemon_agent_ids(cdi.id)
+        if live_agent_ids is None:
+            return False
+
+        if cai.agent_id in live_agent_ids:
+            cai.status = "ready"
+            cai.error_code = None
+            cai.error_message = None
+            _scrub_provisioning_metadata(cai)
+            if cdi.status != "ready":
+                cdi.status = "ready"
+                cdi.last_started_at = _now()
+                cdi.last_seen_at = _now()
+            await db.commit()
+            return True
+
+        _ensure_provisioning_metadata(db, cai, agent)
+        cai.status = "provisioning"
+        cai.error_code = None
+        cai.error_message = None
+        await db.flush()
+        await self._provision_one(db, cai, agent, cdi)
+        return True
 
     async def restart_cloud_daemon(
         self,
