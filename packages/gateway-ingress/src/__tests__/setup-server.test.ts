@@ -246,6 +246,18 @@ describe("setup-server — WeChat full flow", () => {
       { senderId: "alice", preview: "hello" },
     ]);
 
+    // Hub route split may call this "senders"; keep it as a setup alias.
+    const senders = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/wechat/senders`,
+      { body: { ...baseCtx, loginId } },
+      h.responses,
+    );
+    expect(senders.status).toBe(200);
+    expect((senders.body.candidates as Array<{ senderId: string }>)).toEqual([
+      { senderId: "alice", preview: "hello" },
+    ]);
+
     // create
     const create = await call(
       h.url,

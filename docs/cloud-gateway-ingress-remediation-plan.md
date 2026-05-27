@@ -7,7 +7,7 @@
 
 # Cloud Gateway Ingress 整改技术方案
 
-> 状态: 待实现
+> 状态: P0 setup ownership 已落地；runtime ingress / relay 仍在整改
 > 日期: 2026-05-25
 > 范围: Cloud Agent 的微信、飞书/Lark、Telegram 第三方接入配置闭环与运行时消息接入
 
@@ -15,7 +15,7 @@
 
 Cloud Agent 的 sandbox 会按 idle 策略 pause。Paused 后，cloud daemon 进程不运行，因此它不能继续轮询第三方平台，也不能持有一个可靠的临时扫码登录 session。
 
-当前 Cloud Agent 第三方接入存在职责错位:
+历史 Cloud Agent 第三方接入存在职责错位:
 
 - 保存前的微信/飞书扫码登录由 Hub 控制帧转发给 cloud daemon。
 - 临时 `loginId -> provider credential` 存在 cloud daemon 内存中。
@@ -23,6 +23,13 @@ Cloud Agent 的 sandbox 会按 idle 策略 pause。Paused 后，cloud daemon 进
 - 如果 cloud daemon 在 5 分钟 TTL 内被 pause、resume、重启、替换，或后续请求路由到另一个 cloud daemon，前端仍持有的 `loginId` 会在 daemon 内存里找不到，表现为 `login session "... " not found or expired`。
 
 这不是单纯的超时问题，而是 Cloud Agent provider credential 的所有权边界错误。
+
+当前实现状态:
+
+- Cloud Agent 的 WeChat / Feishu setup start/status、WeChat sender discovery、Telegram token validation + create、gateway create/patch/delete/test 已由 Hub 代理到 `gateway-ingress`，不再通过 cloud daemon gateway login control frame。
+- `gateway-ingress` setup API 拥有 setup session、provider secret store 和 adapter lifecycle，响应只返回 public payload、masked preview 和 safe connection metadata。
+- Hub 只保留 Cloud Agent gateway mirror row；raw provider secret 不进入 Hub DB。
+- Runtime wake / delivery 仍是下一阶段收敛重点，尤其是 runtime relay 与 long-running control ack 的职责边界。
 
 ## 2. 整改目标
 
@@ -162,6 +169,12 @@ POST /internal/cloud-gateway/agents/{agent_id}/touch
 ```
 
 `gateway-ingress` setup/config APIs manage provider connection state. `cloud-gateway` lifecycle APIs manage Cloud Agent runtime state.
+
+Contract invariant:
+
+- Setup routes must never call `ensure-running`, `runtime`, or `touch`.
+- Setup routes must never dispatch `gateway_login_start`, `gateway_login_status`, or `gateway_recent_senders` to a cloud daemon for `hosting_kind="cloud"`.
+- Runtime lifecycle is triggered only after a provider inbound event has been durably accepted by `gateway-ingress`.
 
 ## 5. Provider 整改方案
 
@@ -421,6 +434,7 @@ Runtime delivery failures:
 
 ### Phase 0: Stop making the bug worse
 
+- Status: complete for setup-path diagnostics.
 - For Cloud Agent gateway setup, add explicit logs for target host and setup owner:
   - `agent_id`
   - `provider`
@@ -434,6 +448,7 @@ Runtime delivery failures:
 
 ### Phase 1: gateway-ingress setup API
 
+- Status: complete for P0 setup ownership.
 - Add setup session store and provider secret store support in `gateway-ingress`.
 - Implement WeChat login start/status/discover/create in `gateway-ingress`.
 - Implement Telegram validate/discover/create in `gateway-ingress`.
@@ -442,6 +457,7 @@ Runtime delivery failures:
 
 ### Phase 2: Hub route split
 
+- Status: complete for Cloud Agent setup/config routes; keep local daemon routes unchanged.
 - Change Hub gateway routes:
   - local daemon agents continue using daemon control frames;
   - cloud agents proxy setup/config operations to `gateway-ingress`.
@@ -450,6 +466,7 @@ Runtime delivery failures:
 
 ### Phase 3: Runtime ingress ownership
 
+- Status: in progress.
 - Ensure cloud gateway provider adapters run only in `gateway-ingress`.
 - Disable cloud daemon provider channel creation for cloud-hosted third-party gateway configs.
 - Wire `gateway-ingress` provider adapters to durable inbound queue and Hub `ensure-running`.
@@ -466,10 +483,11 @@ Runtime delivery failures:
 
 Backend / Hub:
 
-- Cloud Agent WeChat login start proxies to `gateway-ingress`, not cloud daemon.
+- Cloud Agent WeChat / Feishu login start/status and WeChat sender discovery proxy to `gateway-ingress`, not cloud daemon.
 - Local daemon WeChat login start still dispatches control frame to daemon.
 - Cloud Agent create gateway never persists raw provider secret in Hub DB.
 - Hub mirror updates after gateway-ingress create/patch/delete.
+- Cloud Agent setup/config routes do not call cloud lifecycle `ensure-running`; lifecycle remains event-driven runtime wake.
 - Cloud gateway ensure-running resumes paused agent and returns runtime metadata.
 
 gateway-ingress:
@@ -480,6 +498,7 @@ gateway-ingress:
 - Telegram validate rejects invalid bot token and never logs token.
 - Telegram getUpdates offset is advanced only after durable inbound event write.
 - Feishu registration stores `appSecret` only in ingress secret store.
+- WeChat / Telegram / Feishu setup responses never contain raw provider credentials or `secretRef`.
 - Feishu event dedupe prevents duplicate runtime deliveries.
 - Runtime delivery queues event when Hub reports `provisioning`, then retries.
 - Runtime outbound frame sends provider reply and marks delivery.

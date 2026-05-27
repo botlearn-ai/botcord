@@ -7,7 +7,7 @@
 
 # Cloud Gateway Ingress 技术设计
 
-> 状态: 方案确认，待实现
+> 状态: 方案确认；P0 setup ownership 已落地，runtime relay 仍在收敛
 > 日期: 2026-05-22
 > 范围: Cloud Agent 第三方直连接入、gateway-ingress 常驻服务、微信/飞书/Telegram 入站和出站、Hub thin resume/lifecycle API
 
@@ -31,6 +31,20 @@ gateway-ingress = always-on observer + provider sender
 cloud daemon    = runtime executor
 Hub             = cloud lifecycle control plane
 ```
+
+## 1.1 当前实现对齐状态
+
+已对齐:
+
+- Cloud Agent 的 provider setup/config path 由 Hub BFF 代理到 `gateway-ingress` setup API；local daemon agent 继续走 daemon control frames。
+- `gateway-ingress` setup API 持有 WeChat / Feishu / Telegram 的临时 setup session 和长期 provider secret store。
+- Hub Cloud Agent gateway mirror 只保存 safe metadata、masked preview 和 allowlist/config，不保存 raw bot token / app secret。
+- setup/config path 不触发 runtime lifecycle resume；`ensure-running` 只属于 provider inbound event 之后的 runtime wake path。
+
+仍需收敛:
+
+- Runtime transport 当前仍可能通过 Hub relay / cloud daemon control WS 实现，和本文“Hub 不在第三方正文语义 data path 上”的目标存在实现差距。允许短期作为 payload-opaque transport，但不得把 provider secret、setup session 或 provider-specific behavior 放进 Hub。
+- Runtime streaming 合同已定义 `gateway_outbound_start/delta/complete/error`，但 MVP 可以先 final-only；代码与文档必须清楚标注是否已经真正 streaming。
 
 ## 2. 已确认决策
 
@@ -236,6 +250,12 @@ Hub validation:
 
 Hub must not require or receive third-party message content.
 
+Setup separation:
+
+- `ensure-running` is not part of login/start, login/status, discover, create, patch, delete, or test setup routes.
+- Hub setup routes for `hosting_kind="cloud"` must proxy only to `/internal/gateway-ingress/...`.
+- Daemon control frame types such as `gateway_login_start`, `gateway_login_status`, and `gateway_recent_senders` remain valid for local daemon agents only.
+
 ### 7.2 runtime metadata
 
 Used when `gateway-ingress` needs to reconnect to an already-running runtime session without forcing resume.
@@ -282,6 +302,11 @@ Cons:
 - Need clear logs and privacy boundary to avoid accidental message persistence.
 
 MVP recommendation: use Option B if E2B networking makes direct inbound to sandbox awkward; otherwise use Option A.
+
+Current implementation note:
+
+- If Option B is implemented on top of existing Hub/cloud-daemon control transport, keep the relay path narrow: correlate by event/session ids, treat runtime frame bodies as opaque transport payloads, and avoid setup/provider-specific branches in Hub.
+- Do not reuse long-running daemon control acks as the stable runtime execution model. Runtime accept (`gateway_inbound_ack`) and terminal outbound (`gateway_outbound_complete` / `gateway_outbound_error`) should be separate protocol events so Hub lifecycle availability is not tied to a single blocking control-frame timeout.
 
 ### 8.1 Frame Shape
 
@@ -507,12 +532,14 @@ Ingress can continue receiving provider events into queue but cannot resume new 
 
 ### Phase 0: Contract Extraction
 
+- Status: mostly implemented in `@botcord/protocol-core` (`runtime-frame.ts`) for runtime and lifecycle frame contracts.
 - Extract or duplicate minimal `GatewayInboundMessage` / `GatewayOutboundMessage` types into a shared package usable by `gateway-ingress`.
 - Define runtime direct session frame schema.
 - Add Hub internal `ensure-running` API that does not accept message payload.
 
 ### Phase 1: gateway-ingress Skeleton
 
+- Status: implemented for P0 setup/runtime package skeleton.
 - New module/package `gateway-ingress`.
 - Service config, health check, DB/secret store abstraction.
 - Hub service auth client.
@@ -528,7 +555,7 @@ Recommended first provider: Telegram or Feishu.
 
 Deliver:
 
-- Login/config creation path for cloud gateway.
+- Login/config creation path for cloud gateway. Status: implemented for WeChat, Telegram, and Feishu setup ownership.
 - Inbound receive -> queue -> ensure-running -> runtime delivery.
 - Final text outbound delivery.
 
@@ -573,4 +600,3 @@ Cloud lifecycle control: Hub thin API
 ```
 
 This keeps Hub out of third-party message semantics while preserving the one capability paused Cloud Agents still need from Hub: reliable sandbox resume and runtime metadata.
-

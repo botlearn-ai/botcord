@@ -810,6 +810,153 @@ async def test_cloud_agent_does_not_require_cloud_daemon_online(
     assert r.status_code == 200, r.text
 
 
+@pytest.mark.parametrize(
+    ("path", "request_body", "expected_ingress_suffix", "response_check"),
+    [
+        (
+            "/api/agents/ag_cloud/gateways/wechat/login/start",
+            {},
+            "/internal/gateway-ingress/agents/ag_cloud/gateways/wechat/login/start",
+            lambda body: body["loginId"] == "wxl_cloud"
+            and body["qrcode"] == "QR"
+            and body["qrcodeUrl"] == "https://qr",
+        ),
+        (
+            "/api/agents/ag_cloud/gateways/wechat/login/status",
+            {"loginId": "wxl_cloud"},
+            "/internal/gateway-ingress/agents/ag_cloud/gateways/wechat/login/status",
+            lambda body: body["status"] == "confirmed"
+            and body["tokenPreview"] == "tok...view",
+        ),
+        (
+            "/api/agents/ag_cloud/gateways/wechat/senders",
+            {"loginId": "wxl_cloud", "timeoutSeconds": 1},
+            "/internal/gateway-ingress/agents/ag_cloud/gateways/wechat/discover",
+            lambda body: body["senders"] == [{"senderId": "alice", "preview": "hi"}],
+        ),
+        (
+            "/api/agents/ag_cloud/gateways/feishu/login/start",
+            {"domain": "feishu"},
+            "/internal/gateway-ingress/agents/ag_cloud/gateways/feishu/login/start",
+            lambda body: body["loginId"] == "fsl_cloud"
+            and body["qrcodeUrl"] == "https://accounts.feishu.cn/verify",
+        ),
+        (
+            "/api/agents/ag_cloud/gateways/feishu/login/status",
+            {"loginId": "fsl_cloud"},
+            "/internal/gateway-ingress/agents/ag_cloud/gateways/feishu/login/status",
+            lambda body: body["status"] == "confirmed"
+            and body["appId"] == "cli_cloud"
+            and body["tokenPreview"] == "fei...view",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_cloud_agent_login_setup_routes_never_dispatch_daemon_or_lifecycle(
+    client,
+    seed,
+    monkeypatch,
+    path,
+    request_body,
+    expected_ingress_suffix,
+    response_check,
+):
+    """Cloud-hosted setup is owned by gateway-ingress.
+
+    Login/discovery setup must not wake the runtime sandbox and must not send
+    daemon gateway_login_* control frames. Runtime lifecycle stays behind
+    /internal/cloud-gateway/.../ensure-running and is used only after provider
+    inbound events exist.
+    """
+
+    def responder(method, url, body):
+        assert method == "POST"
+        assert url.endswith(expected_ingress_suffix)
+        assert "/internal/cloud-gateway/" not in url
+        assert body["user_id"] == str(seed["user_id"])
+        assert body["hosting_kind"] == "cloud"
+        if url.endswith("/wechat/login/start"):
+            return _FakeIngressResponse(
+                200,
+                {
+                    "loginId": "wxl_cloud",
+                    "expiresAt": 1700000000,
+                    "publicPayload": {
+                        "qrcode": "QR",
+                        "qrcodeUrl": "https://qr",
+                    },
+                },
+            )
+        if url.endswith("/wechat/login/status"):
+            return _FakeIngressResponse(
+                200,
+                {
+                    "loginId": "wxl_cloud",
+                    "status": "confirmed",
+                    "expiresAt": 1700000000,
+                    "publicPayload": {
+                        "baseUrl": "https://ilinkai.weixin.qq.com",
+                        "tokenPreview": "tok...view",
+                    },
+                },
+            )
+        if url.endswith("/wechat/discover"):
+            return _FakeIngressResponse(
+                200,
+                {"candidates": [{"senderId": "alice", "preview": "hi"}]},
+            )
+        if url.endswith("/feishu/login/start"):
+            return _FakeIngressResponse(
+                200,
+                {
+                    "loginId": "fsl_cloud",
+                    "expiresAt": 1700000000,
+                    "publicPayload": {
+                        "qrcodeUrl": "https://accounts.feishu.cn/verify",
+                    },
+                },
+            )
+        if url.endswith("/feishu/login/status"):
+            return _FakeIngressResponse(
+                200,
+                {
+                    "loginId": "fsl_cloud",
+                    "status": "confirmed",
+                    "expiresAt": 1700000000,
+                    "publicPayload": {
+                        "appId": "cli_cloud",
+                        "domain": "feishu",
+                        "userOpenId": "ou_cloud",
+                        "tokenPreview": "fei...view",
+                    },
+                },
+            )
+        raise AssertionError(f"unexpected ingress url: {url}")
+
+    fake = _install_ingress(monkeypatch, responder)
+
+    def _no_daemon_control(*a, **k):
+        raise AssertionError("cloud setup must not dispatch daemon control frames")
+
+    def _no_lifecycle(*a, **k):
+        raise AssertionError("setup must not call cloud runtime lifecycle")
+
+    monkeypatch.setattr("app.routers.gateways.send_control_frame", _no_daemon_control)
+    monkeypatch.setattr("app.routers.gateways.send_cloud_control_frame", _no_daemon_control)
+    monkeypatch.setattr("app.routers.gateways.is_cloud_daemon_online", _no_lifecycle)
+    monkeypatch.setattr(
+        "app.routers.gateways.CloudAgentService.resume_cloud_agent",
+        _no_lifecycle,
+    )
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(path, headers=headers, json=request_body)
+
+    assert r.status_code == 200, r.text
+    assert response_check(r.json())
+    assert len(fake.calls) == 1
+
+
 @pytest.mark.asyncio
 async def test_create_telegram_requires_bot_token(client, seed, monkeypatch):
     _patch_daemon(monkeypatch, online=True)
