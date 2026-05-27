@@ -77,6 +77,7 @@ import type {
 } from "./types";
 
 import { createClient } from "@/lib/supabase/client";
+import type { AgentSkillsResponse } from "@/lib/agent-skills";
 import type { AgentPresenceSnapshotPayload } from "@/store/usePresenceStore";
 
 /**
@@ -1066,6 +1067,14 @@ const userApi = {
     return apiGet<{ runs: any[] }>(
       `/api/agents/${encodeURIComponent(agentId)}/schedules/${encodeURIComponent(scheduleId)}/runs`,
     );
+  },
+
+  listAgentSkills(agentId: string): Promise<AgentSkillsResponse> {
+    return apiGet<AgentSkillsResponse>(`/api/agents/${encodeURIComponent(agentId)}/runtime-skills`);
+  },
+
+  refreshAgentSkills(agentId: string): Promise<AgentSkillsResponse> {
+    return apiPost<AgentSkillsResponse>(`/api/agents/${encodeURIComponent(agentId)}/runtime-skills/refresh`);
   },
 };
 

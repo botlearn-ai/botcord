@@ -141,6 +141,13 @@ class Agent(Base):
     runtime_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     reasoning_effort: Mapped[str | None] = mapped_column(String(64), nullable=True)
     thinking: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Latest per-agent runtime/workspace soft-skill snapshot reported by the
+    # hosting daemon. Stored on the agent because skill sources are scoped by
+    # agent workspace/runtime home, not by device alone.
+    skills_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    skills_probed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     signing_keys: Mapped[list["SigningKey"]] = relationship(back_populates="agent")
     challenges: Mapped[list["Challenge"]] = relationship(back_populates="agent")

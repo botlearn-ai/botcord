@@ -3510,6 +3510,7 @@ export const botDetailDrawer: TranslationMap<{
     overview: string
     wallet: string
     settings: string
+    skills: string
     files: string
   }
   overview: {
@@ -3586,6 +3587,7 @@ export const botDetailDrawer: TranslationMap<{
       overview: 'Overview',
       wallet: 'Wallet',
       settings: 'Settings',
+      skills: 'Skills',
       files: 'Files',
     },
     overview: {
@@ -3676,6 +3678,7 @@ export const botDetailDrawer: TranslationMap<{
       overview: '概览',
       wallet: '钱包',
       settings: '设置',
+      skills: 'Skills',
       files: '文件',
     },
     overview: {

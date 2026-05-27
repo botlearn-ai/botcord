@@ -52,6 +52,7 @@ import { PolicyResolver, type DaemonAttentionPolicy } from "./gateway/policy-res
 import { scanMention } from "./mention-scan.js";
 import { createDiagnosticBundle, uploadDiagnosticBundle } from "./diagnostics.js";
 import { createAttentionPolicyFetcher } from "./attention-policy-fetcher.js";
+import { collectAgentSkillSnapshot } from "./skill-index.js";
 
 /**
  * Default hard cap for a single runtime turn. Long-running coding/research
@@ -240,6 +241,26 @@ export function pushRuntimeSnapshot(
   if (!ok) {
     daemonLog.warn("runtime-snapshot: control-channel send returned false", {
       runtimes: snap.runtimes.length,
+    });
+  }
+  return ok;
+}
+
+export function pushAgentSkillSnapshot(
+  sink: RuntimeSnapshotSink,
+  agentId: string,
+): boolean {
+  const snap = collectAgentSkillSnapshot(agentId);
+  const ok = sink.send({
+    id: `skill_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    type: "agent_skill_snapshot",
+    params: snap as unknown as Record<string, unknown>,
+    ts: Date.now(),
+  });
+  if (!ok) {
+    daemonLog.warn("agent-skill-snapshot: control-channel send returned false", {
+      agentId,
+      skills: snap.skills.length,
     });
   }
   return ok;
@@ -648,6 +669,13 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
       logger.info("control-channel: initial runtime_snapshot push", {
         ok: pushed,
       });
+      for (const agentId of agentIds) {
+        const skillsPushed = pushAgentSkillSnapshot(controlChannel, agentId);
+        logger.info("control-channel: initial agent_skill_snapshot push", {
+          agentId,
+          ok: skillsPushed,
+        });
+      }
     } catch (err) {
       logger.warn("control-channel failed to start; continuing without it", {
         error: err instanceof Error ? err.message : String(err),

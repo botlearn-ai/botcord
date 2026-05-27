@@ -266,6 +266,105 @@ async def test_runtime_files_for_owned_daemon_agent_dispatches_control_frame(
 
 
 @pytest.mark.asyncio
+async def test_runtime_skills_get_returns_stored_snapshot(client, seed, db_session):
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.daemon_instance_id = "dm_skills"
+    agent.runtime = "codex"
+    agent.skills_json = [
+        {
+            "name": "workspace-skill",
+            "source": "workspace",
+            "description": "Workspace skill",
+            "mtimeMs": 1710000000000,
+            "mtimeAt": "2024-03-09T16:00:00+00:00",
+        }
+    ]
+    agent.skills_probed_at = datetime.datetime.now(datetime.timezone.utc)
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.get("/api/agents/ag_owned/skills", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["agent_id"] == "ag_owned"
+    assert body["daemon_instance_id"] == "dm_skills"
+    assert body["runtime"] == "codex"
+    assert body["skills"][0]["source"] == "workspace"
+    assert body["sniffed_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_runtime_skills_refresh_dispatches_persists_and_returns(
+    client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_skills as runtime_skills_mod
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.daemon_instance_id = "dm_skills"
+    agent.runtime = "codex"
+    await db_session.commit()
+
+    monkeypatch.setattr(runtime_skills_mod, "is_daemon_online", lambda _id: True)
+
+    calls = []
+    probed_at = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append({
+            "daemon_instance_id": daemon_instance_id,
+            "type": type_,
+            "params": params,
+            "timeout_ms": timeout_ms,
+        })
+        return {
+            "ok": True,
+            "result": {
+                "agentId": "ag_owned",
+                "skills": [
+                    {
+                        "name": f"global-skill-{i}",
+                        "source": "runtime-global",
+                        "description": "Global skill",
+                        "mtimeMs": probed_at,
+                    }
+                    for i in range(129)
+                ],
+                "probedAt": probed_at,
+            },
+        }
+
+    monkeypatch.setattr(runtime_skills_mod, "send_control_frame", fake_send)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post("/api/agents/ag_owned/skills/refresh", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["skills"]) == 129
+    assert body["skills"][0]["name"] == "global-skill-0"
+    assert body["skills"][-1]["name"] == "global-skill-128"
+    assert body["skills"][0]["source"] == "runtime-global"
+    assert body["sniffed_at"] is not None
+    assert calls == [
+        {
+            "daemon_instance_id": "dm_skills",
+            "type": "list_agent_skills",
+            "params": {"agentId": "ag_owned"},
+            "timeout_ms": 5000,
+        }
+    ]
+
+    refreshed = await db_session.scalar(select(Agent).where(Agent.agent_id == "ag_owned"))
+    assert refreshed is not None
+    assert len(refreshed.skills_json) == 129
+    assert refreshed.skills_json[0]["name"] == "global-skill-0"
+    assert refreshed.skills_json[-1]["name"] == "global-skill-128"
+    assert refreshed.skills_json[0]["mtimeAt"]
+    assert refreshed.skills_probed_at is not None
+
+
+@pytest.mark.asyncio
 async def test_runtime_files_for_owned_cloud_agent_dispatches_cloud_control_frame(
     client, seed, db_session, monkeypatch
 ):

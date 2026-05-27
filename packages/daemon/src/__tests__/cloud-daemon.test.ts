@@ -20,6 +20,7 @@ import type { CloudModeConfig } from "../cloud-mode.js";
 import { ControlChannel } from "../control-channel.js";
 import type { DaemonConfig } from "../config.js";
 import type { Gateway, GatewayChannelConfig } from "../gateway/index.js";
+import type { OnAgentInstalledHook } from "../provision.js";
 
 class FakeWebSocket extends EventEmitter {
   public readyState = 0;
@@ -73,6 +74,10 @@ function makeDaemonCfg(): DaemonConfig {
     routes: [],
     streamBlocks: true,
   };
+}
+
+function sentFrames(ws: FakeWebSocket): Array<{ type?: string; params?: any }> {
+  return ws.sent.map((raw) => JSON.parse(raw));
 }
 
 describe("startCloudDaemon", () => {
@@ -168,6 +173,80 @@ describe("startCloudDaemon", () => {
       expect(callArgs.gateway).toBeDefined();
       expect(callArgs.onAgentInstalled).toBeInstanceOf(Function);
       expect(callArgs.policyResolver).toBeDefined();
+    } finally {
+      await handle.stop("test");
+    }
+  });
+
+  it("pushes skill snapshots for agents installed before control-channel startup completes", async () => {
+    const ctor = makeFakeCtor();
+    class TestControlChannel extends ControlChannel {
+      constructor(opts: ConstructorParameters<typeof ControlChannel>[0]) {
+        super({ ...opts, webSocketCtor: ctor, hubPublicKey: null });
+      }
+    }
+    const handle = await startCloudDaemon({
+      cloudConfig: makeCfg(),
+      config: makeDaemonCfg(),
+      configPath: "(cloud-mode)",
+      controlChannelFactory: TestControlChannel as unknown as typeof ControlChannel,
+      provisionerFactory: ((args: { onAgentInstalled: OnAgentInstalledHook }) => {
+        args.onAgentInstalled({
+          agentId: "ag_preinstalled",
+          credentialsFile: path.join(tmpDir, "ag_preinstalled.json"),
+          hubUrl: "http://localhost:9000",
+        });
+        return vi.fn();
+      }) as unknown as typeof import("../provision.js").createProvisioner,
+      sessionStorePath: path.join(tmpDir, "sessions.json"),
+      snapshotPath: path.join(tmpDir, "snapshot.json"),
+      snapshotIntervalMs: 60_000,
+    });
+    try {
+      await new Promise((r) => setImmediate(r));
+      const ws = FakeWebSocket.instances[0]!;
+      const skillFrames = sentFrames(ws).filter((frame) => frame.type === "agent_skill_snapshot");
+      expect(skillFrames).toHaveLength(1);
+      expect(skillFrames[0]!.params.agentId).toBe("ag_preinstalled");
+      expect(Array.isArray(skillFrames[0]!.params.skills)).toBe(true);
+    } finally {
+      await handle.stop("test");
+    }
+  });
+
+  it("pushes a skill snapshot when a cloud agent is installed after startup", async () => {
+    let onAgentInstalled: OnAgentInstalledHook | undefined;
+    const ctor = makeFakeCtor();
+    class TestControlChannel extends ControlChannel {
+      constructor(opts: ConstructorParameters<typeof ControlChannel>[0]) {
+        super({ ...opts, webSocketCtor: ctor, hubPublicKey: null });
+      }
+    }
+    const handle = await startCloudDaemon({
+      cloudConfig: makeCfg(),
+      config: makeDaemonCfg(),
+      configPath: "(cloud-mode)",
+      controlChannelFactory: TestControlChannel as unknown as typeof ControlChannel,
+      provisionerFactory: ((args: { onAgentInstalled: OnAgentInstalledHook }) => {
+        onAgentInstalled = args.onAgentInstalled;
+        return vi.fn();
+      }) as unknown as typeof import("../provision.js").createProvisioner,
+      sessionStorePath: path.join(tmpDir, "sessions.json"),
+      snapshotPath: path.join(tmpDir, "snapshot.json"),
+      snapshotIntervalMs: 60_000,
+    });
+    try {
+      await new Promise((r) => setImmediate(r));
+      onAgentInstalled!({
+        agentId: "ag_hot_installed",
+        credentialsFile: path.join(tmpDir, "ag_hot_installed.json"),
+        hubUrl: "http://localhost:9000",
+      });
+      const ws = FakeWebSocket.instances[0]!;
+      const skillFrames = sentFrames(ws).filter((frame) => frame.type === "agent_skill_snapshot");
+      expect(skillFrames).toHaveLength(1);
+      expect(skillFrames[0]!.params.agentId).toBe("ag_hot_installed");
+      expect(Array.isArray(skillFrames[0]!.params.skills)).toBe(true);
     } finally {
       await handle.stop("test");
     }

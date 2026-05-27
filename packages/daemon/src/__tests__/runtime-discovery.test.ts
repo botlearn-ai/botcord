@@ -40,7 +40,7 @@ beforeEach(() => {
   // mocked runtime list between cases, so reset before each.
   clearRuntimeProbeCache();
 });
-const { pushRuntimeSnapshot } = await import("../daemon.js");
+const { pushAgentSkillSnapshot, pushRuntimeSnapshot } = await import("../daemon.js");
 const { CONTROL_FRAME_TYPES } = await import("@botcord/protocol-core");
 import type { GatewayChannelConfig, GatewayRuntimeSnapshot } from "../gateway/index.js";
 
@@ -471,6 +471,22 @@ describe("pushRuntimeSnapshot (first-connect push)", () => {
         lastError: "Failed to authenticate",
       }),
     ]);
+  });
+});
+
+describe("pushAgentSkillSnapshot", () => {
+  it("sends an agent_skill_snapshot frame", () => {
+    const frames: any[] = [];
+    const ok = pushAgentSkillSnapshot(
+      { send: (frame) => { frames.push(frame); return true; } },
+      "ag_skills",
+    );
+    expect(ok).toBe(true);
+    expect(frames).toHaveLength(1);
+    expect(frames[0].type).toBe("agent_skill_snapshot");
+    expect(frames[0].params.agentId).toBe("ag_skills");
+    expect(Array.isArray(frames[0].params.skills)).toBe(true);
+    expect(typeof frames[0].params.probedAt).toBe("number");
   });
 });
 

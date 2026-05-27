@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Bell, Bot, Clock, FileText, Loader2, MessageSquare, Plug, RefreshCw, Shield, Trash2, User, UserRound, X } from "lucide-react";
+import { Bell, Bot, Clock, FileText, Loader2, MessageSquare, Plug, RefreshCw, Shield, Sparkles, Trash2, User, UserRound, X } from "lucide-react";
 import { apiFetch, userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { botDetailDrawer } from "@/lib/i18n/translations/dashboard";
@@ -20,6 +20,7 @@ import AgentChannelsTab from "./AgentChannelsTab";
 import AgentSchedulesTab from "./AgentSchedulesTab";
 import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
 import BotRuntimeCapabilitiesPanel from "./BotRuntimeCapabilitiesPanel";
+import AgentSkillsTab from "./AgentSkillsTab";
 
 interface AgentSettingsDrawerProps {
   agentId: string;
@@ -36,7 +37,7 @@ interface AgentSettingsDrawerProps {
   onSaved?: () => void;
 }
 
-type Tab = "profile" | "policy" | "schedules" | "gateways" | "files";
+type Tab = "profile" | "policy" | "schedules" | "gateways" | "skills" | "files";
 type BotDetailDrawerCopy = typeof botDetailDrawer["en"];
 
 interface AgentRuntimeFile {
@@ -294,6 +295,7 @@ export default function AgentSettingsDrawer({
     deleteAgent: locale === "zh" ? "删除 Agent" : "Delete Agent",
     policyTab: locale === "zh" ? "权限与回复" : "Permissions",
     filesTab: locale === "zh" ? "文件/记忆" : "Files / Memory",
+    skillsTab: locale === "zh" ? "Skills" : "Skills",
     directContact: locale === "zh" ? "直接联系" : "Direct contact",
     allowedSources: locale === "zh" ? "允许来源" : "Allowed sources",
     allOff: locale === "zh" ? "全部关闭" : "All off",
@@ -447,7 +449,7 @@ export default function AgentSettingsDrawer({
 
         {/* Tabs */}
         <div className="flex flex-nowrap overflow-x-auto border-b border-glass-border/60 px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {(["profile", "policy", "schedules", "gateways", "files"] as Tab[]).map((t) => (
+          {(["profile", "policy", "schedules", "gateways", "skills", "files"] as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -466,6 +468,8 @@ export default function AgentSettingsDrawer({
                 <Plug className="h-3.5 w-3.5" />
               ) : t === "schedules" ? (
                 <Clock className="h-3.5 w-3.5" />
+              ) : t === "skills" ? (
+                <Sparkles className="h-3.5 w-3.5" />
               ) : (
                 <FileText className="h-3.5 w-3.5" />
               )}
@@ -477,7 +481,9 @@ export default function AgentSettingsDrawer({
                     ? botDetailDrawer[locale].settings.autonomy
                     : t === "gateways"
                       ? botDetailDrawer[locale].settings.channels
-                      : labels.filesTab}
+                      : t === "skills"
+                        ? labels.skillsTab
+                        : labels.filesTab}
             </button>
           ))}
         </div>
@@ -740,6 +746,8 @@ export default function AgentSettingsDrawer({
           )}
 
           {tab === "schedules" && <AgentSchedulesTab agentId={agentId} />}
+
+          {tab === "skills" && <AgentSkillsTab agentId={agentId} />}
 
           {tab === "files" && (
             <div className="space-y-4">

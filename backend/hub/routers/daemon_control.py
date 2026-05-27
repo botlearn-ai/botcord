@@ -86,6 +86,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["daemon-control"])
 
+# Skill snapshots are expected to contain the daemon's full discovered list.
+# Keep only an abuse guard here; per-field truncation below controls row bloat.
+MAX_AGENT_SKILL_SNAPSHOT_ITEMS = 10_000
+
 
 # ---------------------------------------------------------------------------
 # Hub control-plane signing key (Ed25519)
@@ -889,6 +893,7 @@ _ALLOWED_DISPATCH_TYPES = {
     "reload_config",
     "list_agents",
     "list_agent_files",
+    "list_agent_skills",
     "set_route",
     "ping",
     "list_runtimes",
@@ -1613,6 +1618,7 @@ _DAEMON_INITIATED_TYPES = {
     "agent_revoked",
     "pong",
     "runtime_snapshot",
+    "agent_skill_snapshot",
 }
 
 
@@ -1704,6 +1710,88 @@ async def _persist_runtime_snapshot(
     return runtimes, probed_dt
 
 
+def _parse_agent_skill_snapshot_params(
+    params: Any,
+) -> tuple[str, list[dict[str, Any]], datetime.datetime] | None:
+    """Validate a ``agent_skill_snapshot`` / ``list_agent_skills`` payload."""
+    if not isinstance(params, dict):
+        return None
+    agent_id = params.get("agentId")
+    skills = params.get("skills")
+    probed_at = params.get("probedAt")
+    if not isinstance(agent_id, str) or not agent_id:
+        return None
+    if not isinstance(skills, list) or len(skills) > MAX_AGENT_SKILL_SNAPSHOT_ITEMS:
+        return None
+    out: list[dict[str, Any]] = []
+    for raw in skills:
+        if not isinstance(raw, dict):
+            return None
+        name = raw.get("name")
+        source = raw.get("source")
+        mtime_ms = raw.get("mtimeMs")
+        if not isinstance(name, str) or not name:
+            return None
+        if not isinstance(source, str) or not source:
+            return None
+        if not isinstance(mtime_ms, (int, float)) or isinstance(mtime_ms, bool):
+            return None
+        entry: dict[str, Any] = {
+            "name": name[:128],
+            "source": source[:64],
+            "mtimeMs": mtime_ms,
+        }
+        try:
+            entry["mtimeAt"] = datetime.datetime.fromtimestamp(
+                mtime_ms / 1000, tz=datetime.timezone.utc
+            ).isoformat()
+        except (OverflowError, OSError, ValueError):
+            pass
+        description = raw.get("description")
+        if isinstance(description, str) and description:
+            entry["description"] = description[:500]
+        out.append(entry)
+    if not isinstance(probed_at, (int, float)) or isinstance(probed_at, bool):
+        return None
+    if probed_at <= 0:
+        return None
+    try:
+        probed_dt = datetime.datetime.fromtimestamp(
+            probed_at / 1000, tz=datetime.timezone.utc
+        )
+    except (OverflowError, OSError, ValueError):
+        return None
+    upper_bound = _now() + datetime.timedelta(minutes=5)
+    if probed_dt > upper_bound:
+        return None
+    return agent_id, out, probed_dt
+
+
+async def _persist_agent_skill_snapshot(
+    db: AsyncSession,
+    *,
+    daemon_instance_id: str,
+    params: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]], datetime.datetime] | None:
+    """Persist a validated per-agent skill snapshot if the agent is hosted here."""
+    parsed = _parse_agent_skill_snapshot_params(params)
+    if parsed is None:
+        return None
+    agent_id, skills, probed_dt = parsed
+    agent = await db.scalar(
+        select(Agent).where(
+            Agent.agent_id == agent_id,
+            Agent.daemon_instance_id == daemon_instance_id,
+            Agent.status == "active",
+        )
+    )
+    if agent is None:
+        return None
+    agent.skills_json = skills
+    agent.skills_probed_at = probed_dt
+    return agent_id, skills, probed_dt
+
+
 async def _load_agent_identity_snapshot(
     daemon_instance_id: str,
 ) -> list[dict[str, Any]]:
@@ -1769,8 +1857,8 @@ async def _handle_daemon_event(conn: _DaemonConn, msg: dict[str, Any]) -> None:
             pass
         return
 
-    # For runtime_snapshot we need to validate params *before* the DB touch so
-    # we can bail with bad_params without writing anything.
+    # Validate snapshot params *before* the DB touch so we can bail with
+    # bad_params without writing anything.
     params = msg.get("params")
     if msg_type == "runtime_snapshot":
         parsed = _parse_runtime_snapshot_params(params)
@@ -1781,6 +1869,22 @@ async def _handle_daemon_event(conn: _DaemonConn, msg: dict[str, Any]) -> None:
                 "error": {
                     "code": "bad_params",
                     "message": "runtime_snapshot requires {runtimes:list, probedAt:int}",
+                },
+            }
+            try:
+                await conn.ws.send_text(json.dumps(err))
+            except Exception:
+                pass
+            return
+    if msg_type == "agent_skill_snapshot":
+        parsed = _parse_agent_skill_snapshot_params(params)
+        if parsed is None:
+            err = {
+                "id": msg_id,
+                "ok": False,
+                "error": {
+                    "code": "bad_params",
+                    "message": "agent_skill_snapshot requires {agentId:str, skills:list, probedAt:int}",
                 },
             }
             try:
@@ -1801,6 +1905,12 @@ async def _handle_daemon_event(conn: _DaemonConn, msg: dict[str, Any]) -> None:
                 if msg_type == "runtime_snapshot":
                     # params already validated above; ignore return value.
                     await _persist_runtime_snapshot(db, instance, params)  # type: ignore[arg-type]
+                if msg_type == "agent_skill_snapshot":
+                    await _persist_agent_skill_snapshot(
+                        db,
+                        daemon_instance_id=conn.daemon_instance_id,
+                        params=params,  # type: ignore[arg-type]
+                    )
                 await db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.debug("daemon event persist failed: %s", exc)
