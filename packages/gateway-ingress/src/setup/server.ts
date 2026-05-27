@@ -6,6 +6,7 @@
  *   POST   /agents/{agentId}/gateways/{provider}/login/start
  *   POST   /agents/{agentId}/gateways/{provider}/login/status
  *   POST   /agents/{agentId}/gateways/{provider}/discover
+ *   POST   /agents/{agentId}/gateways/{provider}/senders
  *   POST   /agents/{agentId}/gateways
  *   PATCH  /agents/{agentId}/gateways/{gatewayId}
  *   DELETE /agents/{agentId}/gateways/{gatewayId}
@@ -181,11 +182,12 @@ async function handle(
     }
 
     // POST /agents/{agentId}/gateways/{provider}/discover
+    // POST /agents/{agentId}/gateways/{provider}/senders
     if (
       parts.length === 5 &&
       parts[0] === "agents" &&
       parts[2] === "gateways" &&
-      parts[4] === "discover" &&
+      (parts[4] === "discover" || parts[4] === "senders") &&
       method === "POST"
     ) {
       const agentId = parts[1]!;

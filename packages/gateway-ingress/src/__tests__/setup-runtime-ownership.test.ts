@@ -611,4 +611,28 @@ describe("setup-server ↔ runner ownership (Phase 3)", () => {
     expect(h.runner.isRunning(connection.id)).toBe(true);
     expect(h.factories.feishu.starts).toEqual([connection.id]);
   });
+
+  it("setup responses across providers never expose raw provider secrets", async () => {
+    const wx = await wechatFinalize(h, "ag_wx_no_secret_leak");
+    expect(wx.status).toBe(200);
+    const tg = await tgFinalize(h, "ag_tg_no_secret_leak");
+    expect(tg.status).toBe(200);
+    const fs = await fsFinalize(h, "ag_fs_no_secret_leak");
+    expect(fs.status).toBe(200);
+
+    const rawResponses = h.responses.join("\n");
+    expect(rawResponses).not.toContain(FAKE_BOT_TOKEN);
+    expect(rawResponses).not.toContain(FAKE_TG_TOKEN);
+    expect(rawResponses).not.toContain(FAKE_FS_APP_SECRET);
+
+    const wxConn = wx.body.connection as { id: string };
+    const tgConn = tg.body.connection as { id: string };
+    const fsConn = fs.body.connection as { id: string };
+    expect(JSON.stringify(wx.body)).not.toContain("secretRef");
+    expect(JSON.stringify(tg.body)).not.toContain("secretRef");
+    expect(JSON.stringify(fs.body)).not.toContain("secretRef");
+    expect(h.secrets.load(wxConn.id)).not.toBeNull();
+    expect(h.secrets.load(tgConn.id)).not.toBeNull();
+    expect(h.secrets.load(fsConn.id)).not.toBeNull();
+  });
 });
