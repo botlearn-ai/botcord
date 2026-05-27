@@ -6,19 +6,17 @@ name: Release Packages
 #
 # Flow:
 #   1. Developer adds a changeset in their PR: `pnpm changeset`.
-#   2. PR merges to main → this workflow runs.
+#   2. After the PR merges to main, run this workflow manually.
 #   3. If unreleased changesets exist, the action opens (or updates) a
 #      "Version Packages" PR that bumps versions + writes CHANGELOG entries.
-#   4. Merging that PR triggers this workflow again; this time it publishes
-#      to npm in topological order. `workspace:^` ranges are auto-replaced
-#      with the actual published versions by `pnpm publish`.
+#   4. Merge that PR, then run this workflow manually again from main; this
+#      time it publishes to npm in topological order. `workspace:^` ranges are
+#      auto-replaced with the actual published versions by `pnpm publish`.
 #
 # Manual emergency hotfix path: see publish-package-manual.yml.
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 concurrency:
   group: release-packages-${{ github.ref }}
@@ -27,6 +25,7 @@ concurrency:
 jobs:
   release:
     name: Version or Publish
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
