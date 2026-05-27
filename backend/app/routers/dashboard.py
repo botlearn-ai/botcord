@@ -2377,6 +2377,10 @@ async def get_room_messages(
     if room_id.startswith("rm_oc_"):
         viewer_agent_id = None
 
+    reply_preview_map = await _load_reply_previews(
+        db, {rec.reply_to_msg_id for rec in records if rec.reply_to_msg_id}
+    )
+
     messages = []
     for rec in records:
         parsed = extract_text_from_envelope(rec.envelope_json)
@@ -2389,6 +2393,7 @@ async def get_room_messages(
             viewer_agent_id=viewer_agent_id,
             viewer_user_id=viewer_user_id,
         )
+        rp = reply_preview_map.get(rec.reply_to_msg_id) if rec.reply_to_msg_id else None
         msg = {
             "hub_msg_id": rec.hub_msg_id,
             "msg_id": rec.msg_id,
@@ -2402,6 +2407,7 @@ async def get_room_messages(
             "topic_title": topic_info.get(rec.topic_id, {}).get("title") if rec.topic_id else None,
             "created_at": rec.created_at.isoformat() if rec.created_at else None,
             "source_type": rec.source_type,
+            "reply_preview": rp.model_dump(mode="json") if rp else None,
             **extra,
         }
         if is_member:
@@ -3255,6 +3261,10 @@ async def get_inbox(
     has_more = len(records) > limit
     records = records[:limit]
 
+    reply_preview_map = await _load_reply_previews(
+        db, {rec.reply_to_msg_id for rec in records if rec.reply_to_msg_id}
+    )
+
     messages = []
     for rec in records:
         try:
@@ -3262,12 +3272,14 @@ async def get_inbox(
         except (json.JSONDecodeError, TypeError):
             envelope = {}
 
+        rp = reply_preview_map.get(rec.reply_to_msg_id) if rec.reply_to_msg_id else None
         messages.append({
             "hub_msg_id": rec.hub_msg_id,
             "envelope": envelope,
             "room_id": rec.room_id,
             "topic": rec.topic,
             "topic_id": rec.topic_id,
+            "reply_preview": rp.model_dump(mode="json") if rp else None,
         })
 
     # Mark as delivered if ack=True

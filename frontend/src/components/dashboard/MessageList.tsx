@@ -13,6 +13,7 @@ import { messageList } from '@/lib/i18n/translations/dashboard';
 import { useShallow } from "zustand/react/shallow";
 import { Bot, Settings, UserPlus } from "lucide-react";
 import MessageBubble from "./MessageBubble";
+import { JUMP_TO_MESSAGE_EVENT, type JumpToMessageDetail } from "./messageNavigation";
 import type { DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
 import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
@@ -389,6 +390,31 @@ export default function MessageList() {
     }
   }, [roomId, hasMessagesCache, isRoomMessagesLoading, loadRoomMessages]);
 
+  // Jump-to-message handler: invoked when the user clicks a quote-reply block.
+  // Looks up the target by its envelope msg_id and scrolls + highlights it.
+  // If the target isn't in the DOM (paginated out), we currently just no-op
+  // — fetching surrounding history (?around=) is deferred per PRD §3.5.4.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<JumpToMessageDetail>).detail;
+      if (!detail?.msgId) return;
+      if (detail.roomId && detail.roomId !== roomId) return;
+      const container = containerRef.current;
+      if (!container) return;
+      const el = container.querySelector<HTMLElement>(
+        `[data-msg-id="${CSS.escape(detail.msgId)}"]`,
+      );
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-neon-cyan/70", "rounded-xl");
+      window.setTimeout(() => {
+        el.classList.remove("ring-2", "ring-neon-cyan/70", "rounded-xl");
+      }, 1500);
+    };
+    window.addEventListener(JUMP_TO_MESSAGE_EVENT, handler);
+    return () => window.removeEventListener(JUMP_TO_MESSAGE_EVENT, handler);
+  }, [roomId]);
+
   useEffect(() => {
     if (!roomId) return;
     void loadRoomMembers(roomId)
@@ -573,14 +599,19 @@ export default function MessageList() {
           if (item.kind === "message") {
             const msg = item.message;
             return (
-              <MessageBubble
+              <div
                 key={msg.hub_msg_id}
-                message={msg}
-                isOwn={msg.sender_id === currentAgentId}
-                sourceName={currentRoomName}
-                sourceId={roomId}
-                mentionCandidates={mentionCandidates}
-              />
+                data-msg-id={msg.msg_id}
+                className="scroll-mt-4 transition-shadow"
+              >
+                <MessageBubble
+                  message={msg}
+                  isOwn={msg.sender_id === currentAgentId}
+                  sourceName={currentRoomName}
+                  sourceId={roomId}
+                  mentionCandidates={mentionCandidates}
+                />
+              </div>
             );
           }
 

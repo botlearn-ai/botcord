@@ -172,6 +172,10 @@ export interface OwnerChatState {
   onDisconnect: () => void;
   reconcileAfterReconnect: () => Promise<void>;
   reset: () => void;
+
+  // Quote-reply
+  replyingTo: OwnerChatMessage | null;
+  setReplyingTo: (msg: OwnerChatMessage | null) => void;
 }
 
 const initialState = {
@@ -184,6 +188,7 @@ const initialState = {
   wsConnected: false,
   agentTyping: false,
   activeTraceId: null as string | null,
+  replyingTo: null as OwnerChatMessage | null,
 };
 
 // ---------------------------------------------------------------------------
@@ -196,6 +201,8 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
   // ------ Initialization ------
 
   setRoom: (roomId, agentName) => set({ roomId, agentName }),
+
+  setReplyingTo: (msg) => set({ replyingTo: msg }),
 
   loadInitial: async (roomId) => {
     // Allow re-entry if room changed (e.g. onAuthOk correction) — the stale

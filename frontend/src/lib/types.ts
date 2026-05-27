@@ -137,6 +137,18 @@ export interface Attachment {
   size_bytes?: number;
 }
 
+/** Preview of the message that another message is replying to.
+ *  `deleted=true` means the target was referenced but no record exists for it
+ *  anymore (TTL expired or otherwise removed). */
+export interface ReplyPreview {
+  msg_id: string;
+  sender_id: string | null;
+  sender_display_name: string | null;
+  text_preview: string | null;
+  topic_id: string | null;
+  deleted: boolean;
+}
+
 export interface DashboardMessage {
   hub_msg_id: string;
   msg_id: string;
@@ -168,6 +180,7 @@ export interface DashboardMessage {
   source_user_id?: string | null;
   source_user_name?: string | null;
   is_mine?: boolean;
+  reply_preview?: ReplyPreview | null;
 }
 
 export interface RoomHumanSendResponse {
@@ -250,6 +263,8 @@ export interface OwnerChatMessage {
   retryFiles?: File[];
   /** Links streaming placeholder to its final delivered message. */
   traceId?: string;
+  /** Quote-reply target preview (mirrors backend reply_preview). */
+  replyPreview?: ReplyPreview | null;
 }
 
 /** Convert a DashboardMessage (from API) into an OwnerChatMessage. */
@@ -275,6 +290,7 @@ export function dashboardMsgToOwnerChat(
         : msg.type === "error"
           ? "error"
           : "message",
+    replyPreview: msg.reply_preview ?? undefined,
   };
 }
 
