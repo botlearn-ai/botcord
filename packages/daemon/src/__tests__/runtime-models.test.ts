@@ -199,6 +199,56 @@ describe("runtime model discovery parsers", () => {
     ]);
   });
 
+  it("reads DeepSeek reasoning effort choices from the installed runtime template", () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "daemon-deepseek-catalog-"));
+    const prevHome = process.env.HOME;
+    const prevCacheDir = process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR;
+    try {
+      const home = path.join(tmp, "home");
+      mkdirSync(path.join(home, ".deepseek"), { recursive: true });
+      process.env.HOME = home;
+      process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR = path.join(tmp, "catalog-cache");
+      writeFileSync(
+        path.join(home, ".deepseek", "config.toml"),
+        'default_text_model = "deepseek-v4-pro"\nreasoning_effort = "turbo"\n',
+      );
+      const fakeDeepseek = path.join(tmp, "deepseek");
+      writeFileSync(
+        fakeDeepseek,
+        [
+          "binary prefix",
+          "# Thinking mode (DeepSeek V4 reasoning effort):",
+          '# "adaptive" | "disabled" | "turbo"',
+          'reasoning_effort = "adaptive"',
+        ].join("\n"),
+      );
+
+      const catalog = discoverRuntimeModelCatalog({
+        id: "deepseek-tui",
+        displayName: "DeepSeek TUI",
+        binary: "deepseek",
+        supportsRun: true,
+        result: { available: true, path: fakeDeepseek },
+      });
+
+      expect(catalog.parameters).toContainEqual({
+        id: "reasoning_effort",
+        displayName: "Reasoning effort",
+        type: "enum",
+        flag: "--reasoning-effort",
+        values: ["adaptive", "disabled", "turbo"],
+        defaultValue: "turbo",
+        source: "config",
+      });
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevCacheDir === undefined) delete process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR;
+      else process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR = prevCacheDir;
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("parses Kimi models from config.toml", () => {
     expect(
       parseKimiConfigModels(

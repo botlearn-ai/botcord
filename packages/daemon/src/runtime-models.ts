@@ -7,7 +7,7 @@ import type { RuntimeProbeEntry } from "./adapters/runtimes.js";
 
 const MODEL_LIST_TIMEOUT_MS = 5000;
 const MODEL_LIST_MAX_BUFFER = 16 * 1024 * 1024;
-const RUNTIME_CATALOG_CACHE_VERSION = 1;
+const RUNTIME_CATALOG_CACHE_VERSION = 2;
 const RUNTIME_CATALOG_CACHE_FRESH_MS = 10 * 60 * 1000;
 const DEFAULT_RUNTIME_CATALOG_CACHE_DIR = path.join(
   homedir(),
@@ -136,7 +136,7 @@ function runtimeCatalogStrategy(entry: RuntimeProbeEntry): RuntimeCatalogStrateg
         discoverFresh: () => discoverDeepseekCatalog(entry.result.path),
         fallback: () => ({
           models: DEEPSEEK_FALLBACK_MODELS.slice(),
-          parameters: discoverDeepseekParameters(),
+          parameters: discoverDeepseekParameters(entry.result.path),
         }),
       };
     case "kimi-cli":
@@ -433,7 +433,7 @@ function discoverCodexParameters(rawCatalog: string | null): RuntimeParameterPro
 function discoverDeepseekCatalog(command: string | undefined): RuntimeModelDiscovery {
   return {
     models: discoverDeepseekModels(command),
-    parameters: discoverDeepseekParameters(),
+    parameters: discoverDeepseekParameters(command),
   };
 }
 
@@ -457,8 +457,9 @@ export function parseDeepseekModelList(raw: string): RuntimeModelProbe[] | undef
   return out.length ? out : undefined;
 }
 
-function discoverDeepseekParameters(): RuntimeParameterProbe[] {
+function discoverDeepseekParameters(command?: string): RuntimeParameterProbe[] {
   const config = readConfigScalars(path.join(homedir(), ".deepseek", "config.toml"));
+  const reasoningEffortValues = discoverDeepseekReasoningEffortValues(command);
   return [
     compactParameter({
       id: "model",
@@ -480,8 +481,9 @@ function discoverDeepseekParameters(): RuntimeParameterProbe[] {
     compactParameter({
       id: "reasoning_effort",
       displayName: "Reasoning effort",
-      type: "string",
-      flag: "reasoning_effort",
+      type: reasoningEffortValues.length > 0 ? "enum" : "string",
+      flag: "--reasoning-effort",
+      values: reasoningEffortValues.length > 0 ? reasoningEffortValues : undefined,
       defaultValue: config.reasoning_effort,
       source: config.reasoning_effort ? "config" : "cli",
     }),
@@ -502,6 +504,44 @@ function discoverDeepseekParameters(): RuntimeParameterProbe[] {
       source: config.sandbox_mode ? "config" : "cli",
     }),
   ];
+}
+
+function discoverDeepseekReasoningEffortValues(command: string | undefined): string[] {
+  const candidates = deepseekRuntimeTemplateCandidates(command);
+  const values = new Set<string>();
+  for (const candidate of candidates) {
+    try {
+      const raw = readFileSync(candidate)
+        .toString("latin1")
+        .replace(/[^\x20-\x7E]+/g, "\n");
+      const templateRe =
+        /Thinking mode \(DeepSeek V4 reasoning effort\):[\s\S]{0,256}?#\s*((?:"[^"]+"\s*(?:\|\s*)?)+)/g;
+      for (const match of raw.matchAll(templateRe)) {
+        const line = match[1] ?? "";
+        for (const valueMatch of line.matchAll(/"([^"]+)"/g)) {
+          const value = valueMatch[1]?.trim();
+          if (value && /^[A-Za-z0-9_.-]+$/.test(value)) values.add(value);
+        }
+      }
+    } catch {
+      // Try the next candidate; runtime discovery should stay best-effort.
+    }
+  }
+  return Array.from(values);
+}
+
+function deepseekRuntimeTemplateCandidates(command: string | undefined): string[] {
+  if (!command) return [];
+  const candidates = new Set<string>();
+  if (existsSync(command)) candidates.add(command);
+  const dir = path.dirname(command);
+  for (const candidate of [
+    path.join(dir, "deepseek-tui"),
+    path.join(dir, "downloads", "deepseek-tui"),
+  ]) {
+    if (existsSync(candidate)) candidates.add(candidate);
+  }
+  return Array.from(candidates);
 }
 
 function discoverKimiCatalog(): RuntimeModelDiscovery {
