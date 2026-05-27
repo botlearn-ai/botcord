@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RUNTIME_FRAME_TYPES, type GatewayInboundFrame } from "@botcord/protocol-core";
 
-import { handleCloudGatewayRuntimeInbound } from "../cloud-gateway-runtime.js";
+import {
+  handleCloudGatewayRuntimeInbound,
+  type CloudGatewayTypingEvent,
+} from "../cloud-gateway-runtime.js";
 import { Gateway, type ChannelAdapter } from "../gateway/index.js";
 
 describe("cloud gateway runtime inbound", () => {
@@ -64,6 +67,64 @@ describe("cloud gateway runtime inbound", () => {
     expect(result.gatewayId).toBe("gw_tg_1");
     expect(result.conversationId).toBe("telegram:user:1");
     expect(result.outbound?.finalText).toBe("hello from runtime");
+  });
+
+  it("invokes the typing emitter when the dispatcher fires typing.started", async () => {
+    const typingEvents: CloudGatewayTypingEvent[] = [];
+    const gateway = new Gateway({
+      config: {
+        channels: [],
+        defaultRoute: { runtime: "fake", cwd: tmpDir },
+      },
+      sessionStorePath: path.join(tmpDir, "sessions.json"),
+      createChannel: (cfg) => stubChannel(cfg.id, cfg.type, cfg.accountId),
+      createRuntime: () => ({
+        id: "fake",
+        async run() {
+          return { text: "ok", newSessionId: "sess_typing" };
+        },
+      }),
+      transcriptEnabled: false,
+    });
+    await gateway.start();
+
+    const frame: GatewayInboundFrame = {
+      type: RUNTIME_FRAME_TYPES.GATEWAY_INBOUND,
+      event_id: "evt_typing",
+      gateway_id: "gw_wc_1",
+      agent_id: "ag_typing",
+      provider: "wechat",
+      message: {
+        id: "wechat:alice:t1",
+        channel: "gw_wc_1",
+        accountId: "ag_typing",
+        conversation: { id: "wechat:user:alice", kind: "direct" },
+        sender: { id: "wechat:user:alice", kind: "user" },
+        text: "ping",
+        replyTo: null,
+        mentioned: true,
+        receivedAt: Date.now(),
+        trace: { id: "wechat:alice:t1", streamable: false },
+      },
+    };
+
+    const result = await handleCloudGatewayRuntimeInbound(
+      gateway,
+      frame,
+      undefined,
+      (event) => typingEvents.push(event),
+    );
+    await gateway.stop("test");
+
+    expect(result.accepted).toBe(true);
+    expect(typingEvents.length).toBeGreaterThanOrEqual(1);
+    const first = typingEvents[0]!;
+    expect(first.eventId).toBe("evt_typing");
+    expect(first.gatewayId).toBe("gw_wc_1");
+    expect(first.agentId).toBe("ag_typing");
+    expect(first.conversationId).toBe("wechat:user:alice");
+    expect(first.phase).toBe("started");
+    expect(first.traceId).toBe("wechat:alice:t1");
   });
 
   it("rejects frames outside the token scope", async () => {

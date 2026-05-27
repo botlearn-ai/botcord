@@ -1,6 +1,11 @@
 import type { GatewayInboundMessage } from "@botcord/protocol-core";
 import type { OutboundSendRequest, OutboundSendResult } from "../types.js";
-import type { ProviderAdapter, ProviderAdapterFactory, ProviderRuntimeContext } from "./types.js";
+import type {
+  OutboundTypingRequest,
+  ProviderAdapter,
+  ProviderAdapterFactory,
+  ProviderRuntimeContext,
+} from "./types.js";
 
 /**
  * Telegram getUpdates polling adapter for the cloud gateway ingress.
@@ -296,6 +301,18 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
     return { providerMessageId: lastMessageId };
   }
 
+  async function typing(request: OutboundTypingRequest): Promise<void> {
+    if (!botToken) return;
+    if (request.phase !== "started") return;
+    const chatId = chatIdFromConversation(request.conversationId);
+    if (!chatId) return;
+    try {
+      await callApi("sendChatAction", { chat_id: chatId, action: "typing" }, 10_000);
+    } catch (err) {
+      activeCtx?.log.debug("telegram typing failed", { err: redactToken(String(err)) });
+    }
+  }
+
   return {
     gatewayId: opts.gatewayId,
     provider: "telegram",
@@ -306,6 +323,7 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
       stopController?.abort();
     },
     send,
+    typing,
   };
 }
 

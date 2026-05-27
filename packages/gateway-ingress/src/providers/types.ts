@@ -22,6 +22,25 @@ export interface ProviderAdapter {
   start(ctx: ProviderRuntimeContext): Promise<void>;
   stop(reason?: string): Promise<void>;
   send(request: OutboundSendRequest): Promise<OutboundSendResult>;
+  /**
+   * Optional ephemeral "agent is responding" hint. Called when the runtime
+   * has accepted the inbound but hasn't streamed any visible reply yet.
+   * Implementations must be fire-and-forget: errors are logged and
+   * swallowed so a flaky provider can't fail the turn.
+   */
+  typing?(request: OutboundTypingRequest): Promise<void>;
+}
+
+/**
+ * Payload handed to {@link ProviderAdapter.typing}. Mirrors the
+ * `gateway_outbound_typing` runtime frame minus framing fields.
+ */
+export interface OutboundTypingRequest {
+  gatewayId: string;
+  conversationId: string;
+  turnId: string;
+  phase: "started" | "stopped";
+  traceId?: string | null;
 }
 
 /**

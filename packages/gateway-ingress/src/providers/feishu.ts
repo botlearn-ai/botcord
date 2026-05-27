@@ -5,6 +5,7 @@ import type { GatewayInboundMessage } from "@botcord/protocol-core";
 
 import type { OutboundSendRequest, OutboundSendResult } from "../types.js";
 import type {
+  OutboundTypingRequest,
   ProviderAdapter,
   ProviderAdapterFactory,
   ProviderRuntimeContext,
@@ -25,8 +26,12 @@ import type {
  *   - state-store file: dropped. `seenMessageIds` lived only to guard
  *     against re-delivery on daemon restart; the orchestrator now owns
  *     that invariant.
- *   - typing reaction (im.v1 reactions API): omitted from MVP. The
- *     ingress runtime has no `typing` concept yet — phase 4 can re-add.
+
+ *   - typing reaction (im.v1 reactions API): fired from `typing()` when
+ *     the daemon emits a `gateway_outbound_typing` runtime frame. Uses
+ *     the inbound message id (extracted from the trace id) to attach a
+ *     "Typing" emoji reaction; the reaction is removed when `send()`
+ *     posts the reply for the matching turn.
  *   - attachment uploads: omitted from MVP. The runtime frame contract
  *     carries text only; richer outbound shapes land alongside
  *     streaming (`gateway_outbound_delta`).
@@ -51,6 +56,7 @@ import type {
  */
 const FEISHU_PROVIDER = "feishu" as const;
 const DEFAULT_SPLIT_AT = 4000;
+const TYPING_EMOJI = "Typing" as const;
 
 export type FeishuDomain = "feishu" | "lark";
 
@@ -184,6 +190,12 @@ export function createFeishuProvider(opts: FeishuProviderOptions): ProviderAdapt
   let splitAt = DEFAULT_SPLIT_AT;
   let allowedSenderIds = new Set<string>();
   let allowedChatIds = new Set<string>();
+  /**
+   * Active Typing reactions, keyed by turnId so `send()` for the same turn
+   * can clean up the reaction once the visible reply lands. Second map is
+   * a parallel index by messageId for cleanup on `stop()`.
+   */
+  const typingReactionsByTurn = new Map<string, { messageId: string; reactionId: string }>();
 
   function ensureClient(): FeishuClient {
     if (client) return client;
@@ -380,7 +392,48 @@ export function createFeishuProvider(opts: FeishuProviderOptions): ProviderAdapt
       if (id) lastMessageId = `feishu:${id}`;
     }
     if (activeCtx) activeCtx.markActivity({ lastInboundAt: undefined });
+    // Drop the Typing reaction for this turn now that the visible reply
+    // has landed. Best-effort — if the cleanup call fails, the reaction
+    // is left dangling but the user has already seen the reply.
+    if (request.turnId) void removeTypingForTurn(request.turnId);
     return { providerMessageId: lastMessageId };
+  }
+
+  async function typing(request: OutboundTypingRequest): Promise<void> {
+    if (!appId || !appSecret) return;
+    if (request.phase !== "started") return;
+    const messageId = messageIdFromTrace(request.traceId);
+    if (!messageId) return;
+    // Idempotent — repeated typing pings on the same turn keep the
+    // single existing reaction.
+    if (typingReactionsByTurn.has(request.turnId)) return;
+    try {
+      const res = await callFeishu({
+        method: "POST",
+        url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions`,
+        data: { reaction_type: { emoji_type: TYPING_EMOJI } },
+      });
+      const reactionId = resultReactionId(res);
+      if (reactionId) {
+        typingReactionsByTurn.set(request.turnId, { messageId, reactionId });
+      }
+    } catch (err) {
+      activeCtx?.log.debug("feishu typing reaction failed", { err: redact(err) });
+    }
+  }
+
+  async function removeTypingForTurn(turnId: string): Promise<void> {
+    const entry = typingReactionsByTurn.get(turnId);
+    if (!entry) return;
+    typingReactionsByTurn.delete(turnId);
+    try {
+      await callFeishu({
+        method: "DELETE",
+        url: `/open-apis/im/v1/messages/${encodeURIComponent(entry.messageId)}/reactions/${encodeURIComponent(entry.reactionId)}`,
+      });
+    } catch (err) {
+      activeCtx?.log.debug("feishu typing reaction cleanup failed", { err: redact(err) });
+    }
   }
 
   return {
@@ -394,9 +447,30 @@ export function createFeishuProvider(opts: FeishuProviderOptions): ProviderAdapt
         // best effort
       }
       wsClient = null;
+      const pending = Array.from(typingReactionsByTurn.keys());
+      typingReactionsByTurn.clear();
+      await Promise.allSettled(pending.map(removeTypingForTurn));
     },
     send,
+    typing,
   };
+}
+
+function resultReactionId(res: FeishuApiResponse): string | undefined {
+  const data = res.data;
+  if (data && typeof data === "object" && typeof (data as Record<string, unknown>).reaction_id === "string") {
+    return (data as Record<string, string>).reaction_id;
+  }
+  if (typeof (res as Record<string, unknown>).reaction_id === "string") {
+    return (res as Record<string, string>).reaction_id;
+  }
+  return undefined;
+}
+
+function messageIdFromTrace(traceId: string | null | undefined): string | null {
+  if (!traceId || !traceId.startsWith("feishu:")) return null;
+  const rest = traceId.slice("feishu:".length);
+  return rest.length > 0 ? rest : null;
 }
 
 function resultMessageId(res: FeishuApiResponse): string | undefined {

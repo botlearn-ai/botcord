@@ -78,7 +78,10 @@ import {
   buildRuntimeSelectionExtraArgs,
   mergeRuntimeExtraArgs,
 } from "./runtime-route-options.js";
-import { handleCloudGatewayRuntimeInbound } from "./cloud-gateway-runtime.js";
+import {
+  handleCloudGatewayRuntimeInbound,
+  type CloudGatewayTypingEmitter,
+} from "./cloud-gateway-runtime.js";
 
 /**
  * Information passed to {@link OnAgentInstalledHook} after a successful
@@ -136,6 +139,13 @@ export interface ProvisionerOptions {
    * spin up a default in-memory store.
    */
   loginSessions?: LoginSessionStore;
+  /**
+   * Optional callback invoked when an in-flight `cloud_gateway_runtime_inbound`
+   * fires a typing event. The cloud daemon wires this to its control-plane
+   * connection so the Hub can relay the hint to the live ingress runtime WS.
+   * Absent for local daemons (no ingress path).
+   */
+  cloudGatewayTypingEmitter?: CloudGatewayTypingEmitter;
 }
 
 /** The value a frame handler returns (minus the `id` which the channel fills in). */
@@ -153,6 +163,7 @@ export function createProvisioner(opts: ProvisionerOptions): (
   const register = opts.register ?? BotCordClient.register;
   const policyResolver = opts.policyResolver;
   const onAgentInstalled = opts.onAgentInstalled;
+  const cloudGatewayTypingEmitter = opts.cloudGatewayTypingEmitter;
   const gatewayControl = createGatewayControl({
     gateway,
     ...(opts.loginSessions ? { loginSessions: opts.loginSessions } : {}),
@@ -440,7 +451,12 @@ export function createProvisioner(opts: ProvisionerOptions): (
             },
           };
         }
-        const result = await handleCloudGatewayRuntimeInbound(gateway, runtimeFrame);
+        const result = await handleCloudGatewayRuntimeInbound(
+          gateway,
+          runtimeFrame,
+          undefined,
+          cloudGatewayTypingEmitter,
+        );
         return result.accepted
           ? { ok: true, result }
           : {

@@ -8,10 +8,30 @@ import type {
   ChannelSendContext,
   ChannelSendResult,
   ChannelStatusSnapshot,
+  ChannelTypingContext,
   Gateway,
   GatewayInboundMessage,
   GatewayLogger,
 } from "./gateway/index.js";
+
+/**
+ * Fire-and-forget hook invoked when the dispatcher signals "typing" while
+ * a cloud-gateway runtime turn is in flight. The cloud daemon wires this
+ * to a control-plane `cloud_gateway_runtime_status` push so the Hub can
+ * relay it to the ingress runtime WS and the third-party provider can
+ * render a typing indicator.
+ */
+export interface CloudGatewayTypingEvent {
+  eventId: string;
+  turnId: string;
+  gatewayId: string;
+  agentId: string;
+  conversationId: string;
+  phase: "started" | "stopped";
+  traceId?: string | null;
+}
+
+export type CloudGatewayTypingEmitter = (event: CloudGatewayTypingEvent) => void;
 
 export interface CloudGatewayRuntimeResult {
   accepted: boolean;
@@ -44,6 +64,7 @@ export async function handleCloudGatewayRuntimeInbound(
   gateway: Gateway,
   frame: GatewayInboundFrame,
   log?: GatewayLogger,
+  onTyping?: CloudGatewayTypingEmitter,
 ): Promise<CloudGatewayRuntimeResult> {
   if (frame.type !== RUNTIME_FRAME_TYPES.GATEWAY_INBOUND) {
     return rejected(frame, "bad_frame_type", `unsupported frame type "${frame.type}"`);
@@ -61,6 +82,7 @@ export async function handleCloudGatewayRuntimeInbound(
   let accepted = false;
   let outboundText: string | null = null;
   let providerMessageId: string | null | undefined;
+  const turnId = `turn_${frame.event_id}`;
   const channel = createRuntimeRelayChannel({
     id: frame.gateway_id,
     provider: frame.provider,
@@ -70,6 +92,28 @@ export async function handleCloudGatewayRuntimeInbound(
       providerMessageId = ctx.message.traceId ?? null;
       return { providerMessageId };
     },
+    onTyping: onTyping
+      ? (ctx) => {
+          try {
+            onTyping({
+              eventId: frame.event_id,
+              turnId,
+              gatewayId: frame.gateway_id,
+              agentId: frame.agent_id,
+              conversationId: frame.message.conversation.id,
+              phase: "started",
+              traceId: ctx.traceId ?? null,
+            });
+          } catch (err) {
+            log?.warn?.("cloud gateway typing emit failed", {
+              eventId: frame.event_id,
+              gatewayId: frame.gateway_id,
+              agentId: frame.agent_id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      : undefined,
   });
 
   const message: GatewayInboundMessage = {
@@ -105,7 +149,7 @@ export async function handleCloudGatewayRuntimeInbound(
     gatewayId: frame.gateway_id,
     agentId: frame.agent_id,
     conversationId: frame.message.conversation.id,
-    turnId: `turn_${frame.event_id}`,
+    turnId,
     ...(outboundText !== null
       ? {
           outbound: {
@@ -125,9 +169,10 @@ function createRuntimeRelayChannel(opts: {
   provider: string;
   accountId: string;
   onSend: (ctx: ChannelSendContext) => Promise<ChannelSendResult>;
+  onTyping?: (ctx: ChannelTypingContext) => void;
 }): ChannelAdapter {
   let lastSendAt: number | undefined;
-  return {
+  const adapter: ChannelAdapter = {
     id: opts.id,
     type: opts.provider,
     async start() {
@@ -152,6 +197,12 @@ function createRuntimeRelayChannel(opts: {
       };
     },
   };
+  if (opts.onTyping) {
+    adapter.typing = async (ctx) => {
+      opts.onTyping!(ctx);
+    };
+  }
+  return adapter;
 }
 
 function rejected(

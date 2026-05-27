@@ -9,7 +9,8 @@
  *
  * See ``docs/cloud-agent-technical-design.md`` §4 + §6.
  */
-import { shouldWake, type AttentionPolicy } from "@botcord/protocol-core";
+import { CONTROL_FRAME_TYPES, shouldWake, type AttentionPolicy } from "@botcord/protocol-core";
+import type { CloudGatewayTypingEmitter } from "./cloud-gateway-runtime.js";
 import {
   Gateway,
   resolveTranscriptEnabled,
@@ -284,10 +285,33 @@ export async function startCloudDaemon(
   if (!opts.disableControlChannel) {
     const auth = asUserAuthManager(new CloudAuthManager(cloudCfg));
     const provisionerFactory = opts.provisionerFactory ?? createProvisioner;
+    // Forward-declare controlChannel-bound emitter: the provisioner is
+    // built before the channel exists, so the closure captures the slot
+    // and reads it back lazily once cloud-daemon assigns the instance.
+    const cloudGatewayTypingEmitter: CloudGatewayTypingEmitter = (event) => {
+      const ch = controlChannel;
+      if (!ch) return;
+      ch.send({
+        id: `cgrs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: CONTROL_FRAME_TYPES.CLOUD_GATEWAY_RUNTIME_STATUS,
+        params: {
+          eventId: event.eventId,
+          turnId: event.turnId,
+          gatewayId: event.gatewayId,
+          agentId: event.agentId,
+          conversationId: event.conversationId,
+          kind: "typing",
+          phase: event.phase,
+          traceId: event.traceId ?? null,
+        },
+        ts: Date.now(),
+      });
+    };
     const provisioner = provisionerFactory({
       gateway,
       policyResolver,
       onAgentInstalled,
+      cloudGatewayTypingEmitter,
     });
     const ControlChannelCtor = opts.controlChannelFactory ?? ControlChannel;
     controlChannel = new ControlChannelCtor({
