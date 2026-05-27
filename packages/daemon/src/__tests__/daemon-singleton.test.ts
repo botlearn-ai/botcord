@@ -1,9 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  acquireDaemonSingletonLock,
   ensureNoOtherDaemonFromPidFile,
   isBotCordDaemonStartCommand,
   parseDaemonProcesses,
@@ -77,6 +78,63 @@ describe("daemon singleton pid helpers", () => {
     expect(existsSync(pidPath)).toBe(false);
     await waitForExit(child);
     expect(child.exitCode === null && child.signalCode === null).toBe(false);
+  });
+
+  it("holds an atomic singleton lock until release", async () => {
+    const pidPath = path.join(tmpDir, "daemon.pid");
+    const lockPath = `${pidPath}.lock`;
+
+    const lock = await acquireDaemonSingletonLock({
+      pidPath,
+      lockPath,
+      currentPid: process.pid,
+    });
+
+    expect(existsSync(lockPath)).toBe(true);
+    expect(readPid(path.join(lockPath, "owner.pid"))).toBe(process.pid);
+
+    lock.release();
+
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it("removes stale singleton locks", async () => {
+    const pidPath = path.join(tmpDir, "daemon.pid");
+    const lockPath = `${pidPath}.lock`;
+    mkdirSync(lockPath, { recursive: true });
+    writeCurrentPid({ pidPath: path.join(lockPath, "owner.pid"), currentPid: 99999999 });
+
+    const lock = await acquireDaemonSingletonLock({
+      pidPath,
+      lockPath,
+      currentPid: process.pid,
+    });
+
+    expect(readPid(path.join(lockPath, "owner.pid"))).toBe(process.pid);
+    lock.release();
+  });
+
+  it("terminates a live singleton lock owner before acquiring", async () => {
+    const pidPath = path.join(tmpDir, "daemon.pid");
+    const lockPath = `${pidPath}.lock`;
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: "ignore",
+    });
+    children.push(child);
+    await waitForPid(child);
+    mkdirSync(lockPath, { recursive: true });
+    writeCurrentPid({ pidPath: path.join(lockPath, "owner.pid"), currentPid: child.pid! });
+
+    const lock = await acquireDaemonSingletonLock({
+      pidPath,
+      lockPath,
+      currentPid: process.pid,
+    });
+
+    await waitForExit(child);
+    expect(child.exitCode === null && child.signalCode === null).toBe(false);
+    expect(readPid(path.join(lockPath, "owner.pid"))).toBe(process.pid);
+    lock.release();
   });
 
   it("removes stale pid files", () => {
