@@ -111,6 +111,7 @@ class CreateCloudAgentInput:
     runtime_model: str | None = None
     reasoning_effort: str | None = None
     thinking: bool | None = None
+    provisioning_context: dict[str, Any] | None = None
 
 
 @dataclass
@@ -408,6 +409,11 @@ class CloudAgentService:
             model_profile=model_profile,
             status="provisioning",
             metadata_json={
+                **(
+                    {"provisioning_context": body.provisioning_context}
+                    if body.provisioning_context
+                    else {}
+                ),
                 "provisioning": {
                     "private_key_b64": private_key_b64,
                     "public_key_b64": pubkey_b64,

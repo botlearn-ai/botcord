@@ -88,6 +88,13 @@ export const CONTROL_FRAME_TYPES = {
    */
   LIST_AGENT_SKILLS: "list_agent_skills",
   /**
+   * Hub→daemon: install one skill manifest/archive into a BotCord agent's
+   * runtime-specific skill directory, then return the refreshed per-agent
+   * skill snapshot. Used by team orchestration role skill assignment and the
+   * runtime skills API.
+   */
+  INSTALL_AGENT_SKILL: "install_agent_skill",
+  /**
    * Daemon→Hub: event frame carrying the latest runtime-probe snapshot.
    * Pushed on first control-WS connect (P0) and on reconnect/diff (P1).
    * Hub persists the payload onto `daemon_instances.runtimes_json` so the
@@ -445,6 +452,46 @@ export interface ListAgentSkillsResult {
   runtime?: string;
   skills: AgentSkillProbe[];
   probedAt: number;
+}
+
+export type SkillInstallTarget = "claude-code" | "codex";
+
+export interface AgentSkillFileManifest {
+  path: string;
+  content?: string;
+  sourcePath?: string;
+}
+
+export interface AgentSkillManifestInput {
+  name?: string;
+  id?: string;
+  description?: string;
+  skillMd?: string;
+  markdown?: string;
+  files?: AgentSkillFileManifest[];
+  targetRuntimes?: SkillInstallTarget[];
+}
+
+export interface AgentSkillArchiveManifestInput {
+  name?: string;
+  id?: string;
+  description?: string;
+  skillMd?: string;
+  markdown?: string;
+  files?: AgentSkillFileManifest[];
+  skills?: AgentSkillManifestInput[];
+  targetRuntimes?: SkillInstallTarget[];
+}
+
+/** Payload shape for `install_agent_skill`. */
+export interface InstallAgentSkillParams {
+  agentId: string;
+  manifest?: AgentSkillManifestInput;
+  archiveManifest?: AgentSkillArchiveManifestInput;
+  vercel?: {
+    packageSpec: string;
+    skills?: string[];
+  };
 }
 
 /** Payload shape for `revoke_agent`. */

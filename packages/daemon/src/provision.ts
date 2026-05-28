@@ -28,6 +28,8 @@ import {
   type StoredBotCordCredentials,
   type UpdateAgentParams,
   type GatewayInboundFrame,
+  type InstallAgentSkillParams,
+  type ListAgentSkillsParams,
 } from "@botcord/protocol-core";
 import type { Gateway } from "./gateway/index.js";
 import type { GatewayInboundMessage } from "./gateway/index.js";
@@ -77,6 +79,11 @@ import { resolveMemoryDir } from "./working-memory.js";
 import { discoverRuntimeModelCatalog } from "./runtime-models.js";
 import { collectAgentSkillSnapshot, type SkillIndexOptions } from "./skill-index.js";
 import {
+  installAgentSkillManifest,
+  installBotLearnArchiveManifest,
+  installVercelSkillsForAgent,
+} from "./skill-installer.js";
+import {
   buildRuntimeSelectionExtraArgs,
   mergeRuntimeExtraArgs,
 } from "./runtime-route-options.js";
@@ -84,10 +91,6 @@ import {
   handleCloudGatewayRuntimeInbound,
   type CloudGatewayTypingEmitter,
 } from "./cloud-gateway-runtime.js";
-
-interface ListAgentSkillsParams {
-  agentId: string;
-}
 
 function skillIndexOptionsForLoadedAgent(gateway: Gateway, agentId: string): SkillIndexOptions {
   const route = gateway.listManagedRoutes()
@@ -535,6 +538,66 @@ export function createProvisioner(opts: ProvisionerOptions): (
           runtime: skillIndexOptions.runtime,
           hermesProfile: skillIndexOptions.hermesProfile ?? null,
           count: result.skills.length,
+        });
+        return { ok: true, result };
+      }
+
+      case CONTROL_FRAME_TYPES.INSTALL_AGENT_SKILL: {
+        const params = (frame.params ?? {}) as unknown as InstallAgentSkillParams;
+        if (!params.agentId) {
+          return {
+            ok: false,
+            error: { code: "bad_params", message: "install_agent_skill requires params.agentId" },
+          };
+        }
+        const channels = gateway.snapshot().channels;
+        if (!channels[params.agentId]) {
+          return {
+            ok: false,
+            error: {
+              code: "agent_not_loaded",
+              message: `agent ${params.agentId} is not loaded in daemon gateway`,
+            },
+          };
+        }
+        const skillIndexOptions = skillIndexOptionsForLoadedAgent(gateway, params.agentId);
+        const runtime = skillIndexOptions.runtime;
+        const modes = [params.manifest, params.archiveManifest, params.vercel].filter(Boolean).length;
+        if (modes !== 1) {
+          return {
+            ok: false,
+            error: {
+              code: "bad_params",
+              message: "install_agent_skill requires exactly one of manifest, archiveManifest, or vercel",
+            },
+          };
+        }
+        let result;
+        try {
+          result = params.vercel
+            ? await installVercelSkillsForAgent({
+              agentId: params.agentId,
+              packageSpec: params.vercel.packageSpec,
+              skills: params.vercel.skills,
+              runtime,
+            })
+            : params.archiveManifest
+              ? installBotLearnArchiveManifest(params.agentId, params.archiveManifest, { runtime })
+              : installAgentSkillManifest(params.agentId, params.manifest!, { runtime });
+        } catch (err) {
+          return {
+            ok: false,
+            error: {
+              code: "skill_install_failed",
+              message: err instanceof Error ? err.message : String(err),
+            },
+          };
+        }
+        daemonLog.debug("install_agent_skill", {
+          agentId: params.agentId,
+          runtime,
+          installed: result.installed.map((s) => s.name),
+          snapshotCount: result.snapshot.skills.length,
         });
         return { ok: true, result };
       }
