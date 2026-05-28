@@ -94,6 +94,8 @@ const API_BASE =
 const ACTIVE_AGENT_KEY = "botcord_active_agent_id";
 const ACTIVE_IDENTITY_KEY = "botcord_active_identity";
 const ME_CACHE_TTL_MS = 10_000;
+const ACTIVITY_STATS_BATCH_AGENT_LIMIT = 12;
+const ACTIVITY_STATS_BATCH_REQUEST_CONCURRENCY = 3;
 
 export type ActiveIdentity =
   | { type: "human"; id: string }
@@ -171,6 +173,40 @@ function extractErrorMessage(body: Record<string, unknown>, fallback: string): s
     return detail.map((d: { msg?: string }) => d.msg ?? JSON.stringify(d)).join("; ");
   }
   return fallback;
+}
+
+function uniqueNonEmptyValues(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function chunkValues<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, values.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < values.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await mapper(values[currentIndex]);
+      }
+    }),
+  );
+
+  return results;
 }
 
 class ApiError extends Error {
@@ -887,14 +923,30 @@ export const api = {
     return apiGet<ActivityStats>("/api/dashboard/activity/stats", { period }, identityOverride);
   },
 
-  getActivityStatsBatch(
+  async getActivityStatsBatch(
     agentIds: string[],
     period: "today" | "7d" | "30d" = "today",
-  ) {
-    return apiGet<ActivityStatsBatchResponse>("/api/dashboard/activity/stats/batch", {
-      period,
-      agent_ids: agentIds.join(","),
+  ): Promise<ActivityStatsBatchResponse> {
+    const requestedIds = uniqueNonEmptyValues(agentIds);
+    if (requestedIds.length === 0) {
+      return { stats: {} };
+    }
+
+    const batches = chunkValues(requestedIds, ACTIVITY_STATS_BATCH_AGENT_LIMIT);
+    const responses = await mapWithConcurrency(
+      batches,
+      ACTIVITY_STATS_BATCH_REQUEST_CONCURRENCY,
+      (batch) =>
+        apiGet<ActivityStatsBatchResponse>("/api/dashboard/activity/stats/batch", {
+          period,
+          agent_ids: batch.join(","),
+        }),
+    );
+    const stats: Record<string, ActivityStats> = {};
+    responses.forEach((response) => {
+      Object.assign(stats, response.stats);
     });
+    return { stats };
   },
 
   getActivityFeed(opts?: { period?: string; limit?: number; offset?: number }) {
