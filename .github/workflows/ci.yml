@@ -93,7 +93,8 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
           cache-dependency-path: frontend/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      # --ignore-workspace: frontend/ is not a workspace member; see deploy-frontend.yml.
+      - run: pnpm install --frozen-lockfile --ignore-workspace
       - name: Run vitest
         run: pnpm test -- --run
 
