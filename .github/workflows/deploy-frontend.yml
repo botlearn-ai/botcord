@@ -46,7 +46,11 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        # --ignore-workspace: frontend/ is intentionally NOT a pnpm workspace member
+        # (it has its own pnpm-lock.yaml and is deployed via Vercel). Without this
+        # flag, pnpm walks up to the repo-root pnpm-workspace.yaml and installs
+        # workspace members instead of frontend's own deps, leaving Next.js missing.
+        run: pnpm install --frozen-lockfile --ignore-workspace
 
       - name: Install Vercel CLI
         run: pnpm add -g vercel@latest
