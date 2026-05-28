@@ -597,8 +597,14 @@ describe("setup-server ↔ runner ownership (Phase 3)", () => {
   it("Telegram finalize happy-path starts the adapter", async () => {
     const res = await tgFinalize(h, "ag_tg_happy");
     expect(res.status).toBe(200);
-    const connection = res.body.connection as { id: string; enabled: boolean };
+    const connection = res.body.connection as {
+      id: string;
+      enabled: boolean;
+      status: string;
+    };
     expect(connection.enabled).toBe(true);
+    expect(connection.status).toBe("active");
+    expect(h.store.getConnection(connection.id)?.status).toBe("active");
     expect(h.runner.isRunning(connection.id)).toBe(true);
     expect(h.factories.telegram.starts).toEqual([connection.id]);
   });
@@ -606,8 +612,14 @@ describe("setup-server ↔ runner ownership (Phase 3)", () => {
   it("Feishu finalize happy-path starts the adapter", async () => {
     const res = await fsFinalize(h, "ag_fs_happy");
     expect(res.status).toBe(200);
-    const connection = res.body.connection as { id: string; enabled: boolean };
+    const connection = res.body.connection as {
+      id: string;
+      enabled: boolean;
+      status: string;
+    };
     expect(connection.enabled).toBe(true);
+    expect(connection.status).toBe("active");
+    expect(h.store.getConnection(connection.id)?.status).toBe("active");
     expect(h.runner.isRunning(connection.id)).toBe(true);
     expect(h.factories.feishu.starts).toEqual([connection.id]);
   });

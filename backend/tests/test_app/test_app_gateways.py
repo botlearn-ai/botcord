@@ -602,7 +602,10 @@ async def test_create_telegram_for_cloud_agent_proxies_to_ingress(
                 "agent_id": "ag_cloud",
                 "user_id": str(seed["user_id"]),
                 "label": "cloud tg",
-                "status": "active",
+                # Old ingress builds returned pending even after the runner
+                # was registered. Hub should normalize the successful cloud
+                # mirror to active during mixed-version rollout.
+                "status": "pending",
                 "enabled": True,
                 "config_json": {
                     "allowedChatIds": ["111"],
@@ -653,6 +656,7 @@ async def test_create_telegram_for_cloud_agent_proxies_to_ingress(
         )
     )
     assert row is not None
+    assert row.status == "active"
     assert "botToken" not in (row.config_json or {})
     assert row.config_json.get("tokenPreview") == "1234...wxyz"
     # daemon_instance_id mirror falls back to the cloud agent's

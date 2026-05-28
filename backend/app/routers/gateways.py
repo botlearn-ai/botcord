@@ -596,6 +596,13 @@ async def _upsert_mirror_from_ingress(
         ingress_connection.get("status"),
         default="active" if enabled else "disabled",
     )
+    if (
+        status_value == "pending"
+        and enabled
+        and warning_message is None
+        and provider in ("telegram", "feishu")
+    ):
+        status_value = "active"
     # redactConnection() in ingress returns the live field name `config`;
     # older callers used `config_json`. Try both before falling back to
     # top-level metadata.

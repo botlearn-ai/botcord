@@ -288,7 +288,7 @@ describe("telegram setup — full flow", () => {
     };
     expect(connection.provider).toBe("telegram");
     expect(connection.id).toMatch(/^gw_tg_/);
-    expect(connection.status).toBe("pending");
+    expect(connection.status).toBe("active");
     expect(connection.enabled).toBe(true);
     expect(connection.config.allowedChatIds).toEqual(["-500"]);
     expect(connection.config.allowedSenderIds).toEqual(["100", "101"]);

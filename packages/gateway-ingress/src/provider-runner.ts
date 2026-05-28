@@ -73,7 +73,7 @@ export class ProviderRunner {
    * The setup-server uses this to mark `connection.status = "error"` and
    * attach a `warning.code = "adapter_start_failed"` on the HTTP response.
    */
-  async startOne(conn: GatewayConnection): Promise<void> {
+  async startOne(conn: GatewayConnection): Promise<GatewayConnection> {
     const existing = this.adapters.get(conn.id);
     if (existing) await this.stopOne(conn.id, "restart");
     const factory = this.providerFactories[conn.provider];
@@ -85,8 +85,12 @@ export class ProviderRunner {
     const secret = conn.secretRef
       ? this.opts.secrets.load(conn.secretRef) ?? {}
       : {};
+    const activeConn: GatewayConnection =
+      conn.enabled && conn.status !== "active"
+        ? { ...conn, status: "active", updatedAt: Date.now() }
+        : conn;
     const ctx: ProviderRuntimeContext = {
-      connection: conn,
+      connection: activeConn,
       secret: secret as Record<string, unknown>,
       log: this.opts.log,
       abortSignal: abort.signal,
@@ -102,6 +106,9 @@ export class ProviderRunner {
     };
     this.opts.orchestrator.registerProvider(adapter);
     this.adapters.set(conn.id, { adapter, abort });
+    if (activeConn !== conn) {
+      this.opts.store.upsertConnection(activeConn);
+    }
     // Run the adapter in the background; errors are logged but never
     // propagate back to the HTTP caller. The adapter is expected to
     // surface upstream failures via `markActivity({lastError})` so the
@@ -112,6 +119,7 @@ export class ProviderRunner {
         err: String(err),
       });
     });
+    return activeConn;
   }
 
   async stopOne(gatewayId: string, reason = "stop"): Promise<void> {

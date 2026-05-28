@@ -530,8 +530,8 @@ async function tryStartConnection(
   conn: GatewayConnection,
 ): Promise<StartOutcome> {
   try {
-    await opts.runner.startOne(conn);
-    return { ok: true, connection: conn };
+    const activeConn = await opts.runner.startOne(conn);
+    return { ok: true, connection: activeConn };
   } catch (err) {
     const errStr = redact(String((err as Error)?.message ?? err));
     opts.log.error("runner.startOne failed", {

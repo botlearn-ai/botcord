@@ -312,7 +312,7 @@ describe("setup-server — Feishu full flow", () => {
     };
     expect(connection.id).toMatch(/^gw_fs_/);
     expect(connection.provider).toBe("feishu");
-    expect(connection.status).toBe("pending");
+    expect(connection.status).toBe("active");
     expect(connection.enabled).toBe(true);
     expect(connection.config.domain).toBe("feishu");
     expect(connection.config.userOpenId).toBe(FAKE_OPEN_ID);
