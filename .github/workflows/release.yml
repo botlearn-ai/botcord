@@ -16,7 +16,7 @@ on:
         default: 'main'
         type: string
       targets:
-        description: 'What to deploy'
+        description: 'What to deploy (both/all = backend + frontend + gateway-ingress)'
         required: false
         default: 'both'
         type: choice
@@ -185,7 +185,7 @@ jobs:
     if: |
       always() &&
       needs.prepare.result == 'success' &&
-      (inputs.targets == 'all' || inputs.targets == 'gateway-ingress')
+      (inputs.targets == 'both' || inputs.targets == 'all' || inputs.targets == 'gateway-ingress')
     uses: ./.github/workflows/deploy-gateway-ingress.yml
     with:
       env_name: prod
