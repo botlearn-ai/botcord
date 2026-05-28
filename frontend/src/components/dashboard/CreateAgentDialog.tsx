@@ -1269,7 +1269,9 @@ type RuntimeLogoEntry =
 const RUNTIME_LOGO: Record<string, RuntimeLogoEntry> = {
   "claude-code": { kind: "img", src: "/runtime-logos/Claude.png", classes: "border-glass-border bg-glass-bg/40" },
   codex: { kind: "img", src: "/runtime-logos/Codex.png", classes: "border-glass-border bg-glass-bg/40" },
+  "deepseek-tui": { kind: "img", src: "/runtime-logos/Deepseek.png", classes: "border-glass-border bg-glass-bg/40" },
   gemini: { kind: "img", src: "/runtime-logos/Gemini.png", classes: "border-glass-border bg-glass-bg/40" },
+  "kimi-cli": { kind: "img", src: "/runtime-logos/Kimi.png", classes: "border-glass-border bg-glass-bg/40" },
   "openclaw-acp": { kind: "img", src: "/runtime-logos/Openclaw.png", classes: "border-glass-border bg-glass-bg/40" },
   qclaw: { kind: "img", src: "/runtime-logos/Qclaw.png", classes: "border-glass-border bg-glass-bg/40" },
   "hermes-agent": { kind: "img", src: "/runtime-logos/Hermes.png", classes: "border-glass-border bg-glass-bg/40" },
