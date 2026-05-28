@@ -63,7 +63,7 @@ function firstOnline(daemons: DaemonInstance[]): DaemonInstance | null {
   return daemons.find((d) => d.status === "online") ?? null;
 }
 
-const UNSUPPORTED_RUNTIME_IDS = new Set(["gemini"]);
+const UNSUPPORTED_RUNTIME_IDS = new Set<string>();
 const OPENCLAW_RUNTIME_ID = "openclaw-acp";
 const QCLAW_RUNTIME_ID = "qclaw";
 const CLOUD_AGENT_OPTION_ID = "__botcord_cloud_agent__";

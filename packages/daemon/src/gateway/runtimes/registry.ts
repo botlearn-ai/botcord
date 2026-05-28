@@ -91,14 +91,16 @@ export const hermesAgentModule: RuntimeModule = {
     'Install: pip install "hermes-agent[acp]"  (or set BOTCORD_HERMES_AGENT_BIN to the absolute path of hermes-acp)',
 };
 
-/** Built-in runtime module entry for Gemini (probe-only stub). */
+/** Built-in runtime module entry for Gemini CLI. */
 export const geminiModule: RuntimeModule = {
   id: "gemini",
   displayName: "Gemini CLI",
   binary: "gemini",
+  envVar: "BOTCORD_GEMINI_BIN",
   probe: () => probeGemini(),
   create: () => new GeminiAdapter(),
-  supportsRun: false,
+  installHint:
+    "Install with `npm install -g @google/gemini-cli` (or `brew install gemini-cli`) and run `gemini` once to complete authentication. Override the binary with BOTCORD_GEMINI_BIN.",
 };
 
 /** Built-in runtime module entry for OpenClaw (ACP). */
