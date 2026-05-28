@@ -68,6 +68,37 @@ const KIMI_FALLBACK_MODELS: RuntimeModelProbe[] = [
   { id: "kimi-k2-0711", displayName: "kimi-k2-0711", provider: "kimi", source: "builtin" },
 ];
 
+// Gemini CLI has no `gemini models list` command — the model set is
+// hard-coded inside the bundle's `VALID_GEMINI_MODELS` (see `@google/gemini-cli`
+// bundle `chunk-BE42OOYM.js:275832`). We mirror the documented user-facing
+// names here as a static catalog; the actual availability depends on the
+// user's auth tier (gcloud ADC / Vertex / GEMINI_API_KEY) and project quota.
+// The `auto` alias is the default — it lets gemini pick the best model.
+const GEMINI_FALLBACK_MODELS: RuntimeModelProbe[] = [
+  { id: "auto", displayName: "Auto (let Gemini pick)", provider: "google", source: "builtin", isDefault: true },
+  { id: "pro", displayName: "Pro alias", provider: "google", source: "builtin" },
+  { id: "flash", displayName: "Flash alias", provider: "google", source: "builtin" },
+  { id: "flash-lite", displayName: "Flash Lite alias", provider: "google", source: "builtin" },
+  { id: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro", provider: "google", source: "builtin" },
+  { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", provider: "google", source: "builtin" },
+  { id: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash Lite", provider: "google", source: "builtin" },
+  { id: "gemini-3-pro-preview", displayName: "Gemini 3 Pro (preview)", provider: "google", source: "builtin" },
+  { id: "gemini-3-flash-preview", displayName: "Gemini 3 Flash (preview)", provider: "google", source: "builtin" },
+  { id: "gemini-3.1-pro-preview", displayName: "Gemini 3.1 Pro (preview)", provider: "google", source: "builtin" },
+  {
+    id: "gemini-3.1-pro-preview-customtools",
+    displayName: "Gemini 3.1 Pro Custom Tools (preview)",
+    provider: "google",
+    source: "builtin",
+  },
+  {
+    id: "gemini-3.1-flash-lite-preview",
+    displayName: "Gemini 3.1 Flash Lite (preview)",
+    provider: "google",
+    source: "builtin",
+  },
+];
+
 export interface RuntimeModelDiscovery {
   models?: RuntimeModelProbe[];
   parameters?: RuntimeParameterProbe[];
@@ -159,6 +190,22 @@ function runtimeCatalogStrategy(entry: RuntimeProbeEntry): RuntimeCatalogStrateg
             },
           ],
         }),
+      };
+    case "gemini":
+      // Gemini CLI exposes no runtime discovery command and its thinking
+      // budget / level (see bundle `ThinkingLevel`, `thinkingBudget`) is
+      // configured per-installation in `~/.gemini/settings.json`, not via
+      // any CLI flag — so we ship a static model catalog with no parameter
+      // controls. settings.json + BOTCORD_GEMINI_BIN feed the cache key so
+      // user-side reconfig (e.g. switching auth type) busts the cache.
+      return {
+        id: entry.id,
+        contextKey: runtimeCatalogContextKey(entry, {
+          settings: fileStatKey(path.join(homedir(), ".gemini", "settings.json")),
+          env: pickEnv(["BOTCORD_GEMINI_BIN", "GEMINI_CLI_HOME"]),
+        }),
+        discoverFresh: () => ({ models: GEMINI_FALLBACK_MODELS.slice() }),
+        fallback: () => ({ models: GEMINI_FALLBACK_MODELS.slice() }),
       };
     default:
       return null;
