@@ -8,8 +8,10 @@ import { homedir } from "node:os";
 import path from "node:path";
 import {
   agentCodexHomeDir,
+  agentHermesHomeDir,
   agentWorkspaceDir,
 } from "./agent-workspace.js";
+import { hermesProfileHomeDir } from "./gateway/runtimes/hermes-agent.js";
 
 const MAX_SKILLS = 24;
 const MAX_DESCRIPTION_CHARS = 260;
@@ -19,6 +21,8 @@ export interface SoftSkillEntry {
   name: string;
   path: string;
   source: string;
+  runtime?: string;
+  profile?: string;
   description?: string;
   mtimeMs: number;
 }
@@ -26,53 +30,89 @@ export interface SoftSkillEntry {
 export interface AgentSkillSnapshotEntry {
   name: string;
   source: string;
+  sourceDetail?: string;
+  runtime?: string;
+  path?: string;
+  profile?: string;
   description?: string;
   mtimeMs: number;
 }
 
 export interface AgentSkillSnapshot {
   agentId: string;
+  runtime?: string;
   skills: AgentSkillSnapshotEntry[];
   probedAt: number;
 }
 
 export interface SkillIndexOptions {
   extraDirs?: string[];
+  hermesProfile?: string;
   includeGlobal?: boolean;
   runtime?: string;
+}
+
+interface SkillRoot {
+  dir: string;
+  source: string;
+  runtime?: string;
+  profile?: string;
 }
 
 export function defaultSkillDirs(
   agentId: string,
   opts: SkillIndexOptions = {},
-): Array<{ dir: string; source: string }> {
+): SkillRoot[] {
   const includeGlobal = opts.includeGlobal !== false;
   const agentClaude = {
     dir: path.join(agentWorkspaceDir(agentId), ".claude", "skills"),
     source: "agent-claude",
+    runtime: "claude-code",
   };
   const agentCodex = {
     dir: path.join(agentCodexHomeDir(agentId), "skills"),
     source: "agent-codex",
+    runtime: "codex",
   };
-  const dirs: Array<{ dir: string; source: string }> =
-    runtimeFamily(opts.runtime) === "codex"
-      ? [agentCodex, agentClaude]
-      : [agentClaude, agentCodex];
+  const agentHermes = hermesSkillRoot(agentId, opts.hermesProfile);
 
-  if (includeGlobal) {
-    const globalClaude = { dir: path.join(homedir(), ".claude", "skills"), source: "global-claude" };
-    const globalCodex = { dir: path.join(homedir(), ".codex", "skills"), source: "global-codex" };
-    dirs.push(
-      ...(runtimeFamily(opts.runtime) === "codex"
-        ? [globalCodex, globalClaude]
-        : [globalClaude, globalCodex]),
-    );
+  const dirs: SkillRoot[] = [];
+  switch (runtimeFamily(opts.runtime)) {
+    case "codex":
+      dirs.push(agentCodex);
+      if (includeGlobal) {
+        dirs.push({
+          dir: path.join(homedir(), ".codex", "skills"),
+          source: "global-codex",
+          runtime: "codex",
+        });
+      }
+      break;
+    case "hermes":
+      dirs.push(agentHermes);
+      break;
+    case "claude":
+      dirs.push(agentClaude);
+      if (includeGlobal) {
+        dirs.push({
+          dir: path.join(homedir(), ".claude", "skills"),
+          source: "global-claude",
+          runtime: "claude-code",
+        });
+      }
+      break;
+    case "other":
+      break;
   }
 
   const envDirs = parseSkillDirsEnv(process.env.BOTCORD_SKILL_DIRS);
   for (const dir of [...envDirs, ...(opts.extraDirs ?? [])]) {
-    dirs.push({ dir, source: "external" });
+    dirs.push({
+      dir,
+      source: "external",
+      ...(opts.runtime ? { runtime: opts.runtime } : {}),
+      ...(opts.hermesProfile ? { profile: opts.hermesProfile } : {}),
+    });
   }
 
   return dedupeDirs(expandSkillRoots(dirs));
@@ -114,6 +154,8 @@ export function scanSoftSkills(
         name: parsed.name,
         path: skillMd,
         source: root.source,
+        ...(root.runtime ? { runtime: root.runtime } : {}),
+        ...(root.profile ? { profile: root.profile } : {}),
         description: parsed.description,
         mtimeMs: st.mtimeMs,
       };
@@ -133,9 +175,14 @@ export function collectAgentSkillSnapshot(
 ): AgentSkillSnapshot {
   return {
     agentId,
+    ...(opts.runtime ? { runtime: opts.runtime } : {}),
     skills: scanSoftSkills(agentId, opts).map((skill) => ({
       name: skill.name,
-      source: skill.source.startsWith("agent-") ? "workspace" : "runtime-global",
+      source: snapshotSource(skill.source),
+      sourceDetail: skill.source,
+      ...(skill.runtime ? { runtime: skill.runtime } : {}),
+      path: skill.path,
+      ...(skill.profile ? { profile: skill.profile } : {}),
       ...(skill.description ? { description: skill.description } : {}),
       mtimeMs: skill.mtimeMs,
     })),
@@ -217,66 +264,75 @@ function parseSkillDirsEnv(value: string | undefined): string[] {
 }
 
 function dedupeDirs(
-  dirs: Array<{ dir: string; source: string }>,
-): Array<{ dir: string; source: string }> {
+  dirs: SkillRoot[],
+): SkillRoot[] {
   const seen = new Set<string>();
-  const out: Array<{ dir: string; source: string }> = [];
+  const out: SkillRoot[] = [];
   for (const entry of dirs) {
     const resolved = path.resolve(entry.dir);
     if (seen.has(resolved)) continue;
     seen.add(resolved);
-    out.push({ dir: resolved, source: entry.source });
+    out.push({ ...entry, dir: resolved });
   }
   return out;
 }
 
-function expandSkillRoots(
-  dirs: Array<{ dir: string; source: string }>,
-): Array<{ dir: string; source: string }> {
-  const out: Array<{ dir: string; source: string }> = [];
+function expandSkillRoots(dirs: SkillRoot[]): SkillRoot[] {
+  const out: SkillRoot[] = [];
   for (const entry of dirs) {
     out.push(entry);
     if (entry.source.includes("codex")) {
-      out.push({ dir: path.join(entry.dir, ".system"), source: entry.source });
+      out.push({ ...entry, dir: path.join(entry.dir, ".system") });
     }
   }
   return out;
 }
 
-function runtimeFamily(runtime: string | undefined): "codex" | "claude" | "other" {
+function hermesSkillRoot(agentId: string, profile: string | undefined): SkillRoot {
+  if (profile) {
+    try {
+      return {
+        dir: path.join(hermesProfileHomeDir(profile), "skills"),
+        source: "agent-hermes-profile",
+        runtime: "hermes-agent",
+        profile,
+      };
+    } catch {
+      // Corrupt legacy credentials should not make the whole skill snapshot fail.
+    }
+  }
+  return {
+    dir: path.join(agentHermesHomeDir(agentId), "skills"),
+    source: "agent-hermes",
+    runtime: "hermes-agent",
+  };
+}
+
+function runtimeFamily(runtime: string | undefined): "codex" | "claude" | "hermes" | "other" {
   if (runtime === "codex") return "codex";
+  if (runtime === "hermes-agent") return "hermes";
+  if (!runtime) return "claude";
   if (runtime === "claude-code") return "claude";
   return "other";
 }
 
-function priority(source: string, runtime: string | undefined): number {
-  if (runtimeFamily(runtime) === "codex") {
-    switch (source) {
-      case "agent-codex":
-        return 0;
-      case "global-codex":
-        return 1;
-      case "agent-claude":
-        return 2;
-      case "global-claude":
-        return 3;
-      default:
-        return 4;
-    }
-  }
-
+function priority(source: string, _runtime: string | undefined): number {
   switch (source) {
     case "agent-claude":
-      return 0;
     case "agent-codex":
-      return 1;
+    case "agent-hermes":
+    case "agent-hermes-profile":
+      return 0;
     case "global-claude":
-      return 2;
     case "global-codex":
-      return 3;
+      return 1;
     default:
-      return 4;
+      return 2;
   }
+}
+
+function snapshotSource(source: string): "workspace" | "runtime-global" {
+  return source.startsWith("agent-") ? "workspace" : "runtime-global";
 }
 
 function unquote(value: string): string {

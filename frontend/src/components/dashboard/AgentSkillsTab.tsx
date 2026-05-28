@@ -8,11 +8,11 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { FolderKanban, Globe2, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Cpu, FolderKanban, Globe2, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { userApi } from "@/lib/api";
 import {
   createAgentSkillsRequestGuard,
-  groupAgentSkills,
+  groupAgentSkillsByRuntime,
   normalizeAgentSkillSnapshot,
   type AgentSkill,
   type AgentSkillSnapshot,
@@ -26,6 +26,8 @@ const COPY = {
     subtitle: "Daemon-sniffed skills snapshotted for this Bot",
     runtimeGlobal: "Runtime-global",
     workspace: "Workspace",
+    sourceDetail: "Source",
+    unknownRuntime: "unknown",
     refresh: "Refresh skills",
     loading: "Loading skills...",
     refreshing: "Refreshing...",
@@ -41,6 +43,8 @@ const COPY = {
     subtitle: "Daemon 已嗅探并为此 Bot 快照的技能",
     runtimeGlobal: "运行时全局",
     workspace: "工作区",
+    sourceDetail: "来源",
+    unknownRuntime: "未知",
     refresh: "刷新技能",
     loading: "正在加载技能...",
     refreshing: "刷新中...",
@@ -86,7 +90,15 @@ function sourceIcon(source: AgentSkillSource) {
   );
 }
 
-function SkillCard({ skill, sourceLabel }: { skill: AgentSkill; sourceLabel: string }) {
+function SkillCard({
+  skill,
+  sourceLabel,
+  sourceDetailLabel,
+}: {
+  skill: AgentSkill;
+  sourceLabel: string;
+  sourceDetailLabel: string;
+}) {
   return (
     <li className="rounded-xl border border-glass-border bg-glass-bg/35 px-3 py-3">
       <div className="flex items-start justify-between gap-3">
@@ -107,6 +119,16 @@ function SkillCard({ skill, sourceLabel }: { skill: AgentSkill; sourceLabel: str
         {skill.runtime ? (
           <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
             {skill.runtime}
+          </span>
+        ) : null}
+        {skill.sourceDetail ? (
+          <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
+            {sourceDetailLabel}: {skill.sourceDetail}
+          </span>
+        ) : null}
+        {skill.profile ? (
+          <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
+            {skill.profile}
           </span>
         ) : null}
         {skill.path ? (
@@ -135,9 +157,13 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
   const requestGuardRef = useRef(createAgentSkillsRequestGuard(agentId));
   const visibleSnapshot = snapshot?.agentId === agentId ? snapshot : null;
 
-  const grouped = useMemo(
-    () => groupAgentSkills(visibleSnapshot?.skills ?? []),
-    [visibleSnapshot?.skills],
+  const runtimeGroups = useMemo(
+    () =>
+      groupAgentSkillsByRuntime(
+        visibleSnapshot?.skills ?? [],
+        visibleSnapshot?.runtime ?? copy.unknownRuntime,
+      ),
+    [copy.unknownRuntime, visibleSnapshot?.runtime, visibleSnapshot?.skills],
   );
   const total = visibleSnapshot?.skills.length ?? 0;
   const sniffedAt = formatTimestamp(visibleSnapshot?.sniffedAt);
@@ -204,10 +230,10 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, loaded, loading]);
 
-  const sections: Array<{ key: AgentSkillSource; label: string; skills: AgentSkill[] }> = [
-    { key: "runtime-global", label: copy.runtimeGlobal, skills: grouped["runtime-global"] },
-    { key: "workspace", label: copy.workspace, skills: grouped.workspace },
-  ];
+  const sourceLabels: Record<AgentSkillSource, string> = {
+    "runtime-global": copy.runtimeGlobal,
+    workspace: copy.workspace,
+  };
 
   return (
     <div className="space-y-4">
@@ -274,35 +300,51 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
         </div>
       ) : (
         <div className="space-y-5">
-          {sections.map((section) => (
-            <section key={section.key} className="space-y-2">
-              <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-normal text-text-secondary/70">
-                <span className="flex items-center gap-1.5">
-                  {sourceIcon(section.key)}
-                  {section.label}
+          {runtimeGroups.map((group) => (
+            <section key={group.runtime} className="space-y-3">
+              <div className="flex items-center justify-between gap-2 border-b border-glass-border/70 pb-2 text-[11px] font-semibold uppercase tracking-normal text-text-secondary/70">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Cpu className="h-3.5 w-3.5 text-neon-cyan" />
+                  <span className="truncate font-mono">{group.runtime}</span>
                 </span>
-                <span>{section.skills.length}</span>
+                <span>{group.skills.length}</span>
               </div>
-              {section.skills.length > 0 ? (
-                <ul className="space-y-2">
-                  {section.skills.map((skill) => (
-                    <SkillCard
-                      key={skill.id}
-                      skill={{
-                        ...skill,
-                        description: skill.description || copy.noDescription,
-                      }}
-                      sourceLabel={section.label}
-                    />
-                  ))}
-                </ul>
-              ) : (
-                <div className="rounded-xl border border-glass-border/70 bg-glass-bg/20 px-3 py-3 text-xs text-text-secondary/60">
-                  {copy.empty}
-                </div>
-              )}
+              {(["workspace", "runtime-global"] as AgentSkillSource[]).map((source) => {
+                const skills = group.sources[source];
+                if (skills.length === 0) return null;
+                const label = sourceLabels[source];
+                return (
+                  <div key={`${group.runtime}:${source}`} className="space-y-2">
+                    <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-normal text-text-secondary/70">
+                      <span className="flex items-center gap-1.5">
+                        {sourceIcon(source)}
+                        {label}
+                      </span>
+                      <span>{skills.length}</span>
+                    </div>
+                    <ul className="space-y-2">
+                      {skills.map((skill) => (
+                        <SkillCard
+                          key={skill.id}
+                          skill={{
+                            ...skill,
+                            description: skill.description || copy.noDescription,
+                          }}
+                          sourceLabel={label}
+                          sourceDetailLabel={copy.sourceDetail}
+                        />
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
             </section>
           ))}
+          {runtimeGroups.length === 0 ? (
+            <div className="rounded-xl border border-glass-border/70 bg-glass-bg/20 px-3 py-3 text-xs text-text-secondary/60">
+              {copy.empty}
+            </div>
+          ) : null}
         </div>
       )}
     </div>

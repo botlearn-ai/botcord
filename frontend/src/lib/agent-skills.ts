@@ -11,10 +11,12 @@ export interface AgentSkill {
   id: string;
   name: string;
   source: AgentSkillSource;
+  sourceDetail?: string;
   description?: string;
   runtime?: string;
   path?: string;
   file?: string;
+  profile?: string;
   updatedAt?: string;
   mtimeMs?: number;
 }
@@ -38,6 +40,12 @@ export interface AgentSkillsResponse {
   snapshot?: unknown;
   sniffed_at?: string | null;
   sniffedAt?: string | null;
+}
+
+export interface AgentSkillRuntimeGroup {
+  runtime: string;
+  skills: AgentSkill[];
+  sources: Record<AgentSkillSource, AgentSkill[]>;
 }
 
 export type AgentSkillsOperation = "load" | "refresh";
@@ -123,7 +131,11 @@ function normalizeSource(value: unknown): AgentSkillSource | null {
   return null;
 }
 
-export function normalizeAgentSkill(raw: unknown, index: number): AgentSkill | null {
+export function normalizeAgentSkill(
+  raw: unknown,
+  index: number,
+  fallbackRuntime?: string,
+): AgentSkill | null {
   if (!raw || typeof raw !== "object") return null;
   const item = raw as Record<string, unknown>;
   const source = normalizeSource(item.source ?? item.scope ?? item.kind);
@@ -131,20 +143,28 @@ export function normalizeAgentSkill(raw: unknown, index: number): AgentSkill | n
 
   const name = asString(item.name) ?? asString(item.id) ?? asString(item.slug);
   if (!name) return null;
+  const runtime = asString(item.runtime) ?? fallbackRuntime;
+  const path = asString(item.path);
+  const sourceDetail =
+    asString(item.sourceDetail) ??
+    asString(item.source_detail) ??
+    asString(item.source_detail_id);
 
   const id =
     asString(item.id) ??
     asString(item.skill_id) ??
-    `${source}:${name}:${asString(item.path) ?? index}`;
+    `${runtime ? `${runtime}:` : ""}${source}:${name}:${path ?? index}`;
 
   return {
     id,
     name,
     source,
+    sourceDetail,
     description: asString(item.description),
-    runtime: asString(item.runtime),
-    path: asString(item.path),
+    runtime,
+    path,
     file: asString(item.file) ?? asString(item.skill_md),
+    profile: asString(item.profile),
     updatedAt:
       asString(item.updated_at) ??
       asString(item.updatedAt) ??
@@ -168,6 +188,7 @@ export function normalizeAgentSkillSnapshot(raw: unknown, fallbackAgentId: strin
     : Array.isArray(data.items)
       ? data.items
       : [];
+  const runtime = asNullableString(data.runtime) ?? null;
 
   return {
     agentId: asString(data.agent_id) ?? asString(data.agentId) ?? fallbackAgentId,
@@ -175,9 +196,9 @@ export function normalizeAgentSkillSnapshot(raw: unknown, fallbackAgentId: strin
       asNullableString(data.daemon_instance_id) ??
       asNullableString(data.daemonInstanceId) ??
       null,
-    runtime: asNullableString(data.runtime) ?? null,
+    runtime,
     skills: rawSkills
-      .map((item, index) => normalizeAgentSkill(item, index))
+      .map((item, index) => normalizeAgentSkill(item, index, runtime ?? undefined))
       .filter((item): item is AgentSkill => item !== null),
     sniffedAt:
       asNullableString(data.sniffed_at) ??
@@ -191,4 +212,29 @@ export function groupAgentSkills(skills: AgentSkill[]): Record<AgentSkillSource,
     "runtime-global": skills.filter((skill) => skill.source === "runtime-global"),
     workspace: skills.filter((skill) => skill.source === "workspace"),
   };
+}
+
+export function groupAgentSkillsByRuntime(
+  skills: AgentSkill[],
+  fallbackRuntime?: string | null,
+): AgentSkillRuntimeGroup[] {
+  const groups = new Map<string, AgentSkill[]>();
+  const unknownRuntime = fallbackRuntime || "unknown";
+  for (const skill of skills) {
+    const runtime = skill.runtime || unknownRuntime;
+    groups.set(runtime, [...(groups.get(runtime) ?? []), skill]);
+  }
+  return Array.from(groups.entries())
+    .map(([runtime, runtimeSkills]) => ({
+      runtime,
+      skills: runtimeSkills,
+      sources: groupAgentSkills(runtimeSkills),
+    }))
+    .sort((a, b) => {
+      if (fallbackRuntime && a.runtime !== b.runtime) {
+        if (a.runtime === fallbackRuntime) return -1;
+        if (b.runtime === fallbackRuntime) return 1;
+      }
+      return a.runtime.localeCompare(b.runtime);
+    });
 }

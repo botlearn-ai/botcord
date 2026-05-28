@@ -42,6 +42,7 @@ import { CloudAuthManager, asUserAuthManager } from "./cloud-auth.js";
 import type { CloudModeConfig } from "./cloud-mode.js";
 import { buildCloudRunSettleHook } from "./cloud-settle.js";
 import type { InstalledAgentInfo, OnAgentInstalledHook } from "./provision.js";
+import type { SkillIndexOptions } from "./skill-index.js";
 
 // Cloud daemons follow the same cadence as local — keeps dashboard
 // "runtimes last detected" behavior identical across both kinds.
@@ -125,6 +126,15 @@ export async function startCloudDaemon(
   const credentialPathByAgentId = new Map<string, string>();
   const hubUrlByAgentId = new Map<string, string>();
   const displayNameByAgent = new Map<string, string>();
+  const runtimeByAgentId = new Map<string, string>();
+  const hermesProfileByAgentId = new Map<string, string>();
+  const skillIndexOptionsForAgent = (agentId: string): SkillIndexOptions => {
+    const hermesProfile = hermesProfileByAgentId.get(agentId);
+    return {
+      runtime: runtimeByAgentId.get(agentId) ?? opts.config.defaultRoute.adapter,
+      ...(hermesProfile ? { hermesProfile } : {}),
+    };
+  };
   // Seed each per-agent hub URL with the cloud-mode value so that even
   // before the first credential file is written the room-context fetcher
   // has somewhere sensible to point.
@@ -235,15 +245,15 @@ export async function startCloudDaemon(
   };
 
   const installedAgentIds = new Set<string>();
-  const runtimeByAgentId = new Map<string, string>();
   let controlChannel: ControlChannel | null = null;
   const pushInstalledAgentSkillSnapshot = (agentId: string, reason: string): void => {
     if (!controlChannel) return;
-    const runtime = runtimeByAgentId.get(agentId) ?? opts.config.defaultRoute.adapter;
-    const pushed = pushAgentSkillSnapshot(controlChannel, agentId, { runtime });
+    const skillIndexOptions = skillIndexOptionsForAgent(agentId);
+    const pushed = pushAgentSkillSnapshot(controlChannel, agentId, skillIndexOptions);
     logger.info("cloud control-channel: agent_skill_snapshot pushed", {
       agentId,
-      runtime,
+      runtime: skillIndexOptions.runtime,
+      hermesProfile: skillIndexOptions.hermesProfile ?? null,
       reason,
       ok: pushed,
     });
@@ -252,6 +262,8 @@ export async function startCloudDaemon(
   const onAgentInstalled: OnAgentInstalledHook = (info: InstalledAgentInfo) => {
     installedAgentIds.add(info.agentId);
     if (info.runtime) runtimeByAgentId.set(info.agentId, info.runtime);
+    if (info.hermesProfile) hermesProfileByAgentId.set(info.agentId, info.hermesProfile);
+    else if (info.runtime) hermesProfileByAgentId.delete(info.agentId);
     credentialPathByAgentId.set(info.agentId, info.credentialsFile);
     if (info.hubUrl) hubUrlByAgentId.set(info.agentId, info.hubUrl);
     if (info.displayName) displayNameByAgent.set(info.agentId, info.displayName);
@@ -262,6 +274,7 @@ export async function startCloudDaemon(
           agentId: info.agentId,
           activityTracker,
           roomContextBuilder,
+          skillIndexOptions: () => skillIndexOptionsForAgent(info.agentId),
           // Cloud daemons run isolated — no loop-risk guard wired in PR1;
           // the runtime adapter's wall-time budget enforces the equivalent.
           loopRiskBuilder: () => null,

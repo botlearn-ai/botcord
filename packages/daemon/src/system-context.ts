@@ -32,6 +32,7 @@ import { readIdentity } from "./agent-workspace.js";
 import { classifyActivitySender } from "./sender-classify.js";
 import { log } from "./log.js";
 import { buildSoftSkillIndexPrompt } from "./skill-index.js";
+import type { SkillIndexOptions } from "./skill-index.js";
 
 /**
  * Async per-turn room-context builder (see `room-context.ts`). Returns the
@@ -94,6 +95,11 @@ export interface SystemContextDeps {
    * dirs each turn. Return null to suppress the block.
    */
   skillIndexBuilder?: (message: GatewayInboundMessage) => string | null;
+  /**
+   * Runtime/profile options for the default soft skill scanner. Kept lazy so
+   * hot-provisioned runtime changes are visible without rebuilding this closure.
+   */
+  skillIndexOptions?: (message: GatewayInboundMessage) => SkillIndexOptions;
 }
 
 function safeReadWorkingMemory(agentId: string) {
@@ -194,7 +200,7 @@ export function createDaemonSystemContextBuilder(
   const buildSkillIndex = (message: GatewayInboundMessage): string | null => {
     try {
       if (deps.skillIndexBuilder) return deps.skillIndexBuilder(message);
-      return buildSoftSkillIndexPrompt(deps.agentId);
+      return buildSoftSkillIndexPrompt(deps.agentId, deps.skillIndexOptions?.(message) ?? {});
     } catch (err) {
       log.warn("system-context: skill index build failed — skipping skill block", {
         agentId: deps.agentId,

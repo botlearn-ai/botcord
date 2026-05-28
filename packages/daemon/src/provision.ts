@@ -75,7 +75,7 @@ import { log as daemonLog } from "./log.js";
 import { discoverAgentCredentials } from "./agent-discovery.js";
 import { resolveMemoryDir } from "./working-memory.js";
 import { discoverRuntimeModelCatalog } from "./runtime-models.js";
-import { collectAgentSkillSnapshot } from "./skill-index.js";
+import { collectAgentSkillSnapshot, type SkillIndexOptions } from "./skill-index.js";
 import {
   buildRuntimeSelectionExtraArgs,
   mergeRuntimeExtraArgs,
@@ -89,10 +89,21 @@ interface ListAgentSkillsParams {
   agentId: string;
 }
 
-function runtimeForLoadedAgent(gateway: Gateway, agentId: string): string | undefined {
-  return gateway.listManagedRoutes()
-    .find((route) => route.match?.accountId === agentId)
-    ?.runtime;
+function skillIndexOptionsForLoadedAgent(gateway: Gateway, agentId: string): SkillIndexOptions {
+  const route = gateway.listManagedRoutes()
+    .find((entry) => entry.match?.accountId === agentId);
+  let credentials: StoredBotCordCredentials | null = null;
+  try {
+    credentials = loadStoredCredentials(defaultCredentialsFile(agentId));
+  } catch {
+    credentials = null;
+  }
+  const runtime = route?.runtime ?? credentials?.runtime;
+  const hermesProfile = route?.hermesProfile ?? credentials?.hermesProfile;
+  return {
+    ...(runtime ? { runtime } : {}),
+    ...(hermesProfile ? { hermesProfile } : {}),
+  };
 }
 
 /**
@@ -108,6 +119,7 @@ export interface InstalledAgentInfo {
   hubUrl: string;
   displayName?: string;
   runtime?: string;
+  hermesProfile?: string;
 }
 
 /**
@@ -516,11 +528,12 @@ export function createProvisioner(opts: ProvisionerOptions): (
             },
           };
         }
-        const runtime = runtimeForLoadedAgent(gateway, params.agentId);
-        const result = collectAgentSkillSnapshot(params.agentId, { runtime });
+        const skillIndexOptions = skillIndexOptionsForLoadedAgent(gateway, params.agentId);
+        const result = collectAgentSkillSnapshot(params.agentId, skillIndexOptions);
         daemonLog.debug("list_agent_skills", {
           agentId: params.agentId,
-          runtime,
+          runtime: skillIndexOptions.runtime,
+          hermesProfile: skillIndexOptions.hermesProfile ?? null,
           count: result.skills.length,
         });
         return { ok: true, result };
@@ -1118,6 +1131,7 @@ async function installLocalAgent(
         hubUrl: credentials.hubUrl,
         ...(credentials.displayName ? { displayName: credentials.displayName } : {}),
         ...(credentials.runtime ? { runtime: credentials.runtime } : {}),
+        ...(credentials.hermesProfile ? { hermesProfile: credentials.hermesProfile } : {}),
       });
     } catch (err) {
       // Hook misbehavior must not fail the install — the agent is already
@@ -1212,6 +1226,7 @@ async function installExistingOpenclawBinding(
         hubUrl: credentials.hubUrl,
         ...(credentials.displayName ? { displayName: credentials.displayName } : {}),
         ...(credentials.runtime ? { runtime: credentials.runtime } : {}),
+        ...(credentials.hermesProfile ? { hermesProfile: credentials.hermesProfile } : {}),
       });
     } catch (err) {
       daemonLog.error("provision.onAgentInstalled threw — caches may be stale", {

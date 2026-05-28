@@ -46,6 +46,10 @@ _REFRESH_SKILLS_TIMEOUT_MS = 5000
 class AgentRuntimeSkillOut(BaseModel):
     name: str
     source: str
+    sourceDetail: str | None = None
+    runtime: str | None = None
+    path: str | None = None
+    profile: str | None = None
     description: str | None = None
     mtimeMs: float
     mtimeAt: str | None = None
