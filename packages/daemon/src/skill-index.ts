@@ -74,6 +74,18 @@ export function defaultSkillDirs(
     source: "agent-codex",
     runtime: "codex",
   };
+  const agentGemini = [
+    {
+      dir: path.join(agentWorkspaceDir(agentId), ".gemini", "skills"),
+      source: "agent-gemini",
+      runtime: "gemini",
+    },
+    {
+      dir: path.join(agentWorkspaceDir(agentId), ".agents", "skills"),
+      source: "agent-agents",
+      runtime: "gemini",
+    },
+  ];
   const agentHermes = hermesSkillRoot(agentId, opts.hermesProfile);
 
   const dirs: SkillRoot[] = [];
@@ -90,6 +102,23 @@ export function defaultSkillDirs(
       break;
     case "hermes":
       dirs.push(agentHermes);
+      break;
+    case "gemini":
+      dirs.push(...agentGemini);
+      if (includeGlobal) {
+        dirs.push(
+          {
+            dir: path.join(homedir(), ".gemini", "skills"),
+            source: "global-gemini",
+            runtime: "gemini",
+          },
+          {
+            dir: path.join(homedir(), ".agents", "skills"),
+            source: "global-agents",
+            runtime: "gemini",
+          },
+        );
+      }
       break;
     case "claude":
       dirs.push(agentClaude);
@@ -308,8 +337,9 @@ function hermesSkillRoot(agentId: string, profile: string | undefined): SkillRoo
   };
 }
 
-function runtimeFamily(runtime: string | undefined): "codex" | "claude" | "hermes" | "other" {
+function runtimeFamily(runtime: string | undefined): "codex" | "claude" | "gemini" | "hermes" | "other" {
   if (runtime === "codex") return "codex";
+  if (runtime === "gemini") return "gemini";
   if (runtime === "hermes-agent") return "hermes";
   if (!runtime) return "claude";
   if (runtime === "claude-code") return "claude";
@@ -317,18 +347,9 @@ function runtimeFamily(runtime: string | undefined): "codex" | "claude" | "herme
 }
 
 function priority(source: string, _runtime: string | undefined): number {
-  switch (source) {
-    case "agent-claude":
-    case "agent-codex":
-    case "agent-hermes":
-    case "agent-hermes-profile":
-      return 0;
-    case "global-claude":
-    case "global-codex":
-      return 1;
-    default:
-      return 2;
-  }
+  if (source.startsWith("agent-")) return 0;
+  if (source.startsWith("global-")) return 1;
+  return 2;
 }
 
 function snapshotSource(source: string): "workspace" | "runtime-global" {
