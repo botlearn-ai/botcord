@@ -22,7 +22,11 @@ const conn: GatewayConnection = {
   updatedAt: 1,
 };
 
-function makeCtx(secret: Record<string, unknown>, abort: AbortController) {
+function makeCtx(
+  secret: Record<string, unknown>,
+  abort: AbortController,
+  connection: GatewayConnection = conn,
+) {
   const emits: { msg: GatewayInboundMessage; providerEventId: string }[] = [];
   const cursors: Record<string, unknown>[] = [];
   const activity: {
@@ -31,7 +35,7 @@ function makeCtx(secret: Record<string, unknown>, abort: AbortController) {
     lastError?: string | null;
   }[] = [];
   const ctx: ProviderRuntimeContext = {
-    connection: conn,
+    connection,
     secret,
     log: noopLogger,
     abortSignal: abort.signal,
@@ -124,6 +128,54 @@ function makeSdkOverride(opts: {
 }
 
 describe("Feishu provider adapter", () => {
+  it("loads appId from the secret store when setup-owned config omits it", async () => {
+    const finalizedConn: GatewayConnection = {
+      ...conn,
+      config: {
+        domain: "feishu",
+        allowedSenderIds: ["ou_alice"],
+        allowedChatIds: ["oc_chat"],
+      },
+    };
+    let clientArgs: Record<string, unknown> | null = null;
+    let wsArgs: Record<string, unknown> | null = null;
+    const harness = makeSdkOverride({ probeBotId: "ou_bot" });
+    const sdkOverride = {
+      ...harness.sdkOverride,
+      createClient(args: Record<string, unknown>) {
+        clientArgs = args;
+        return harness.sdkOverride.createClient(args);
+      },
+      createWsClient(args: Record<string, unknown>) {
+        wsArgs = args;
+        return harness.sdkOverride.createWsClient(args);
+      },
+    };
+    const provider = createFeishuProvider({
+      gatewayId: finalizedConn.id,
+      sdkOverride,
+    });
+    const abort = new AbortController();
+    const { ctx, activity } = makeCtx(
+      { appId: "cli_from_secret", appSecret: "shh" },
+      abort,
+      finalizedConn,
+    );
+
+    const running = provider.start(ctx);
+    const deadline = Date.now() + 1_000;
+    while (Date.now() < deadline && harness.wsStarted.length === 0) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    abort.abort();
+    await running;
+
+    expect(clientArgs).toMatchObject({ appId: "cli_from_secret", appSecret: "shh" });
+    expect(wsArgs).toMatchObject({ appId: "cli_from_secret", appSecret: "shh" });
+    expect(activity.some((a) => a.lastError === "missing_credential")).toBe(false);
+  });
+
   it("probes botOpenId on start and normalizes a p2p message", async () => {
     const harness = makeSdkOverride({ probeBotId: "ou_bot" });
     const provider = createFeishuProvider({
