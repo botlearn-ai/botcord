@@ -1,14 +1,16 @@
 """Tests for POST /registry/agents/{agent_id}/token/refresh."""
 
 import base64
+import datetime
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from nacl.signing import SigningKey
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from hub.models import Base, KeyState
+from hub.models import Agent, Base, KeyState
 
 # ---------------------------------------------------------------------------
 # Fixtures — in-memory SQLite database + ASGI test client
@@ -94,10 +96,19 @@ def _sign_nonce(sk: SigningKey, nonce_b64: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_token_refresh_success(client: AsyncClient):
-    """Normal refresh round-trip should return a new token."""
+async def test_token_refresh_success(client: AsyncClient, db_session: AsyncSession):
+    """Normal refresh round-trip should return and persist a usable new token."""
     sk, pubkey_str = _make_keypair()
     agent_id, key_id = await _register_and_verify(client, sk, pubkey_str)
+
+    agent = await db_session.scalar(select(Agent).where(Agent.agent_id == agent_id))
+    assert agent is not None
+    agent.claimed_at = datetime.datetime.now(datetime.timezone.utc)
+    agent.agent_token = "old-token"
+    agent.token_expires_at = datetime.datetime.now(
+        datetime.timezone.utc
+    ) + datetime.timedelta(hours=1)
+    await db_session.commit()
 
     nonce = base64.b64encode(b"random-nonce-bytes-32-chars-long").decode()
     sig = _sign_nonce(sk, nonce)
@@ -110,6 +121,20 @@ async def test_token_refresh_success(client: AsyncClient):
     data = resp.json()
     assert "agent_token" in data
     assert "expires_at" in data
+
+    await db_session.refresh(agent)
+    assert agent.agent_token == data["agent_token"]
+    assert agent.token_expires_at is not None
+    persisted_expires_at = agent.token_expires_at
+    if persisted_expires_at.tzinfo is None:
+        persisted_expires_at = persisted_expires_at.replace(tzinfo=datetime.timezone.utc)
+    assert int(persisted_expires_at.timestamp()) == data["expires_at"]
+
+    inbox = await client.get(
+        "/hub/inbox?limit=1",
+        headers={"Authorization": f"Bearer {data['agent_token']}"},
+    )
+    assert inbox.status_code == 200
 
 
 @pytest.mark.asyncio

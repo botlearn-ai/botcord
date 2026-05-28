@@ -699,8 +699,15 @@ async def refresh_token(
         await db.rollback()
         raise I18nHTTPException(status_code=409, message_key="nonce_already_used")
 
-    # 5. Issue new token
+    # 5. Issue new token and make it the current accepted token.
     token, expires_at = create_agent_token(agent_id)
+    agent = await db.scalar(select(Agent).where(Agent.agent_id == agent_id))
+    if agent is None:
+        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
+    agent.agent_token = token
+    agent.token_expires_at = datetime.datetime.fromtimestamp(
+        expires_at, tz=datetime.timezone.utc
+    )
 
     await db.commit()
 
