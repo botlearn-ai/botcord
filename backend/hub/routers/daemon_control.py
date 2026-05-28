@@ -1750,6 +1750,18 @@ def _parse_agent_skill_snapshot_params(
         description = raw.get("description")
         if isinstance(description, str) and description:
             entry["description"] = description[:500]
+        runtime = raw.get("runtime")
+        if isinstance(runtime, str) and runtime:
+            entry["runtime"] = runtime[:64]
+        path = raw.get("path")
+        if isinstance(path, str) and path:
+            entry["path"] = path[:1024]
+        source_detail = raw.get("sourceDetail") or raw.get("source_detail")
+        if isinstance(source_detail, str) and source_detail:
+            entry["sourceDetail"] = source_detail[:128]
+        profile = raw.get("profile")
+        if isinstance(profile, str) and profile:
+            entry["profile"] = profile[:128]
         out.append(entry)
     if not isinstance(probed_at, (int, float)) or isinstance(probed_at, bool):
         return None

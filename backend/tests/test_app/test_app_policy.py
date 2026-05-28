@@ -326,6 +326,9 @@ async def test_runtime_skills_refresh_dispatches_persists_and_returns(
                     {
                         "name": f"global-skill-{i}",
                         "source": "runtime-global",
+                        "sourceDetail": "global-codex",
+                        "runtime": "codex",
+                        "path": f"/home/test/.codex/skills/global-skill-{i}/SKILL.md",
                         "description": "Global skill",
                         "mtimeMs": probed_at,
                     }
@@ -345,6 +348,9 @@ async def test_runtime_skills_refresh_dispatches_persists_and_returns(
     assert body["skills"][0]["name"] == "global-skill-0"
     assert body["skills"][-1]["name"] == "global-skill-128"
     assert body["skills"][0]["source"] == "runtime-global"
+    assert body["skills"][0]["sourceDetail"] == "global-codex"
+    assert body["skills"][0]["runtime"] == "codex"
+    assert body["skills"][0]["path"].endswith("/global-skill-0/SKILL.md")
     assert body["sniffed_at"] is not None
     assert calls == [
         {
@@ -360,6 +366,9 @@ async def test_runtime_skills_refresh_dispatches_persists_and_returns(
     assert len(refreshed.skills_json) == 129
     assert refreshed.skills_json[0]["name"] == "global-skill-0"
     assert refreshed.skills_json[-1]["name"] == "global-skill-128"
+    assert refreshed.skills_json[0]["sourceDetail"] == "global-codex"
+    assert refreshed.skills_json[0]["runtime"] == "codex"
+    assert refreshed.skills_json[0]["path"].endswith("/global-skill-0/SKILL.md")
     assert refreshed.skills_json[0]["mtimeAt"]
     assert refreshed.skills_probed_at is not None
 

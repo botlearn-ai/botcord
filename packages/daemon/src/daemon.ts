@@ -52,7 +52,7 @@ import { PolicyResolver, type DaemonAttentionPolicy } from "./gateway/policy-res
 import { scanMention } from "./mention-scan.js";
 import { createDiagnosticBundle, uploadDiagnosticBundle } from "./diagnostics.js";
 import { createAttentionPolicyFetcher } from "./attention-policy-fetcher.js";
-import { collectAgentSkillSnapshot } from "./skill-index.js";
+import { collectAgentSkillSnapshot, type SkillIndexOptions } from "./skill-index.js";
 
 /**
  * Default hard cap for a single runtime turn. Long-running coding/research
@@ -249,7 +249,7 @@ export function pushRuntimeSnapshot(
 export function pushAgentSkillSnapshot(
   sink: RuntimeSnapshotSink,
   agentId: string,
-  opts: { runtime?: string } = {},
+  opts: SkillIndexOptions = {},
 ): boolean {
   const snap = collectAgentSkillSnapshot(agentId, opts);
   const ok = sink.send({
@@ -354,6 +354,13 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
   );
 
   const gwConfig = toGatewayConfig(opts.config, { agentIds, agentRuntimes });
+  const skillIndexOptionsForAgent = (agentId: string): SkillIndexOptions => {
+    const meta = agentRuntimes[agentId];
+    return {
+      runtime: meta?.runtime ?? opts.config.defaultRoute.adapter,
+      ...(meta?.hermesProfile ? { hermesProfile: meta.hermesProfile } : {}),
+    };
+  };
 
   // Per-agent hub URL — read from each credential file at boot. Used to
   // populate `BOTCORD_HUB` for runtime CLI subprocesses so the bundled
@@ -420,6 +427,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
         activityTracker,
         roomContextBuilder,
         loopRiskBuilder,
+        skillIndexOptions: () => skillIndexOptionsForAgent(aid),
       }),
     );
   }
@@ -530,11 +538,16 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     // next room-context fetch re-loads the BotCordClient against the new
     // credential file.
     credentialPathByAgentId.set(info.agentId, info.credentialsFile);
-    if (info.runtime) {
-      agentRuntimes[info.agentId] = {
+    if (info.runtime || info.hermesProfile) {
+      const next = {
         ...(agentRuntimes[info.agentId] ?? {}),
-        runtime: info.runtime,
+        ...(info.runtime ? { runtime: info.runtime } : {}),
+        ...(info.hermesProfile ? { hermesProfile: info.hermesProfile } : {}),
       };
+      if (info.runtime && !info.hermesProfile) {
+        delete next.hermesProfile;
+      }
+      agentRuntimes[info.agentId] = next;
     }
     if (info.hubUrl) hubUrlByAgentId.set(info.agentId, info.hubUrl);
     if (info.displayName) displayNameByAgent.set(info.agentId, info.displayName);
@@ -546,6 +559,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
           activityTracker,
           roomContextBuilder,
           loopRiskBuilder,
+          skillIndexOptions: () => skillIndexOptionsForAgent(info.agentId),
         }),
       );
     }
@@ -677,11 +691,12 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
         ok: pushed,
       });
       for (const agentId of agentIds) {
-        const runtime = agentRuntimes[agentId]?.runtime ?? opts.config.defaultRoute.adapter;
-        const skillsPushed = pushAgentSkillSnapshot(controlChannel, agentId, { runtime });
+        const skillIndexOptions = skillIndexOptionsForAgent(agentId);
+        const skillsPushed = pushAgentSkillSnapshot(controlChannel, agentId, skillIndexOptions);
         logger.info("control-channel: initial agent_skill_snapshot push", {
           agentId,
-          runtime,
+          runtime: skillIndexOptions.runtime,
+          hermesProfile: skillIndexOptions.hermesProfile ?? null,
           ok: skillsPushed,
         });
       }

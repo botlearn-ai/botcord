@@ -427,6 +427,14 @@ export interface AgentSkillProbe {
   name: string;
   /** UI-facing source bucket: agent workspace or runtime-global skill dir. */
   source: string;
+  /** Daemon-side source detail, e.g. agent-codex, global-claude, agent-hermes. */
+  sourceDetail?: string;
+  /** Runtime whose skill loader can see this skill. */
+  runtime?: string;
+  /** Absolute SKILL.md path on the daemon host. Owner-visible diagnostics only. */
+  path?: string;
+  /** Runtime profile name when the skill belongs to a profile-backed runtime. */
+  profile?: string;
   description?: string;
   /** SKILL.md mtime as unix milliseconds. */
   mtimeMs: number;
@@ -434,6 +442,7 @@ export interface AgentSkillProbe {
 
 export interface ListAgentSkillsResult {
   agentId: string;
+  runtime?: string;
   skills: AgentSkillProbe[];
   probedAt: number;
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createAgentSkillsRequestGuard,
   groupAgentSkills,
+  groupAgentSkillsByRuntime,
   normalizeAgentSkillSnapshot,
 } from "./agent-skills";
 
@@ -18,6 +19,8 @@ describe("normalizeAgentSkillSnapshot", () => {
             id: "skill_global",
             name: "openai-docs",
             source: "runtime_global",
+            sourceDetail: "global-codex",
+            runtime: "codex",
             description: "OpenAI API docs helper",
             path: "/home/user/.codex/skills/openai-docs/SKILL.md",
           },
@@ -44,11 +47,14 @@ describe("normalizeAgentSkillSnapshot", () => {
       id: "skill_global",
       name: "openai-docs",
       source: "runtime-global",
+      sourceDetail: "global-codex",
+      runtime: "codex",
       description: "OpenAI API docs helper",
     });
     expect(snapshot.skills[1]).toMatchObject({
       name: "botcord",
       source: "workspace",
+      runtime: "codex",
       updatedAt: "2026-05-26T00:00:00Z",
     });
   });
@@ -72,14 +78,34 @@ describe("normalizeAgentSkillSnapshot", () => {
         id: "runtime-global:custom-skill:0",
         name: "custom-skill",
         source: "runtime-global",
+        sourceDetail: undefined,
         description: undefined,
         runtime: undefined,
         path: undefined,
         file: undefined,
+        profile: undefined,
         updatedAt: undefined,
         mtimeMs: undefined,
       },
     ]);
+  });
+});
+
+describe("groupAgentSkillsByRuntime", () => {
+  it("splits skills by runtime and display source", () => {
+    const grouped = groupAgentSkillsByRuntime(
+      [
+        { id: "codex-a", name: "Codex A", source: "workspace", runtime: "codex" },
+        { id: "claude-a", name: "Claude A", source: "runtime-global", runtime: "claude-code" },
+        { id: "codex-b", name: "Codex B", source: "runtime-global", runtime: "codex" },
+      ],
+      "codex",
+    );
+
+    expect(grouped.map((group) => group.runtime)).toEqual(["codex", "claude-code"]);
+    expect(grouped[0].sources.workspace.map((skill) => skill.name)).toEqual(["Codex A"]);
+    expect(grouped[0].sources["runtime-global"].map((skill) => skill.name)).toEqual(["Codex B"]);
+    expect(grouped[1].sources["runtime-global"].map((skill) => skill.name)).toEqual(["Claude A"]);
   });
 });
 

@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   agentCodexHomeDir,
+  agentHermesHomeDir,
   agentWorkspaceDir,
 } from "../agent-workspace.js";
+import { hermesProfileHomeDir } from "../gateway/runtimes/hermes-agent.js";
 import {
   buildSoftSkillIndexPrompt,
   collectAgentSkillSnapshot,
@@ -37,27 +39,40 @@ afterEach(() => {
 });
 
 describe("skill snapshots", () => {
-  it("scans agent workspace/runtime-global skills and maps UI source buckets", () => {
+  it("scopes scans to the selected runtime and maps UI source buckets", () => {
     const agentId = "ag_skilltest";
-    writeSkill(path.join(agentWorkspaceDir(agentId), ".claude", "skills"), "workspace-skill", "Workspace skill");
-    writeSkill(path.join(agentCodexHomeDir(agentId), "skills"), "codex-skill", "Codex skill");
-    writeSkill(path.join(tmpDir, ".codex", "skills"), "global-skill", "Global skill");
+    const claudePath = path.join(agentWorkspaceDir(agentId), ".claude", "skills");
+    const codexPath = path.join(agentCodexHomeDir(agentId), "skills");
+    writeSkill(claudePath, "claude-skill", "Claude skill");
+    writeSkill(codexPath, "codex-skill", "Codex skill");
+    writeSkill(path.join(tmpDir, ".claude", "skills"), "global-claude", "Global Claude");
+    writeSkill(path.join(tmpDir, ".codex", "skills"), "global-codex", "Global Codex");
 
-    const scanned = scanSoftSkills(agentId);
-    expect(scanned.map((s) => s.name).sort()).toEqual([
-      "codex-skill",
-      "global-skill",
-      "workspace-skill",
+    const claudeScanned = scanSoftSkills(agentId, { runtime: "claude-code" });
+    expect(claudeScanned.map((s) => s.name).sort()).toEqual([
+      "claude-skill",
+      "global-claude",
     ]);
+    expect(claudeScanned.every((s) => s.runtime === "claude-code")).toBe(true);
 
-    const snapshot = collectAgentSkillSnapshot(agentId);
+    const codexScanned = scanSoftSkills(agentId, { runtime: "codex" });
+    expect(codexScanned.map((s) => s.name).sort()).toEqual([
+      "codex-skill",
+      "global-codex",
+    ]);
+    expect(codexScanned.every((s) => s.runtime === "codex")).toBe(true);
+
+    const snapshot = collectAgentSkillSnapshot(agentId, { runtime: "codex" });
     expect(snapshot.agentId).toBe(agentId);
-    expect(snapshot.skills).toHaveLength(3);
-    expect(snapshot.skills.find((s) => s.name === "workspace-skill")?.source)
-      .toBe("workspace");
+    expect(snapshot.runtime).toBe("codex");
+    expect(snapshot.skills).toHaveLength(2);
     expect(snapshot.skills.find((s) => s.name === "codex-skill")?.source)
       .toBe("workspace");
-    expect(snapshot.skills.find((s) => s.name === "global-skill")?.source)
+    expect(snapshot.skills.find((s) => s.name === "codex-skill")?.sourceDetail)
+      .toBe("agent-codex");
+    expect(snapshot.skills.find((s) => s.name === "codex-skill")?.path)
+      .toBe(path.join(codexPath, "codex-skill", "SKILL.md"));
+    expect(snapshot.skills.find((s) => s.name === "global-codex")?.source)
       .toBe("runtime-global");
     expect(snapshot.probedAt).toBeGreaterThan(0);
   });
@@ -99,6 +114,67 @@ describe("skill snapshots", () => {
       .toBe("workspace");
     expect(snapshot.skills.find((s) => s.name === "imagegen")?.source)
       .toBe("runtime-global");
+  });
+
+  it("scans Hermes home/profile skills without mixing Claude or Codex dirs", () => {
+    const agentId = "ag_hermes_skills";
+    writeSkill(path.join(agentWorkspaceDir(agentId), ".claude", "skills"), "claude-only", "Claude only");
+    writeSkill(path.join(agentCodexHomeDir(agentId), "skills"), "codex-only", "Codex only");
+    writeSkill(path.join(agentHermesHomeDir(agentId), "skills"), "hermes-only", "Hermes only");
+
+    const isolated = scanSoftSkills(agentId, { runtime: "hermes-agent" });
+    expect(isolated.map((s) => s.name)).toEqual(["hermes-only"]);
+    expect(isolated[0]).toMatchObject({
+      source: "agent-hermes",
+      runtime: "hermes-agent",
+    });
+
+    const profileAgentId = "ag_hermes_profile";
+    writeSkill(
+      path.join(hermesProfileHomeDir("writer"), "skills"),
+      "profile-skill",
+      "Hermes profile skill",
+    );
+    const profile = collectAgentSkillSnapshot(profileAgentId, {
+      runtime: "hermes-agent",
+      hermesProfile: "writer",
+    });
+    expect(profile.skills).toHaveLength(1);
+    expect(profile.skills[0]).toMatchObject({
+      name: "profile-skill",
+      source: "workspace",
+      sourceDetail: "agent-hermes-profile",
+      runtime: "hermes-agent",
+      profile: "writer",
+    });
+  });
+
+  it("keeps same-device workspace skills scoped by agent id", () => {
+    writeSkill(
+      path.join(agentWorkspaceDir("ag_workspace_a"), ".claude", "skills"),
+      "agent-local",
+      "Skill for agent A",
+    );
+    writeSkill(
+      path.join(agentWorkspaceDir("ag_workspace_b"), ".claude", "skills"),
+      "agent-local",
+      "Skill for agent B",
+    );
+
+    expect(scanSoftSkills("ag_workspace_a", { runtime: "claude-code" })).toEqual([
+      expect.objectContaining({
+        name: "agent-local",
+        description: "Skill for agent A",
+        source: "agent-claude",
+      }),
+    ]);
+    expect(scanSoftSkills("ag_workspace_b", { runtime: "claude-code" })).toEqual([
+      expect.objectContaining({
+        name: "agent-local",
+        description: "Skill for agent B",
+        source: "agent-claude",
+      }),
+    ]);
   });
 
   it("returns complete snapshots while keeping the prompt soft index capped", () => {
