@@ -380,4 +380,57 @@ describe("runtime model discovery parsers", () => {
       },
     ]);
   });
+
+  it("returns the built-in Gemini catalog and caches it under gemini.json", () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "daemon-gemini-catalog-"));
+    const prevHome = process.env.HOME;
+    const prevCacheDir = process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR;
+    try {
+      const home = path.join(tmp, "home");
+      const cacheDir = path.join(tmp, "catalog-cache");
+      mkdirSync(home, { recursive: true });
+      process.env.HOME = home;
+      process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR = cacheDir;
+
+      const catalog = discoverRuntimeModelCatalog({
+        id: "gemini",
+        displayName: "Gemini CLI",
+        binary: "gemini",
+        supportsRun: true,
+        result: { available: true, path: path.join(tmp, "missing-gemini") },
+      });
+
+      const ids = catalog.models?.map((m) => m.id) ?? [];
+      // `auto` is the default — wizard should pre-select it.
+      expect(catalog.models?.find((m) => m.isDefault)?.id).toBe("auto");
+      // Spot-check the documented family is present.
+      expect(ids).toEqual(
+        expect.arrayContaining([
+          "auto",
+          "pro",
+          "flash",
+          "flash-lite",
+          "gemini-2.5-pro",
+          "gemini-2.5-flash",
+          "gemini-3-pro-preview",
+          "gemini-3.1-pro-preview",
+        ]),
+      );
+      // No per-turn parameters yet (thinkingLevel / thinkingBudget aren't
+      // exposed as CLI flags; we can't safely route them through `extraArgs`).
+      expect(catalog.parameters ?? []).toEqual([]);
+
+      // Cache persisted so subsequent calls don't re-touch settings.json.
+      expect(readdirSync(cacheDir)).toEqual(["gemini.json"]);
+      const payload = JSON.parse(readFileSync(path.join(cacheDir, "gemini.json"), "utf8"));
+      expect(payload.runtimeId).toBe("gemini");
+      expect(payload.catalog.models.map((m: { id: string }) => m.id)).toContain("gemini-2.5-flash");
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevCacheDir === undefined) delete process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR;
+      else process.env.BOTCORD_RUNTIME_CATALOG_CACHE_DIR = prevCacheDir;
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

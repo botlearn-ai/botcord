@@ -147,11 +147,14 @@ describe("collectRuntimeSnapshot", () => {
   });
 
   it("omits optional fields rather than emitting explicit undefineds", () => {
+    // Use a synthetic runtime id with no catalog strategy so the snapshot
+    // doesn't pick up a `models` field. Switching to "gemini" here would
+    // attach the built-in gemini model list.
     setRuntimes([
       {
-        id: "gemini",
-        displayName: "Gemini",
-        binary: "gemini",
+        id: "unknown-runtime",
+        displayName: "Unknown",
+        binary: "unknown",
         supportsRun: true,
         result: { available: true },
       },
