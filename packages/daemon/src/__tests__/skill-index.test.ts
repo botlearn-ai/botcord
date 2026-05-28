@@ -149,6 +149,47 @@ describe("skill snapshots", () => {
     });
   });
 
+  it("scans Gemini workspace and user skill roots without mixing Claude or Codex dirs", () => {
+    const agentId = "ag_gemini_skills";
+    const workspaceGemini = path.join(agentWorkspaceDir(agentId), ".gemini", "skills");
+    const workspaceAgents = path.join(agentWorkspaceDir(agentId), ".agents", "skills");
+    writeSkill(workspaceGemini, "workspace-gemini", "Workspace Gemini skill");
+    writeSkill(workspaceAgents, "workspace-agent", "Workspace shared-agent skill");
+    writeSkill(path.join(tmpDir, ".gemini", "skills"), "global-gemini", "Global Gemini skill");
+    writeSkill(path.join(tmpDir, ".agents", "skills"), "global-agent", "Global shared-agent skill");
+    writeSkill(path.join(agentWorkspaceDir(agentId), ".claude", "skills"), "claude-only", "Claude only");
+    writeSkill(path.join(agentCodexHomeDir(agentId), "skills"), "codex-only", "Codex only");
+
+    const geminiScanned = scanSoftSkills(agentId, { runtime: "gemini" });
+    expect(geminiScanned.map((s) => s.name)).toEqual([
+      "global-agent",
+      "global-gemini",
+      "workspace-agent",
+      "workspace-gemini",
+    ]);
+    expect(geminiScanned.every((s) => s.runtime === "gemini")).toBe(true);
+
+    const snapshot = collectAgentSkillSnapshot(agentId, { runtime: "gemini" });
+    expect(snapshot.runtime).toBe("gemini");
+    expect(snapshot.skills.find((s) => s.name === "workspace-gemini"))
+      .toMatchObject({
+        source: "workspace",
+        sourceDetail: "agent-gemini",
+        runtime: "gemini",
+        path: path.join(workspaceGemini, "workspace-gemini", "SKILL.md"),
+      });
+    expect(snapshot.skills.find((s) => s.name === "workspace-agent"))
+      .toMatchObject({
+        source: "workspace",
+        sourceDetail: "agent-agents",
+      });
+    expect(snapshot.skills.find((s) => s.name === "global-agent"))
+      .toMatchObject({
+        source: "runtime-global",
+        sourceDetail: "global-agents",
+      });
+  });
+
   it("keeps same-device workspace skills scoped by agent id", () => {
     writeSkill(
       path.join(agentWorkspaceDir("ag_workspace_a"), ".claude", "skills"),
