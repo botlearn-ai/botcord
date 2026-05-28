@@ -61,7 +61,9 @@ const TYPING_EMOJI = "Typing" as const;
 export type FeishuDomain = "feishu" | "lark";
 
 interface FeishuSecret {
+  appId?: string;
   appSecret?: string;
+  domain?: FeishuDomain;
 }
 
 interface FeishuConnectionConfig {
@@ -291,9 +293,9 @@ export function createFeishuProvider(opts: FeishuProviderOptions): ProviderAdapt
     activeCtx = ctx;
     const secret = ctx.secret as FeishuSecret;
     const config = ctx.connection.config as FeishuConnectionConfig;
-    appId = config.appId;
+    appId = config.appId ?? secret.appId;
     appSecret = secret.appSecret;
-    domain = config.domain;
+    domain = config.domain ?? secret.domain;
     if (config.splitAt && config.splitAt > 0) splitAt = config.splitAt;
     allowedSenderIds = new Set((config.allowedSenderIds ?? []).map(String));
     allowedChatIds = new Set((config.allowedChatIds ?? []).map(String));
