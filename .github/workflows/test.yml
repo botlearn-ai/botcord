@@ -75,7 +75,7 @@ jobs:
       - name: frontend tests
         working-directory: frontend
         run: |
-          pnpm install --frozen-lockfile
+          pnpm install --frozen-lockfile --ignore-workspace
           pnpm test -- --run
 
   # ── E2E tests (only when base_url is provided) ───────────────────────────────
