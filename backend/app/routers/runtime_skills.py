@@ -15,7 +15,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +41,15 @@ router = APIRouter(prefix="/api/agents", tags=["app-runtime-skills"])
 _CLOUD_SKILLS_RESUME_WAIT_SECONDS = 20.0
 _CLOUD_SKILLS_RESUME_POLL_SECONDS = 0.5
 _REFRESH_SKILLS_TIMEOUT_MS = 5000
+_INSTALL_SKILL_TIMEOUT_MS = 30000
+_INSTALL_SKILL_AGENT_LOAD_WAIT_SECONDS = 10.0
+_INSTALL_SKILL_AGENT_LOAD_POLL_SECONDS = 0.5
+_SUPPORTED_SKILL_TARGET_RUNTIMES = {"claude-code", "codex"}
+_TRUSTED_VERCEL_PACKAGE_SPECS = {
+    "https://github.com/vercel-labs/skills",
+    "github:vercel-labs/skills",
+    "vercel-labs/skills",
+}
 
 
 class AgentRuntimeSkillOut(BaseModel):
@@ -65,9 +74,81 @@ class AgentRuntimeSkillsOut(BaseModel):
     skills_probed_at: datetime.datetime | None = None
 
 
+class AgentRuntimeSkillFileIn(BaseModel):
+    path: str = Field(min_length=1, max_length=512)
+    content: str | None = Field(default=None, max_length=262144)
+    sourcePath: str | None = Field(default=None, max_length=512)
+
+
+class AgentRuntimeSkillManifestIn(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    id: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=4096)
+    skillMd: str | None = Field(default=None, max_length=262144)
+    markdown: str | None = Field(default=None, max_length=262144)
+    files: list[AgentRuntimeSkillFileIn] | None = Field(default=None, max_length=32)
+    targetRuntimes: list[str] | None = Field(default=None, max_length=4)
+
+    @field_validator("targetRuntimes")
+    @classmethod
+    def _validate_target_runtimes(cls, value: list[str] | None) -> list[str] | None:
+        return _validate_skill_target_runtimes(value)
+
+
+class AgentRuntimeSkillArchiveManifestIn(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    id: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None, max_length=4096)
+    skillMd: str | None = Field(default=None, max_length=262144)
+    markdown: str | None = Field(default=None, max_length=262144)
+    files: list[AgentRuntimeSkillFileIn] | None = Field(default=None, max_length=32)
+    skills: list[AgentRuntimeSkillManifestIn] | None = Field(default=None, max_length=16)
+    targetRuntimes: list[str] | None = Field(default=None, max_length=4)
+
+    @field_validator("targetRuntimes")
+    @classmethod
+    def _validate_target_runtimes(cls, value: list[str] | None) -> list[str] | None:
+        return _validate_skill_target_runtimes(value)
+
+
+class AgentRuntimeSkillVercelIn(BaseModel):
+    packageSpec: str = Field(min_length=1, max_length=256)
+    skills: list[str] | None = Field(default=None, max_length=32)
+
+    @field_validator("packageSpec")
+    @classmethod
+    def _validate_package_spec(cls, value: str) -> str:
+        cleaned = value.strip()
+        if cleaned not in _TRUSTED_VERCEL_PACKAGE_SPECS:
+            raise ValueError("unsupported vercel skills packageSpec")
+        return cleaned
+
+
+class AgentRuntimeSkillInstallIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    manifest: AgentRuntimeSkillManifestIn | None = None
+    archiveManifest: AgentRuntimeSkillArchiveManifestIn | None = None
+    vercel: AgentRuntimeSkillVercelIn | None = None
+
+
 class _RuntimeSkillsHost(BaseModel):
     daemon_instance_id: str
     cloud_daemon_instance_id: str | None = None
+
+
+def _validate_skill_target_runtimes(value: list[str] | None) -> list[str] | None:
+    if value is None:
+        return None
+    normalized: list[str] = []
+    for item in value:
+        if item not in _SUPPORTED_SKILL_TARGET_RUNTIMES:
+            raise ValueError(f"unsupported skill target runtime: {item}")
+        if item not in normalized:
+            normalized.append(item)
+    if not normalized:
+        raise ValueError("at least one target runtime is required")
+    return normalized
 
 
 async def _load_owned_agent(db: AsyncSession, ctx: RequestContext, agent_id: str) -> Agent:
@@ -153,20 +234,22 @@ async def _ensure_cloud_runtime_skills_host_online(
 
 async def _send_runtime_skills_control_frame(
     host: _RuntimeSkillsHost,
+    frame_type: str,
     params: dict[str, Any],
     *,
     db: AsyncSession,
     ctx: RequestContext,
     agent: Agent,
+    timeout_ms: int = _REFRESH_SKILLS_TIMEOUT_MS,
 ) -> dict[str, Any]:
     if host.cloud_daemon_instance_id:
         await _ensure_cloud_runtime_skills_host_online(db, ctx, agent, host)
         try:
             return await send_cloud_control_frame(
                 host.cloud_daemon_instance_id,
-                "list_agent_skills",
+                frame_type,
                 params,
-                timeout_ms=_REFRESH_SKILLS_TIMEOUT_MS,
+                timeout_ms=timeout_ms,
             )
         except CloudDaemonDispatchError as exc:
             if exc.code in {
@@ -186,10 +269,92 @@ async def _send_runtime_skills_control_frame(
         raise HTTPException(status_code=409, detail="daemon_offline")
     return await send_control_frame(
         host.daemon_instance_id,
-        "list_agent_skills",
+        frame_type,
         params,
-        timeout_ms=_REFRESH_SKILLS_TIMEOUT_MS,
+        timeout_ms=timeout_ms,
     )
+
+
+def _install_params(agent_id: str, body: AgentRuntimeSkillInstallIn) -> dict[str, Any]:
+    modes = [body.manifest, body.archiveManifest, body.vercel]
+    if len([mode for mode in modes if mode is not None]) != 1:
+        raise HTTPException(
+            status_code=400,
+            detail="exactly one of manifest, archiveManifest, or vercel is required",
+        )
+    params: dict[str, Any] = {"agentId": agent_id}
+    if body.manifest is not None:
+        params["manifest"] = body.manifest.model_dump(exclude_none=True)
+    if body.archiveManifest is not None:
+        params["archiveManifest"] = body.archiveManifest.model_dump(exclude_none=True)
+    if body.vercel is not None:
+        params["vercel"] = body.vercel.model_dump(exclude_none=True)
+    return params
+
+
+async def install_agent_runtime_skill_for_agent(
+    *,
+    agent_id: str,
+    body: AgentRuntimeSkillInstallIn,
+    ctx: RequestContext,
+    db: AsyncSession,
+) -> AgentRuntimeSkillsOut:
+    agent = await _load_owned_agent(db, ctx, agent_id)
+    host = await _load_runtime_skills_host(db, ctx, agent)
+
+    params = _install_params(agent.agent_id, body)
+    deadline = time.monotonic() + _INSTALL_SKILL_AGENT_LOAD_WAIT_SECONDS
+    while True:
+        ack = await _send_runtime_skills_control_frame(
+            host,
+            "install_agent_skill",
+            params,
+            db=db,
+            ctx=ctx,
+            agent=agent,
+            timeout_ms=_INSTALL_SKILL_TIMEOUT_MS,
+        )
+        err = ack.get("error") if isinstance(ack, dict) else None
+        code = (err or {}).get("code") if isinstance(err, dict) else None
+        if isinstance(ack, dict) and ack.get("ok"):
+            break
+        if code != "agent_not_loaded" or time.monotonic() >= deadline:
+            break
+        await asyncio.sleep(_INSTALL_SKILL_AGENT_LOAD_POLL_SECONDS)
+
+    if not isinstance(ack, dict) or not ack.get("ok"):
+        err = ack.get("error") if isinstance(ack, dict) else None
+        code = (err or {}).get("code") if isinstance(err, dict) else None
+        message = (err or {}).get("message") if isinstance(err, dict) else None
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "daemon_runtime_skill_install_failed",
+                "daemon_code": code,
+                "daemon_message": message,
+            },
+        )
+
+    result = ack.get("result") if isinstance(ack.get("result"), dict) else None
+    snapshot = result.get("snapshot") if isinstance(result, dict) else None
+    persisted = None
+    if isinstance(snapshot, dict):
+        persisted = await _persist_agent_skill_snapshot(
+            db,
+            daemon_instance_id=host.daemon_instance_id,
+            params=snapshot,
+        )
+    if persisted is None:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "daemon_runtime_skill_install_malformed",
+                "daemon_message": "install_agent_skill returned malformed result",
+            },
+        )
+    await db.commit()
+    await db.refresh(agent)
+    return _stored_response(agent)
 
 
 def _stored_response(agent: Agent) -> AgentRuntimeSkillsOut:
@@ -227,6 +392,7 @@ async def refresh_agent_runtime_skills(
 
     ack = await _send_runtime_skills_control_frame(
         host,
+        "list_agent_skills",
         {"agentId": agent.agent_id},
         db=db,
         ctx=ctx,
@@ -264,3 +430,19 @@ async def refresh_agent_runtime_skills(
     await db.commit()
     await db.refresh(agent)
     return _stored_response(agent)
+
+
+@router.post("/{agent_id}/skills/install", response_model=AgentRuntimeSkillsOut)
+@router.post("/{agent_id}/runtime-skills/install", response_model=AgentRuntimeSkillsOut)
+async def install_agent_runtime_skill(
+    agent_id: str,
+    body: AgentRuntimeSkillInstallIn,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> AgentRuntimeSkillsOut:
+    return await install_agent_runtime_skill_for_agent(
+        agent_id=agent_id,
+        body=body,
+        ctx=ctx,
+        db=db,
+    )

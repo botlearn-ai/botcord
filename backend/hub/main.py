@@ -78,6 +78,7 @@ from app.routers.runtime_skills import router as app_runtime_skills_router
 from app.routers.schedules import router as app_schedules_router
 from app.routers.auth import router as app_auth_router
 from app.routers.telegram import router as app_telegram_router
+from app.routers.team_orchestration import router as app_team_orchestration_router
 from app.auth import require_beta_user
 
 logging.basicConfig(level=logging.INFO)
@@ -314,6 +315,7 @@ app.include_router(app_telegram_router, dependencies=_beta_gate)
 app.include_router(app_runtime_files_router, dependencies=_beta_gate)
 app.include_router(app_runtime_skills_router, dependencies=_beta_gate)
 app.include_router(app_schedules_router, dependencies=_beta_gate)
+app.include_router(app_team_orchestration_router, dependencies=_beta_gate)
 app.include_router(app_prompts_router)
 app.include_router(app_presence_router, dependencies=_beta_gate)
 app.include_router(app_presence_status_router, dependencies=_beta_gate)
