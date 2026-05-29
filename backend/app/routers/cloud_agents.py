@@ -14,7 +14,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import RequestContext, require_user
+from app.auth import (
+    MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE,
+    RequestContext,
+    release_agent_management_scope_uses,
+    reserve_agent_management_scope_uses,
+    require_user,
+    require_user_or_agent_management,
+)
 from hub.database import get_db
 from hub.services.cloud_agent import (
     CloudAgentError,
@@ -217,10 +224,17 @@ class CloudAgentUsageOut(BaseModel):
 @router.post("", status_code=201, response_model=CloudAgentOut)
 async def create_cloud_agent(
     body: CreateCloudAgentRequest,
-    ctx: RequestContext = Depends(require_user),
+    ctx: RequestContext = Depends(
+        require_user_or_agent_management([MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE])
+    ),
     db: AsyncSession = Depends(get_db),
     service: CloudAgentService = Depends(get_cloud_agent_service),
 ) -> CloudAgentOut:
+    reserved_grants = await reserve_agent_management_scope_uses(
+        db,
+        ctx=ctx,
+        scopes=[MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE],
+    )
     try:
         view = await service.create_cloud_agent(
             db,
@@ -235,8 +249,13 @@ async def create_cloud_agent(
                 thinking=body.thinking,
             ),
         )
+        await db.commit()
     except CloudAgentError as exc:
+        await release_agent_management_scope_uses(db, reserved_grants)
         raise _handle_service_error(exc) from exc
+    except Exception:
+        await release_agent_management_scope_uses(db, reserved_grants)
+        raise
     return CloudAgentOut.from_view(view)
 
 

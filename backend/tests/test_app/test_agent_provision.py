@@ -21,7 +21,18 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from hub.models import Agent, Base, DaemonInstance, Role, SigningKey, User, UserRole
+from app.auth import MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION
+from hub.auth import create_agent_token
+from hub.models import (
+    Agent,
+    AgentManagementGrant,
+    Base,
+    DaemonInstance,
+    Role,
+    SigningKey,
+    User,
+    UserRole,
+)
 
 
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-agent-provision"
@@ -123,6 +134,27 @@ async def seed_user(db_session: AsyncSession):
         "supabase_uid": str(supabase_uuid),
         "token": _supabase_token(str(supabase_uuid)),
     }
+
+
+@pytest_asyncio.fixture
+async def seed_manager_agent(db_session: AsyncSession, seed_user: dict):
+    agent_id = "ag_daemonmgr01"
+    token, expires_at = create_agent_token(agent_id)
+    db_session.add(
+        Agent(
+            agent_id=agent_id,
+            display_name="Daemon Manager",
+            user_id=seed_user["user_id"],
+            agent_token=token,
+            token_expires_at=datetime.datetime.fromtimestamp(
+                expires_at, tz=datetime.timezone.utc
+            ),
+            claimed_at=datetime.datetime.now(datetime.timezone.utc),
+            status="active",
+        )
+    )
+    await db_session.commit()
+    return {"agent_id": agent_id, "token": token}
 
 
 class _FakeWS:
@@ -267,6 +299,191 @@ async def test_provision_happy_path_writes_runtime_and_dispatches_frame(
         sk = key_res.scalar_one()
         assert sk.state.value == "active"
         assert agent.agent_token
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_provision_with_agent_token_requires_daemon_management_grant(
+    client: AsyncClient,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    instance_id = await _provision_instance(client, seed_user)
+    conn, _, registry = await _with_connected_daemon(
+        instance_id,
+        seed_user["user_id"],
+        runtimes_snapshot=[{"id": "claude-code", "available": True}],
+        db_session=db_session,
+    )
+    try:
+        r = await client.post(
+            "/api/users/me/agents/provision",
+            json={
+                "daemon_instance_id": instance_id,
+                "label": "writer",
+                "runtime": "claude-code",
+            },
+            headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+        )
+        assert r.status_code == 403
+        body = r.json()
+        assert body["detail"]["code"] == "management_permission_required"
+        assert body["detail"]["required_scopes"] == [
+            MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION
+        ]
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_provision_with_agent_token_requires_matching_daemon_grant(
+    client: AsyncClient,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    instance_id = await _provision_instance(client, seed_user)
+    db_session.add(
+        AgentManagementGrant(
+            user_id=seed_user["user_id"],
+            agent_id=seed_manager_agent["agent_id"],
+            scope=MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION,
+            daemon_instance_id="dm_otherdaemon",
+            expires_at=datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(days=1),
+        )
+    )
+    await db_session.commit()
+    conn, _, registry = await _with_connected_daemon(
+        instance_id,
+        seed_user["user_id"],
+        runtimes_snapshot=[{"id": "claude-code", "available": True}],
+        db_session=db_session,
+    )
+    try:
+        r = await client.post(
+            "/api/users/me/agents/provision",
+            json={
+                "daemon_instance_id": instance_id,
+                "label": "writer",
+                "runtime": "claude-code",
+            },
+            headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+        )
+        assert r.status_code == 403
+        detail = r.json()["detail"]
+        assert detail["code"] == "management_permission_required"
+        assert f"daemon_instance_id={instance_id}" in detail["authorize_url"]
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_provision_accepts_agent_token_with_daemon_scoped_grant(
+    client: AsyncClient,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    instance_id = await _provision_instance(client, seed_user)
+    grant = AgentManagementGrant(
+        user_id=seed_user["user_id"],
+        agent_id=seed_manager_agent["agent_id"],
+        scope=MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION,
+        daemon_instance_id=instance_id,
+        limits_json={"max_uses": 1},
+        expires_at=datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(days=1),
+    )
+    db_session.add(grant)
+    await db_session.commit()
+    conn, fake_ws, registry = await _with_connected_daemon(
+        instance_id,
+        seed_user["user_id"],
+        runtimes_snapshot=[{"id": "claude-code", "available": True}],
+        db_session=db_session,
+    )
+    try:
+        ack_task = asyncio.create_task(_auto_ack(conn, fake_ws))
+        r = await client.post(
+            "/api/users/me/agents/provision",
+            json={
+                "daemon_instance_id": instance_id,
+                "label": "writer",
+                "runtime": "claude-code",
+            },
+            headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+        )
+        await ack_task
+        assert r.status_code == 201, r.text
+        await db_session.refresh(grant)
+        assert grant.use_count == 1
+
+        r = await client.post(
+            "/api/users/me/agents/provision",
+            json={
+                "daemon_instance_id": instance_id,
+                "label": "second",
+                "runtime": "claude-code",
+            },
+            headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+        )
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "management_permission_required"
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_daemon_management_grant_use_is_refunded_when_daemon_rejects(
+    client: AsyncClient,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    instance_id = await _provision_instance(client, seed_user)
+    grant = AgentManagementGrant(
+        user_id=seed_user["user_id"],
+        agent_id=seed_manager_agent["agent_id"],
+        scope=MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION,
+        daemon_instance_id=instance_id,
+        limits_json={"max_uses": 1},
+        expires_at=datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(days=1),
+    )
+    db_session.add(grant)
+    await db_session.commit()
+    conn, fake_ws, registry = await _with_connected_daemon(
+        instance_id,
+        seed_user["user_id"],
+        runtimes_snapshot=[{"id": "claude-code", "available": True}],
+        db_session=db_session,
+    )
+    try:
+        err_task = asyncio.create_task(
+            _auto_ack(
+                conn,
+                fake_ws,
+                ok=False,
+                err={"code": "keypair_mismatch", "message": "bad"},
+            )
+        )
+        r = await client.post(
+            "/api/users/me/agents/provision",
+            json={
+                "daemon_instance_id": instance_id,
+                "label": "writer",
+                "runtime": "claude-code",
+            },
+            headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+        )
+        await err_task
+        assert r.status_code == 502
+        assert r.json()["detail"]["code"] == "daemon_provision_failed"
+        await db_session.refresh(grant)
+        assert grant.use_count == 0
     finally:
         await registry.unregister(conn)
 

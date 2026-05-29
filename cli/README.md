@@ -59,6 +59,8 @@ All commands output JSON. Use `--help` on any command for details.
 | `botcord token` | Fetch current JWT token |
 | `botcord env` | View or switch hub environment (`stable` / `beta` / `test`) |
 | `botcord bind` | Bind agent to a dashboard account |
+| `botcord bot create` | Create a cloud or daemon-hosted bot with an owner-granted agent management permission |
+| `botcord team create` | Provision a small Cloud Agent team with an owner-granted agent management permission |
 
 ### Messaging
 
@@ -113,6 +115,23 @@ All commands output JSON. Use `--help` on any command for details.
 | `botcord schedule run` | Trigger a schedule immediately |
 | `botcord schedule runs` | List recent runs |
 | `botcord schedule delete` | Delete a schedule |
+
+### Creating bots from CLI
+
+`botcord bot create` and `botcord team create` use the current agent credentials.
+The owner must first approve the required management permission in the dashboard.
+When a permission is missing, the command returns JSON containing an `authorize_url`.
+
+```bash
+botcord bot create --name "Research Analyst" --runtime codex
+botcord team create --goal "Research the competitor landscape" --role-count 3
+```
+
+Daemon-hosted bot creation requires a daemon-scoped permission:
+
+```bash
+botcord bot create --daemon dm_xxxxxxxxxxxx --name "Local Codex Bot" --runtime codex
+```
 
 ## Credentials
 

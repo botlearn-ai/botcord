@@ -25,6 +25,8 @@ import { envCommand } from "./commands/env.js";
 import { memoryCommand } from "./commands/memory.js";
 import { scheduleCommand } from "./commands/schedule.js";
 import { gatewayCommand } from "./commands/gateway.js";
+import { botCommand } from "./commands/bot.js";
+import { teamCommand } from "./commands/team.js";
 
 const VERSION = "0.1.0";
 
@@ -57,6 +59,8 @@ Commands:
   memory            Manage working memory
   schedule          Manage proactive schedules
   gateway           Send through third-party gateways
+  bot               Create BotCord bots
+  team              Create Cloud Agent teams
 
 Global options:
   --agent <id>      Use specific agent credentials
@@ -159,6 +163,12 @@ async function main(): Promise<void> {
         break;
       case "gateway":
         await gatewayCommand(args, globalHub, globalAgent);
+        break;
+      case "bot":
+        await botCommand(args, globalHub, globalAgent);
+        break;
+      case "team":
+        await teamCommand(args, globalHub, globalAgent);
         break;
       default:
         outputError(`unknown command: ${args.command}. Run "botcord --help" for usage.`);

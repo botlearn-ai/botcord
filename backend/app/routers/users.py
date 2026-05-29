@@ -23,7 +23,15 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import RequestContext, require_user
+from app.auth import (
+    MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION,
+    RequestContext,
+    require_agent_management_scopes,
+    release_agent_management_scope_uses,
+    reserve_agent_management_scope_uses,
+    require_user,
+    require_user_or_agent_owner,
+)
 from hub import config as hub_config
 from hub.auth import create_agent_token, verify_agent_token
 from hub.agent_avatars import normalize_agent_avatar_url, random_agent_avatar_url
@@ -1861,7 +1869,7 @@ def _mark_daemon_runtime_snapshot_bound(
 )
 async def provision_agent(
     body: ProvisionAgentBody,
-    ctx: RequestContext = Depends(require_user),
+    ctx: RequestContext = Depends(require_user_or_agent_owner),
     db: AsyncSession = Depends(get_db),
 ) -> ProvisionAgentResponse:
     """Create a new agent on one of the user's daemons.
@@ -1880,6 +1888,13 @@ async def provision_agent(
         raise HTTPException(status_code=400, detail="runtime is required")
     runtime_model = _clean_runtime_option(body.runtime_model)
     reasoning_effort = _clean_runtime_option(body.reasoning_effort)
+    await require_agent_management_scopes(
+        db,
+        ctx=ctx,
+        required_scopes=[MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION],
+        daemon_instance_id=body.daemon_instance_id,
+        allow_global_daemon_grant=False,
+    )
 
     result = await db.execute(
         select(DaemonInstance).where(DaemonInstance.id == body.daemon_instance_id)
@@ -1935,143 +1950,160 @@ async def provision_agent(
     if dup_result.scalar_one_or_none() is not None:
         raise HTTPException(status_code=500, detail="agent_id_collision")
 
-    # --- Insert Agent + SigningKey in one transaction -------------------
-    now = datetime.datetime.now(datetime.timezone.utc)
-    key_id = generate_key_id()
-    agent = Agent(
-        agent_id=agent_id,
-        display_name=label,
-        bio=body.bio,
-        avatar_url=random_agent_avatar_url(),
-        user_id=ctx.user_id,
-        is_default=is_first,
-        claimed_at=now,
-        runtime=runtime,
-        runtime_model=runtime_model,
-        reasoning_effort=reasoning_effort,
-        thinking=body.thinking,
+    reserved_grants = await reserve_agent_management_scope_uses(
+        db,
+        ctx=ctx,
+        scopes=[MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION],
         daemon_instance_id=body.daemon_instance_id,
-        hosting_kind="daemon",
+        allow_global_daemon_grant=False,
     )
-    db.add(agent)
-    db.add(
-        SigningKey(
+
+    try:
+        # --- Insert Agent + SigningKey in one transaction -------------------
+        now = datetime.datetime.now(datetime.timezone.utc)
+        key_id = generate_key_id()
+        agent = Agent(
             agent_id=agent_id,
-            key_id=key_id,
-            pubkey=f"ed25519:{pubkey_b64}",
-            state=KeyState.active,
+            display_name=label,
+            bio=body.bio,
+            avatar_url=random_agent_avatar_url(),
+            user_id=ctx.user_id,
+            is_default=is_first,
+            claimed_at=now,
+            runtime=runtime,
+            runtime_model=runtime_model,
+            reasoning_effort=reasoning_effort,
+            thinking=body.thinking,
+            daemon_instance_id=body.daemon_instance_id,
+            hosting_kind="daemon",
         )
-    )
-    # Flush so FKs satisfy subsequent writes; commit happens after the
-    # daemon ack so we can roll back on dispatch failure.
-    await db.flush()
+        db.add(agent)
+        db.add(
+            SigningKey(
+                agent_id=agent_id,
+                key_id=key_id,
+                pubkey=f"ed25519:{pubkey_b64}",
+                state=KeyState.active,
+            )
+        )
+        # Flush so FKs satisfy subsequent writes; commit happens after the
+        # daemon ack so we can roll back on dispatch failure.
+        await db.flush()
 
-    agent_token, token_expires_at = create_agent_token(agent_id)
-    agent.agent_token = agent_token
-    agent.token_expires_at = datetime.datetime.fromtimestamp(
-        token_expires_at, tz=datetime.timezone.utc
-    )
-    await get_or_create_wallet(db, agent_id)
-    await _ensure_agent_owner_role(db, ctx.user_id)
-    await db.flush()
+        agent_token, token_expires_at = create_agent_token(agent_id)
+        agent.agent_token = agent_token
+        agent.token_expires_at = datetime.datetime.fromtimestamp(
+            token_expires_at, tz=datetime.timezone.utc
+        )
+        await get_or_create_wallet(db, agent_id)
+        await _ensure_agent_owner_role(db, ctx.user_id)
+        await db.flush()
 
-    # --- Dispatch provision_agent to the daemon, wait for ack -----------
-    frame_params: dict = {
-        "name": label,
-        "runtime": runtime,
-        "credentials": {
-            "agentId": agent_id,
-            "keyId": key_id,
-            "privateKey": private_key_b64,
-            "publicKey": pubkey_b64,
-            "hubUrl": hub_config.HUB_PUBLIC_BASE_URL,
-            "displayName": label,
-            "token": agent_token,
-            "tokenExpiresAt": token_expires_at,
+        # --- Dispatch provision_agent to the daemon, wait for ack -----------
+        frame_params: dict = {
+            "name": label,
             "runtime": runtime,
-        },
-    }
-    if runtime_model:
-        frame_params["runtimeModel"] = runtime_model
-        frame_params["credentials"]["runtimeModel"] = runtime_model
-    if reasoning_effort:
-        frame_params["reasoningEffort"] = reasoning_effort
-        frame_params["credentials"]["reasoningEffort"] = reasoning_effort
-    if body.thinking is not None:
-        frame_params["thinking"] = body.thinking
-        frame_params["credentials"]["thinking"] = body.thinking
-    if body.cwd:
-        frame_params["cwd"] = body.cwd
-        frame_params["credentials"]["cwd"] = body.cwd
-    if body.bio:
-        frame_params["bio"] = body.bio
-    if body.openclaw_gateway:
-        # Top-level nested form (RFC §3.9.2).
-        oc: dict[str, str] = {"gateway": body.openclaw_gateway}
-        if body.openclaw_agent:
-            oc["agent"] = body.openclaw_agent
-        frame_params["openclaw"] = oc
-        # Mirror onto the flat credentials envelope so daemon's offline reload
-        # path picks the same gateway without seeing the top-level field.
-        frame_params["credentials"]["openclawGateway"] = body.openclaw_gateway
-        if body.openclaw_agent:
-            frame_params["credentials"]["openclawAgent"] = body.openclaw_agent
-    if body.hermes_profile:
-        # Same dual-write pattern as openclaw — top-level nested form for the
-        # daemon's runtime selector, flat credentials mirror for the offline
-        # reload path.
-        frame_params["hermes"] = {"profile": body.hermes_profile}
-        frame_params["credentials"]["hermesProfile"] = body.hermes_profile
+            "credentials": {
+                "agentId": agent_id,
+                "keyId": key_id,
+                "privateKey": private_key_b64,
+                "publicKey": pubkey_b64,
+                "hubUrl": hub_config.HUB_PUBLIC_BASE_URL,
+                "displayName": label,
+                "token": agent_token,
+                "tokenExpiresAt": token_expires_at,
+                "runtime": runtime,
+            },
+        }
+        if runtime_model:
+            frame_params["runtimeModel"] = runtime_model
+            frame_params["credentials"]["runtimeModel"] = runtime_model
+        if reasoning_effort:
+            frame_params["reasoningEffort"] = reasoning_effort
+            frame_params["credentials"]["reasoningEffort"] = reasoning_effort
+        if body.thinking is not None:
+            frame_params["thinking"] = body.thinking
+            frame_params["credentials"]["thinking"] = body.thinking
+        if body.cwd:
+            frame_params["cwd"] = body.cwd
+            frame_params["credentials"]["cwd"] = body.cwd
+        if body.bio:
+            frame_params["bio"] = body.bio
+        if body.openclaw_gateway:
+            # Top-level nested form (RFC §3.9.2).
+            oc: dict[str, str] = {"gateway": body.openclaw_gateway}
+            if body.openclaw_agent:
+                oc["agent"] = body.openclaw_agent
+            frame_params["openclaw"] = oc
+            # Mirror onto the flat credentials envelope so daemon's offline reload
+            # path picks the same gateway without seeing the top-level field.
+            frame_params["credentials"]["openclawGateway"] = body.openclaw_gateway
+            if body.openclaw_agent:
+                frame_params["credentials"]["openclawAgent"] = body.openclaw_agent
+        if body.hermes_profile:
+            # Same dual-write pattern as openclaw — top-level nested form for the
+            # daemon's runtime selector, flat credentials mirror for the offline
+            # reload path.
+            frame_params["hermes"] = {"profile": body.hermes_profile}
+            frame_params["credentials"]["hermesProfile"] = body.hermes_profile
 
-    # Seed the daemon's policyResolver with the agent's default attention so
-    # it has a real policy from message zero (no first-message refetch race).
-    # `attention_keywords` is JSON-encoded TEXT in the DB.
-    try:
-        _seed_kw = json.loads(agent.attention_keywords or "[]")
-        if not isinstance(_seed_kw, list):
+        # Seed the daemon's policyResolver with the agent's default attention so
+        # it has a real policy from message zero (no first-message refetch race).
+        # `attention_keywords` is JSON-encoded TEXT in the DB.
+        try:
+            _seed_kw = json.loads(agent.attention_keywords or "[]")
+            if not isinstance(_seed_kw, list):
+                _seed_kw = []
+        except (json.JSONDecodeError, TypeError):
             _seed_kw = []
-    except (json.JSONDecodeError, TypeError):
-        _seed_kw = []
-    _attn = agent.default_attention
-    frame_params["defaultAttention"] = _attn.value if hasattr(_attn, "value") else str(_attn)
-    frame_params["attentionKeywords"] = [str(x) for x in _seed_kw if isinstance(x, str)]
-
-    try:
-        ack = await send_control_frame(
-            body.daemon_instance_id, "provision_agent", frame_params
+        _attn = agent.default_attention
+        frame_params["defaultAttention"] = (
+            _attn.value if hasattr(_attn, "value") else str(_attn)
         )
-    except HTTPException:
-        # Roll back the uncommitted Agent / SigningKey so Hub doesn't get
-        # stuck with a phantom agent row while the daemon is offline or
-        # misbehaving (plan §8.4 事务性与回滚: step b fail → ack error, no state).
-        await db.rollback()
+        frame_params["attentionKeywords"] = [
+            str(x) for x in _seed_kw if isinstance(x, str)
+        ]
+
+        try:
+            ack = await send_control_frame(
+                body.daemon_instance_id, "provision_agent", frame_params
+            )
+        except HTTPException:
+            # Roll back the uncommitted Agent / SigningKey so Hub doesn't get
+            # stuck with a phantom agent row while the daemon is offline or
+            # misbehaving (plan §8.4 事务性与回滚: step b fail → ack error, no state).
+            await db.rollback()
+            raise
+
+        if not isinstance(ack, dict) or not ack.get("ok"):
+            err = ack.get("error") if isinstance(ack, dict) else None
+            code = (err or {}).get("code") if isinstance(err, dict) else None
+            message = (err or {}).get("message") if isinstance(err, dict) else None
+            await db.rollback()
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "daemon_provision_failed",
+                    "daemon_code": code,
+                    "daemon_message": message,
+                },
+            )
+
+        _mark_daemon_runtime_snapshot_bound(
+            instance,
+            runtime=runtime,
+            agent_id=agent.agent_id,
+            display_name=agent.display_name,
+            openclaw_gateway=body.openclaw_gateway,
+            openclaw_agent=body.openclaw_agent,
+            hermes_profile=body.hermes_profile,
+        )
+
+        await db.commit()
+    except Exception:
+        await release_agent_management_scope_uses(db, reserved_grants)
         raise
 
-    if not isinstance(ack, dict) or not ack.get("ok"):
-        err = ack.get("error") if isinstance(ack, dict) else None
-        code = (err or {}).get("code") if isinstance(err, dict) else None
-        message = (err or {}).get("message") if isinstance(err, dict) else None
-        await db.rollback()
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "code": "daemon_provision_failed",
-                "daemon_code": code,
-                "daemon_message": message,
-            },
-        )
-
-    _mark_daemon_runtime_snapshot_bound(
-        instance,
-        runtime=runtime,
-        agent_id=agent.agent_id,
-        display_name=agent.display_name,
-        openclaw_gateway=body.openclaw_gateway,
-        openclaw_agent=body.openclaw_agent,
-        hermes_profile=body.hermes_profile,
-    )
-
-    await db.commit()
     await db.refresh(agent)
 
     return ProvisionAgentResponse(

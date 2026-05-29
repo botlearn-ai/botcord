@@ -163,6 +163,41 @@ class Agent(Base):
         return self.status == "active" and self.user_id is not None
 
 
+class AgentManagementGrant(Base):
+    """Owner-granted management capability for one BotCord agent."""
+
+    __tablename__ = "agent_management_grants"
+    __table_args__ = (
+        Index("ix_agent_management_grants_user_agent", "user_id", "agent_id"),
+        Index("ix_agent_management_grants_agent_scope", "agent_id", "scope"),
+        Index("ix_agent_management_grants_scope_active", "scope", "revoked_at", "expires_at"),
+    )
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    agent_id: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("agents.agent_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    scope: Mapped[str] = mapped_column(String(64), nullable=False)
+    daemon_instance_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    limits_json: Mapped[dict] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
+    use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_user_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class SigningKey(Base):
     __tablename__ = "signing_keys"
 
