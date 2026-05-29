@@ -37,6 +37,7 @@ from hub.routers.hub import (
 )
 from hub.services.cloud_agent import resume_cloud_agent_for_inbox
 from hub.validators import normalize_file_url
+from hub import owner_chat_cache
 
 import jwt as pyjwt
 
@@ -140,6 +141,12 @@ async def _send_to_oc_ws(
         )
 
 
+# Register the local-delivery callback used by the Redis fanout subscriber.
+# Other Hub instances' stream blocks arrive via the fanout loop and are
+# delivered to local WS connections through this hook.
+owner_chat_cache.register_fanout_delivery(_send_to_oc_ws)
+
+
 def _cleanup_trace(trace_id: str) -> None:
     """Remove a trace subscription and its block counter."""
     _oc_trace_subs.pop(trace_id, None)
@@ -228,6 +235,11 @@ async def notify_oc_ws_message(
 
     for uid, aid in target_keys:
         await _send_to_oc_ws(uid, aid, msg_data)
+
+    # Mark matched in-flight runs completed in Redis and shorten their TTL
+    # (no-op when Redis is disabled).
+    for tid in matched_traces:
+        await owner_chat_cache.mark_run_completed(tid, final_msg_id=hub_msg_id)
 
 
 async def notify_oc_ws_typing(*, agent_id: str, room_id: str) -> None:
@@ -475,6 +487,16 @@ async def owner_chat_ws(ws: WebSocket):
                     _oc_trace_subs[hub_msg_id] = (user_id, agent_id)
                     _oc_trace_block_count[hub_msg_id] = 0
 
+                    # Write the in-flight run metadata to Redis (no-op if Redis
+                    # disabled). trace_id == hub_msg_id of the trigger message.
+                    await owner_chat_cache.write_run_metadata(
+                        hub_msg_id,
+                        user_id=user_id,
+                        agent_id=agent_id,
+                        room_id=room_id,
+                        trigger_msg_id=hub_msg_id,
+                    )
+
                     # Notify agent inbox
                     notified = await notify_inbox(
                         agent_id,
@@ -584,20 +606,50 @@ async def receive_stream_block(
     if sub_agent_id != agent_id:
         return
 
-    # W7: Enforce per-trace block count cap.
+    # W7: Enforce per-trace block count cap (in-memory live cap, independent
+    # of the Redis cache cap).
     count = _oc_trace_block_count.get(body.trace_id, 0)
     if count >= _MAX_STREAM_BLOCKS_PER_TRACE:
         return
     _oc_trace_block_count[body.trace_id] = count + 1
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    # Ordering: write the Redis cache FIRST so refresh/reconnect can recover
+    # even if WS delivery fails. append_event returns the compacted block to
+    # broadcast (or None when Redis is disabled / capped / errored, in which
+    # case we broadcast the raw block to preserve live behavior).
+    broadcast_block = body.block
+    if owner_chat_cache.redis_enabled():
+        compact = await owner_chat_cache.append_event(
+            body.trace_id, body.seq, body.block,
+        )
+        if compact is not None:
+            broadcast_block = compact
+
+    # Always deliver locally first (low latency, no self-skip wait).
     await _send_to_oc_ws(user_id, sub_agent_id, {
         "type": "stream_block",
         "trace_id": body.trace_id,
         "seq": body.seq,
-        "block": body.block,
+        "block": broadcast_block,
         "created_at": now,
     })
+
+    # When Redis is enabled, also publish fanout so other Hub instances holding
+    # the browser WS can deliver. The subscriber loop skips events whose origin
+    # == this instance, so there is no double-send on the originating instance.
+    if owner_chat_cache.redis_enabled():
+        await owner_chat_cache.publish_fanout({
+            "type": "stream_block",
+            "trace_id": body.trace_id,
+            "user_id": user_id,
+            "agent_id": sub_agent_id,
+            "room_id": _build_owner_chat_room_id(user_id, sub_agent_id),
+            "seq": body.seq,
+            "block": broadcast_block,
+            "created_at": now,
+        })
 
 
 # ---------------------------------------------------------------------------

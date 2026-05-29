@@ -64,6 +64,21 @@ class ChatRoomResponse(BaseModel):
     agent_id: str
 
 
+class StreamBlockEvent(BaseModel):
+    seq: int | None = None
+    kind: str | None = None
+    created_at: str | None = None
+    block: dict
+
+
+class RunStreamBlocksResponse(BaseModel):
+    trace_id: str
+    status: str
+    room_id: str | None = None
+    agent_id: str | None = None
+    events: list[StreamBlockEvent]
+
+
 # ---------------------------------------------------------------------------
 # Owner-agent chat room helpers
 # ---------------------------------------------------------------------------
@@ -332,4 +347,52 @@ async def send_chat_message(
         hub_msg_id=hub_msg_id,
         room_id=room_id,
         status="queued",
+    )
+
+
+@router.get(
+    "/runs/{trace_id}/stream-blocks",
+    response_model=RunStreamBlocksResponse,
+)
+async def get_run_stream_blocks(
+    trace_id: str,
+    agent_and_user: tuple[str, str | None] = Depends(get_dashboard_agent_with_user),
+):
+    """Restore in-flight owner-chat stream blocks for a trace from the Redis cache.
+
+    Degrades gracefully: when Redis is disabled, the run is missing/expired, or
+    the run does not belong to this owner's owner-chat room, returns 200 with
+    status="completed" and an empty events list (never 404), so the frontend
+    simply waits for the final message.
+    """
+    from hub import owner_chat_cache
+
+    agent_id, user_id = agent_and_user
+
+    empty = RunStreamBlocksResponse(
+        trace_id=trace_id,
+        status="completed",
+        room_id=None,
+        agent_id=agent_id,
+        events=[],
+    )
+
+    if not user_id:
+        return empty
+
+    run = await owner_chat_cache.load_run(trace_id)
+    if run is None:
+        return empty
+
+    # Authorization: the run must belong to this agent and this owner's room.
+    expected_room = _build_owner_chat_room_id(user_id, agent_id)
+    if run.get("agent_id") != agent_id or run.get("room_id") != expected_room:
+        return empty
+
+    return RunStreamBlocksResponse(
+        trace_id=trace_id,
+        status=run.get("status", "completed"),
+        room_id=run.get("room_id"),
+        agent_id=run.get("agent_id"),
+        events=[StreamBlockEvent(**ev) for ev in run.get("events", [])],
     )
