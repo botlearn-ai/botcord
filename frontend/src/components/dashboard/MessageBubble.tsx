@@ -9,6 +9,7 @@ import ReplyQuoteBlock from "./ReplyQuoteBlock";
 import { emitJumpToMessage } from "./messageNavigation";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import type { DashboardMessage, Attachment } from "@/lib/types";
+import { canReplyToDashboardMessage } from "@/lib/dashboard-message-actions";
 import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
 import { canRecallDashboardMessage, isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
@@ -473,13 +474,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     if (displayText) setForwardQuote(buildQuote());
   };
 
-  const canQuoteReply =
-    message.type === "message"
-    && Boolean(message.room_id)
-    && Boolean(message.msg_id)
-    && !message.hub_msg_id?.startsWith("tmp_")
-    && !message.msg_id?.startsWith("tmp_")
-    && !isRecalled;
+  const canQuoteReply = canReplyToDashboardMessage(message);
 
   const roomSummary = message.room_id ? getRoomSummary(message.room_id) : null;
   const canRecall = canRecallDashboardMessage({
@@ -541,7 +536,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     />
   );
 
-  const moreButton = !isRecalled && (displayText || canRecall) && (
+  const moreButton = !isRecalled && (displayText || canQuoteReply || canRecall) && (
     <div className="relative shrink-0">
       <button
         type="button"
@@ -560,7 +555,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
             >
               <CornerUpLeft className="h-3.5 w-3.5 text-zinc-500" />
-              引用回复
+              {locale === "zh" ? "回复" : "Reply"}
             </button>
           )}
           {displayText && (

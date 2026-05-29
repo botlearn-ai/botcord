@@ -96,4 +96,20 @@ describe("canRecallDashboardMessage", () => {
       nowMs: Date.parse("2026-05-29T08:01:00.000Z"),
     })).toBe(true);
   });
+
+  it("allows the human owner to recall their own bot's fresh room message", () => {
+    expect(canRecallDashboardMessage({
+      message: message({
+        sender_id: "ag_owned",
+        source_user_id: null,
+        created_at: "2026-05-29T08:00:00.000Z",
+      }),
+      room: room({ owner_id: "ag_other", owner_type: "agent", my_role: "member" }),
+      isOwn: false,
+      ownedAgentIds: ["ag_owned"],
+      humanId: "hu_1",
+      userId: "user_1",
+      nowMs: Date.parse("2026-05-29T08:01:00.000Z"),
+    })).toBe(true);
+  });
 });
