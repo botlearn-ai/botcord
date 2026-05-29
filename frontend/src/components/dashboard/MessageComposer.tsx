@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { AtSign, Bot, Coins, FileText, FileUp, Hash, Plus, Send, User, X } from "lucide-react";
 
@@ -43,6 +43,9 @@ interface MessageComposerProps {
 
 const MAX_SUGGESTIONS = 2000;
 const MESSAGE_MAX_LENGTH = 8000;
+export const MESSAGE_COMPOSER_TEXTAREA_ID_PREFIX = "botcord-conversation-composer";
+export const MESSAGE_COMPOSER_TEXTAREA_NAME = "botcord_conversation_body";
+export const MESSAGE_COMPOSER_TEXTAREA_AUTOCOMPLETE = "off";
 
 function detectMention(text: string, cursor: number): MentionMatch | null {
   for (let i = cursor - 1; i >= 0; i--) {
@@ -120,6 +123,7 @@ export default function MessageComposer({
   const mentionListRef = useRef<HTMLDivElement>(null);
   const mentionOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const compositionActiveRef = useRef(false);
+  const inputId = `${MESSAGE_COMPOSER_TEXTAREA_ID_PREFIX}-${useId().replace(/:/g, "")}`;
 
   const mentionEnabled = !!mentionCandidates && mentionCandidates.length > 0;
 
@@ -471,6 +475,14 @@ export default function MessageComposer({
         )}
         <textarea
           ref={inputRef}
+          id={inputId}
+          name={MESSAGE_COMPOSER_TEXTAREA_NAME}
+          autoComplete={MESSAGE_COMPOSER_TEXTAREA_AUTOCOMPLETE}
+          autoCapitalize="sentences"
+          autoCorrect="on"
+          inputMode="text"
+          spellCheck={true}
+          data-form-type="other"
           className={`flex-1 bg-zinc-900 border rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50 transition-all ${
             hasLengthError
               ? "border-red-500/70 focus:border-red-500/80"
