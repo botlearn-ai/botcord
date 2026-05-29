@@ -69,6 +69,18 @@ describe("canRecallDashboardMessage", () => {
     })).toBe(false);
   });
 
+  it("does not expose recall while only the hub id has been persisted", () => {
+    expect(canRecallDashboardMessage({
+      message: message({ hub_msg_id: "h_real", msg_id: "tmp_1" }),
+      room: room(),
+      isOwn: true,
+      ownedAgentIds: [],
+      humanId: "hu_1",
+      userId: "user_1",
+      nowMs: Date.parse("2026-05-29T08:01:00.000Z"),
+    })).toBe(false);
+  });
+
   it("allows the owner of the room owner bot to recall any room message", () => {
     expect(canRecallDashboardMessage({
       message: message({

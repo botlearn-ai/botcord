@@ -262,7 +262,7 @@ interface DashboardChatState {
   bumpRoomMembersVersion: (roomId: string) => void;
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
-  patchMessageIdentity: (roomId: string, temporaryId: string, patch: Pick<DashboardMessage, "hub_msg_id" | "msg_id"> & Partial<Pick<DashboardMessage, "topic_id">>) => void;
+  patchMessageIdentity: (roomId: string, temporaryId: string, patch: Partial<Pick<DashboardMessage, "hub_msg_id" | "msg_id" | "topic_id">>) => void;
   markMessageRecalled: (roomId: string, msgId: string, patch?: { recalled_at?: string | null; recalled_by_id?: string | null; recalled_by_type?: "agent" | "human" | null }) => void;
   recallMessage: (roomId: string, msgId: string) => Promise<void>;
   loadRoomMessages: (roomId: string, opts?: { force?: boolean }) => Promise<void>;
@@ -450,11 +450,16 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         set((state) => {
           const current = state.messages[roomId];
           if (!current) return state;
+          const definedPatch: Partial<Pick<DashboardMessage, "hub_msg_id" | "msg_id" | "topic_id">> = {};
+          if (patch.hub_msg_id !== undefined) definedPatch.hub_msg_id = patch.hub_msg_id;
+          if (patch.msg_id !== undefined) definedPatch.msg_id = patch.msg_id;
+          if (patch.topic_id !== undefined) definedPatch.topic_id = patch.topic_id;
+          if (Object.keys(definedPatch).length === 0) return state;
           let changed = false;
           const nextMessages = current.map((message) => {
             if (message.hub_msg_id !== temporaryId && message.msg_id !== temporaryId) return message;
             changed = true;
-            return { ...message, ...patch };
+            return { ...message, ...definedPatch };
           });
           if (!changed) return state;
           return {
@@ -674,6 +679,13 @@ export const useDashboardChatStore = create<DashboardChatState>()(
               await get().loadRoomMessages(roomId, { force: Boolean(opts?.expectedHubMsgId) });
             }
           } else {
+            if (opts?.expectedHubMsgId) {
+              const expectedMessage = existing.find((message) => message.hub_msg_id === opts.expectedHubMsgId);
+              if (expectedMessage && (!expectedMessage.msg_id || expectedMessage.msg_id.startsWith("tmp_"))) {
+                await get().loadRoomMessages(roomId, { force: true });
+                return;
+              }
+            }
             const newestPersisted = [...existing].reverse().find(
               (m) => m.hub_msg_id && !m.hub_msg_id.startsWith("tmp_"),
             );

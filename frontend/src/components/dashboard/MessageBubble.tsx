@@ -476,6 +476,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     && Boolean(message.room_id)
     && Boolean(message.msg_id)
     && !message.hub_msg_id?.startsWith("tmp_")
+    && !message.msg_id?.startsWith("tmp_")
     && !isRecalled;
 
   const roomSummary = message.room_id ? getRoomSummary(message.room_id) : null;

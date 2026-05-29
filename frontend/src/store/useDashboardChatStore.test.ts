@@ -224,6 +224,91 @@ describe("useDashboardChatStore message polling", () => {
     });
   });
 
+  it("does not wipe the optimistic msg id when send returns no canonical msg id", () => {
+    useDashboardChatStore.getState().insertMessage("rm_empty", {
+      hub_msg_id: "tmp_1",
+      msg_id: "tmp_1",
+      sender_id: "hu_1",
+      sender_name: "Human",
+      type: "message",
+      text: "hello",
+      payload: { text: "hello" },
+      room_id: "rm_empty",
+      topic: null,
+      topic_id: null,
+      goal: null,
+      state: "queued",
+      state_counts: null,
+      created_at: "2026-05-11T08:00:00Z",
+      is_mine: true,
+    });
+
+    useDashboardChatStore.getState().patchMessageIdentity("rm_empty", "tmp_1", {
+      hub_msg_id: "h_real",
+      msg_id: undefined,
+    });
+
+    expect(useDashboardChatStore.getState().messages.rm_empty[0]).toMatchObject({
+      hub_msg_id: "h_real",
+      msg_id: "tmp_1",
+    });
+  });
+
+  it("reloads an expected sent message when the cached row still has a temporary msg id", async () => {
+    mocks.getRoomMessages.mockResolvedValue({
+      messages: [{
+        hub_msg_id: "h_real",
+        msg_id: "msg_real",
+        sender_id: "hu_1",
+        sender_name: "Human",
+        type: "message",
+        text: "hello",
+        payload: { text: "hello" },
+        room_id: "rm_empty",
+        topic: null,
+        topic_id: null,
+        goal: null,
+        state: "queued",
+        state_counts: null,
+        created_at: "2026-05-11T08:00:00Z",
+        is_mine: true,
+      }],
+      has_more: false,
+    });
+    useDashboardChatStore.setState({
+      messages: {
+        rm_empty: [{
+          hub_msg_id: "h_real",
+          msg_id: "tmp_1",
+          sender_id: "hu_1",
+          sender_name: "Human",
+          type: "message",
+          text: "hello",
+          payload: { text: "hello" },
+          room_id: "rm_empty",
+          topic: null,
+          topic_id: null,
+          goal: null,
+          state: "queued",
+          state_counts: null,
+          created_at: "2026-05-11T08:00:00Z",
+          is_mine: true,
+        }],
+      },
+    });
+
+    await useDashboardChatStore.getState().pollNewMessages("rm_empty", {
+      expectedHubMsgId: "h_real",
+      retries: 4,
+    });
+
+    expect(mocks.getRoomMessages).toHaveBeenCalledWith("rm_empty", { limit: 50 });
+    expect(useDashboardChatStore.getState().messages.rm_empty[0]).toMatchObject({
+      hub_msg_id: "h_real",
+      msg_id: "msg_real",
+    });
+  });
+
   it("clears the opened room and cached messages after leaving the current room", async () => {
     const overviewAfterLeave = { ...makeOverview(), rooms: [] };
     mocks.leaveRoom.mockResolvedValue(undefined);

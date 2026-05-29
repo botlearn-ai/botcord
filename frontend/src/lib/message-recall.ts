@@ -50,6 +50,7 @@ export function canRecallDashboardMessage({
     || !message.msg_id
     || message.room_id.startsWith("rm_oc_")
     || message.hub_msg_id?.startsWith("tmp_")
+    || message.msg_id.startsWith("tmp_")
     || isDashboardMessageRecalled(message)
   ) {
     return false;
