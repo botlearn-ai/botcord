@@ -1,5 +1,39 @@
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { getClipboardFiles, isImeComposing, textHasMention } from "./MessageComposer";
+import MessageComposer, {
+  getClipboardFiles,
+  isImeComposing,
+  MESSAGE_COMPOSER_TEXTAREA_AUTOCOMPLETE,
+  MESSAGE_COMPOSER_TEXTAREA_ID_PREFIX,
+  MESSAGE_COMPOSER_TEXTAREA_NAME,
+  textHasMention,
+} from "./MessageComposer";
+
+describe("message composer autofill metadata", () => {
+  it("uses neutral field identifiers so password managers do not infer credentials", () => {
+    const identifiers = `${MESSAGE_COMPOSER_TEXTAREA_ID_PREFIX} ${MESSAGE_COMPOSER_TEXTAREA_NAME}`;
+
+    expect(identifiers).not.toMatch(/pass(word)?|passwd|token|secret|credential|auth|login/i);
+    expect(MESSAGE_COMPOSER_TEXTAREA_AUTOCOMPLETE).toBe("off");
+  });
+
+  it("applies autofill suppression metadata to the rendered textarea", () => {
+    const markup = renderToStaticMarkup(React.createElement(MessageComposer, { onSend: () => undefined }));
+    const textarea = markup.match(/<textarea\b[^>]*>/)?.[0] ?? "";
+    const getAttribute = (name: string) => textarea.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
+
+    expect(textarea).not.toBe("");
+    expect(getAttribute("id")).toMatch(new RegExp(`^${MESSAGE_COMPOSER_TEXTAREA_ID_PREFIX}-`));
+    expect(getAttribute("name")).toBe(MESSAGE_COMPOSER_TEXTAREA_NAME);
+    expect(getAttribute("autoComplete")).toBe("off");
+    expect(getAttribute("data-form-type")).toBe("other");
+    expect(getAttribute("inputMode")).toBe("text");
+    expect(getAttribute("autoCapitalize")).toBe("sentences");
+    expect(getAttribute("autoCorrect")).toBe("on");
+    expect(getAttribute("spellCheck")).toBe("true");
+  });
+});
 
 describe("textHasMention", () => {
   it("keeps structured @Name(agentId) mentions active", () => {
