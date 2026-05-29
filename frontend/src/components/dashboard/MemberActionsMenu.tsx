@@ -12,6 +12,7 @@ import type { PublicRoomMember } from "@/lib/types";
 import { humansApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { agentBrowser } from "@/lib/i18n/translations/dashboard";
+import { useConfirm } from "@/store/useConfirmStore";
 
 interface Props {
   roomId: string;
@@ -28,6 +29,7 @@ export default function MemberActionsMenu({
 }: Props) {
   const locale = useLanguage();
   const t = agentBrowser[locale];
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [permOpen, setPermOpen] = useState(false);
@@ -62,7 +64,7 @@ export default function MemberActionsMenu({
   });
 
   const doRemove = () => guard(async () => {
-    if (!window.confirm(t.removeMemberConfirm)) return;
+    if (!(await confirm({ title: t.removeMemberConfirm, tone: "danger" }))) return;
     try {
       await humansApi.removeRoomMember(roomId, member.agent_id);
       onMutated();

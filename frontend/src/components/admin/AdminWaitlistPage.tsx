@@ -8,10 +8,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, CheckCircle, XCircle, Copy } from "lucide-react";
 import { adminBetaApi, type BetaWaitlistEntry } from "@/lib/api";
+import { useConfirm } from "@/store/useConfirmStore";
 
 type StatusFilter = "pending" | "approved" | "rejected";
 
 export default function AdminWaitlistPage() {
+  const confirm = useConfirm();
   const [entries, setEntries] = useState<BetaWaitlistEntry[]>([]);
   const [filter, setFilter] = useState<StatusFilter>("pending");
   const [loading, setLoading] = useState(true);
@@ -57,7 +59,7 @@ export default function AdminWaitlistPage() {
   }
 
   async function handleReject(id: string) {
-    if (!confirm("确认拒绝此申请？")) return;
+    if (!(await confirm({ title: "确认拒绝此申请？", tone: "danger" }))) return;
     setPendingAction(id);
     try {
       await adminBetaApi.rejectWaitlist(id);

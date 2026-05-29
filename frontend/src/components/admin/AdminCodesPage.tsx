@@ -8,8 +8,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Plus, XCircle } from "lucide-react";
 import { adminBetaApi, type BetaInviteCode } from "@/lib/api";
+import { useConfirm } from "@/store/useConfirmStore";
 
 export default function AdminCodesPage() {
+  const confirm = useConfirm();
   const [codes, setCodes] = useState<BetaInviteCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +56,14 @@ export default function AdminCodesPage() {
   }
 
   async function handleRevoke(id: string) {
-    if (!confirm("确认撤销此邀请码？撤销后无法继续使用。")) return;
+    if (
+      !(await confirm({
+        title: "确认撤销此邀请码？",
+        message: "撤销后无法继续使用。",
+        tone: "danger",
+      }))
+    )
+      return;
     try {
       await adminBetaApi.revokeCode(id);
       await fetchCodes();
