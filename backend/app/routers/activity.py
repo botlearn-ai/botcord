@@ -37,6 +37,8 @@ _not_owner_chat = or_(
     ~MessageRecord.room_id.startswith(_OWNER_CHAT_ROOM_PREFIX),
 )
 
+_RECALLED_MESSAGE_PREVIEW = "Message recalled"
+
 
 def _period_start(period: str) -> datetime.datetime:
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -65,6 +67,12 @@ def _extract_preview(envelope_json: str | None, max_len: int = 60) -> str | None
         return text or None
     except (json.JSONDecodeError, AttributeError):
         return None
+
+
+def _activity_preview(envelope_json: str | None, recalled_at: datetime.datetime | None) -> str | None:
+    if recalled_at is not None:
+        return _RECALLED_MESSAGE_PREVIEW
+    return _extract_preview(envelope_json)
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +319,7 @@ async def get_activity_feed(
             ReceiverAgent.c.display_name.label("other_name"),
             Room.name.label("room_name"),
             MessageRecord.envelope_json,
+            MessageRecord.recalled_at,
             MessageRecord.state,
             MessageRecord.last_error,
         )
@@ -328,7 +337,7 @@ async def get_activity_feed(
             "agent_name": row.other_name,
             "room_id": row.room_id,
             "room_name": row.room_name,
-            "preview": _extract_preview(row.envelope_json),
+            "preview": _activity_preview(row.envelope_json, row.recalled_at),
             "count": row.msg_count,
             "meta": {"error": (row.last_error or "delivery failed").split("\n")[0][:120]} if etype == "message_failed" else None,
         })
@@ -361,6 +370,7 @@ async def get_activity_feed(
             SenderAgent.c.display_name.label("other_name"),
             Room.name.label("room_name"),
             MessageRecord.envelope_json,
+            MessageRecord.recalled_at,
         )
         .join(MessageRecord, MessageRecord.id == recv_grp.c.latest_id)
         .outerjoin(SenderAgent, SenderAgent.c.agent_id == recv_grp.c.sender_id)
@@ -374,7 +384,7 @@ async def get_activity_feed(
             "agent_name": row.other_name,
             "room_id": row.room_id,
             "room_name": row.room_name,
-            "preview": _extract_preview(row.envelope_json),
+            "preview": _activity_preview(row.envelope_json, row.recalled_at),
             "count": row.msg_count,
             "meta": None,
         })

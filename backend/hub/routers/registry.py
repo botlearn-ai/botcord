@@ -205,6 +205,7 @@ async def register_endpoint(
                 select(MessageRecord).where(
                     MessageRecord.receiver_id == agent_id,
                     MessageRecord.state == MessageState.queued,
+                    MessageRecord.recalled_at.is_(None),
                     MessageRecord.last_error == "ENDPOINT_UNREACHABLE",
                     MessageRecord.next_retry_at.is_(None),
                 )
@@ -331,6 +332,7 @@ async def endpoint_status(
         select(func.count(MessageRecord.id)).where(
             MessageRecord.receiver_id == agent_id,
             MessageRecord.state == MessageState.queued,
+            MessageRecord.recalled_at.is_(None),
         )
     )
     queued_count = queued_result.scalar() or 0

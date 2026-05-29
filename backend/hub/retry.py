@@ -223,6 +223,7 @@ async def _retry_batch(http_client: httpx.AsyncClient) -> None:
             .where(
                 MessageRecord.state == MessageState.queued,
                 MessageRecord.next_retry_at <= now,
+                MessageRecord.recalled_at.is_(None),
             )
             .limit(50)
         )

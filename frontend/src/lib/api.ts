@@ -51,6 +51,7 @@ import type {
   UserChatSendResponse,
   RunStreamBlocksResponse,
   RoomHumanSendResponse,
+  MessageRecallResponse,
   CreateJoinRequestResponse,
   JoinRequestListResponse,
   MyJoinRequestResponse,
@@ -906,6 +907,12 @@ export const api = {
     if (attachments && attachments.length > 0) body.attachments = attachments;
     if (replyTo) body.reply_to = replyTo;
     return apiPost<RoomHumanSendResponse>(`/api/dashboard/rooms/${roomId}/send`, body);
+  },
+
+  recallRoomMessage(roomId: string, msgId: string) {
+    return apiPost<MessageRecallResponse>(
+      `/api/dashboard/rooms/${roomId}/messages/${encodeURIComponent(msgId)}/recall`,
+    );
   },
 
   openDmRoom(peerId: string) {

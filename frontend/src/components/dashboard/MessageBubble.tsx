@@ -3,7 +3,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Forward, MoreHorizontal, User } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Forward, MoreHorizontal, RotateCcw, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
 import ReplyQuoteBlock from "./ReplyQuoteBlock";
 import { emitJumpToMessage } from "./messageNavigation";
@@ -11,6 +11,7 @@ import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
+import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
 import MarkdownContent from "@/components/ui/MarkdownContent";
@@ -352,8 +353,11 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const [copied, setCopied] = useState(false);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
+  const [recallPending, setRecallPending] = useState(false);
   const locale = useLanguage();
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
+  const getRoomSummary = useDashboardChatStore((state) => state.getRoomSummary);
+  const recallMessage = useDashboardChatStore((state) => state.recallMessage);
   const overview = useDashboardChatStore((state) => state.overview);
   const publicAgents = useDashboardChatStore((state) => state.publicAgents);
   const publicHumans = useDashboardChatStore((state) => state.publicHumans);
@@ -376,6 +380,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const errorCode = typeof errorPayload?.code === "string" ? errorPayload.code : null;
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text || errorMessage;
+  const isRecalled = isDashboardMessageRecalled(message);
   const isErrorMessage = message.type === "error";
   const errorTitle = locale === "zh" ? "运行错误" : "Runtime error";
   const errorDetailsLabel = locale === "zh" ? "详情" : "Details";
@@ -470,12 +475,39 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     message.type === "message"
     && Boolean(message.room_id)
     && Boolean(message.msg_id)
-    && !message.hub_msg_id?.startsWith("tmp_");
+    && !message.hub_msg_id?.startsWith("tmp_")
+    && !isRecalled;
+
+  const roomSummary = message.room_id ? getRoomSummary(message.room_id) : null;
+  const canAdminRecall = roomSummary?.my_role === "owner" || roomSummary?.my_role === "admin";
+  const canRecall =
+    message.type === "message"
+    && Boolean(message.room_id)
+    && Boolean(message.msg_id)
+    && !message.room_id?.startsWith("rm_oc_")
+    && !message.hub_msg_id?.startsWith("tmp_")
+    && !isRecalled
+    && (isOwn || canAdminRecall);
 
   const handleReplyClick = () => {
     setMenuOpen(false);
     if (!canQuoteReply || !message.room_id) return;
     setReplyingTo(message.room_id, message);
+  };
+
+  const handleRecallClick = async () => {
+    setMenuOpen(false);
+    if (!canRecall || !message.room_id) return;
+    const ok = window.confirm(locale === "zh" ? "撤回这条消息？" : "Recall this message?");
+    if (!ok) return;
+    setRecallPending(true);
+    try {
+      await recallMessage(message.room_id, message.msg_id);
+    } catch {
+      /* error toast is handled by the chat store */
+    } finally {
+      setRecallPending(false);
+    }
   };
 
   const handleJumpToReplyTarget = (targetMsgId: string) => {
@@ -504,7 +536,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     />
   );
 
-  const moreButton = displayText && (
+  const moreButton = !isRecalled && (displayText || canRecall) && (
     <div className="relative self-start pt-1 shrink-0">
       <button
         type="button"
@@ -526,26 +558,41 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
               引用回复
             </button>
           )}
-          <button
-            type="button"
-            onMouseDown={(e) => { e.preventDefault(); handleForwardClick(); }}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
-          >
-            <Forward className="h-3.5 w-3.5 text-zinc-500" />
-            转发
-          </button>
-          <button
-            type="button"
-            onMouseDown={(e) => { e.preventDefault(); void handleCopyClick(); }}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
-          >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 text-emerald-400" />
-            ) : (
-              <Copy className="h-3.5 w-3.5 text-zinc-500" />
-            )}
-            {copied ? "已复制" : "复制"}
-          </button>
+          {displayText && (
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); handleForwardClick(); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+            >
+              <Forward className="h-3.5 w-3.5 text-zinc-500" />
+              转发
+            </button>
+          )}
+          {canRecall && (
+            <button
+              type="button"
+              disabled={recallPending}
+              onMouseDown={(e) => { e.preventDefault(); void handleRecallClick(); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-zinc-500" />
+              {locale === "zh" ? "撤回" : "Recall"}
+            </button>
+          )}
+          {displayText && (
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); void handleCopyClick(); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-emerald-400" />
+              ) : (
+                <Copy className="h-3.5 w-3.5 text-zinc-500" />
+              )}
+              {copied ? "已复制" : "复制"}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -600,19 +647,23 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
         </div>
 
         {/* Quote-reply preview */}
-        {message.reply_preview && (
+        {!isRecalled && message.reply_preview && (
           <ReplyQuoteBlock preview={message.reply_preview} onJump={handleJumpToReplyTarget} />
         )}
 
         {/* Goal badge */}
-        {message.goal && (
+        {!isRecalled && message.goal && (
           <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-neon-purple/20 bg-neon-purple/5 px-2 py-1.5">
             <span className="mt-px text-xs text-neon-purple/70">🎯</span>
             <span className="text-xs leading-relaxed text-neon-purple/90">{message.goal}</span>
           </div>
         )}
 
-        {isErrorMessage ? (
+        {isRecalled ? (
+          <p className="mt-1 text-sm italic text-text-secondary/70">
+            {recalledMessageLabel(locale)}
+          </p>
+        ) : isErrorMessage ? (
           <button
             type="button"
             onClick={(event) => {
@@ -657,7 +708,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
           )
         )}
 
-        {attachments.length > 0 && (
+        {!isRecalled && attachments.length > 0 && (
           <div className="mt-1.5 flex flex-col gap-1.5">
             {attachments.map((att, i) => (
               <AttachmentItem key={`${att.filename}-${i}`} attachment={att} />

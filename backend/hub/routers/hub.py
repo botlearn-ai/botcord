@@ -961,6 +961,9 @@ async def _load_reply_previews(
         if target is None:
             previews[reply_id] = ReplyPreview(msg_id=reply_id, deleted=True)
             continue
+        if target.recalled_at is not None:
+            previews[reply_id] = ReplyPreview(msg_id=reply_id, deleted=True)
+            continue
         raw_text = _extract_envelope_text(target.envelope_json)
         preview_text = raw_text[:_REPLY_PREVIEW_MAX_CHARS] if raw_text else None
         previews[reply_id] = ReplyPreview(
@@ -1876,6 +1879,7 @@ async def _fetch_queued_messages(
         .where(
             MessageRecord.receiver_id == agent_id,
             MessageRecord.state == MessageState.queued,
+            MessageRecord.recalled_at.is_(None),
         )
         .order_by(MessageRecord.created_at.asc())
         .limit(limit)
@@ -2133,6 +2137,7 @@ async def query_history(
             .where(
                 MessageRecord.room_id == room_id,
                 MessageRecord.state != MessageState.failed,
+                MessageRecord.recalled_at.is_(None),
             )
             .group_by(MessageRecord.msg_id)
             .subquery()
@@ -2148,6 +2153,7 @@ async def query_history(
                 MessageRecord.receiver_id == current_agent,
             ),
             MessageRecord.state != MessageState.failed,
+            MessageRecord.recalled_at.is_(None),
         )
         if room_id is not None:
             stmt = stmt.where(MessageRecord.room_id == room_id)

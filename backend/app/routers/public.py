@@ -149,7 +149,7 @@ async def _get_public_room_previews(
             if rec.room_id:
                 parsed = extract_text_from_envelope(rec.envelope_json)
                 last_msg_map[rec.room_id] = {
-                    "last_message_preview": parsed["text"],
+                    "last_message_preview": "Message recalled" if rec.recalled_at else parsed["text"],
                     "last_message_at": rec.created_at.isoformat() if rec.created_at else None,
                     "last_sender_id": parsed["sender_id"],
                 }
@@ -401,13 +401,22 @@ async def get_public_room_messages(
     messages = []
     for rec in records:
         parsed = extract_text_from_envelope(rec.envelope_json)
+        is_recalled = rec.recalled_at is not None
         messages.append({
             "msg_id": rec.msg_id,
             "sender_id": rec.sender_id,
             "sender_display_name": sender_names.get(rec.sender_id),
             "sender_avatar_url": sender_avatars.get(rec.sender_id),
-            "text": parsed["text"],
+            "text": "" if is_recalled else parsed["text"],
             "type": parsed["type"],
+            "payload": {
+                "recalled": True,
+                "recalled_at": rec.recalled_at.isoformat() if rec.recalled_at else None,
+                "recalled_by_id": rec.recalled_by_id,
+            } if is_recalled else parsed["payload"],
+            "is_recalled": is_recalled,
+            "recalled_at": rec.recalled_at.isoformat() if rec.recalled_at else None,
+            "recalled_by_id": rec.recalled_by_id,
             "topic": rec.topic,
             "topic_id": rec.topic_id,
             "topic_title": topic_info.get(rec.topic_id, {}).get("title") if rec.topic_id else None,
@@ -468,6 +477,8 @@ async def get_subscription_room_message_previews(
 
     previews = []
     for rec in records:
+        if rec.recalled_at is not None:
+            continue
         parsed = extract_text_from_envelope(rec.envelope_json)
         preview = _compact_preview_text(parsed["text"])
         if not preview:

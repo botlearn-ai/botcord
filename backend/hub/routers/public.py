@@ -28,7 +28,13 @@ from hub.models import (
     SubscriptionProduct,
     User,
 )
-from hub.routers.dashboard import _extract_text_from_envelope, get_platform_stats
+from hub.routers.dashboard import (
+    _display_content_for_record,
+    _extract_text_from_envelope,
+    _preview_for_record,
+    _recalled_message_fields,
+    get_platform_stats,
+)
 from hub.routers.hub import is_agent_ws_online
 
 from pydantic import BaseModel
@@ -184,9 +190,7 @@ async def _build_public_rooms(
         last_sender: str | None = None
         # Hide message preview for subscription-gated rooms
         if last_rec and not is_gated:
-            envelope_data = json.loads(last_rec.envelope_json)
-            sid, text, _ = _extract_text_from_envelope(envelope_data)
-            last_preview = text[:200] if text else None
+            sid, last_preview, _ = _preview_for_record(last_rec)
             last_at = _ensure_utc(last_rec.created_at)
             last_sender = sender_names.get(sid)
 
@@ -436,6 +440,9 @@ async def public_room_messages(
         envelope_data = json.loads(rec.envelope_json)
         sid, text, payload = _extract_text_from_envelope(envelope_data)
         msg_type = envelope_data.get("type", "message")
+        display_text, display_payload, display_type = _display_content_for_record(
+            rec, text, payload, msg_type
+        )
 
         messages.append(
             DashboardMessage(
@@ -443,15 +450,16 @@ async def public_room_messages(
                 msg_id=rec.msg_id,
                 sender_id=sid,
                 sender_name=sender_names.get(sid, sid),
-                type=msg_type,
-                text=text,
-                payload=payload,
+                type=display_type,
+                text=display_text,
+                payload=display_payload,
                 room_id=rec.room_id,
                 topic=rec.topic,
                 topic_id=rec.topic_id,
                 state=rec.state.value,
                 created_at=_ensure_utc(rec.created_at),
                 sender_avatar_url=sender_avatars.get(sid),
+                **_recalled_message_fields(rec),
             )
         )
 

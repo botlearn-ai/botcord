@@ -1047,6 +1047,17 @@ async def create_room_share_as_human(
 
     for rec in records:
         parsed = _extract_text_from_envelope(rec.envelope_json)
+        if rec.recalled_at is not None:
+            parsed = {
+                "type": parsed["type"] or "message",
+                "text": "",
+                "payload": {
+                    "recalled": True,
+                    "is_recalled": True,
+                    "recalled_at": rec.recalled_at.isoformat(),
+                    "recalled_by_id": rec.recalled_by_id,
+                },
+            }
         sender_name = rec.sender_id
         if (rec.source_type or "") == "dashboard_human_room" and rec.source_user_id:
             if rec.sender_id not in human_name_cache:

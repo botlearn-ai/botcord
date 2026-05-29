@@ -126,6 +126,7 @@ async def _expire_batch() -> None:
             select(MessageRecord)
             .where(
                 MessageRecord.state == MessageState.queued,
+                MessageRecord.recalled_at.is_(None),
                 expired_cond.bindparams(now_ts=now_epoch),
             )
             .order_by(MessageRecord.created_at.asc())

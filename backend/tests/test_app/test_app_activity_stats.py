@@ -242,3 +242,40 @@ async def test_activity_stats_batch_rejects_unowned_agent(client: AsyncClient, s
 
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Agent not owned by user"
+
+
+@pytest.mark.asyncio
+async def test_activity_feed_redacts_recalled_preview(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_activity: dict,
+):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    db_session.add(
+        MessageRecord(
+            hub_msg_id="h_stats_recalled",
+            msg_id="m_stats_recalled",
+            sender_id="ag_stats001",
+            receiver_id="ag_stats002",
+            room_id="rm_stats_main",
+            state=MessageState.done,
+            envelope_json=json.dumps({"payload": {"text": "secret activity preview"}}),
+            ttl_sec=3600,
+            created_at=now,
+            recalled_at=now,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/dashboard/activity/feed?period=7d",
+        headers={
+            "Authorization": f"Bearer {seed_activity['token']}",
+            "X-Active-Agent": "ag_stats001",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    previews = [event.get("preview") for event in resp.json()["items"]]
+    assert "secret activity preview" not in previews
+    assert "Message recalled" in previews
