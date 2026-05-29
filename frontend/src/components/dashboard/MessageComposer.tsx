@@ -46,6 +46,7 @@ const MESSAGE_MAX_LENGTH = 8000;
 export const MESSAGE_COMPOSER_TEXTAREA_ID_PREFIX = "botcord-conversation-composer";
 export const MESSAGE_COMPOSER_TEXTAREA_NAME = "botcord_conversation_body";
 export const MESSAGE_COMPOSER_TEXTAREA_AUTOCOMPLETE = "off";
+export const MESSAGE_COMPOSER_TEXTAREA_ARIA_AUTOCOMPLETE = "none";
 
 function detectMention(text: string, cursor: number): MentionMatch | null {
   for (let i = cursor - 1; i >= 0; i--) {
@@ -483,6 +484,11 @@ export default function MessageComposer({
           inputMode="text"
           spellCheck={true}
           data-form-type="other"
+          data-lpignore="true"
+          data-1p-ignore="true"
+          data-bwignore="true"
+          data-protonpass-ignore="true"
+          aria-autocomplete={MESSAGE_COMPOSER_TEXTAREA_ARIA_AUTOCOMPLETE}
           className={`flex-1 bg-zinc-900 border rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50 transition-all ${
             hasLengthError
               ? "border-red-500/70 focus:border-red-500/80"

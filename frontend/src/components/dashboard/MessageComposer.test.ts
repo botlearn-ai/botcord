@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import MessageComposer, {
   getClipboardFiles,
   isImeComposing,
+  MESSAGE_COMPOSER_TEXTAREA_ARIA_AUTOCOMPLETE,
   MESSAGE_COMPOSER_TEXTAREA_AUTOCOMPLETE,
   MESSAGE_COMPOSER_TEXTAREA_ID_PREFIX,
   MESSAGE_COMPOSER_TEXTAREA_NAME,
@@ -16,6 +17,7 @@ describe("message composer autofill metadata", () => {
 
     expect(identifiers).not.toMatch(/pass(word)?|passwd|token|secret|credential|auth|login/i);
     expect(MESSAGE_COMPOSER_TEXTAREA_AUTOCOMPLETE).toBe("off");
+    expect(MESSAGE_COMPOSER_TEXTAREA_ARIA_AUTOCOMPLETE).toBe("none");
   });
 
   it("applies autofill suppression metadata to the rendered textarea", () => {
@@ -32,6 +34,11 @@ describe("message composer autofill metadata", () => {
     expect(getAttribute("autoCapitalize")).toBe("sentences");
     expect(getAttribute("autoCorrect")).toBe("on");
     expect(getAttribute("spellCheck")).toBe("true");
+    expect(getAttribute("data-lpignore")).toBe("true");
+    expect(getAttribute("data-1p-ignore")).toBe("true");
+    expect(getAttribute("data-bwignore")).toBe("true");
+    expect(getAttribute("data-protonpass-ignore")).toBe("true");
+    expect(getAttribute("aria-autocomplete")).toBe("none");
   });
 });
 
