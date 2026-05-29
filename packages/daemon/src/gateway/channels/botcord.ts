@@ -309,6 +309,41 @@ function normalizeInboxBatch(
 }
 
 /**
+ * Fire-and-forget authenticated POST for presence/streaming control requests
+ * (`/hub/typing`, `/hub/stream-block`). Mirrors `BotCordClient.hubFetch`'s 401
+ * handling: a stale-but-unexpired token (e.g. after a Hub JWT secret rotation,
+ * which `ensureToken()` won't refresh because it only refreshes near expiry) is
+ * refreshed once and the request retried. Without this, typing/stream-block
+ * silently 401 in a loop until the next actual message send happens to refresh
+ * the token — leaving the conversation with no typing indicator or live stream.
+ */
+async function postControlWithRefresh(
+  client: BotCordChannelClient,
+  hubUrl: string,
+  path: string,
+  body: unknown,
+): Promise<Response> {
+  let token = await client.ensureToken();
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    const resp = await fetch(`${hubUrl}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (resp.status === 401 && attempt === 0) {
+      token = await client.refreshToken();
+      continue;
+    }
+    return resp;
+  }
+  throw new Error("postControlWithRefresh: exhausted retries");
+}
+
+/**
  * Construct a BotCord channel adapter.
  *
  * `start()` connects to Hub WS, drains `/hub/inbox` on every `inbox_update`,
@@ -895,21 +930,12 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       const client = ensureClient();
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       try {
-        const token = await client.ensureToken();
         const block = ctx.block as { raw?: unknown; kind?: string; seq?: number } | undefined;
         const seq = typeof block?.seq === "number" ? block.seq : 0;
-        const resp = await fetch(`${hubUrl}/hub/stream-block`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            trace_id: ctx.traceId,
-            seq,
-            block: normalizeBlockForHub(block, seq),
-          }),
-          signal: AbortSignal.timeout(10_000),
+        const resp = await postControlWithRefresh(client, hubUrl, "/hub/stream-block", {
+          trace_id: ctx.traceId,
+          seq,
+          block: normalizeBlockForHub(block, seq),
         });
         if (!resp.ok && resp.status !== 204) {
           const body = await resp.text().catch(() => "");
@@ -927,15 +953,8 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       const client = ensureClient();
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       try {
-        const token = await client.ensureToken();
-        const resp = await fetch(`${hubUrl}/hub/typing`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ room_id: ctx.conversationId }),
-          signal: AbortSignal.timeout(10_000),
+        const resp = await postControlWithRefresh(client, hubUrl, "/hub/typing", {
+          room_id: ctx.conversationId,
         });
         if (!resp.ok && resp.status !== 204) {
           const body = await resp.text().catch(() => "");
