@@ -759,6 +759,95 @@ async def test_sql_room_preview_nulls_are_filled_from_orm_fallback(
     assert rooms[0]["last_sender_name"] == "Preview Fill Bot"
 
 
+@pytest.mark.asyncio
+async def test_sql_room_preview_human_sender_name_is_filled_from_orm_fallback(
+    seed, db_session: AsyncSession, monkeypatch
+):
+    from app.routers.dashboard import _build_rooms_from_sql
+
+    agent = Agent(
+        agent_id="ag_previewhuman1",
+        display_name="Preview Human Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+    )
+    room = Room(
+        room_id="rm_previewhuman1",
+        name="Preview Human",
+        description="Preview human fallback",
+        owner_id="ag_previewhuman1",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add_all([
+        agent,
+        room,
+        RoomMember(
+            room_id="rm_previewhuman1",
+            agent_id="ag_previewhuman1",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        ),
+        RoomMember(
+            room_id="rm_previewhuman1",
+            agent_id=seed["human_id"],
+            participant_type=ParticipantType.human,
+            role=RoomRole.member,
+        ),
+        MessageRecord(
+            hub_msg_id="hm_previewhuman1",
+            msg_id="msg_previewhuman1",
+            sender_id=seed["human_id"],
+            receiver_id="ag_previewhuman1",
+            room_id="rm_previewhuman1",
+            envelope_json=json.dumps({
+                "from": seed["human_id"],
+                "type": "message",
+                "payload": {"text": "human fallback text"},
+            }),
+            state=MessageState.delivered,
+            ttl_sec=3600,
+            source_type="dashboard_human_room",
+            source_user_id=str(seed["user_id"]),
+        ),
+    ])
+    await db_session.commit()
+
+    real_execute = db_session.execute
+
+    class _MappingsResult:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [{
+                "room_id": "rm_previewhuman1",
+                "room_name": "Preview Human",
+                "room_description": "Preview human fallback",
+                "owner_id": "ag_previewhuman1",
+                "visibility": "private",
+                "member_count": 2,
+                "my_role": "owner",
+                "last_message_preview": "stale sql preview",
+                "last_message_at": None,
+                "last_sender_name": "stale sql sender",
+            }]
+
+    async def execute_with_stale_sql_preview(statement, *args, **kwargs):
+        if isinstance(statement, TextClause) and "get_agent_room_previews" in str(statement):
+            return _MappingsResult()
+        return await real_execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db_session, "execute", execute_with_stale_sql_preview)
+
+    rooms = await _build_rooms_from_sql("ag_previewhuman1", db_session)
+    assert rooms[0]["room_id"] == "rm_previewhuman1"
+    assert rooms[0]["last_message_preview"] == "human fallback text"
+    assert rooms[0]["last_message_at"] is not None
+    assert rooms[0]["last_sender_name"] == "Alice"
+
+
 # ---------------------------------------------------------------------------
 # Contact request → Agent (claimed)
 # ---------------------------------------------------------------------------

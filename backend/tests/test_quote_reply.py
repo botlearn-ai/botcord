@@ -8,6 +8,7 @@ Covers:
 """
 
 import base64
+import datetime
 import hashlib
 import json
 import time
@@ -407,3 +408,47 @@ async def test_history_deleted_target_renders_tombstone(
     assert rp["deleted"] is True
     assert rp["text_preview"] is None
     assert rp["sender_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_history_recalled_message_is_omitted_and_reply_preview_tombstoned(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    sk_a, a_id, a_key, a_tok = await _create_agent(client, "alice")
+    sk_b, b_id, b_key, b_tok = await _create_agent(client, "bob")
+    room_id = await _create_room(client, a_tok, [b_id])
+
+    _, orig_msg_id = await _send_room(
+        client, sk_a, a_key, a_id, room_id, a_tok, text="secret original text"
+    )
+    _, reply_msg_id = await _send_room(
+        client, sk_b, b_key, b_id, room_id, b_tok, reply_to=orig_msg_id, text="reply",
+    )
+
+    recalled_rows = (
+        await db_session.execute(
+            select(MessageRecord).where(MessageRecord.msg_id == orig_msg_id)
+        )
+    ).scalars().all()
+    assert recalled_rows
+    recalled_at = datetime.datetime.now(datetime.timezone.utc)
+    for row in recalled_rows:
+        row.recalled_at = recalled_at
+    await db_session.commit()
+
+    resp = await client.get(
+        f"/hub/history?room_id={room_id}", headers=_auth(a_tok),
+    )
+    assert resp.status_code == 200, resp.text
+    msgs = resp.json()["messages"]
+    assert all(m["envelope"]["msg_id"] != orig_msg_id for m in msgs)
+    assert "secret original text" not in json.dumps(msgs)
+
+    reply_rows = [m for m in msgs if m["envelope"]["msg_id"] == reply_msg_id]
+    assert reply_rows
+    rp = reply_rows[0]["reply_preview"]
+    assert rp is not None
+    assert rp["msg_id"] == orig_msg_id
+    assert rp["deleted"] is True
+    assert rp["text_preview"] is None

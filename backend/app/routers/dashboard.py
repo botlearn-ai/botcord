@@ -26,6 +26,7 @@ from app.auth_room import (
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
 from hub.dashboard_message_shaping import (
+    HUMAN_SOURCE_TYPES,
     derive_sender_fields,
     load_agent_display_names,
     load_agent_profiles,
@@ -535,14 +536,19 @@ async def _build_rooms_from_membership(
                 if mt not in _RECEIPT_TYPES:
                     last_messages[rid] = rec
 
-    sender_ids = {rec.sender_id for rec in last_messages.values()}
-    sender_names: dict[str, str] = {}
-    if sender_ids:
-        agent_result = await db.execute(
-            select(Agent.agent_id, Agent.display_name)
-            .where(Agent.agent_id.in_(sender_ids))
-        )
-        sender_names = dict(agent_result.all())
+    agent_sender_ids: set[str] = set()
+    user_sender_ids: set[str] = set()
+    for rec in last_messages.values():
+        source_type = rec.source_type or ""
+        if source_type in HUMAN_SOURCE_TYPES or (rec.sender_id or "").startswith("hu_"):
+            if rec.source_user_id:
+                user_sender_ids.add(rec.source_user_id)
+            if (rec.sender_id or "").startswith("hu_"):
+                user_sender_ids.add(rec.sender_id)
+        elif rec.sender_id:
+            agent_sender_ids.add(rec.sender_id)
+    sender_names = await load_agent_display_names(db, agent_sender_ids)
+    user_sender_names = await load_user_display_names(db, user_sender_ids)
 
     unread_counts = await _build_room_unread_counts(agent_id, db, room_ids)
 
@@ -561,7 +567,13 @@ async def _build_rooms_from_membership(
             last_at = last_rec.created_at
             if last_at is not None and last_at.tzinfo is None:
                 last_at = last_at.replace(tzinfo=datetime.timezone.utc)
-            last_sender = sender_names.get(sid)
+            if (last_rec.source_type or "") in HUMAN_SOURCE_TYPES or (last_rec.sender_id or "").startswith("hu_"):
+                last_sender = (
+                    user_sender_names.get(last_rec.source_user_id)
+                    if last_rec.source_user_id else None
+                ) or user_sender_names.get(sid) or "User"
+            else:
+                last_sender = sender_names.get(sid)
 
         role_val = memberships.get(rid)
         my_role = role_val.value if hasattr(role_val, "value") else str(role_val) if role_val else "member"

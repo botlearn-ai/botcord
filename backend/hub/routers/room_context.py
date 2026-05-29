@@ -105,7 +105,11 @@ def _dedup_subquery(room_ids: str | list[str]):
         where = MessageRecord.room_id.in_(room_ids)
     return (
         select(func.min(MessageRecord.id).label("min_id"))
-        .where(where, MessageRecord.state != MessageState.failed)
+        .where(
+            where,
+            MessageRecord.state != MessageState.failed,
+            MessageRecord.recalled_at.is_(None),
+        )
         .group_by(MessageRecord.msg_id)
         .subquery()
     )
@@ -323,6 +327,7 @@ async def rooms_overview(
         .where(
             MessageRecord.room_id.in_(my_room_ids),
             MessageRecord.state != MessageState.failed,
+            MessageRecord.recalled_at.is_(None),
             MessageRecord.created_at >= cutoff_24h,
         )
         .group_by(MessageRecord.room_id, MessageRecord.msg_id)
@@ -352,6 +357,7 @@ async def rooms_overview(
         .where(
             MessageRecord.room_id.in_(my_room_ids),
             MessageRecord.state != MessageState.failed,
+            MessageRecord.recalled_at.is_(None),
         )
         .group_by(MessageRecord.room_id, MessageRecord.msg_id)
         .subquery()
@@ -478,6 +484,7 @@ async def room_summary(
         .where(
             MessageRecord.room_id == room_id,
             MessageRecord.state != MessageState.failed,
+            MessageRecord.recalled_at.is_(None),
             MessageRecord.created_at >= cutoff_24h,
         )
         .group_by(MessageRecord.msg_id)
@@ -492,6 +499,7 @@ async def room_summary(
         .where(
             MessageRecord.room_id == room_id,
             MessageRecord.state != MessageState.failed,
+            MessageRecord.recalled_at.is_(None),
             MessageRecord.created_at >= cutoff_24h,
         )
         .group_by(MessageRecord.sender_id)

@@ -97,6 +97,46 @@ def _extract_text_from_envelope(envelope_data: dict) -> tuple[str, str, dict]:
                 text = str(text)
     return sender_id, text, payload
 
+
+_RECALLED_MESSAGE_PREVIEW = "Message recalled"
+
+
+def _recalled_message_fields(rec: MessageRecord) -> dict:
+    return {
+        "is_recalled": rec.recalled_at is not None,
+        "recalled_at": rec.recalled_at,
+        "recalled_by_id": rec.recalled_by_id,
+    }
+
+
+def _display_content_for_record(
+    rec: MessageRecord,
+    text: str,
+    payload: dict,
+    msg_type: str,
+) -> tuple[str, dict, str]:
+    if rec.recalled_at is None:
+        return text, payload, msg_type
+    return (
+        "",
+        {
+            "recalled": True,
+            "recalled_at": rec.recalled_at.isoformat() if rec.recalled_at else None,
+            "recalled_by_id": rec.recalled_by_id,
+        },
+        msg_type or "message",
+    )
+
+
+def _preview_for_record(rec: MessageRecord) -> tuple[str, str | None, str]:
+    envelope_data = json.loads(rec.envelope_json)
+    sender_id, text, _ = _extract_text_from_envelope(envelope_data)
+    msg_type = envelope_data.get("type", "message")
+    if rec.recalled_at is not None:
+        return sender_id or rec.sender_id, _RECALLED_MESSAGE_PREVIEW, msg_type
+    return sender_id, text[:200] if text else None, msg_type
+
+
 async def _build_dashboard_rooms(
     room_ids: list[str],
     current_agent: str,
@@ -226,9 +266,7 @@ async def _build_dashboard_rooms(
         last_at = None
         last_sender: str | None = None
         if last_rec:
-            envelope_data = json.loads(last_rec.envelope_json)
-            sid, text, _ = _extract_text_from_envelope(envelope_data)
-            last_preview = text[:200] if text else None
+            sid, last_preview, _ = _preview_for_record(last_rec)
             last_at = last_rec.created_at
             if last_at is not None and last_at.tzinfo is None:
                 last_at = last_at.replace(tzinfo=datetime.timezone.utc)
@@ -490,6 +528,9 @@ async def get_room_messages(
         envelope_data = json.loads(rec.envelope_json)
         sid, text, payload = _extract_text_from_envelope(envelope_data)
         msg_type = envelope_data.get("type", "message")
+        display_text, display_payload, display_type = _display_content_for_record(
+            rec, text, payload, msg_type
+        )
 
         ca = rec.created_at
         if ca is not None and ca.tzinfo is None:
@@ -512,9 +553,9 @@ async def get_room_messages(
                 msg_id=rec.msg_id,
                 sender_id=sid,
                 sender_name=sender_names.get(sid, sid),
-                type=msg_type,
-                text=text,
-                payload=payload,
+                type=display_type,
+                text=display_text,
+                payload=display_payload,
                 room_id=rec.room_id,
                 topic=rec.topic,
                 topic_id=rec.topic_id,
@@ -523,6 +564,7 @@ async def get_room_messages(
                 state_counts=counts,
                 created_at=ca,
                 source_type=rec.source_type,
+                **_recalled_message_fields(rec),
                 **extra,
             )
         )
@@ -737,6 +779,9 @@ async def create_share(
         envelope_data = json.loads(rec.envelope_json)
         sid, text, payload = _extract_text_from_envelope(envelope_data)
         msg_type = envelope_data.get("type", "message")
+        display_text, display_payload, display_type = _display_content_for_record(
+            rec, text, payload, msg_type
+        )
 
         ca = rec.created_at
         if ca is not None and ca.tzinfo is None:
@@ -748,9 +793,9 @@ async def create_share(
             msg_id=rec.msg_id,
             sender_id=sid,
             sender_name=sender_names.get(sid, sid),
-            type=msg_type,
-            text=text,
-            payload_json=json.dumps(payload),
+            type=display_type,
+            text=display_text,
+            payload_json=json.dumps(display_payload),
             created_at=ca,
         ))
 

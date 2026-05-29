@@ -1,6 +1,7 @@
 """Tests for room context endpoints (summary, messages, search, overview, global search)."""
 
 import base64
+import datetime
 import hashlib
 import time
 import uuid
@@ -15,7 +16,7 @@ from unittest.mock import AsyncMock
 
 from sqlalchemy import select
 
-from hub.models import Base
+from hub.models import Base, MessageRecord
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -289,6 +290,61 @@ async def test_room_messages_with_messages(client: AsyncClient, db_session: Asyn
     assert len(data["messages"]) == 3
     # Newest first
     assert "message 2" in data["messages"][0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_room_context_filters_recalled_records(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    """Agent-facing context endpoints should not return recalled message text."""
+    sk, agent_id, key_id, token = await _create_agent(client, "owner", db_session)
+    room = await _create_room(client, token, "Recall Context Room")
+    room_id = room["room_id"]
+
+    visible_resp = await _send_msg_with_token(
+        client, sk, key_id, agent_id, room_id, token, text="visible context"
+    )
+    assert visible_resp.status_code == 202
+    secret_resp = await _send_msg_with_token(
+        client, sk, key_id, agent_id, room_id, token, text="secret recalled context"
+    )
+    assert secret_resp.status_code == 202
+
+    secret_rows = (
+        await db_session.execute(
+            select(MessageRecord).where(MessageRecord.hub_msg_id == secret_resp.json()["hub_msg_id"])
+        )
+    ).scalars().all()
+    assert secret_rows
+    recalled_at = datetime.datetime.now(datetime.timezone.utc)
+    for row in secret_rows:
+        row.recalled_at = recalled_at
+    await db_session.commit()
+
+    messages_resp = await client.get(f"/hub/rooms/{room_id}/messages", headers=_auth_header(token))
+    assert messages_resp.status_code == 200, messages_resp.text
+    messages_payload = messages_resp.json()
+    assert [message["text"] for message in messages_payload["messages"]] == ["visible context"]
+
+    search_resp = await client.get(
+        f"/hub/rooms/{room_id}/search?q=secret",
+        headers=_auth_header(token),
+    )
+    assert search_resp.status_code == 200, search_resp.text
+    assert search_resp.json()["results"] == []
+
+    summary_resp = await client.get(f"/hub/rooms/{room_id}/summary", headers=_auth_header(token))
+    assert summary_resp.status_code == 200, summary_resp.text
+    summary = summary_resp.json()
+    assert summary["stats"]["total_messages"] == 1
+    assert [message["text"] for message in summary["recent_messages"]] == ["visible context"]
+
+    overview_resp = await client.get("/hub/rooms/overview", headers=_auth_header(token))
+    assert overview_resp.status_code == 200, overview_resp.text
+    overview_room = overview_resp.json()["rooms"][0]
+    assert overview_room["message_count_24h"] == 1
+    assert overview_room["latest_message_preview"] == "visible context"
 
 
 @pytest.mark.asyncio
