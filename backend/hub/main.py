@@ -127,6 +127,7 @@ async def lifespan(app: FastAPI):
     presence_task = None
     agent_schedule_task = None
     cloud_agent_idle_task = None
+    owner_chat_fanout_task = None
     if not test_db_override:
         # Background message expiry loop
         expiry_task = asyncio.create_task(message_expiry_loop())
@@ -140,11 +141,19 @@ async def lifespan(app: FastAPI):
         agent_schedule_task = asyncio.create_task(agent_schedule_loop())
         # Background Cloud Agent idle sandbox pause loop
         cloud_agent_idle_task = asyncio.create_task(cloud_agent_idle_pause_loop())
+        # Owner-chat Redis fanout subscriber (multi-instance WS delivery).
+        # No-op start when Redis is disabled.
+        from hub import owner_chat_cache
+        if owner_chat_cache.redis_enabled():
+            owner_chat_fanout_task = asyncio.create_task(
+                owner_chat_cache.owner_chat_fanout_loop()
+            )
 
     yield
 
     # Shutdown
     for task in (
+        owner_chat_fanout_task,
         cloud_agent_idle_task,
         agent_schedule_task,
         presence_task,

@@ -19,6 +19,7 @@ import type {
   ReplyPreview,
   StreamBlockEntry,
   DashboardMessage,
+  RunStreamBlocksResponse,
 } from "@/lib/types";
 import { dashboardMsgToOwnerChat } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -159,6 +160,12 @@ export interface OwnerChatState {
 
   // Streaming
   appendStreamBlock: (entry: StreamBlockEntry) => void;
+  /** Restore cached in-flight stream blocks (refresh/reconnect recovery).
+   *  Replays each event through the live append/dedupe path. */
+  restoreStreamBlocks: (run: RunStreamBlocksResponse) => void;
+  /** Fetch + restore active runs for the current room (no final reply yet).
+   *  `agentId` is the owner-chat agent (needed for the X-Active-Agent header). */
+  restoreActiveRuns: (agentId: string) => Promise<void>;
   finalizeStream: (traceId: string, finalData: {
     hubMsgId: string;
     text: string;
@@ -514,6 +521,74 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       };
     });
     syncOwnerChatRoomSummary(get().roomId, get().messages);
+  },
+
+  restoreStreamBlocks: (run) => {
+    // Only running runs have replayable in-flight state. A completed/failed or
+    // expired run (status !== "running" or empty events) means "nothing to
+    // restore" — degrade gracefully and wait for live WS / final message.
+    if (run.status !== "running") return;
+    if (!run.events || run.events.length === 0) return;
+
+    const append = get().appendStreamBlock;
+    for (const ev of run.events) {
+      // Live WS blocks always carry a numeric seq; skip malformed cache rows.
+      if (typeof ev.seq !== "number") continue;
+      // Replay through the live path so placeholder creation, ordering, and
+      // (trace_id, seq) dedupe all match the WS stream_block handler exactly.
+      append({
+        trace_id: run.trace_id,
+        seq: ev.seq,
+        block: ev.block,
+        created_at: ev.created_at ?? new Date().toISOString(),
+      });
+    }
+  },
+
+  restoreActiveRuns: async (agentId) => {
+    if (!agentId) return;
+    const { messages } = get();
+
+    // Trace ids already covered by a streaming placeholder or a finalized
+    // agent reply — never re-restore those.
+    const coveredTraceIds = new Set<string>();
+    for (const m of messages) {
+      if (m.sender === "agent" && m.traceId) coveredTraceIds.add(m.traceId);
+      if (m.status === "streaming" && m.traceId) coveredTraceIds.add(m.traceId);
+    }
+
+    // Candidate in-flight traces: confirmed/delivered user messages whose
+    // hub_msg_id (== trace_id) has no agent reply or streaming placeholder yet.
+    const candidates = messages
+      .filter(
+        (m) =>
+          m.sender === "user" &&
+          m.hubMsgId &&
+          (m.status === "confirmed" || m.status === "delivered") &&
+          !coveredTraceIds.has(m.hubMsgId),
+      )
+      .map((m) => m.hubMsgId!);
+
+    if (candidates.length === 0) return;
+
+    await Promise.all(
+      candidates.map(async (traceId) => {
+        try {
+          const run = await api.getRunStreamBlocks(traceId, agentId);
+          // Discard stale result if the trace got covered while we were fetching.
+          const covered = get().messages.some(
+            (m) =>
+              (m.sender === "agent" && m.traceId === traceId) ||
+              (m.status === "streaming" && m.traceId === traceId),
+          );
+          if (covered) return;
+          get().restoreStreamBlocks(run);
+        } catch (err) {
+          // Network error / missing run — degrade gracefully, never throw.
+          console.error("[OwnerChatStore] Failed to restore run:", traceId, err);
+        }
+      }),
+    );
   },
 
   finalizeStream: (traceId, finalData) => {

@@ -208,6 +208,27 @@ STRIPE_TOPUP_PACKAGES: list[dict] = _parse_stripe_packages()
 # Message expiry settings (replaces retry loop)
 MESSAGE_EXPIRY_POLL_INTERVAL_SECONDS: float = float(os.getenv("MESSAGE_EXPIRY_POLL_INTERVAL_SECONDS", "30"))
 
+# ---------------------------------------------------------------------------
+# Owner-chat in-flight stream cache (Redis)
+#   See docs/owner-chat-stream-cache-prd.md
+#
+# When BOTCORD_REDIS_URL is unset/empty, Redis is DISABLED and all owner-chat
+# cache + fanout operations become graceful no-ops. Live WebSocket streaming
+# does not depend on Redis. TLS is enabled automatically via the rediss://
+# scheme in the URL.
+# ---------------------------------------------------------------------------
+BOTCORD_REDIS_URL: str | None = os.getenv("BOTCORD_REDIS_URL", "").strip() or None
+OWNER_CHAT_RUN_TTL_SECONDS: int = int(os.getenv("OWNER_CHAT_RUN_TTL_SECONDS", "3600"))
+OWNER_CHAT_RUN_COMPLETED_TTL_SECONDS: int = int(
+    os.getenv("OWNER_CHAT_RUN_COMPLETED_TTL_SECONDS", "300")
+)
+OWNER_CHAT_RUN_FAILED_TTL_SECONDS: int = int(
+    os.getenv("OWNER_CHAT_RUN_FAILED_TTL_SECONDS", "600")
+)
+OWNER_CHAT_MAX_CACHED_EVENTS: int = int(os.getenv("OWNER_CHAT_MAX_CACHED_EVENTS", "200"))
+OWNER_CHAT_MAX_EVENT_BYTES: int = int(os.getenv("OWNER_CHAT_MAX_EVENT_BYTES", "8192"))
+OWNER_CHAT_FANOUT_CHANNEL: str = os.getenv("OWNER_CHAT_FANOUT_CHANNEL", "owner_chat_events")
+
 # Secret used to HMAC-sign bind tickets for cryptographic agent binding.
 # Falls back to JWT_SECRET if not explicitly set.
 BIND_PROOF_SECRET: str | None = os.getenv("BIND_PROOF_SECRET") or os.getenv("BOTCORD_BIND_PROOF_SECRET")

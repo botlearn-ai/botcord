@@ -228,6 +228,27 @@ export interface StreamBlockEntry {
   created_at: string;
 }
 
+/** One cached in-flight stream event, as returned by the run restore endpoint.
+ *  Mirrors a live WS `stream_block` so the same store handler can ingest it.
+ *  Fields are nullable to match the Hub's lenient cache shape. */
+export interface RunStreamBlockEvent {
+  seq: number | null;
+  kind: string | null;
+  created_at: string | null;
+  block: StreamBlockEntry["block"];
+}
+
+/** Response of GET /dashboard/chat/runs/{trace_id}/stream-blocks.
+ *  Used to restore streaming placeholders after refresh/reconnect. Expired or
+ *  unauthorized runs come back as status="completed" with empty events. */
+export interface RunStreamBlocksResponse {
+  trace_id: string;
+  status: "running" | "completed" | "failed";
+  room_id: string | null;
+  agent_id: string | null;
+  events: RunStreamBlockEvent[];
+}
+
 // --- Owner-chat unified message model ---
 
 export type OwnerChatMessageStatus =

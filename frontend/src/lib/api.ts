@@ -49,6 +49,7 @@ import type {
   SubscriptionProduct,
   UserChatRoom,
   UserChatSendResponse,
+  RunStreamBlocksResponse,
   RoomHumanSendResponse,
   CreateJoinRequestResponse,
   JoinRequestListResponse,
@@ -853,6 +854,23 @@ export const api = {
       "/api/dashboard/chat/room",
       agentId ? { agent_id: agentId } : undefined,
     );
+  },
+
+  /** Restore cached in-flight stream blocks for an owner-chat run.
+   *  `traceId` is the hub_msg_id of the triggering user message.
+   *  The Hub route (`/dashboard/chat/runs/{trace_id}/stream-blocks`) resolves the
+   *  owner via the Supabase JWT and the `X-Active-Agent` header, so the
+   *  owner-chat agent must be supplied explicitly. */
+  async getRunStreamBlocks(traceId: string, agentId: string): Promise<RunStreamBlocksResponse> {
+    const res = await apiFetch(
+      `/dashboard/chat/runs/${encodeURIComponent(traceId)}/stream-blocks`,
+      { method: "GET", headers: { "X-Active-Agent": agentId }, cache: "no-store" },
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, extractErrorMessage(body, res.statusText));
+    }
+    return res.json();
   },
 
   sendUserChatMessage(

@@ -1,13 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DashboardMessage, HumanAgentRoomSummary, OwnerChatMessage } from "@/lib/types";
+import type {
+  DashboardMessage,
+  HumanAgentRoomSummary,
+  OwnerChatMessage,
+  RunStreamBlocksResponse,
+} from "@/lib/types";
 
 const mocks = vi.hoisted(() => ({
   getRoomMessages: vi.fn(),
+  getRunStreamBlocks: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   api: {
     getRoomMessages: mocks.getRoomMessages,
+    getRunStreamBlocks: mocks.getRunStreamBlocks,
   },
   humansApi: {
     listAgentRooms: vi.fn(),
@@ -269,5 +276,159 @@ describe("useOwnerChatStore stream terminal handling", () => {
       text: "streamed answer",
       status: "delivered",
     });
+  });
+});
+
+describe("useOwnerChatStore stream-cache restore", () => {
+  beforeEach(() => {
+    mocks.getRoomMessages.mockReset();
+    mocks.getRunStreamBlocks.mockReset();
+    useOwnerChatStore.getState().reset();
+    useDashboardChatStore.setState({
+      ownedAgentRooms: [makeOwnedAgentRoom()],
+      optimisticOwnerChatRooms: {},
+    });
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+  });
+
+  function runningRun(overrides: Partial<RunStreamBlocksResponse> = {}): RunStreamBlocksResponse {
+    return {
+      trace_id: "msg_trace",
+      status: "running",
+      room_id: "rm_oc_real",
+      agent_id: "ag_bot",
+      events: [
+        {
+          seq: 1,
+          kind: "tool_call",
+          created_at: "2026-05-19T09:00:00.000Z",
+          block: { kind: "tool_call", payload: { name: "web_search" } },
+        },
+        {
+          seq: 2,
+          kind: "assistant",
+          created_at: "2026-05-19T09:00:01.000Z",
+          block: { kind: "assistant", payload: { text: "partial" } },
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it("restoreStreamBlocks recreates a streaming placeholder from cached events", () => {
+    useOwnerChatStore.getState().restoreStreamBlocks(runningRun());
+
+    const msgs = useOwnerChatStore.getState().messages;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({
+      traceId: "msg_trace",
+      status: "streaming",
+      hubMsgId: null,
+      text: "partial",
+    });
+    expect(msgs[0].streamBlocks.map((b) => b.seq)).toEqual([1, 2]);
+    expect(useOwnerChatStore.getState().activeTraceId).toBe("msg_trace");
+  });
+
+  it("dedupes by (trace_id, seq) when a live block re-arrives after restore", () => {
+    useOwnerChatStore.getState().restoreStreamBlocks(runningRun());
+
+    // Live WS re-delivers seq 2 (duplicate) and adds a new seq 3.
+    useOwnerChatStore.getState().appendStreamBlock({
+      trace_id: "msg_trace",
+      seq: 2,
+      created_at: "2026-05-19T09:00:01.000Z",
+      block: { kind: "assistant", payload: { text: "partial" } },
+    });
+    useOwnerChatStore.getState().appendStreamBlock({
+      trace_id: "msg_trace",
+      seq: 3,
+      created_at: "2026-05-19T09:00:02.000Z",
+      block: { kind: "tool_call", payload: { name: "read_file" } },
+    });
+
+    const msgs = useOwnerChatStore.getState().messages;
+    expect(msgs).toHaveLength(1);
+    // seq 2 not duplicated; seq 3 appended.
+    expect(msgs[0].streamBlocks.map((b) => b.seq)).toEqual([1, 2, 3]);
+  });
+
+  it("does nothing for a completed/empty run (graceful degrade)", () => {
+    useOwnerChatStore
+      .getState()
+      .restoreStreamBlocks(runningRun({ status: "completed", events: [] }));
+
+    expect(useOwnerChatStore.getState().messages).toHaveLength(0);
+    expect(useOwnerChatStore.getState().activeTraceId).toBeNull();
+  });
+
+  it("restoreActiveRuns fetches + restores only uncovered user-message traces", async () => {
+    // A confirmed user message whose reply is still in flight.
+    useOwnerChatStore.getState().upsertMessage(
+      makeOwnerChatMessage({
+        clientId: "u1",
+        hubMsgId: "msg_trace",
+        sender: "user",
+        status: "confirmed",
+        text: "do a thing",
+      }),
+    );
+    mocks.getRunStreamBlocks.mockResolvedValue(runningRun());
+
+    await useOwnerChatStore.getState().restoreActiveRuns("ag_bot");
+
+    expect(mocks.getRunStreamBlocks).toHaveBeenCalledTimes(1);
+    expect(mocks.getRunStreamBlocks).toHaveBeenCalledWith("msg_trace", "ag_bot");
+    const streaming = useOwnerChatStore
+      .getState()
+      .messages.find((m) => m.traceId === "msg_trace" && m.status === "streaming");
+    expect(streaming).toBeTruthy();
+  });
+
+  it("restoreActiveRuns skips user messages that already have an agent reply", async () => {
+    useOwnerChatStore.getState().upsertMessage(
+      makeOwnerChatMessage({
+        clientId: "u1",
+        hubMsgId: "msg_trace",
+        sender: "user",
+        status: "confirmed",
+        text: "do a thing",
+      }),
+    );
+    // Agent final reply already linked to that trace.
+    useOwnerChatStore.getState().upsertMessage(
+      makeOwnerChatMessage({
+        clientId: "a1",
+        hubMsgId: "msg_final",
+        sender: "agent",
+        status: "delivered",
+        text: "done",
+        senderName: "Owned bot",
+        traceId: "msg_trace",
+      }),
+    );
+
+    await useOwnerChatStore.getState().restoreActiveRuns("ag_bot");
+
+    expect(mocks.getRunStreamBlocks).not.toHaveBeenCalled();
+  });
+
+  it("restoreActiveRuns degrades gracefully when the fetch fails", async () => {
+    useOwnerChatStore.getState().upsertMessage(
+      makeOwnerChatMessage({
+        clientId: "u1",
+        hubMsgId: "msg_trace",
+        sender: "user",
+        status: "confirmed",
+        text: "do a thing",
+      }),
+    );
+    mocks.getRunStreamBlocks.mockRejectedValue(new Error("network"));
+
+    await expect(useOwnerChatStore.getState().restoreActiveRuns("ag_bot")).resolves.toBeUndefined();
+    // No streaming placeholder created.
+    expect(
+      useOwnerChatStore.getState().messages.some((m) => m.status === "streaming"),
+    ).toBe(false);
   });
 });

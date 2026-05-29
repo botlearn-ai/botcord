@@ -11,3 +11,4 @@ python-multipart>=0.0.9,<1
 cachetools>=7.0.5
 httpx>=0.27
 stripe>=8.0,<10
+redis>=5

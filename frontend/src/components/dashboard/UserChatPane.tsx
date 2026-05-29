@@ -155,6 +155,9 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
         }
         initialLoadRef.current = false;
         scrollToBottomAfterLayout();
+        // Restore in-flight stream blocks for any user message still awaiting a
+        // final reply (refresh/reconnect recovery). Best-effort; never throws.
+        void useOwnerChatStore.getState().restoreActiveRuns(chatAgentId);
       } catch (err: any) {
         if (cancelled) return;
         setInitError(err?.message || "Failed to initialize chat");
