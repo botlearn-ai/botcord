@@ -12,7 +12,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from hub.models import Base, CloudAgentInstance, Role, User, UserRole
+from app.auth import (
+    MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE,
+    MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION,
+)
+from hub.auth import create_agent_token
+from hub.models import Agent, AgentManagementGrant, Base, CloudAgentInstance, Role, User, UserRole
 from hub.services.cloud_agent import CloudAgentService, CreateCloudAgentInput
 from hub.services.cloud_daemon_provider import FakeCloudDaemonProvider
 from tests.test_app.conftest import create_test_engine
@@ -73,6 +78,27 @@ async def seed_user(db_session: AsyncSession):
         "supabase_uid": str(supabase_uuid),
         "token": _make_supabase_token(str(supabase_uuid)),
     }
+
+
+@pytest_asyncio.fixture
+async def seed_manager_agent(db_session: AsyncSession, seed_user: dict):
+    agent_id = "ag_manager0001"
+    token, expires_at = create_agent_token(agent_id)
+    db_session.add(
+        Agent(
+            agent_id=agent_id,
+            display_name="Manager Agent",
+            user_id=seed_user["user_id"],
+            agent_token=token,
+            token_expires_at=datetime.datetime.fromtimestamp(
+                expires_at, tz=datetime.timezone.utc
+            ),
+            claimed_at=datetime.datetime.now(datetime.timezone.utc),
+            status="active",
+        )
+    )
+    await db_session.commit()
+    return {"agent_id": agent_id, "token": token}
 
 
 @pytest_asyncio.fixture
@@ -164,6 +190,171 @@ async def test_create_requires_auth(client_factory):
     client, _ = await client_factory()
     r = await client.post("/api/cloud-agents", json={"name": "Bot"})
     assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_create_with_agent_token_requires_management_grant(
+    client_factory,
+    seed_manager_agent,
+):
+    client, _ = await client_factory()
+    r = await client.post(
+        "/api/cloud-agents",
+        json={"name": "Bot"},
+        headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+    )
+    assert r.status_code == 403
+    body = r.json()
+    assert body["detail"]["code"] == "management_permission_required"
+    assert body["detail"]["required_scopes"] == [MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE]
+    assert "/cli-permissions" in body["detail"]["authorize_url"]
+
+
+@pytest.mark.asyncio
+async def test_create_accepts_agent_token_with_management_grant(
+    client_factory,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    db_session.add(
+        AgentManagementGrant(
+            user_id=seed_user["user_id"],
+            agent_id=seed_manager_agent["agent_id"],
+            scope=MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE,
+            expires_at=datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(days=1),
+        )
+    )
+    await db_session.commit()
+    client, _ = await client_factory()
+
+    r = await client.post(
+        "/api/cloud-agents",
+        json={"name": "Agent-Created Bot", "runtime": "deepseek-tui"},
+        headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["name"] == "Agent-Created Bot"
+    assert body["hosting_kind"] == "cloud"
+
+
+@pytest.mark.asyncio
+async def test_user_can_create_list_and_revoke_management_grant(
+    client_factory,
+    seed_user,
+    seed_manager_agent,
+):
+    client, _ = await client_factory()
+    headers = {"Authorization": f"Bearer {seed_user['token']}"}
+
+    r = await client.post(
+        "/api/agent-management/grants",
+        json={
+            "agent_id": seed_manager_agent["agent_id"],
+            "scopes": [MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE],
+            "expires_in_days": 7,
+        },
+        headers=headers,
+    )
+    assert r.status_code == 201, r.text
+    grant = r.json()["grants"][0]
+    assert grant["agent_id"] == seed_manager_agent["agent_id"]
+    assert grant["scope"] == MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE
+    assert grant["revoked_at"] is None
+
+    r = await client.get(
+        f"/api/agent-management/grants?agent_id={seed_manager_agent['agent_id']}",
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert [item["id"] for item in r.json()["grants"]] == [grant["id"]]
+
+    r = await client.delete(f"/api/agent-management/grants/{grant['id']}", headers=headers)
+    assert r.status_code == 200
+    assert r.json()["revoked_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_reapproving_management_grant_resets_use_count(
+    client_factory,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    client, _ = await client_factory()
+    user_headers = {"Authorization": f"Bearer {seed_user['token']}"}
+    agent_headers = {"Authorization": f"Bearer {seed_manager_agent['token']}"}
+    grant_body = {
+        "agent_id": seed_manager_agent["agent_id"],
+        "scopes": [MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE],
+        "expires_in_days": 7,
+        "limits": {"max_uses": 1},
+    }
+
+    r = await client.post(
+        "/api/agent-management/grants",
+        json=grant_body,
+        headers=user_headers,
+    )
+    assert r.status_code == 201, r.text
+    grant_id = r.json()["grants"][0]["id"]
+
+    r = await client.post(
+        "/api/cloud-agents",
+        json={"name": "First Bot"},
+        headers=agent_headers,
+    )
+    assert r.status_code == 201, r.text
+
+    grant = await db_session.get(AgentManagementGrant, uuid.UUID(grant_id))
+    assert grant is not None
+    assert grant.use_count == 1
+
+    r = await client.post(
+        "/api/cloud-agents",
+        json={"name": "Blocked Bot"},
+        headers=agent_headers,
+    )
+    assert r.status_code == 403
+    assert r.json()["detail"]["code"] == "management_permission_required"
+
+    r = await client.post(
+        "/api/agent-management/grants",
+        json=grant_body,
+        headers=user_headers,
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["grants"][0]["use_count"] == 0
+    await db_session.refresh(grant)
+    assert grant.use_count == 0
+
+    r = await client.post(
+        "/api/cloud-agents",
+        json={"name": "Second Bot"},
+        headers=agent_headers,
+    )
+    assert r.status_code == 201, r.text
+
+
+@pytest.mark.asyncio
+async def test_daemon_provision_grant_requires_daemon_scope(
+    client_factory,
+    seed_user,
+    seed_manager_agent,
+):
+    client, _ = await client_factory()
+    r = await client.post(
+        "/api/agent-management/grants",
+        json={
+            "agent_id": seed_manager_agent["agent_id"],
+            "scopes": [MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION],
+        },
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "daemon_agents:provision requires daemon_instance_id"
 
 
 @pytest.mark.asyncio

@@ -23,7 +23,14 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import RequestContext, require_user
+from app.auth import (
+    MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION,
+    RequestContext,
+    record_agent_management_scope_use,
+    require_agent_management_scopes,
+    require_user,
+    require_user_or_agent_owner,
+)
 from hub import config as hub_config
 from hub.auth import create_agent_token, verify_agent_token
 from hub.agent_avatars import normalize_agent_avatar_url, random_agent_avatar_url
@@ -1861,7 +1868,7 @@ def _mark_daemon_runtime_snapshot_bound(
 )
 async def provision_agent(
     body: ProvisionAgentBody,
-    ctx: RequestContext = Depends(require_user),
+    ctx: RequestContext = Depends(require_user_or_agent_owner),
     db: AsyncSession = Depends(get_db),
 ) -> ProvisionAgentResponse:
     """Create a new agent on one of the user's daemons.
@@ -1880,6 +1887,13 @@ async def provision_agent(
         raise HTTPException(status_code=400, detail="runtime is required")
     runtime_model = _clean_runtime_option(body.runtime_model)
     reasoning_effort = _clean_runtime_option(body.reasoning_effort)
+    await require_agent_management_scopes(
+        db,
+        ctx=ctx,
+        required_scopes=[MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION],
+        daemon_instance_id=body.daemon_instance_id,
+        allow_global_daemon_grant=False,
+    )
 
     result = await db.execute(
         select(DaemonInstance).where(DaemonInstance.id == body.daemon_instance_id)
@@ -2071,6 +2085,13 @@ async def provision_agent(
         hermes_profile=body.hermes_profile,
     )
 
+    await record_agent_management_scope_use(
+        db,
+        ctx=ctx,
+        scopes=[MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION],
+        daemon_instance_id=body.daemon_instance_id,
+        allow_global_daemon_grant=False,
+    )
     await db.commit()
     await db.refresh(agent)
 

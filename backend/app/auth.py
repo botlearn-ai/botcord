@@ -13,6 +13,7 @@ import datetime
 import logging
 import uuid as _uuid
 from dataclasses import dataclass, field
+from urllib.parse import urlencode
 
 import jwt
 from jwt import PyJWKClient
@@ -20,9 +21,10 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.config import SUPABASE_JWT_SECRET
+from hub.auth import assert_current_agent_token, verify_agent_token
+from hub.config import FRONTEND_BASE_URL, SUPABASE_JWT_SECRET
 from hub.database import get_db
-from hub.models import User, UserRole, Role
+from hub.models import Agent, AgentManagementGrant, User, UserRole, Role
 
 _logger = logging.getLogger(__name__)
 
@@ -48,6 +50,22 @@ class RequestContext:
     human_id: str | None = None
     # The User's display name, convenience for building viewer descriptors.
     user_display_name: str | None = None
+    # "user" for Supabase-authenticated humans, "agent" for owner-granted
+    # BotCord agent credentials.
+    auth_kind: str = "user"
+
+
+MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE = "cloud_agents:create"
+MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION = "team_orchestration:provision"
+MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION = "daemon_agents:provision"
+MANAGEMENT_SCOPE_RUNTIME_SKILLS_INSTALL = "runtime_skills:install"
+
+ALLOWED_MANAGEMENT_SCOPES = {
+    MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE,
+    MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
+    MANAGEMENT_SCOPE_DAEMON_AGENTS_PROVISION,
+    MANAGEMENT_SCOPE_RUNTIME_SKILLS_INSTALL,
+}
 
 
 def _get_jwks_client(issuer: str) -> PyJWKClient:
@@ -266,6 +284,273 @@ async def require_user(
         supabase_user_id=supabase_user_id,
         roles=roles,
     )
+
+
+def _management_authorize_url(
+    agent_id: str,
+    scopes: list[str],
+    *,
+    daemon_instance_id: str | None = None,
+) -> str:
+    query_params = {"scopes": ",".join(scopes)}
+    if daemon_instance_id:
+        query_params["daemon_instance_id"] = daemon_instance_id
+    query = urlencode(query_params)
+    return (
+        f"{FRONTEND_BASE_URL.rstrip('/')}/settings/agents/"
+        f"{agent_id}/cli-permissions?{query}"
+    )
+
+
+def _normalise_required_scopes(required_scopes: list[str] | tuple[str, ...]) -> list[str]:
+    scopes = list(dict.fromkeys(required_scopes))
+    unknown = [scope for scope in scopes if scope not in ALLOWED_MANAGEMENT_SCOPES]
+    if unknown:
+        raise RuntimeError(f"unknown management scope(s): {', '.join(unknown)}")
+    return scopes
+
+
+def _ensure_beta_access(user: User) -> None:
+    from hub.config import BETA_GATE_ENABLED
+
+    if BETA_GATE_ENABLED and not user.beta_access:
+        raise HTTPException(status_code=403, detail="Beta access required")
+
+
+async def _context_from_user_token(token: str, db: AsyncSession) -> RequestContext:
+    jwt_payload = _decode_supabase_token(token)
+    supabase_user_id = jwt_payload["sub"]
+    user, roles = await _load_user_and_roles(supabase_user_id, db, jwt_payload=jwt_payload)
+    _ensure_beta_access(user)
+    return RequestContext(
+        user_id=user.id,
+        supabase_user_id=supabase_user_id,
+        roles=roles,
+        human_id=user.human_id,
+        user_display_name=user.display_name,
+        auth_kind="user",
+    )
+
+
+async def _context_from_agent_token(token: str, db: AsyncSession) -> RequestContext:
+    try:
+        agent_id = verify_agent_token(token)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    agent = await db.scalar(select(Agent).where(Agent.agent_id == agent_id))
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    assert_current_agent_token(agent, token)
+    if agent.claimed_at is None or agent.user_id is None:
+        raise HTTPException(status_code=403, detail="Agent is not bound to a user")
+
+    user = await db.scalar(select(User).where(User.id == agent.user_id))
+    if user is None:
+        raise HTTPException(status_code=403, detail="Agent owner not found")
+    _ensure_beta_access(user)
+
+    return RequestContext(
+        user_id=user.id,
+        supabase_user_id=str(user.supabase_user_id),
+        roles=[],
+        active_agent_id=agent.agent_id,
+        human_id=user.human_id,
+        user_display_name=user.display_name,
+        auth_kind="agent",
+    )
+
+
+async def require_user_or_agent_owner(
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> RequestContext:
+    """Accept either Supabase user auth or a bound BotCord agent token."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    token = authorization[len("Bearer "):]
+    try:
+        return await _context_from_agent_token(token, db)
+    except HTTPException as agent_exc:
+        try:
+            return await _context_from_user_token(token, db)
+        except HTTPException as user_exc:
+            if user_exc.status_code != 401:
+                raise user_exc
+            raise agent_exc
+
+
+def _grant_is_current(
+    grant: AgentManagementGrant,
+    *,
+    daemon_instance_id: str | None,
+    now: datetime.datetime,
+    allow_global_daemon_grant: bool = True,
+) -> bool:
+    if grant.revoked_at is not None:
+        return False
+    expires_at = grant.expires_at
+    if expires_at is not None:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=datetime.timezone.utc)
+        if expires_at <= now:
+            return False
+    limits = grant.limits_json or {}
+    max_uses = limits.get("max_uses")
+    if isinstance(max_uses, int) and max_uses >= 0 and grant.use_count >= max_uses:
+        return False
+    if daemon_instance_id is None:
+        return grant.daemon_instance_id is None
+    if allow_global_daemon_grant and grant.daemon_instance_id is None:
+        return True
+    return grant.daemon_instance_id == daemon_instance_id
+
+
+async def missing_agent_management_scopes(
+    db: AsyncSession,
+    *,
+    ctx: RequestContext,
+    required_scopes: list[str] | tuple[str, ...],
+    daemon_instance_id: str | None = None,
+    allow_global_daemon_grant: bool = True,
+) -> list[str]:
+    scopes = _normalise_required_scopes(required_scopes)
+    if ctx.auth_kind != "agent":
+        return []
+    if not ctx.active_agent_id:
+        return scopes
+
+    result = await db.execute(
+        select(AgentManagementGrant).where(
+            AgentManagementGrant.user_id == ctx.user_id,
+            AgentManagementGrant.agent_id == ctx.active_agent_id,
+            AgentManagementGrant.scope.in_(scopes),
+        )
+    )
+    now = datetime.datetime.now(datetime.timezone.utc)
+    granted = {
+        grant.scope
+        for grant in result.scalars().all()
+        if _grant_is_current(
+            grant,
+            daemon_instance_id=daemon_instance_id,
+            now=now,
+            allow_global_daemon_grant=allow_global_daemon_grant,
+        )
+    }
+    return [scope for scope in scopes if scope not in granted]
+
+
+async def require_agent_management_scopes(
+    db: AsyncSession,
+    *,
+    ctx: RequestContext,
+    required_scopes: list[str] | tuple[str, ...],
+    daemon_instance_id: str | None = None,
+    allow_global_daemon_grant: bool = True,
+) -> None:
+    missing = await missing_agent_management_scopes(
+        db,
+        ctx=ctx,
+        required_scopes=required_scopes,
+        daemon_instance_id=daemon_instance_id,
+        allow_global_daemon_grant=allow_global_daemon_grant,
+    )
+    if not missing:
+        return
+    agent_id = ctx.active_agent_id or ""
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "code": "management_permission_required",
+            "message": "This agent needs an owner-granted management permission.",
+            "agent_id": agent_id,
+            "required_scopes": missing,
+            "authorize_url": _management_authorize_url(
+                agent_id,
+                missing,
+                daemon_instance_id=daemon_instance_id,
+            )
+            if agent_id
+            else None,
+        },
+    )
+
+
+def require_user_or_agent_management(
+    required_scopes: list[str] | tuple[str, ...],
+):
+    scopes = _normalise_required_scopes(required_scopes)
+
+    async def _dependency(
+        ctx: RequestContext = Depends(require_user_or_agent_owner),
+        db: AsyncSession = Depends(get_db),
+    ) -> RequestContext:
+        await require_agent_management_scopes(db, ctx=ctx, required_scopes=scopes)
+        return ctx
+
+    return _dependency
+
+
+async def active_agent_management_grants(
+    db: AsyncSession,
+    *,
+    ctx: RequestContext,
+    required_scopes: list[str] | tuple[str, ...],
+    daemon_instance_id: str | None = None,
+    allow_global_daemon_grant: bool = True,
+) -> dict[str, AgentManagementGrant]:
+    scopes = _normalise_required_scopes(required_scopes)
+    if ctx.auth_kind != "agent" or not ctx.active_agent_id:
+        return {}
+    result = await db.execute(
+        select(AgentManagementGrant).where(
+            AgentManagementGrant.user_id == ctx.user_id,
+            AgentManagementGrant.agent_id == ctx.active_agent_id,
+            AgentManagementGrant.scope.in_(scopes),
+        )
+    )
+    now = datetime.datetime.now(datetime.timezone.utc)
+    grants: dict[str, AgentManagementGrant] = {}
+    for grant in result.scalars().all():
+        if not _grant_is_current(
+            grant,
+            daemon_instance_id=daemon_instance_id,
+            now=now,
+            allow_global_daemon_grant=allow_global_daemon_grant,
+        ):
+            continue
+        # Prefer daemon-specific grants over global grants when both exist.
+        current = grants.get(grant.scope)
+        if current is None or (
+            daemon_instance_id is not None
+            and current.daemon_instance_id is None
+            and grant.daemon_instance_id == daemon_instance_id
+        ):
+            grants[grant.scope] = grant
+    return grants
+
+
+async def record_agent_management_scope_use(
+    db: AsyncSession,
+    *,
+    ctx: RequestContext,
+    scopes: list[str] | tuple[str, ...],
+    daemon_instance_id: str | None = None,
+    allow_global_daemon_grant: bool = True,
+) -> None:
+    grants = await active_agent_management_grants(
+        db,
+        ctx=ctx,
+        required_scopes=scopes,
+        daemon_instance_id=daemon_instance_id,
+        allow_global_daemon_grant=allow_global_daemon_grant,
+    )
+    for grant in grants.values():
+        grant.use_count += 1
 
 
 async def require_beta_user(

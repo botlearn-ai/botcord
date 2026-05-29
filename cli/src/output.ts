@@ -6,3 +6,8 @@ export function outputError(message: string): never {
   console.error(JSON.stringify({ error: message }));
   process.exit(1);
 }
+
+export function outputErrorObject(data: Record<string, unknown>): never {
+  console.error(JSON.stringify(data, null, 2));
+  process.exit(1);
+}

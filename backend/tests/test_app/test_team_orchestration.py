@@ -13,9 +13,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.auth import MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION
+from hub.auth import create_agent_token
 from hub.enums import ParticipantType
 from hub.models import (
     Agent,
+    AgentManagementGrant,
     Base,
     CloudAgentInstance,
     CloudDaemonInstance,
@@ -90,6 +93,27 @@ async def seed_user(db_session: AsyncSession):
 
 
 @pytest_asyncio.fixture
+async def seed_manager_agent(db_session: AsyncSession, seed_user: dict):
+    agent_id = "ag_teammanager"
+    token, expires_at = create_agent_token(agent_id)
+    db_session.add(
+        Agent(
+            agent_id=agent_id,
+            display_name="Team Manager",
+            user_id=seed_user["user_id"],
+            agent_token=token,
+            token_expires_at=datetime.datetime.fromtimestamp(
+                expires_at, tz=datetime.timezone.utc
+            ),
+            claimed_at=datetime.datetime.now(datetime.timezone.utc),
+            status="active",
+        )
+    )
+    await db_session.commit()
+    return {"agent_id": agent_id, "token": token}
+
+
+@pytest_asyncio.fixture
 async def client_factory(db_session: AsyncSession, monkeypatch):
     import app.auth
     import app.routers.cloud_agents as cloud_agents_router
@@ -146,6 +170,130 @@ async def test_plan_requires_auth(client_factory):
         json={"goal": "Ship the billing dashboard"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_provision_with_agent_token_requires_management_grant(
+    client_factory,
+    seed_manager_agent,
+):
+    client = await client_factory()
+    response = await client.post(
+        "/api/team-orchestration/provision",
+        json={"goal": "Build an agent-token team", "role_count": 1},
+        headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+    )
+    assert response.status_code == 403
+    body = response.json()
+    assert body["detail"]["code"] == "management_permission_required"
+    assert body["detail"]["required_scopes"] == [
+        MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION
+    ]
+
+
+@pytest.mark.asyncio
+async def test_provision_accepts_agent_token_with_management_grant(
+    client_factory,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    db_session.add(
+        AgentManagementGrant(
+            user_id=seed_user["user_id"],
+            agent_id=seed_manager_agent["agent_id"],
+            scope=MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
+            expires_at=datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(days=1),
+        )
+    )
+    await db_session.commit()
+    client = await client_factory()
+
+    response = await client.post(
+        "/api/team-orchestration/provision",
+        json={
+            "goal": "Build an agent-token team",
+            "role_count": 1,
+            "start_runs": False,
+        },
+        headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["room"]["owner_type"] == "human"
+    assert len(body["roles"]) == 1
+    assert body["roles"][0]["cloud_agent"]["hosting_kind"] == "cloud"
+
+
+@pytest.mark.asyncio
+async def test_provision_enforces_agent_management_role_count_limit(
+    client_factory,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    db_session.add(
+        AgentManagementGrant(
+            user_id=seed_user["user_id"],
+            agent_id=seed_manager_agent["agent_id"],
+            scope=MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
+            limits_json={"max_role_count": 1},
+            expires_at=datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(days=1),
+        )
+    )
+    await db_session.commit()
+    client = await client_factory()
+
+    response = await client.post(
+        "/api/team-orchestration/provision",
+        json={
+            "goal": "Build an oversized team",
+            "role_count": 2,
+            "start_runs": False,
+        },
+        headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+    )
+    assert response.status_code == 403
+    body = response.json()
+    assert body["detail"]["code"] == "management_limit_exceeded"
+    assert body["detail"]["limit"] == "max_role_count"
+
+
+@pytest.mark.asyncio
+async def test_provision_enforces_agent_management_start_runs_limit(
+    client_factory,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    db_session.add(
+        AgentManagementGrant(
+            user_id=seed_user["user_id"],
+            agent_id=seed_manager_agent["agent_id"],
+            scope=MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
+            limits_json={"allow_start_runs": False},
+            expires_at=datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(days=1),
+        )
+    )
+    await db_session.commit()
+    client = await client_factory()
+
+    response = await client.post(
+        "/api/team-orchestration/provision",
+        json={
+            "goal": "Build a team without starting runs",
+            "role_count": 1,
+            "start_runs": True,
+        },
+        headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+    )
+    assert response.status_code == 403
+    body = response.json()
+    assert body["detail"]["code"] == "management_limit_exceeded"
+    assert body["detail"]["limit"] == "allow_start_runs"
 
 
 @pytest.mark.asyncio

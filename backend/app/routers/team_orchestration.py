@@ -6,7 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import RequestContext, require_user
+from app.auth import (
+    MANAGEMENT_SCOPE_RUNTIME_SKILLS_INSTALL,
+    MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
+    RequestContext,
+    active_agent_management_grants,
+    record_agent_management_scope_use,
+    require_agent_management_scopes,
+    require_user,
+    require_user_or_agent_management,
+)
 from app.routers.cloud_agents import CloudAgentOut, RunBudgetIn, RunBudgetOut
 from app.routers.cloud_agents import get_cloud_agent_service
 from app.routers.runtime_skills import (
@@ -235,11 +244,52 @@ async def plan_team(
 @router.post("/provision", response_model=TeamProvisionOut, status_code=201)
 async def provision_team(
     body: TeamProvisionRequest,
-    ctx: RequestContext = Depends(require_user),
+    ctx: RequestContext = Depends(
+        require_user_or_agent_management([MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION])
+    ),
     db: AsyncSession = Depends(get_db),
     cloud_agent_service: CloudAgentService = Depends(get_cloud_agent_service),
 ) -> TeamProvisionOut:
     service = _service(cloud_agent_service)
+    team_grants = await active_agent_management_grants(
+        db,
+        ctx=ctx,
+        required_scopes=[MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION],
+    )
+    team_grant = team_grants.get(MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION)
+    if team_grant is not None:
+        limits = team_grant.limits_json or {}
+        max_role_count = limits.get("max_role_count")
+        requested_role_count = body.role_count or (len(body.roles) if body.roles else 3)
+        if (
+            isinstance(max_role_count, int)
+            and requested_role_count is not None
+            and requested_role_count > max_role_count
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "management_limit_exceeded",
+                    "scope": MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
+                    "limit": "max_role_count",
+                    "max_role_count": max_role_count,
+                },
+            )
+        if limits.get("allow_start_runs") is False and body.start_runs:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "management_limit_exceeded",
+                    "scope": MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
+                    "limit": "allow_start_runs",
+                },
+            )
+    if any(role.skills for role in body.roles or []):
+        await require_agent_management_scopes(
+            db,
+            ctx=ctx,
+            required_scopes=[MANAGEMENT_SCOPE_RUNTIME_SKILLS_INSTALL],
+        )
 
     async def _install_role_skills(
         role: TeamRolePlan,
@@ -270,6 +320,18 @@ async def provision_team(
             else None,
             role_skill_installer=_install_role_skills,
         )
+        await record_agent_management_scope_use(
+            db,
+            ctx=ctx,
+            scopes=[MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION],
+        )
+        if any(role.skills for role in body.roles or []):
+            await record_agent_management_scope_use(
+                db,
+                ctx=ctx,
+                scopes=[MANAGEMENT_SCOPE_RUNTIME_SKILLS_INSTALL],
+            )
+        await db.commit()
     except CloudAgentError as exc:
         raise HTTPException(
             status_code=exc.http_status,
