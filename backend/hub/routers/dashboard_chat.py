@@ -329,6 +329,20 @@ async def send_chat_message(
 
     await db.commit()
 
+    # Register the in-flight trace + cache run metadata, exactly as the owner-chat
+    # WS send path does. The dashboard sends over the WS when connected and falls
+    # back to this REST endpoint otherwise (e.g. during WS reconnect after a page
+    # refresh); without this, REST-sent messages would never route streamed blocks
+    # to the owner's WS nor get cached for refresh/restore.
+    from hub.routers.owner_chat_ws import register_owner_chat_run
+
+    await register_owner_chat_run(
+        hub_msg_id=hub_msg_id,
+        user_id=user_id,
+        agent_id=agent_id,
+        room_id=room_id,
+    )
+
     # Notify inbox listeners so connected agents pick up the message.
     # Skip Supabase realtime event — the dedicated owner-chat WS path
     # handles real-time delivery to the dashboard frontend.
