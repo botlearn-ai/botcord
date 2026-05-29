@@ -366,11 +366,14 @@ async def test_happy_path_fanout(client: AsyncClient, seed: dict, db_session: As
     body = r.json()
     assert body["room_id"] == "rm_humanroom"
     assert body["status"] == "queued"
+    assert body["hub_msg_id"].startswith("h_")
+    assert body["msg_id"]
 
     # Verify persistence: fan-out rows for all non-muted members (a1 + a3). a2 is muted.
     rows = (await db_session.execute(
         select(MessageRecord).where(MessageRecord.room_id == "rm_humanroom")
     )).scalars().all()
+    assert {row.msg_id for row in rows} == {body["msg_id"]}
     receiver_ids = {r.receiver_id for r in rows}
     assert "ag_user1___" in receiver_ids  # active agent included (PRD §6.3)
     assert "ag_user3___" in receiver_ids

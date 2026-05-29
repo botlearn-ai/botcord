@@ -225,8 +225,9 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     human: s.human,
     viewMode: s.viewMode,
   })));
-  const { insertMessage, patchRoom, pollNewMessages, refreshOverview } = useDashboardChatStore(useShallow((s) => ({
+  const { insertMessage, patchMessageIdentity, patchRoom, pollNewMessages, refreshOverview } = useDashboardChatStore(useShallow((s) => ({
     insertMessage: s.insertMessage,
+    patchMessageIdentity: s.patchMessageIdentity,
     patchRoom: s.patchRoom,
     pollNewMessages: s.pollNewMessages,
     refreshOverview: s.refreshOverview,
@@ -379,6 +380,11 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
       const result = await api.sendRoomHumanMessage(
         roomId, text, mentions, topicId, attachments, replyTargetMsgId,
       );
+      patchMessageIdentity(roomId, clientTempId, {
+        hub_msg_id: result.hub_msg_id,
+        msg_id: result.msg_id,
+        topic_id: result.topic_id ?? topicId,
+      });
       patchRoom(roomId, {
         last_message_preview: displayText,
         last_message_at: now,
@@ -397,7 +403,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send");
     }
-  }, [uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms, replyingTo, setReplyingTo, human?.avatar_url, user?.avatar_url]);
+  }, [uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchMessageIdentity, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms, replyingTo, setReplyingTo, human?.avatar_url, user?.avatar_url]);
 
   if (sendDenied) {
     return (
