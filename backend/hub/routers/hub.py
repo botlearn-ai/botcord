@@ -626,7 +626,14 @@ def _conversation_allowed(provider: str, config: dict[str, Any], conversation_id
     if not chat_id:
         return False
     allowed = config.get("allowedChatIds")
-    return isinstance(allowed, list) and chat_id in {str(v) for v in allowed}
+    allowed_set = {str(v) for v in allowed} if isinstance(allowed, list) else set()
+    # Mirror each provider's inbound allowlist semantics so outbound stays
+    # symmetric with inbound. Feishu inbound is allow-all on an empty list
+    # (packages/gateway-ingress/src/providers/feishu.ts); Telegram inbound is
+    # default-deny even when empty (packages/daemon/src/gateway/channels/telegram.ts).
+    if not allowed_set:
+        return provider == "feishu"
+    return chat_id in allowed_set
 
 
 @router.post("/gateways/{gateway_id}/send", response_model=GatewaySendResponse)

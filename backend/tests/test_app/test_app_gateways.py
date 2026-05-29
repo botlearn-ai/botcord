@@ -399,6 +399,59 @@ async def test_agent_gateway_send_rejects_unallowed_conversation(
     fake_send.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_agent_gateway_send_feishu_empty_allowlist_allows(
+    client, seed, db_session, monkeypatch
+):
+    # Feishu inbound is allow-all on an empty allowlist; outbound mirrors it.
+    token, _ = create_agent_token("ag_daemon")
+    await _insert_gateway(
+        db_session,
+        gateway_id="gw_feishu_send",
+        provider="feishu",
+        user_id=seed["user_id"],
+        config={"allowedChatIds": [], "allowedSenderIds": []},
+    )
+    fake_send = AsyncMock(return_value={"ok": True, "result": {}})
+    _patch_hub_gateway_send(monkeypatch, online=True, send=fake_send)
+
+    r = await client.post(
+        "/hub/gateways/gw_feishu_send/send",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"conversationId": "feishu:user:oc_cdbee73a39d", "text": "hi"},
+    )
+
+    assert r.status_code == 200, r.text
+    fake_send.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_agent_gateway_send_telegram_empty_allowlist_denies(
+    client, seed, db_session, monkeypatch
+):
+    # Telegram inbound is default-deny on an empty allowlist; outbound mirrors it.
+    token, _ = create_agent_token("ag_daemon")
+    await _insert_gateway(
+        db_session,
+        gateway_id="gw_tg_empty",
+        provider="telegram",
+        user_id=seed["user_id"],
+        config={"allowedChatIds": [], "allowedSenderIds": []},
+    )
+    fake_send = AsyncMock()
+    _patch_hub_gateway_send(monkeypatch, online=True, send=fake_send)
+
+    r = await client.post(
+        "/hub/gateways/gw_tg_empty/send",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"conversationId": "telegram:group:-1001", "text": "hi"},
+    )
+
+    assert r.status_code == 403
+    assert r.json()["detail"] == "gateway_conversation_not_allowed"
+    fake_send.assert_not_awaited()
+
+
 # ---------------------------------------------------------------------------
 # Create — Telegram happy path
 # ---------------------------------------------------------------------------
