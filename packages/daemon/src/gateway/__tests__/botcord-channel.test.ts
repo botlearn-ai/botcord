@@ -1347,6 +1347,44 @@ describe("createBotCordChannel — typing()", () => {
       globalThis.fetch = realFetch;
     }
   });
+
+  it("refreshes the token and retries once on 401 (stale-token recovery)", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"code":"invalid_token"}', { status: 401 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const client = makeClient({
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+      });
+      await channel.typing!({
+        traceId: "trace_401",
+        accountId: "ag_self",
+        conversationId: "rm_oc_42",
+        log: silentLog,
+      });
+      expect(client.refreshToken).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      // First attempt uses the stale token; the retry uses the refreshed one.
+      expect((fetchSpy.mock.calls[0][1].headers as Record<string, string>).Authorization).toBe(
+        "Bearer test-token",
+      );
+      expect((fetchSpy.mock.calls[1][1].headers as Record<string, string>).Authorization).toBe(
+        "Bearer test-token-2",
+      );
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
 });
 
 describe("createBotCordChannel — websocket logging", () => {
