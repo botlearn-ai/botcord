@@ -11,6 +11,7 @@ import NextTopLoader from "nextjs-toploader";
 import { inter, jetbrainsMono } from "@/lib/fonts";
 import { getAppBaseUrl } from "@/lib/share-metadata";
 import { GoogleAnalytics } from "@/components/analytics/GoogleAnalytics";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -55,6 +56,7 @@ export default function RootLayout({
           zIndex={2000}
         />
         {children}
+        <ConfirmDialog />
         <Analytics />
         <GoogleAnalytics />
       </body>

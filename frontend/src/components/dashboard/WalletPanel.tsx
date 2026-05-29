@@ -22,6 +22,7 @@ import {
   type MergedLedgerEntry,
 } from "@/store/useDashboardWalletStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useConfirm } from "@/store/useConfirmStore";
 import BotAvatar from "./BotAvatar";
 import TransferDialog from "./TransferDialog";
 import TopupDialog from "./TopupDialog";
@@ -572,28 +573,29 @@ function RecentWithdrawals({
 }) {
   const locale = useLanguage();
   const t = walletPanel[locale];
+  const confirm = useConfirm();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const isRefreshing = loading && items.length > 0;
 
   const handleCancel = useCallback(
     async (withdrawalId: string) => {
-      if (!window.confirm(t.cancelWithdrawalConfirm)) return;
+      if (!(await confirm({ title: t.cancelWithdrawalConfirm, tone: "danger" }))) return;
       setCancellingId(withdrawalId);
       try {
         await api.cancelWithdrawal(withdrawalId, viewer);
-        window.alert(t.cancelWithdrawalSuccess);
+        await confirm({ title: t.cancelWithdrawalSuccess, alert: true });
         onCancelled();
       } catch (err) {
         if (err instanceof ApiError) {
-          window.alert(err.message);
+          await confirm({ title: err.message, alert: true });
         } else {
-          window.alert(t.cancelWithdrawalFailed);
+          await confirm({ title: t.cancelWithdrawalFailed, alert: true });
         }
       } finally {
         setCancellingId(null);
       }
     },
-    [onCancelled, t, viewer],
+    [confirm, onCancelled, t, viewer],
   );
 
   return (

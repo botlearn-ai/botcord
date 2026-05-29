@@ -21,6 +21,7 @@ import TransferCard, { parseTransferText, parseTransferNotice } from "@/componen
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { useConfirm } from "@/store/useConfirmStore";
 import BotAvatar from "./BotAvatar";
 import { PresenceDot } from "./PresenceDot";
 
@@ -358,6 +359,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
   const getRoomSummary = useDashboardChatStore((state) => state.getRoomSummary);
   const recallMessage = useDashboardChatStore((state) => state.recallMessage);
+  const confirm = useConfirm();
   const overview = useDashboardChatStore((state) => state.overview);
   const publicAgents = useDashboardChatStore((state) => state.publicAgents);
   const publicHumans = useDashboardChatStore((state) => state.publicHumans);
@@ -498,7 +500,10 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const handleRecallClick = async () => {
     setMenuOpen(false);
     if (!canRecall || !message.room_id) return;
-    const ok = window.confirm(locale === "zh" ? "撤回这条消息？" : "Recall this message?");
+    const ok = await confirm({
+      title: locale === "zh" ? "撤回这条消息？" : "Recall this message?",
+      tone: "danger",
+    });
     if (!ok) return;
     setRecallPending(true);
     try {

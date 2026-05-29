@@ -80,7 +80,7 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
 
     const amountMinor = Math.round(amountNum * 100);
     if (amountMinor < MIN_WITHDRAWAL_MINOR) {
-      window.alert(t.minimumWithdrawAmount);
+      setError(t.minimumWithdrawAmount);
       return;
     }
 

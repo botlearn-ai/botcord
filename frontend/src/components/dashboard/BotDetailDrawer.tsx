@@ -26,6 +26,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { isOwnerChatRoom } from "@/store/dashboard-shared";
 import { useDaemonStore, type DaemonInstance } from "@/store/useDaemonStore";
+import { useConfirm } from "@/store/useConfirmStore";
 import { useLanguage } from "@/lib/i18n";
 import { botDetailDrawer } from "@/lib/i18n/translations/dashboard";
 import {
@@ -378,6 +379,7 @@ function OverviewTab({
   onOpenChat: () => void;
 }) {
   const runtimeId = getBotRuntimeId(bot, device);
+  const confirm = useConfirm();
   return (
     <div className="space-y-4">
       <ProfileEditor
@@ -538,8 +540,8 @@ function OverviewTab({
 
       <section className="rounded-2xl border border-red-500/25 bg-red-500/5 p-4">
         <button
-          onClick={() => {
-            if (window.confirm(t.overview.deleteConfirm)) {
+          onClick={async () => {
+            if (await confirm({ title: t.overview.deleteConfirm, tone: "danger" })) {
               void userApi.unbindAgent(bot.agent_id).then(() => window.location.reload());
             }
           }}

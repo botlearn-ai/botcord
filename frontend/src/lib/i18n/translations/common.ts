@@ -91,3 +91,20 @@ export const common: TranslationMap<{
     showLess: '收起',
   },
 }
+
+export const confirmDialog: TranslationMap<{
+  confirm: string
+  cancel: string
+  ok: string
+}> = {
+  en: {
+    confirm: 'Confirm',
+    cancel: 'Cancel',
+    ok: 'OK',
+  },
+  zh: {
+    confirm: '确认',
+    cancel: '取消',
+    ok: '知道了',
+  },
+}
