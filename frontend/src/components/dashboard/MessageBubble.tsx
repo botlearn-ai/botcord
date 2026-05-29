@@ -11,7 +11,7 @@ import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import type { DashboardMessage, Attachment } from "@/lib/types";
 import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
-import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
+import { canRecallDashboardMessage, isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
 import MarkdownContent from "@/components/ui/MarkdownContent";
@@ -479,15 +479,15 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     && !isRecalled;
 
   const roomSummary = message.room_id ? getRoomSummary(message.room_id) : null;
-  const canAdminRecall = roomSummary?.my_role === "owner" || roomSummary?.my_role === "admin";
-  const canRecall =
-    message.type === "message"
-    && Boolean(message.room_id)
-    && Boolean(message.msg_id)
-    && !message.room_id?.startsWith("rm_oc_")
-    && !message.hub_msg_id?.startsWith("tmp_")
-    && !isRecalled
-    && (isOwn || canAdminRecall);
+  const recallLabel = locale === "zh" ? "撤回消息" : "Recall message";
+  const canRecall = canRecallDashboardMessage({
+    message,
+    room: roomSummary,
+    isOwn,
+    ownedAgentIds: ownedAgents.map((agent) => agent.agent_id),
+    humanId: human?.human_id,
+    userId: user?.id,
+  });
 
   const handleReplyClick = () => {
     setMenuOpen(false);
@@ -536,8 +536,21 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     />
   );
 
+  const recallButton = canRecall && (
+    <button
+      type="button"
+      disabled={recallPending}
+      onMouseDown={(e) => { e.preventDefault(); void handleRecallClick(); }}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+      aria-label={recallLabel}
+      title={recallLabel}
+    >
+      <RotateCcw className="h-3.5 w-3.5" />
+    </button>
+  );
+
   const moreButton = !isRecalled && (displayText || canRecall) && (
-    <div className="relative self-start pt-1 shrink-0">
+    <div className="relative shrink-0">
       <button
         type="button"
         onClick={() => setMenuOpen((v) => !v)}
@@ -598,6 +611,13 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     </div>
   );
 
+  const actionButtons = (recallButton || moreButton) && (
+    <div className="flex shrink-0 items-center gap-1 self-start pt-1">
+      {recallButton}
+      {moreButton}
+    </div>
+  );
+
   return (
     <>
     <div
@@ -606,7 +626,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
       onMouseLeave={() => { setHovered(false); setMenuOpen(false); }}
     >
       {/* For own messages: button left of bubble */}
-      {isOwn && !fullWidth && moreButton}
+      {isOwn && !fullWidth && actionButtons}
       {!isOwn && sideAvatar}
       <div
         className={`${fullWidth ? "w-full" : "max-w-[70%]"} rounded-xl px-3 py-2 ${
@@ -742,7 +762,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
       </div>
       {isOwn && sideAvatar}
       {/* For others' messages: button right of bubble */}
-      {(!isOwn || fullWidth) && moreButton}
+      {(!isOwn || fullWidth) && actionButtons}
     </div>
     {forwardQuote && (
       <ForwardModal quoteText={forwardQuote} onClose={() => setForwardQuote(null)} />

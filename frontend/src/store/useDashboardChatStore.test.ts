@@ -192,6 +192,38 @@ describe("useDashboardChatStore message polling", () => {
     expect(useDashboardChatStore.getState().overview?.rooms[0].last_message_preview).toBe("Message recalled");
   });
 
+  it("patches an optimistic message with persisted ids after send returns", () => {
+    useDashboardChatStore.getState().insertMessage("rm_empty", {
+      hub_msg_id: "tmp_1",
+      msg_id: "tmp_1",
+      sender_id: "hu_1",
+      sender_name: "Human",
+      type: "message",
+      text: "hello",
+      payload: { text: "hello" },
+      room_id: "rm_empty",
+      topic: null,
+      topic_id: null,
+      goal: null,
+      state: "queued",
+      state_counts: null,
+      created_at: "2026-05-11T08:00:00Z",
+      is_mine: true,
+    });
+
+    useDashboardChatStore.getState().patchMessageIdentity("rm_empty", "tmp_1", {
+      hub_msg_id: "h_real",
+      msg_id: "msg_real",
+      topic_id: "tp_real",
+    });
+
+    expect(useDashboardChatStore.getState().messages.rm_empty[0]).toMatchObject({
+      hub_msg_id: "h_real",
+      msg_id: "msg_real",
+      topic_id: "tp_real",
+    });
+  });
+
   it("clears the opened room and cached messages after leaving the current room", async () => {
     const overviewAfterLeave = { ...makeOverview(), rooms: [] };
     mocks.leaveRoom.mockResolvedValue(undefined);

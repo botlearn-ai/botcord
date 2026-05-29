@@ -3196,6 +3196,7 @@ async def human_room_send(
 
     return {
         "hub_msg_id": first_hub_msg_id,
+        "msg_id": msg_id,
         "room_id": room_id,
         "status": "queued",
         "topic_id": topic_id,

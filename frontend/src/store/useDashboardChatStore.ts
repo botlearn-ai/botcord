@@ -262,6 +262,7 @@ interface DashboardChatState {
   bumpRoomMembersVersion: (roomId: string) => void;
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
+  patchMessageIdentity: (roomId: string, temporaryId: string, patch: Pick<DashboardMessage, "hub_msg_id" | "msg_id"> & Partial<Pick<DashboardMessage, "topic_id">>) => void;
   markMessageRecalled: (roomId: string, msgId: string, patch?: { recalled_at?: string | null; recalled_by_id?: string | null; recalled_by_type?: "agent" | "human" | null }) => void;
   recallMessage: (roomId: string, msgId: string) => Promise<void>;
   loadRoomMessages: (roomId: string, opts?: { force?: boolean }) => Promise<void>;
@@ -442,6 +443,22 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           if (current.some((m) => m.hub_msg_id === message.hub_msg_id)) return state;
           return {
             messages: { ...state.messages, [roomId]: [...current, message] },
+          };
+        }),
+
+      patchMessageIdentity: (roomId, temporaryId, patch) =>
+        set((state) => {
+          const current = state.messages[roomId];
+          if (!current) return state;
+          let changed = false;
+          const nextMessages = current.map((message) => {
+            if (message.hub_msg_id !== temporaryId && message.msg_id !== temporaryId) return message;
+            changed = true;
+            return { ...message, ...patch };
+          });
+          if (!changed) return state;
+          return {
+            messages: { ...state.messages, [roomId]: nextMessages },
           };
         }),
 
