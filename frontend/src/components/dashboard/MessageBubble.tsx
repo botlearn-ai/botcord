@@ -408,6 +408,10 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     || publicHuman?.avatar_url
     || message.sender_avatar_url
     || null;
+  const effectiveRoomId = message.room_id || (sourceId?.startsWith("rm_") ? sourceId : null);
+  const actionMessage = effectiveRoomId && effectiveRoomId !== message.room_id
+    ? { ...message, room_id: effectiveRoomId }
+    : message;
 
   if (message.type === "system") {
     const joinParticipant = getSystemJoinParticipant(message.payload);
@@ -474,11 +478,11 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     if (displayText) setForwardQuote(buildQuote());
   };
 
-  const canQuoteReply = canReplyToDashboardMessage(message);
+  const canQuoteReply = canReplyToDashboardMessage(actionMessage);
 
-  const roomSummary = message.room_id ? getRoomSummary(message.room_id) : null;
+  const roomSummary = effectiveRoomId ? getRoomSummary(effectiveRoomId) : null;
   const canRecall = canRecallDashboardMessage({
-    message,
+    message: actionMessage,
     room: roomSummary,
     isOwn,
     ownedAgentIds: ownedAgents.map((agent) => agent.agent_id),
@@ -488,13 +492,13 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
 
   const handleReplyClick = () => {
     setMenuOpen(false);
-    if (!canQuoteReply || !message.room_id) return;
-    setReplyingTo(message.room_id, message);
+    if (!canQuoteReply || !effectiveRoomId) return;
+    setReplyingTo(effectiveRoomId, actionMessage);
   };
 
   const handleRecallClick = async () => {
     setMenuOpen(false);
-    if (!canRecall || !message.room_id) return;
+    if (!canRecall || !effectiveRoomId) return;
     const ok = await confirm({
       title: locale === "zh" ? "撤回这条消息？" : "Recall this message?",
       tone: "danger",
@@ -502,7 +506,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     if (!ok) return;
     setRecallPending(true);
     try {
-      await recallMessage(message.room_id, message.msg_id);
+      await recallMessage(effectiveRoomId, message.msg_id);
     } catch {
       /* error toast is handled by the chat store */
     } finally {
@@ -511,7 +515,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   };
 
   const handleJumpToReplyTarget = (targetMsgId: string) => {
-    emitJumpToMessage({ msgId: targetMsgId, roomId: message.room_id ?? undefined });
+    emitJumpToMessage({ msgId: targetMsgId, roomId: effectiveRoomId ?? undefined });
   };
 
   const handleCopyClick = useCallback(async () => {

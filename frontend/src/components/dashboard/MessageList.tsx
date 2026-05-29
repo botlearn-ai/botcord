@@ -10,7 +10,6 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { messageList } from '@/lib/i18n/translations/dashboard';
-import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import { useShallow } from "zustand/react/shallow";
 import { Bot, Settings, UserPlus } from "lucide-react";
 import MessageBubble from "./MessageBubble";
@@ -94,22 +93,11 @@ function buildTimelineItems(
   return items;
 }
 
-const TOPIC_PREVIEW_COUNT = 2;
 const PREFILL_ROOM_COMPOSER_EVENT = "botcord:prefill-room-composer";
 const OPEN_ROOM_ADD_MEMBER_EVENT = "botcord:open-room-add-member";
 const OPEN_ROOM_SETTINGS_EVENT = "botcord:open-room-settings";
 
-function messagePreviewText(msg: DashboardMessage, locale: string): string {
-  if (isDashboardMessageRecalled(msg)) return recalledMessageLabel(locale);
-  if (msg.text) return msg.text;
-  if (typeof msg.payload === "object" && msg.payload && "text" in msg.payload) {
-    const text = (msg.payload as { text?: unknown }).text;
-    if (typeof text === "string") return text;
-  }
-  return "";
-}
-
-function TopicCard({
+export function TopicCard({
   group,
   currentAgentId,
   sourceName,
@@ -128,16 +116,6 @@ function TopicCard({
   const locale = useLanguage();
   const t = messageList[locale];
   const sc = group.topicInfo ? topicStatusConfig[group.topicInfo.status] : null;
-
-  const total = group.messages.length;
-  const firstMsg = group.messages[0];
-  // Show the first message as a full bubble, and up to TOPIC_PREVIEW_COUNT of
-  // the most recent messages as compact preview rows (excluding the first).
-  const recentPreview = group.messages
-    .slice(-TOPIC_PREVIEW_COUNT)
-    .filter((m) => !firstMsg || m.hub_msg_id !== firstMsg.hub_msg_id);
-  const shownCount = (firstMsg ? 1 : 0) + recentPreview.length;
-  const hiddenCount = total - shownCount;
 
   return (
     <div className="mb-4">
@@ -160,16 +138,23 @@ function TopicCard({
         )}
       </div>
 
-      {/* The first message renders as a normal bubble — no outer wrapper. */}
-      {firstMsg && (
-        <MessageBubble
-          message={firstMsg}
-          isOwn={firstMsg.sender_id === currentAgentId}
-          sourceName={sourceName}
-          sourceId={sourceId}
-          mentionCandidates={mentionCandidates}
-        />
-      )}
+      <div className="space-y-2">
+        {group.messages.map((msg) => (
+          <div
+            key={msg.hub_msg_id}
+            data-msg-id={msg.msg_id}
+            className="scroll-mt-4 transition-shadow"
+          >
+            <MessageBubble
+              message={msg}
+              isOwn={msg.sender_id === currentAgentId}
+              sourceName={sourceName}
+              sourceId={sourceId}
+              mentionCandidates={mentionCandidates}
+            />
+          </div>
+        ))}
+      </div>
 
       {/* Inline thread footer — merged into the same visual layer as the
           message above, like Feishu's "回复话题" row. Clicking opens the drawer. */}
@@ -184,46 +169,17 @@ function TopicCard({
           }
         }}
         className={`group ml-3 mt-1 cursor-pointer rounded-md px-2 py-1.5 transition-colors hover:bg-glass-bg/60 ${
-          firstMsg?.sender_id === currentAgentId ? "mr-3 ml-auto max-w-[70%]" : "max-w-[70%]"
+          group.messages[0]?.sender_id === currentAgentId ? "mr-3 ml-auto max-w-[70%]" : "max-w-[70%]"
         }`}
       >
-        {recentPreview.length > 0 ? (
-          <div className="space-y-0.5 border-l-2 border-neon-cyan/30 pl-2">
-            {recentPreview.map((msg) => {
-              const text = messagePreviewText(msg, locale);
-              const isOwn = msg.sender_id === currentAgentId;
-              const senderLabel = isOwn
-                ? (locale === "zh" ? "你" : "You")
-                : (msg.display_sender_name || msg.sender_name || msg.sender_id);
-              return (
-                <div key={msg.hub_msg_id} className="flex gap-2 text-[11px] leading-tight">
-                  <span className="shrink-0 font-medium text-text-secondary/80 max-w-[96px] truncate">
-                    {senderLabel}
-                  </span>
-                  <span className="truncate text-text-primary/70">
-                    {text || <em className="text-text-secondary/50">…</em>}
-                  </span>
-                </div>
-              );
-            })}
-            <div className="flex items-center gap-1 pt-0.5 text-[11px] text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
-              <span>💬</span>
-              <span>
-                {hiddenCount > 0
-                  ? `${hiddenCount} ${t.moreInThread} · ${t.viewThread}`
-                  : t.viewThread}
-              </span>
-              <span>→</span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1 text-[11px] text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
-            <span>💬</span>
-            <span>{t.viewThread}</span>
-            <span className="text-text-secondary/50">· {total} {total !== 1 ? t.msgs : t.msg}</span>
-            <span>→</span>
-          </div>
-        )}
+        <div className="flex items-center gap-1 text-[11px] text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
+          <span>💬</span>
+          <span>{t.viewThread}</span>
+          <span className="text-text-secondary/50">
+            · {group.messages.length} {group.messages.length !== 1 ? t.msgs : t.msg}
+          </span>
+          <span>→</span>
+        </div>
       </div>
     </div>
   );
