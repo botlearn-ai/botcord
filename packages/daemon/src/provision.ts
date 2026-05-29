@@ -91,6 +91,7 @@ import {
   handleCloudGatewayRuntimeInbound,
   type CloudGatewayTypingEmitter,
 } from "./cloud-gateway-runtime.js";
+import { scheduleDaemonSelfRestart } from "./self-restart.js";
 
 function skillIndexOptionsForLoadedAgent(gateway: Gateway, agentId: string): SkillIndexOptions {
   const route = gateway.listManagedRoutes()
@@ -395,6 +396,17 @@ export function createProvisioner(opts: ProvisionerOptions): (
         );
         daemonLog.debug("list_runtimes", { count: snapshot.runtimes.length });
         return { ok: true, result: snapshot };
+      }
+
+      case CONTROL_FRAME_TYPES.RESTART_DAEMON: {
+        const plan = scheduleDaemonSelfRestart({ update: true });
+        daemonLog.warn("restart_daemon: scheduled self restart", {
+          updateRequested: plan.updateRequested,
+          updateSupported: plan.updateSupported,
+          installPrefix: plan.installPrefix,
+          packageSpec: plan.packageSpec,
+        });
+        return { ok: true, result: plan };
       }
 
       case "list_gateways":
@@ -729,8 +741,15 @@ async function handleWakeAgent(gateway: Gateway, raw: unknown): Promise<AckBody>
     },
   };
 
-  await gateway.injectInbound(msg);
-  return { ok: true, result: { agent_id: agentId } };
+  void gateway.injectInbound(msg).catch((err) => {
+    daemonLog.error("wake_agent: async inject failed", {
+      agentId,
+      scheduleId: scheduleId ?? null,
+      runId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+  return { ok: true, result: { agent_id: agentId, queued: true } };
 }
 
 // W8: hand-written runtime validator for the third-party gateway frame

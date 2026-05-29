@@ -400,6 +400,7 @@ export default function DaemonsSettingsPage() {
   const loaded = useDaemonStore((s) => s.loaded);
   const error = useDaemonStore((s) => s.error);
   const revokingId = useDaemonStore((s) => s.revokingId);
+  const restartingId = useDaemonStore((s) => s.restartingId);
   const renamingId = useDaemonStore((s) => s.renamingId);
   const renameErrors = useDaemonStore((s) => s.renameErrors);
   const refreshingRuntimesId = useDaemonStore((s) => s.refreshingRuntimesId);
@@ -409,6 +410,7 @@ export default function DaemonsSettingsPage() {
   const diagnosticResults = useDaemonStore((s) => s.diagnosticResults);
   const refresh = useDaemonStore((s) => s.refresh);
   const revoke = useDaemonStore((s) => s.revoke);
+  const restartDevice = useDaemonStore((s) => s.restartDevice);
   const rename = useDaemonStore((s) => s.rename);
   const refreshRuntimes = useDaemonStore((s) => s.refreshRuntimes);
   const collectDiagnostics = useDaemonStore((s) => s.collectDiagnostics);
@@ -556,15 +558,38 @@ export default function DaemonsSettingsPage() {
                       </td>
                       <td className="px-4 pt-3 text-right">
                         {d.status !== "revoked" && (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmTarget(d)}
-                            disabled={revokingId === d.id}
-                            className="inline-flex items-center gap-1 text-xs text-text-secondary transition-colors hover:text-red-300 disabled:opacity-50"
-                          >
-                            <XCircle className="h-3.5 w-3.5" />
-                            Revoke
-                          </button>
+                          <div className="flex justify-end gap-3">
+                            <button
+                              type="button"
+                              onClick={() => void restartDevice(d.id)}
+                              disabled={
+                                restartingId === d.id ||
+                                (d.kind !== "cloud" && d.status !== "online")
+                              }
+                              title={
+                                d.status === "online" || d.kind === "cloud"
+                                  ? "Pull latest daemon and reconnect"
+                                  : "Daemon must be online to restart remotely"
+                              }
+                              className="inline-flex items-center gap-1 text-xs text-text-secondary transition-colors hover:text-neon-cyan disabled:opacity-50"
+                            >
+                              {restartingId === d.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCcw className="h-3.5 w-3.5" />
+                              )}
+                              Restart
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmTarget(d)}
+                              disabled={revokingId === d.id}
+                              className="inline-flex items-center gap-1 text-xs text-text-secondary transition-colors hover:text-red-300 disabled:opacity-50"
+                            >
+                              <XCircle className="h-3.5 w-3.5" />
+                              Revoke
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>

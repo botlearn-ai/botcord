@@ -670,22 +670,42 @@ async def restart_instance(
     db: AsyncSession = Depends(get_db),
 ) -> _InstanceView:
     instance = await _load_owned_instance(db, ctx.user_id, daemon_instance_id)
-    if instance.kind != "cloud":
-        raise HTTPException(status_code=409, detail="restart_only_supported_for_cloud_daemon")
+    if instance.revoked_at is not None:
+        raise HTTPException(status_code=409, detail="daemon_revoked")
 
-    from hub.services.cloud_agent import CloudAgentError, CloudAgentService
+    if instance.kind == "cloud":
+        from hub.services.cloud_agent import CloudAgentError, CloudAgentService
 
-    try:
-        await CloudAgentService().restart_cloud_daemon(
-            db,
-            user_id=ctx.user_id,
-            daemon_instance_id=daemon_instance_id,
+        try:
+            await CloudAgentService().restart_cloud_daemon(
+                db,
+                user_id=ctx.user_id,
+                daemon_instance_id=daemon_instance_id,
+            )
+        except CloudAgentError as exc:
+            raise HTTPException(
+                status_code=exc.http_status,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
+    else:
+        ack = await send_control_frame(
+            daemon_instance_id,
+            "restart_daemon",
+            {"update": True},
+            timeout_ms=10000,
         )
-    except CloudAgentError as exc:
-        raise HTTPException(
-            status_code=exc.http_status,
-            detail={"code": exc.code, "message": exc.message},
-        ) from exc
+        if not isinstance(ack, dict) or not ack.get("ok"):
+            err = ack.get("error") if isinstance(ack, dict) else None
+            code = (err or {}).get("code") if isinstance(err, dict) else None
+            message = (err or {}).get("message") if isinstance(err, dict) else None
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "upstream_error",
+                    "daemon_code": code,
+                    "daemon_message": message,
+                },
+            )
 
     await db.refresh(instance)
     return _instance_to_view(instance)
@@ -897,6 +917,7 @@ _ALLOWED_DISPATCH_TYPES = {
     "set_route",
     "ping",
     "list_runtimes",
+    "restart_daemon",
     "collect_diagnostics",
     # PR3: BFF fans this out from PATCH /api/agents/{id}/policy and the
     # per-room override endpoints (the latter ship in PR2). Daemon handler

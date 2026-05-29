@@ -87,6 +87,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
   const [runsBySchedule, setRunsBySchedule] = useState<Record<string, AgentScheduleRun[]>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [name, setName] = useState("botcord-auto");
@@ -230,7 +231,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
   }
 
   async function runSchedule(scheduleId: string) {
-    setSaving(true);
+    setRunningScheduleId(scheduleId);
     setError(null);
     try {
       await userApi.runAgentSchedule(agentId, scheduleId);
@@ -238,7 +239,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "运行失败");
     } finally {
-      setSaving(false);
+      setRunningScheduleId(null);
     }
   }
 
@@ -280,6 +281,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
         <div className="space-y-3">
           {schedules.map((schedule) => {
             const lastRun = runsBySchedule[schedule.id]?.[0];
+            const isRunningThisSchedule = runningScheduleId === schedule.id;
             return (
               <section key={schedule.id} className="rounded-xl border border-glass-border bg-glass-bg/40 p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -318,11 +320,15 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                     <button
                       type="button"
                       onClick={() => void runSchedule(schedule.id)}
-                      disabled={saving}
+                      disabled={saving || isRunningThisSchedule}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary disabled:opacity-60"
-                      title="立即运行"
+                      title={isRunningThisSchedule ? "正在运行" : "立即运行"}
                     >
-                      <CirclePlay className="h-3.5 w-3.5" />
+                      {isRunningThisSchedule ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <CirclePlay className="h-3.5 w-3.5" />
+                      )}
                     </button>
                     <button
                       type="button"

@@ -505,6 +505,72 @@ async def test_restart_cloud_daemon_instance(
     assert calls == [(seed_user["user_id"], cloud_daemon_row.id)]
 
 
+@pytest.mark.asyncio
+async def test_restart_local_daemon_dispatches_restart_frame(
+    client: AsyncClient, seed_user
+):
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    from hub.routers.daemon_control import _DaemonConn, _registry_for_tests
+
+    fake_ws = _FakeWS()
+    conn = _DaemonConn(
+        ws=fake_ws,  # type: ignore[arg-type]
+        user_id=str(seed_user["user_id"]),
+        daemon_instance_id=instance_id,
+        pending_acks={},
+    )
+    registry = _registry_for_tests()
+    await registry.register(conn)
+    try:
+        async def _reply_when_sent() -> None:
+            for _ in range(50):
+                if fake_ws.sent:
+                    break
+                await asyncio.sleep(0.01)
+            assert fake_ws.sent, "restart dispatch never wrote to fake WS"
+            sent_frame = json.loads(fake_ws.sent[0])
+            assert sent_frame["type"] == "restart_daemon"
+            assert sent_frame["params"] == {"update": True}
+            assert sent_frame["sig"]
+            fut = conn.pending_acks.get(sent_frame["id"])
+            assert fut is not None
+            fut.set_result(
+                {
+                    "id": sent_frame["id"],
+                    "ok": True,
+                    "result": {"scheduled": True, "updateRequested": True},
+                }
+            )
+
+        reply_task = asyncio.create_task(_reply_when_sent())
+        r = await client.post(
+            f"/daemon/instances/{instance_id}/restart",
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        await reply_task
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["id"] == instance_id
+        assert body["kind"] == "local"
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_restart_local_daemon_offline_returns_409(client: AsyncClient, seed_user):
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    r = await client.post(
+        f"/daemon/instances/{instance_id}/restart",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"] == "daemon_offline"
+
+
 # ---------------------------------------------------------------------------
 # Rename (label update)
 # ---------------------------------------------------------------------------
