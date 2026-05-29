@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, Bot, Loader2, MessageSquare, AlertCircle, AlertTriangle, RotateCcw, Bell, FileText, PanelLeftOpen, Settings2, User } from "lucide-react";
+import { ArrowLeft, Bot, Check, Copy, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, FileText, PanelLeftOpen, Settings2, User } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -28,6 +28,8 @@ import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import CopyableId from "@/components/ui/CopyableId";
 import MessageComposer from "./MessageComposer";
 import ReplyQuoteBlock from "./ReplyQuoteBlock";
+import ForwardModal from "./ForwardModal";
+import { buildOwnerChatForwardQuote, canShowOwnerChatMessageActions } from "@/lib/owner-chat-actions";
 
 const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
@@ -96,7 +98,14 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const [initializingRoom, setInitializingRoom] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [errorDetailsId, setErrorDetailsId] = useState<string | null>(null);
+  const [hoveredActionId, setHoveredActionId] = useState<string | null>(null);
+  const [actionMenuOpenId, setActionMenuOpenId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [forwardQuote, setForwardQuote] = useState<string | null>(null);
   const settingsLabel = locale === "zh" ? "Bot 设置" : "Bot settings";
+  const forwardLabel = locale === "zh" ? "转发" : "Forward";
+  const copyLabel = locale === "zh" ? "复制" : "Copy";
+  const copiedLabel = locale === "zh" ? "已复制" : "Copied";
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const animatedRef = useRef<Set<string>>(new Set());
@@ -284,6 +293,66 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
       useOwnerChatStore.getState().failOptimistic(msg.clientId, err?.message || "Retry failed");
     }
   }, [sendMessage, uploadFiles]);
+
+  const handleForward = useCallback((msg: OwnerChatMessage) => {
+    setActionMenuOpenId(null);
+    if (!canShowOwnerChatMessageActions(msg)) return;
+    setForwardQuote(buildOwnerChatForwardQuote(msg));
+  }, []);
+
+  const handleCopy = useCallback(async (msg: OwnerChatMessage) => {
+    if (!canShowOwnerChatMessageActions(msg)) return;
+    try {
+      await navigator.clipboard.writeText(msg.text);
+      setCopiedMessageId(msg.clientId);
+      window.setTimeout(() => setCopiedMessageId((current) => current === msg.clientId ? null : current), 1600);
+    } catch {
+      /* clipboard not available */
+    }
+  }, []);
+
+  const renderMessageActions = (msg: OwnerChatMessage, alignRight: boolean) => {
+    if (!canShowOwnerChatMessageActions(msg)) return null;
+    const menuOpen = actionMenuOpenId === msg.clientId;
+    const visible = hoveredActionId === msg.clientId || menuOpen;
+    const copied = copiedMessageId === msg.clientId;
+    return (
+      <div className="relative shrink-0 self-start pt-1">
+        <button
+          type="button"
+          onClick={() => setActionMenuOpenId((current) => current === msg.clientId ? null : msg.clientId)}
+          className={`flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors ${visible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          aria-label="More actions"
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+        {menuOpen && (
+          <div className={`absolute top-full mt-1 z-30 min-w-[80px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl ${alignRight ? "right-0" : "left-0"}`}>
+            <button
+              type="button"
+              onMouseDown={(event) => { event.preventDefault(); handleForward(msg); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+            >
+              <Forward className="h-3.5 w-3.5 text-zinc-500" />
+              {forwardLabel}
+            </button>
+            <button
+              type="button"
+              onMouseDown={(event) => { event.preventDefault(); void handleCopy(msg); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-emerald-400" />
+              ) : (
+                <Copy className="h-3.5 w-3.5 text-zinc-500" />
+              )}
+              {copied ? copiedLabel : copyLabel}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ------ Render guards ------
 
@@ -481,7 +550,13 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           // --- Optimistic / Failed user message ---
           if (msg.status === "optimistic" || msg.status === "failed") {
             return (
-              <div key={msg.clientId} className="flex justify-end">
+              <div
+                key={msg.clientId}
+                className="flex items-start justify-end gap-2"
+                onMouseEnter={() => setHoveredActionId(msg.clientId)}
+                onMouseLeave={() => { setHoveredActionId(null); setActionMenuOpenId(null); }}
+              >
+                {renderMessageActions(msg, true)}
                 <div className="max-w-[75%] rounded-lg px-3 py-2 text-sm bg-cyan-500/20 text-cyan-100 border border-cyan-500/30">
                   <div className="mb-1 flex items-center justify-end gap-1.5">
                     <span className="text-xs font-medium text-cyan-100/90">
@@ -547,7 +622,12 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                 />
               )}
               {hasVisibleBubble && (
-                <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`flex items-start gap-2 ${isUser ? "justify-end" : "justify-start"}`}
+                  onMouseEnter={() => setHoveredActionId(msg.clientId)}
+                  onMouseLeave={() => { setHoveredActionId(null); setActionMenuOpenId(null); }}
+                >
+                  {isUser && renderMessageActions(msg, true)}
                   <div
                     className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
                       isUser
@@ -650,6 +730,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
+                  {!isUser && renderMessageActions(msg, false)}
                 </div>
               )}
             </div>
@@ -680,6 +761,9 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           mentionCandidates={mentionCandidates}
         />
       </div>
+      {forwardQuote && (
+        <ForwardModal quoteText={forwardQuote} onClose={() => setForwardQuote(null)} />
+      )}
     </div>
   );
 }
