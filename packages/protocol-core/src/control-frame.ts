@@ -73,6 +73,12 @@ export const CONTROL_FRAME_TYPES = {
    */
   LIST_RUNTIMES: "list_runtimes",
   /**
+   * Hub→daemon: schedule a self-update/restart for the local daemon. The
+   * daemon acks first, then a detached supervisor pulls the latest managed
+   * package (when installed under npm) and starts a fresh control connection.
+   */
+  RESTART_DAEMON: "restart_daemon",
+  /**
    * Hub→daemon: list/read the small allowlisted Markdown files that belong to
    * one BotCord agent's local runtime/profile binding. The Hub authorizes the
    * dashboard user before sending this frame; the daemon accepts only

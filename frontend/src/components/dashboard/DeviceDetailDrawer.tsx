@@ -309,30 +309,39 @@ export default function DeviceDetailDrawer() {
         </div>
       </section>
 
-      {isCloud ? (
-        <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
-            云设备操作
-          </h3>
-          <div className="space-y-3">
-            <p className="text-[11px] leading-relaxed text-text-secondary/65">
-              重启会重新启动这台云设备上的 daemon，并重新连接所有托管 Bot。
+      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+          {isCloud ? "云设备操作" : "设备操作"}
+        </h3>
+        <div className="space-y-3">
+          <p className="text-[11px] leading-relaxed text-text-secondary/65">
+            {isCloud
+              ? "重启会重新启动这台云设备上的 daemon，并重新连接所有托管 Bot。"
+              : "重启会让在线 daemon 拉取最新版本，然后重新连接所有托管 Bot。"}
+          </p>
+          <button
+            onClick={() => void handleRestartDevice()}
+            disabled={restartingId === device.id || (!isCloud && !online)}
+            className="inline-flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
+          >
+            {restartingId === device.id ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {restartingId === device.id
+              ? "重启中..."
+              : isCloud
+                ? "重启云设备"
+                : "更新并重启 daemon"}
+          </button>
+          {!isCloud && !online ? (
+            <p className="text-[11px] text-text-secondary/55">
+              设备离线时，请在该设备终端运行下方重新启动命令。
             </p>
-            <button
-              onClick={() => void handleRestartDevice()}
-              disabled={restartingId === device.id}
-              className="inline-flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
-            >
-              {restartingId === device.id ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-              {restartingId === device.id ? "重启中..." : "重启云设备"}
-            </button>
-          </div>
-        </section>
-      ) : null}
+          ) : null}
+        </div>
+      </section>
 
       {/* Rename */}
       <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">

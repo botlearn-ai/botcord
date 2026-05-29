@@ -336,6 +336,29 @@ describe("wake_agent handler", () => {
     });
   });
 
+  it("acks wake_agent after queueing instead of waiting for the turn to finish", async () => {
+    const gw = makeFakeGateway(["ag_wake"]);
+    gw.injectInbound.mockImplementation(() => new Promise(() => undefined));
+    const handler = createProvisioner({ gateway: gw as any });
+
+    const res = await Promise.race([
+      handler({
+        id: "req_wake_pending",
+        type: "wake_agent",
+        params: {
+          agent_id: "ag_wake",
+          message: "tick",
+          run_id: "sr_pending",
+        },
+      }),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 20)),
+    ]);
+
+    expect(res).not.toBe("timeout");
+    expect(res).toMatchObject({ ok: true, result: { agent_id: "ag_wake", queued: true } });
+    expect(gw.injectInbound).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects wake_agent for an unloaded agent", async () => {
     const gw = makeFakeGateway(["ag_loaded"]);
     const handler = createProvisioner({ gateway: gw as any });
