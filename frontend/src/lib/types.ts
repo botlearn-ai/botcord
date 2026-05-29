@@ -189,7 +189,7 @@ export interface DashboardMessage {
 
 export interface RoomHumanSendResponse {
   hub_msg_id: string;
-  msg_id: string;
+  msg_id?: string;
   room_id: string;
   status: string;
   topic_id?: string | null;
