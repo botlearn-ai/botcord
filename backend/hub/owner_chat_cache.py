@@ -109,12 +109,43 @@ def _preview(value: Any, limit: int = 280) -> str:
     return text
 
 
-def compact_block(block: dict) -> dict:
-    """Normalize a stream block into a compact payload per PRD rules.
+# Max length for any single string field; long tool params / reasoning text /
+# tool output get truncated to this. The overall per-event byte cap is enforced
+# separately by _enforce_event_byte_cap.
+_MAX_STR_FIELD = 4000
+# Max items kept from a list before truncating (avoids huge arrays).
+_MAX_LIST_ITEMS = 100
 
-    Keep assistant text; tool_call -> name + compact params; tool_result ->
-    status + short preview; reasoning -> short summary/metadata only; drop
-    unknown oversized fields.
+
+def _truncate_deep(value: Any, str_limit: int = _MAX_STR_FIELD) -> Any:
+    """Recursively truncate long strings / large lists while PRESERVING the
+    original structure and types.
+
+    The restored stream view must render identically to the live view, so we
+    keep the block's payload shape (dicts stay dicts, params stay objects) and
+    only shrink oversized leaves — rather than reshaping per-kind or stringifying
+    structured payloads (which produced double-escaped, mis-rendered blocks).
+    """
+    if isinstance(value, str):
+        return value if len(value) <= str_limit else value[:str_limit] + "…"
+    if isinstance(value, dict):
+        return {k: _truncate_deep(v, str_limit) for k, v in value.items()}
+    if isinstance(value, list):
+        truncated = [_truncate_deep(v, str_limit) for v in value[:_MAX_LIST_ITEMS]]
+        if len(value) > _MAX_LIST_ITEMS:
+            truncated.append(f"… (+{len(value) - _MAX_LIST_ITEMS} more)")
+        return truncated
+    # int / float / bool / None — keep as-is.
+    return value
+
+
+def compact_block(block: dict) -> dict:
+    """Normalize a stream block for caching while preserving its structure.
+
+    Keeps the original ``kind``/``seq`` and the full payload shape, recursively
+    truncating only oversized string/list leaves so the restored view matches
+    the live stream exactly. The overall per-event byte cap is enforced by
+    ``_enforce_event_byte_cap``.
     """
     if not isinstance(block, dict):
         return {"kind": "unknown"}
@@ -124,29 +155,7 @@ def compact_block(block: dict) -> dict:
     payload = block.get("payload")
     payload = payload if isinstance(payload, dict) else {}
 
-    out_payload: dict[str, Any]
-    if kind == "assistant":
-        out_payload = {"text": _preview(payload.get("text", ""), 4000)}
-    elif kind == "tool_call":
-        out_payload = {"name": payload.get("name")}
-        params = payload.get("params") or payload.get("input")
-        if params is not None:
-            out_payload["params"] = _preview(params, 1000)
-    elif kind == "tool_result":
-        out_payload = {"status": payload.get("status")}
-        result = payload.get("result") or payload.get("output") or payload.get("content")
-        if result is not None:
-            out_payload["preview"] = _preview(result, 1000)
-    elif kind == "reasoning":
-        summary = payload.get("summary") or payload.get("text")
-        out_payload = {"summary": _preview(summary, 500)} if summary else {}
-    elif kind == "system":
-        out_payload = {"text": _preview(payload.get("text", ""), 1000)}
-    else:
-        # Unknown kind: drop oversized fields, keep a small preview.
-        out_payload = {"preview": _preview(payload, 500)} if payload else {}
-
-    compact: dict[str, Any] = {"kind": kind, "payload": out_payload}
+    compact: dict[str, Any] = {"kind": kind, "payload": _truncate_deep(payload)}
     if seq is not None:
         compact["seq"] = seq
     return compact

@@ -167,27 +167,45 @@ def fake_redis(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_compact_tool_call():
-    block = {"kind": "tool_call", "seq": 3, "payload": {"name": "web_search", "params": {"q": "x" * 5000}}}
+def test_compact_tool_call_preserves_param_structure():
+    # Params must stay a dict (not be stringified) so the restored view renders
+    # the same as the live stream; only long string leaves get truncated.
+    block = {"kind": "tool_call", "seq": 3, "payload": {"name": "web_search", "params": {"q": "x" * 9000}}}
     out = owner_chat_cache.compact_block(block)
     assert out["kind"] == "tool_call"
     assert out["payload"]["name"] == "web_search"
-    assert len(out["payload"]["params"]) <= 1000
+    assert isinstance(out["payload"]["params"], dict)
+    assert len(out["payload"]["params"]["q"]) <= owner_chat_cache._MAX_STR_FIELD + 1
     assert out["seq"] == 3
 
 
-def test_compact_tool_result_preview():
+def test_compact_tool_result_preserves_structure():
     block = {"kind": "tool_result", "payload": {"status": "ok", "result": "z" * 9000}}
     out = owner_chat_cache.compact_block(block)
     assert out["payload"]["status"] == "ok"
-    assert len(out["payload"]["preview"]) <= 1000
+    assert isinstance(out["payload"]["result"], str)
+    assert len(out["payload"]["result"]) <= owner_chat_cache._MAX_STR_FIELD + 1
 
 
-def test_compact_reasoning_summary_only():
-    block = {"kind": "reasoning", "payload": {"text": "long hidden reasoning " * 100}}
+def test_compact_thinking_keeps_payload_shape():
+    # `thinking` (codex runtime) must NOT fall through to a stringified preview.
+    block = {
+        "kind": "thinking",
+        "seq": 2,
+        "payload": {"phase": "updated", "label": "Searching web", "source": "runtime"},
+    }
     out = owner_chat_cache.compact_block(block)
-    assert "summary" in out["payload"]
-    assert len(out["payload"]["summary"]) <= 500
+    assert out["kind"] == "thinking"
+    assert out["payload"] == {"phase": "updated", "label": "Searching web", "source": "runtime"}
+    assert out["seq"] == 2
+
+
+def test_compact_truncates_long_string_in_place():
+    block = {"kind": "reasoning", "payload": {"text": "r" * 9000}}
+    out = owner_chat_cache.compact_block(block)
+    # structure preserved (still under payload.text), long string truncated
+    assert "text" in out["payload"]
+    assert len(out["payload"]["text"]) <= owner_chat_cache._MAX_STR_FIELD + 1
 
 
 def test_byte_cap_truncates(monkeypatch):
