@@ -10,6 +10,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useShallow } from "zustand/react/shallow";
 import MessageComposer from "./MessageComposer";
+import { dashboardReplyTargetId } from "@/lib/dashboard-message-actions";
 import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 import { CornerUpLeft, Loader2, X } from "lucide-react";
 import DashboardSelect from "./DashboardSelect";
@@ -334,10 +335,10 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     const clientTempId = `tmp_${crypto.randomUUID()}`;
     const now = new Date().toISOString();
     const displayText = text || (attachments ? `[${attachments.length} file(s)]` : "");
-    const replyTargetMsgId = replyingTo?.msg_id ?? null;
-    const optimisticReplyPreview = replyingTo
+    const replyTargetMsgId = replyingTo ? dashboardReplyTargetId(replyingTo) : null;
+    const optimisticReplyPreview = replyingTo && replyTargetMsgId
       ? {
-          msg_id: replyingTo.msg_id,
+          msg_id: replyTargetMsgId,
           sender_id: replyingTo.sender_id,
           sender_display_name:
             replyingTo.display_sender_name || replyingTo.sender_name || null,

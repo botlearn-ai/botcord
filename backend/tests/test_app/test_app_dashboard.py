@@ -465,6 +465,51 @@ async def test_dashboard_member_recall_respects_two_minute_window(
 
 
 @pytest.mark.asyncio
+async def test_human_owner_can_recall_fresh_owned_bot_message(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_data: dict,
+):
+    room = Room(
+        room_id="rm_owned_bot_recall",
+        name="Owned Bot Recall",
+        description="",
+        owner_id="ag_other00001",
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add(room)
+    db_session.add(RoomMember(
+        room_id="rm_owned_bot_recall",
+        agent_id="ag_dashtest001",
+        participant_type=ParticipantType.agent,
+        role=RoomRole.member,
+    ))
+    db_session.add(MessageRecord(
+        hub_msg_id="hm_owned_bot_recall",
+        msg_id="msg_owned_bot_recall",
+        sender_id="ag_dashtest001",
+        receiver_id="ag_dashtest001",
+        room_id="rm_owned_bot_recall",
+        envelope_json='{"from":"ag_dashtest001","type":"message","payload":{"text":"owned bot fresh"}}',
+        state=MessageState.queued,
+        ttl_sec=3600,
+        created_at=datetime.datetime.now(datetime.timezone.utc),
+    ))
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/dashboard/rooms/rm_owned_bot_recall/messages/msg_owned_bot_recall/recall",
+        headers={"Authorization": f"Bearer {seed_data['token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["is_recalled"] is True
+    assert data["recalled_by_id"] == seed_data["user"].human_id
+    assert data["recalled_by_type"] == "human"
+
+
+@pytest.mark.asyncio
 async def test_dashboard_overview_human_mode(
     client: AsyncClient, seed_data: dict
 ):

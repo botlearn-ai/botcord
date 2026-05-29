@@ -20,6 +20,7 @@ from app.auth import RequestContext, require_active_agent, require_user, require
 from app.auth_room import (
     effective_human_room_role,
     effective_human_send_member,
+    load_owned_agent_ids,
     resolve_provider_agent_for_room,
     viewer_can_admin_room,
 )
@@ -2528,6 +2529,12 @@ async def recall_room_message(
         raise HTTPException(status_code=400, detail="Only message records can be recalled")
 
     capability = await viewer_can_admin_room(db, ctx, room)
+    owned_agent_ids = (
+        await load_owned_agent_ids(db, ctx.user_id)
+        if actor_type == ParticipantType.human
+        else set()
+    )
+    is_owned_bot_sender = target.sender_id in owned_agent_ids
     member = (
         await db.execute(
             select(RoomMember).where(
@@ -2537,7 +2544,7 @@ async def recall_room_message(
             )
         )
     ).scalar_one_or_none()
-    if capability is None and member is None:
+    if capability is None and member is None and not is_owned_bot_sender:
         raise HTTPException(status_code=403, detail="Not a member of this room")
 
     source_user_id = str(ctx.user_id) if ctx.user_id is not None else None
@@ -2546,6 +2553,9 @@ async def recall_room_message(
         and target.source_type == "dashboard_human_room"
         and source_user_id is not None
         and str(target.source_user_id) == source_user_id
+    ) or (
+        actor_type == ParticipantType.human
+        and is_owned_bot_sender
     )
     if capability is None and not is_sender:
         raise HTTPException(status_code=403, detail="Only the sender or room admins can recall this message")

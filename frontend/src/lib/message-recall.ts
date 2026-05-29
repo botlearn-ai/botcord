@@ -60,6 +60,7 @@ export function canRecallDashboardMessage({
   const isViewerAuthored =
     isOwn
     || Boolean(humanId && message.sender_id === humanId)
+    || ownedAgentIds.includes(message.sender_id)
     || Boolean(userId && message.source_user_id === userId);
   if (!isViewerAuthored) return false;
 
