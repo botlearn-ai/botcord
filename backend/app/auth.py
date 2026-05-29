@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 import jwt
 from jwt import PyJWKClient
 from fastapi import Depends, Header, HTTPException
-from sqlalchemy import func as sa_func, select
+from sqlalchemy import func as sa_func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.auth import assert_current_agent_token, verify_agent_token
@@ -53,6 +53,13 @@ class RequestContext:
     # "user" for Supabase-authenticated humans, "agent" for owner-granted
     # BotCord agent credentials.
     auth_kind: str = "user"
+
+
+@dataclass(frozen=True)
+class ReservedAgentManagementGrant:
+    id: _uuid.UUID
+    scope: str
+    limits_json: dict
 
 
 MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE = "cloud_agents:create"
@@ -400,7 +407,12 @@ def _grant_is_current(
             return False
     limits = grant.limits_json or {}
     max_uses = limits.get("max_uses")
-    if isinstance(max_uses, int) and max_uses >= 0 and grant.use_count >= max_uses:
+    if (
+        isinstance(max_uses, int)
+        and not isinstance(max_uses, bool)
+        and max_uses >= 0
+        and grant.use_count >= max_uses
+    ):
         return False
     if daemon_instance_id is None:
         return grant.daemon_instance_id is None
@@ -462,7 +474,20 @@ async def require_agent_management_scopes(
     if not missing:
         return
     agent_id = ctx.active_agent_id or ""
-    raise HTTPException(
+    raise _management_permission_required(
+        agent_id=agent_id,
+        missing=missing,
+        daemon_instance_id=daemon_instance_id,
+    )
+
+
+def _management_permission_required(
+    *,
+    agent_id: str,
+    missing: list[str],
+    daemon_instance_id: str | None,
+) -> HTTPException:
+    return HTTPException(
         status_code=403,
         detail={
             "code": "management_permission_required",
@@ -534,23 +559,167 @@ async def active_agent_management_grants(
     return grants
 
 
-async def record_agent_management_scope_use(
+async def reserve_agent_management_scope_uses(
     db: AsyncSession,
     *,
     ctx: RequestContext,
     scopes: list[str] | tuple[str, ...],
     daemon_instance_id: str | None = None,
     allow_global_daemon_grant: bool = True,
-) -> None:
-    grants = await active_agent_management_grants(
-        db,
-        ctx=ctx,
-        required_scopes=scopes,
-        daemon_instance_id=daemon_instance_id,
-        allow_global_daemon_grant=allow_global_daemon_grant,
+) -> dict[str, ReservedAgentManagementGrant]:
+    """Atomically reserve management grant uses before a side effect runs."""
+    required_scopes = _normalise_required_scopes(scopes)
+    if ctx.auth_kind != "agent":
+        return {}
+    agent_id = ctx.active_agent_id or ""
+    if not agent_id:
+        raise _management_permission_required(
+            agent_id=agent_id,
+            missing=required_scopes,
+            daemon_instance_id=daemon_instance_id,
+        )
+
+    reserved: dict[str, ReservedAgentManagementGrant] = {}
+    missing: list[str] = []
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for scope in required_scopes:
+        grant = await _reserve_agent_management_scope_use(
+            db,
+            ctx=ctx,
+            scope=scope,
+            daemon_instance_id=daemon_instance_id,
+            allow_global_daemon_grant=allow_global_daemon_grant,
+            now=now,
+        )
+        if grant is None:
+            missing.append(scope)
+        else:
+            reserved[scope] = grant
+
+    if missing:
+        await db.rollback()
+        raise _management_permission_required(
+            agent_id=agent_id,
+            missing=missing,
+            daemon_instance_id=daemon_instance_id,
+        )
+
+    await db.commit()
+    return reserved
+
+
+async def _reserve_agent_management_scope_use(
+    db: AsyncSession,
+    *,
+    ctx: RequestContext,
+    scope: str,
+    daemon_instance_id: str | None,
+    allow_global_daemon_grant: bool,
+    now: datetime.datetime,
+) -> ReservedAgentManagementGrant | None:
+    result = await db.execute(
+        select(AgentManagementGrant)
+        .where(
+            AgentManagementGrant.user_id == ctx.user_id,
+            AgentManagementGrant.agent_id == ctx.active_agent_id,
+            AgentManagementGrant.scope == scope,
+        )
+        .with_for_update()
     )
-    for grant in grants.values():
-        grant.use_count += 1
+    candidates = [
+        grant
+        for grant in result.scalars().all()
+        if _grant_is_current(
+            grant,
+            daemon_instance_id=daemon_instance_id,
+            now=now,
+            allow_global_daemon_grant=allow_global_daemon_grant,
+        )
+    ]
+    candidates.sort(
+        key=lambda grant: (
+            0
+            if daemon_instance_id is not None
+            and grant.daemon_instance_id == daemon_instance_id
+            else 1,
+            grant.created_at
+            or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc),
+        )
+    )
+
+    for grant in candidates:
+        conditions = [
+            AgentManagementGrant.id == grant.id,
+            AgentManagementGrant.revoked_at.is_(None),
+            or_(
+                AgentManagementGrant.expires_at.is_(None),
+                AgentManagementGrant.expires_at > now,
+            ),
+        ]
+        if daemon_instance_id is None:
+            conditions.append(AgentManagementGrant.daemon_instance_id.is_(None))
+        elif allow_global_daemon_grant:
+            conditions.append(
+                or_(
+                    AgentManagementGrant.daemon_instance_id.is_(None),
+                    AgentManagementGrant.daemon_instance_id == daemon_instance_id,
+                )
+            )
+        else:
+            conditions.append(
+                AgentManagementGrant.daemon_instance_id == daemon_instance_id
+            )
+
+        limits = grant.limits_json or {}
+        max_uses = limits.get("max_uses")
+        if (
+            isinstance(max_uses, int)
+            and not isinstance(max_uses, bool)
+            and max_uses >= 0
+        ):
+            conditions.append(AgentManagementGrant.use_count < max_uses)
+
+        reserved_id = (
+            await db.execute(
+                update(AgentManagementGrant)
+                .where(*conditions)
+                .values(use_count=AgentManagementGrant.use_count + 1)
+                .returning(AgentManagementGrant.id)
+                .execution_options(synchronize_session=False)
+            )
+        ).scalar_one_or_none()
+        if reserved_id is not None:
+            return ReservedAgentManagementGrant(
+                id=grant.id,
+                scope=grant.scope,
+                limits_json=grant.limits_json or {},
+            )
+    return None
+
+
+async def release_agent_management_scope_uses(
+    db: AsyncSession,
+    grants: (
+        dict[str, ReservedAgentManagementGrant]
+        | list[ReservedAgentManagementGrant]
+        | tuple[ReservedAgentManagementGrant, ...]
+    ),
+) -> None:
+    grant_values = grants.values() if isinstance(grants, dict) else grants
+    grant_ids = [grant.id for grant in grant_values]
+    if not grant_ids:
+        return
+    await db.rollback()
+    await db.execute(
+        update(AgentManagementGrant)
+        .where(
+            AgentManagementGrant.id.in_(grant_ids),
+            AgentManagementGrant.use_count > 0,
+        )
+        .values(use_count=AgentManagementGrant.use_count - 1)
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
 
 
 async def require_beta_user(

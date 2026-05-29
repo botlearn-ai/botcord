@@ -339,6 +339,36 @@ async def test_reapproving_management_grant_resets_use_count(
 
 
 @pytest.mark.asyncio
+async def test_agent_management_grant_use_is_refunded_when_cloud_create_fails(
+    client_factory,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    grant = AgentManagementGrant(
+        user_id=seed_user["user_id"],
+        agent_id=seed_manager_agent["agent_id"],
+        scope=MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE,
+        limits_json={"max_uses": 1},
+        expires_at=datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(days=1),
+    )
+    db_session.add(grant)
+    await db_session.commit()
+    client, _ = await client_factory(force_create_failure=True)
+
+    r = await client.post(
+        "/api/cloud-agents",
+        json={"name": "Failing Bot"},
+        headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+    )
+    assert r.status_code == 502
+    assert r.json()["detail"]["code"] == "fake_create_failed"
+    await db_session.refresh(grant)
+    assert grant.use_count == 0
+
+
+@pytest.mark.asyncio
 async def test_daemon_provision_grant_requires_daemon_scope(
     client_factory,
     seed_user,

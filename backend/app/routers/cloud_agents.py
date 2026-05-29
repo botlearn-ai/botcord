@@ -17,7 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import (
     MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE,
     RequestContext,
-    record_agent_management_scope_use,
+    release_agent_management_scope_uses,
+    reserve_agent_management_scope_uses,
     require_user,
     require_user_or_agent_management,
 )
@@ -229,6 +230,11 @@ async def create_cloud_agent(
     db: AsyncSession = Depends(get_db),
     service: CloudAgentService = Depends(get_cloud_agent_service),
 ) -> CloudAgentOut:
+    reserved_grants = await reserve_agent_management_scope_uses(
+        db,
+        ctx=ctx,
+        scopes=[MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE],
+    )
     try:
         view = await service.create_cloud_agent(
             db,
@@ -243,14 +249,13 @@ async def create_cloud_agent(
                 thinking=body.thinking,
             ),
         )
-        await record_agent_management_scope_use(
-            db,
-            ctx=ctx,
-            scopes=[MANAGEMENT_SCOPE_CLOUD_AGENTS_CREATE],
-        )
         await db.commit()
     except CloudAgentError as exc:
+        await release_agent_management_scope_uses(db, reserved_grants)
         raise _handle_service_error(exc) from exc
+    except Exception:
+        await release_agent_management_scope_uses(db, reserved_grants)
+        raise
     return CloudAgentOut.from_view(view)
 
 

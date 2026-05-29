@@ -233,16 +233,15 @@ async def test_provision_enforces_agent_management_role_count_limit(
     seed_manager_agent,
     db_session: AsyncSession,
 ):
-    db_session.add(
-        AgentManagementGrant(
-            user_id=seed_user["user_id"],
-            agent_id=seed_manager_agent["agent_id"],
-            scope=MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
-            limits_json={"max_role_count": 1},
-            expires_at=datetime.datetime.now(datetime.timezone.utc)
-            + datetime.timedelta(days=1),
-        )
+    grant = AgentManagementGrant(
+        user_id=seed_user["user_id"],
+        agent_id=seed_manager_agent["agent_id"],
+        scope=MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
+        limits_json={"max_role_count": 1},
+        expires_at=datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(days=1),
     )
+    db_session.add(grant)
     await db_session.commit()
     client = await client_factory()
 
@@ -259,6 +258,80 @@ async def test_provision_enforces_agent_management_role_count_limit(
     body = response.json()
     assert body["detail"]["code"] == "management_limit_exceeded"
     assert body["detail"]["limit"] == "max_role_count"
+    await db_session.refresh(grant)
+    assert grant.use_count == 0
+
+
+@pytest.mark.asyncio
+async def test_provision_checks_role_limit_against_normalized_plan(
+    client_factory,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    grant = AgentManagementGrant(
+        user_id=seed_user["user_id"],
+        agent_id=seed_manager_agent["agent_id"],
+        scope=MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
+        limits_json={"max_role_count": 1},
+        expires_at=datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(days=1),
+    )
+    db_session.add(grant)
+    await db_session.commit()
+    client = await client_factory()
+
+    response = await client.post(
+        "/api/team-orchestration/provision",
+        json={
+            "goal": "Build a bounded team",
+            "role_count": 1,
+            "roles": [
+                {"key": "one", "name": "One", "brief": "First role."},
+                {"key": "two", "name": "Two", "brief": "Second role."},
+            ],
+            "start_runs": False,
+        },
+        headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+    )
+    assert response.status_code == 201, response.text
+    assert len(response.json()["roles"]) == 1
+    await db_session.refresh(grant)
+    assert grant.use_count == 1
+
+
+@pytest.mark.asyncio
+async def test_team_management_grant_use_is_refunded_when_provision_fails(
+    client_factory,
+    seed_user,
+    seed_manager_agent,
+    db_session: AsyncSession,
+):
+    grant = AgentManagementGrant(
+        user_id=seed_user["user_id"],
+        agent_id=seed_manager_agent["agent_id"],
+        scope=MANAGEMENT_SCOPE_TEAM_ORCHESTRATION_PROVISION,
+        limits_json={"max_uses": 1},
+        expires_at=datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(days=1),
+    )
+    db_session.add(grant)
+    await db_session.commit()
+    client = await client_factory(force_create_failure=True)
+
+    response = await client.post(
+        "/api/team-orchestration/provision",
+        json={
+            "goal": "Fail after reserving permission",
+            "role_count": 1,
+            "start_runs": False,
+        },
+        headers={"Authorization": f"Bearer {seed_manager_agent['token']}"},
+    )
+    assert response.status_code == 502, response.text
+    assert response.json()["detail"]["code"] == "fake_create_failed"
+    await db_session.refresh(grant)
+    assert grant.use_count == 0
 
 
 @pytest.mark.asyncio
