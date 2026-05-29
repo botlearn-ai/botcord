@@ -213,6 +213,56 @@ async def test_dashboard_chat_send_and_room_creation(
 
 
 @pytest.mark.asyncio
+async def test_rest_send_registers_trace_for_streaming(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    """REST /dashboard/chat/send must register the in-flight trace (parity with
+    the WS send path) so streamed blocks route to the owner's WS and get cached
+    for refresh/restore. The dashboard falls back to REST when the WS isn't
+    connected, so without this the whole stream-cache path silently no-ops."""
+    from hub.routers import owner_chat_ws
+    import uuid as _uuid
+    from sqlalchemy import update
+
+    agent_id, token, _sk, _kid = await _register_and_verify(client, "TraceAgent")
+    user_id = str(_uuid.uuid4())
+    owner = User(
+        id=_uuid.UUID(user_id),
+        display_name="Owner User",
+        email="trace-owner@example.com",
+        status="active",
+        supabase_user_id=_uuid.uuid4(),
+        human_id="hu_tracereg01",
+    )
+    db_session.add(owner)
+    await db_session.execute(
+        update(Agent)
+        .where(Agent.agent_id == agent_id)
+        .values(
+            user_id=_uuid.UUID(user_id),
+            claimed_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+    )
+    await db_session.commit()
+
+    headers = _auth_header(token)
+    resp = await client.post(
+        "/dashboard/chat/send",
+        json={"text": "stream me"},
+        headers=headers,
+    )
+    assert resp.status_code == 202
+    hub_msg_id = resp.json()["hub_msg_id"]
+
+    try:
+        assert hub_msg_id in owner_chat_ws._oc_trace_subs
+        assert owner_chat_ws._oc_trace_subs[hub_msg_id] == (user_id, agent_id)
+    finally:
+        owner_chat_ws._cleanup_trace(hub_msg_id)
+
+
+@pytest.mark.asyncio
 async def test_dashboard_chat_room_is_stable(
     client: AsyncClient,
     db_session: AsyncSession,

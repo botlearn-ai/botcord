@@ -153,6 +153,32 @@ def _cleanup_trace(trace_id: str) -> None:
     _oc_trace_block_count.pop(trace_id, None)
 
 
+async def register_owner_chat_run(
+    *,
+    hub_msg_id: str,
+    user_id: str,
+    agent_id: str,
+    room_id: str,
+) -> None:
+    """Register an in-flight owner-chat trace and write its Redis run metadata.
+
+    Shared by both the owner-chat WS ``send`` path and the REST
+    ``/dashboard/chat/send`` path. The dashboard sends over the WS when it is
+    connected and falls back to REST otherwise; both must register the trace so
+    streamed blocks route to the owner's WS (and get cached for refresh/restore).
+    ``trace_id`` is the ``hub_msg_id`` of the trigger message.
+    """
+    _oc_trace_subs[hub_msg_id] = (user_id, agent_id)
+    _oc_trace_block_count[hub_msg_id] = 0
+    await owner_chat_cache.write_run_metadata(
+        hub_msg_id,
+        user_id=user_id,
+        agent_id=agent_id,
+        room_id=room_id,
+        trigger_msg_id=hub_msg_id,
+    )
+
+
 # Retry backoff schedule (seconds) for notify_inbox when no WS connections are active.
 _NOTIFY_RETRY_DELAYS: Sequence[float] = (1, 2, 4, 8)
 
@@ -484,17 +510,12 @@ async def owner_chat_ws(ws: WebSocket):
                     await db.commit()
 
                     # Register trace subscription so streamed blocks route here
-                    _oc_trace_subs[hub_msg_id] = (user_id, agent_id)
-                    _oc_trace_block_count[hub_msg_id] = 0
-
-                    # Write the in-flight run metadata to Redis (no-op if Redis
-                    # disabled). trace_id == hub_msg_id of the trigger message.
-                    await owner_chat_cache.write_run_metadata(
-                        hub_msg_id,
+                    # and cache the in-flight run for refresh/restore.
+                    await register_owner_chat_run(
+                        hub_msg_id=hub_msg_id,
                         user_id=user_id,
                         agent_id=agent_id,
                         room_id=room_id,
-                        trigger_msg_id=hub_msg_id,
                     )
 
                     # Notify agent inbox

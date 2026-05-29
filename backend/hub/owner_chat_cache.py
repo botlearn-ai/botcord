@@ -58,10 +58,17 @@ def get_redis() -> Any:
             import redis.asyncio as redis_asyncio
 
             # TLS is handled automatically by the rediss:// scheme.
+            # health_check_interval + keepalive keep idle connections alive
+            # (ElastiCache/NLB drop silent idle sockets), and retry_on_timeout
+            # lets one-shot commands survive a transient read timeout instead of
+            # surfacing as a write failure.
             _redis_client = redis_asyncio.from_url(
                 hub_config.BOTCORD_REDIS_URL,
                 encoding="utf-8",
                 decode_responses=True,
+                socket_keepalive=True,
+                health_check_interval=30,
+                retry_on_timeout=True,
             )
         except Exception as exc:  # noqa: BLE001
             _redis_init_failed = True
@@ -362,15 +369,25 @@ async def owner_chat_fanout_loop() -> None:
         client = get_redis()
         if client is None:
             return
+        pubsub = client.pubsub()
         try:
-            pubsub = client.pubsub()
             await pubsub.subscribe(hub_config.OWNER_CHAT_FANOUT_CHANNEL)
             logger.info(
                 "owner_chat_cache: fanout subscribed channel=%s instance=%s",
                 hub_config.OWNER_CHAT_FANOUT_CHANNEL,
                 INSTANCE_ID,
             )
-            async for message in pubsub.listen():
+            while True:
+                # Block up to `timeout`s for a message; None means idle, which
+                # is NOT an error. Using get_message(timeout=...) instead of
+                # listen() avoids the socket read-timeout churn that made the
+                # loop reconnect every few seconds against ElastiCache (and
+                # leak a subscribe connection on each reconnect).
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True, timeout=30.0
+                )
+                if message is None:
+                    continue
                 if message.get("type") != "message":
                     continue
                 try:
@@ -384,7 +401,14 @@ async def owner_chat_fanout_loop() -> None:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("owner_chat_cache.fanout_loop error: %s", exc)
-            await asyncio.sleep(1.0)
+        finally:
+            # Always release the pubsub connection before reconnecting so a
+            # transient error never leaks a subscribe connection.
+            try:
+                await pubsub.aclose()
+            except Exception:  # noqa: BLE001
+                pass
+        await asyncio.sleep(1.0)
 
 
 async def _deliver_fanout_event(event: dict) -> None:
