@@ -79,6 +79,9 @@ class DashboardMessage(BaseModel):
     state: str
     state_counts: dict[str, int] | None = None
     created_at: datetime.datetime
+    is_recalled: bool = False
+    recalled_at: datetime.datetime | None = None
+    recalled_by_id: str | None = None
     source_type: str = "agent"
     sender_kind: str = "agent"
     display_sender_name: str = ""

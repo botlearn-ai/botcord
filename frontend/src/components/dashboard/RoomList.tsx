@@ -14,6 +14,7 @@ import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
 import { ContactInfo, DashboardMessage, DashboardRoom } from "@/lib/types";
+import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import { getIsoTimestampValue, getRoomActivityTimestamp, humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -339,10 +340,14 @@ export default function RoomList({
           previewText = ownerChatLatestForRoom.text || (ownerChatLatestForRoom.attachments?.length ? "[Attachment]" : t.noMessagesYet);
           previewSender = ownerChatLatestForRoom.senderName || "";
         } else if (room.last_message_preview != null || room.last_sender_name != null) {
-          previewText = room.last_message_preview ?? t.noMessagesYet;
+          previewText = room.last_message_preview === "Message recalled"
+            ? recalledMessageLabel(locale)
+            : room.last_message_preview ?? t.noMessagesYet;
           previewSender = room.last_sender_name ?? "";
         } else if (cachedLatestMessage) {
-          previewText = cachedLatestMessage.text || t.noMessagesYet;
+          previewText = isDashboardMessageRecalled(cachedLatestMessage)
+            ? recalledMessageLabel(locale)
+            : cachedLatestMessage.text || t.noMessagesYet;
           previewSender = cachedLatestMessage.sender_name || "";
         } else {
           previewText = t.noMessagesYet;

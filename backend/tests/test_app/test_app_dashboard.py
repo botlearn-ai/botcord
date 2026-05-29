@@ -20,6 +20,7 @@ from hub.models import (
     ContactRequest,
     ContactRequestState,
     MessageRecord,
+    MessageState,
     MessagePolicy,
     Role,
     Room,
@@ -346,6 +347,121 @@ async def test_dashboard_overview_includes_members_preview_for_group_room(
         {"agent_id": "ag_groupmate01", "avatar_url": None, "display_name": "Group Mate"},
         {"agent_id": None, "avatar_url": "https://example.test/human.png", "display_name": "Human Mate"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_owner_can_recall_any_room_message(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_data: dict,
+):
+    old_created_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
+    db_session.add_all([
+        MessageRecord(
+            hub_msg_id="hm_recall_owner_a",
+            msg_id="msg_recall_owner",
+            sender_id="ag_other00001",
+            receiver_id="ag_dashtest001",
+            room_id="rm_testroom001",
+            envelope_json='{"from":"ag_other00001","type":"message","payload":{"text":"remove me","attachments":[{"filename":"secret.txt","url":"https://example.test/secret.txt"}]}}',
+            state=MessageState.queued,
+            ttl_sec=3600,
+            created_at=old_created_at,
+        ),
+        MessageRecord(
+            hub_msg_id="hm_recall_owner_b",
+            msg_id="msg_recall_owner",
+            sender_id="ag_other00001",
+            receiver_id="ag_other00001",
+            room_id="rm_testroom001",
+            envelope_json='{"from":"ag_other00001","type":"message","payload":{"text":"remove me","attachments":[{"filename":"secret.txt","url":"https://example.test/secret.txt"}]}}',
+            state=MessageState.queued,
+            ttl_sec=3600,
+            created_at=old_created_at,
+        ),
+    ])
+    await db_session.commit()
+
+    headers = {
+        "Authorization": f"Bearer {seed_data['token']}",
+        "X-Active-Agent": "ag_dashtest001",
+    }
+    resp = await client.post(
+        "/api/dashboard/rooms/rm_testroom001/messages/msg_recall_owner/recall",
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["is_recalled"] is True
+    assert data["recalled_by_id"] == "ag_dashtest001"
+
+    rows = (
+        await db_session.execute(
+            select(MessageRecord).where(MessageRecord.msg_id == "msg_recall_owner")
+        )
+    ).scalars().all()
+    assert len(rows) == 2
+    assert all(row.recalled_at is not None for row in rows)
+    assert all(row.recalled_by_id == "ag_dashtest001" for row in rows)
+
+    messages_resp = await client.get(
+        "/api/dashboard/rooms/rm_testroom001/messages",
+        headers=headers,
+    )
+    assert messages_resp.status_code == 200, messages_resp.text
+    recalled = next(
+        message for message in messages_resp.json()["messages"]
+        if message["msg_id"] == "msg_recall_owner"
+    )
+    assert recalled["is_recalled"] is True
+    assert recalled["text"] == ""
+    assert recalled["payload"]["recalled"] is True
+    assert "attachments" not in recalled["payload"]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_member_recall_respects_two_minute_window(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_data: dict,
+):
+    room = Room(
+        room_id="rm_member_recall",
+        name="Member Recall",
+        description="",
+        owner_id="ag_other00001",
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add(room)
+    db_session.add(RoomMember(
+        room_id="rm_member_recall",
+        agent_id="ag_dashtest001",
+        participant_type=ParticipantType.agent,
+        role=RoomRole.member,
+    ))
+    db_session.add(MessageRecord(
+        hub_msg_id="hm_recall_old",
+        msg_id="msg_recall_old",
+        sender_id="ag_dashtest001",
+        receiver_id="ag_dashtest001",
+        room_id="rm_member_recall",
+        envelope_json='{"from":"ag_dashtest001","type":"message","payload":{"text":"too old"}}',
+        state=MessageState.queued,
+        ttl_sec=3600,
+        created_at=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=3),
+    ))
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/dashboard/rooms/rm_member_recall/messages/msg_recall_old/recall",
+        headers={
+            "Authorization": f"Bearer {seed_data['token']}",
+            "X-Active-Agent": "ag_dashtest001",
+        },
+    )
+    assert resp.status_code == 403
+    assert "recall window" in resp.text
 
 
 @pytest.mark.asyncio

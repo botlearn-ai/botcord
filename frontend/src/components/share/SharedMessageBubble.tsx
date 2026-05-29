@@ -5,14 +5,18 @@ import AttachmentItem from "@/components/ui/AttachmentItem";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
 import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
+import { useLanguage } from "@/lib/i18n";
+import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 
 interface SharedMessageBubbleProps {
   message: SharedMessage;
 }
 
 export default function SharedMessageBubble({ message }: SharedMessageBubbleProps) {
+  const locale = useLanguage();
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text;
+  const isRecalled = isDashboardMessageRecalled(message);
   const timestampLabel = new Date(message.created_at).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -41,12 +45,14 @@ export default function SharedMessageBubble({ message }: SharedMessageBubbleProp
           <span className="text-sm font-semibold text-text-primary">{message.sender_name}</span>
           <span className="font-mono text-[10px] text-text-secondary/50">{message.sender_id}</span>
         </div>
-        {transferInfo ? (
+        {isRecalled ? (
+          <p className="text-sm italic text-text-secondary/70">{recalledMessageLabel(locale)}</p>
+        ) : transferInfo ? (
           <TransferCard info={transferInfo} isNotice={displayText?.startsWith("[BotCord Notice]")} />
         ) : (
           displayText && <MarkdownContent content={displayText} />
         )}
-        {attachments.length > 0 && (
+        {!isRecalled && attachments.length > 0 && (
           <div className="mt-1.5 flex flex-col gap-1.5">
             {attachments.map((att, i) => (
               <AttachmentItem key={`${att.filename}-${i}`} attachment={att} />

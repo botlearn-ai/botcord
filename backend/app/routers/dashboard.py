@@ -11,7 +11,7 @@ import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import exists, func, select, text
+from sqlalchemy import exists, func, select, text, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -64,6 +64,7 @@ from hub.routers.hub import (
     _load_reply_previews,
     _load_reply_target,
     _record_slow_mode_send,
+    build_agent_realtime_event,
     build_message_realtime_event,
     is_agent_ws_online,
     notify_inbox,
@@ -124,6 +125,53 @@ class ChatAttachment(BaseModel):
 
 
 _RECEIPT_TYPES = frozenset({"ack", "result", "error"})
+_MESSAGE_RECALL_WINDOW = datetime.timedelta(minutes=2)
+_RECALLED_MESSAGE_PREVIEW = "Message recalled"
+
+
+def _datetime_to_iso(value: datetime.datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=datetime.timezone.utc)
+    return value.isoformat()
+
+
+def _recalled_message_fields(rec: MessageRecord) -> dict:
+    recalled_by_type = rec.recalled_by_type
+    return {
+        "is_recalled": rec.recalled_at is not None,
+        "recalled_at": _datetime_to_iso(rec.recalled_at),
+        "recalled_by_id": rec.recalled_by_id,
+        "recalled_by_type": (
+            recalled_by_type.value
+            if hasattr(recalled_by_type, "value")
+            else str(recalled_by_type)
+            if recalled_by_type is not None
+            else None
+        ),
+    }
+
+
+def _display_content_for_record(rec: MessageRecord, parsed: dict) -> tuple[str | None, dict, str | None]:
+    if rec.recalled_at is None:
+        return parsed["text"], parsed["payload"], parsed["type"]
+    return (
+        "",
+        {
+            "recalled": True,
+            "recalled_at": _datetime_to_iso(rec.recalled_at),
+            "recalled_by_id": rec.recalled_by_id,
+        },
+        parsed["type"] or "message",
+    )
+
+
+def _preview_for_record(rec: MessageRecord) -> tuple[str, str | None, str]:
+    sender_id, preview, msg_type = _extract_text_preview(rec.envelope_json)
+    if rec.recalled_at is not None:
+        return sender_id or rec.sender_id, _RECALLED_MESSAGE_PREVIEW, msg_type
+    return sender_id, preview, msg_type
 
 
 async def _effective_dashboard_member_role(
@@ -245,7 +293,9 @@ async def _build_rooms_from_sql(
             if fallback is None:
                 continue
             for key in fill_keys:
-                if key not in item or item.get(key) is None:
+                if key in {"last_message_preview", "last_message_at", "last_sender_name"}:
+                    item[key] = fallback.get(key)
+                elif key not in item or item.get(key) is None:
                     item[key] = fallback.get(key)
         missing_rooms = [room for room in orm_rooms if room["room_id"] not in sql_room_ids]
         combined = mapped if not missing_rooms else _sort_room_previews(mapped + missing_rooms)
@@ -316,9 +366,11 @@ async def _build_room_unread_counts(
         room_id = rec.room_id
         if not room_id or room_id not in counts:
             continue
+        if rec.recalled_at is not None:
+            continue
         if rec.sender_id == viewer_id:
             continue
-        _, _, msg_type = _extract_text_preview(rec.envelope_json)
+        _, _, msg_type = _preview_for_record(rec)
         if msg_type in _RECEIPT_TYPES:
             continue
         last_viewed_at = last_viewed_by_room.get(room_id)
@@ -452,7 +504,7 @@ async def _build_rooms_from_membership(
     for rec in last_msg_result.scalars().all():
         if not rec.room_id:
             continue
-        _, _, msg_type = _extract_text_preview(rec.envelope_json)
+        _, _, msg_type = _preview_for_record(rec)
         if msg_type in _RECEIPT_TYPES:
             receipt_room_ids.append(rec.room_id)
         else:
@@ -479,7 +531,7 @@ async def _build_rooms_from_membership(
         for rec in fallback_result.scalars().all():
             rid = rec.room_id
             if rid and rid not in last_messages:
-                _, _, mt = _extract_text_preview(rec.envelope_json)
+                _, _, mt = _preview_for_record(rec)
                 if mt not in _RECEIPT_TYPES:
                     last_messages[rid] = rec
 
@@ -504,7 +556,7 @@ async def _build_rooms_from_membership(
         last_at = None
         last_sender = None
         if last_rec:
-            sid, preview, _mt = _extract_text_preview(last_rec.envelope_json)
+            sid, preview, _mt = _preview_for_record(last_rec)
             last_preview = preview
             last_at = last_rec.created_at
             if last_at is not None and last_at.tzinfo is None:
@@ -2384,6 +2436,7 @@ async def get_room_messages(
     messages = []
     for rec in records:
         parsed = extract_text_from_envelope(rec.envelope_json)
+        display_text, display_payload, display_type = _display_content_for_record(rec, parsed)
         extra = derive_sender_fields(
             rec,
             agent_name_map=sender_names,
@@ -2399,15 +2452,16 @@ async def get_room_messages(
             "msg_id": rec.msg_id,
             "sender_id": rec.sender_id,
             "sender_name": sender_names.get(rec.sender_id),
-            "text": parsed["text"],
-            "type": parsed["type"],
-            "payload": parsed["payload"],
+            "text": display_text,
+            "type": display_type,
+            "payload": display_payload,
             "topic": rec.topic,
             "topic_id": rec.topic_id,
             "topic_title": topic_info.get(rec.topic_id, {}).get("title") if rec.topic_id else None,
             "created_at": rec.created_at.isoformat() if rec.created_at else None,
             "source_type": rec.source_type,
             "reply_preview": rp.model_dump(mode="json") if rp else None,
+            **_recalled_message_fields(rec),
             **extra,
         }
         if is_member:
@@ -2415,6 +2469,169 @@ async def get_room_messages(
         messages.append(msg)
 
     return {"messages": messages, "has_more": has_more}
+
+
+@router.post("/rooms/{room_id}/messages/{msg_id}/recall")
+async def recall_room_message(
+    room_id: str,
+    msg_id: str,
+    ctx: RequestContext = Depends(require_user_with_optional_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-recall a dashboard room message.
+
+    Owner-chat rooms are intentionally excluded: a recalled UI bubble cannot
+    guarantee that a runtime has not already consumed the message as context.
+    """
+    if room_id.startswith("rm_oc_"):
+        raise HTTPException(status_code=400, detail="Owner-chat messages cannot be recalled")
+
+    room = (
+        await db.execute(select(Room).where(Room.room_id == room_id))
+    ).scalar_one_or_none()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    actor_id = ctx.active_agent_id or ctx.human_id
+    actor_type = ParticipantType.agent if ctx.active_agent_id else ParticipantType.human
+    if not actor_id:
+        raise HTTPException(status_code=403, detail="Missing viewer identity")
+
+    records = list((
+        await db.execute(
+            select(MessageRecord)
+            .where(
+                MessageRecord.room_id == room_id,
+                MessageRecord.msg_id == msg_id,
+            )
+            .order_by(MessageRecord.id.asc())
+        )
+    ).scalars().all())
+    if not records:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    target = records[0]
+    parsed = extract_text_from_envelope(target.envelope_json)
+    if parsed["type"] != "message":
+        raise HTTPException(status_code=400, detail="Only message records can be recalled")
+
+    capability = await viewer_can_admin_room(db, ctx, room)
+    member = (
+        await db.execute(
+            select(RoomMember).where(
+                RoomMember.room_id == room_id,
+                RoomMember.agent_id == actor_id,
+                RoomMember.participant_type == actor_type,
+            )
+        )
+    ).scalar_one_or_none()
+    if capability is None and member is None:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    source_user_id = str(ctx.user_id) if ctx.user_id is not None else None
+    is_sender = target.sender_id == actor_id or (
+        actor_type == ParticipantType.human
+        and target.source_type == "dashboard_human_room"
+        and source_user_id is not None
+        and str(target.source_user_id) == source_user_id
+    )
+    if capability is None and not is_sender:
+        raise HTTPException(status_code=403, detail="Only the sender or room admins can recall this message")
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if capability is None:
+        created_at = target.created_at
+        if created_at is None:
+            raise HTTPException(status_code=403, detail="Message is outside the recall window")
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+        if now - created_at > _MESSAGE_RECALL_WINDOW:
+            raise HTTPException(status_code=403, detail="Message is outside the recall window")
+
+    if target.recalled_at is None:
+        await db.execute(
+            sa_update(MessageRecord)
+            .where(
+                MessageRecord.room_id == room_id,
+                MessageRecord.msg_id == msg_id,
+            )
+            .values(
+                recalled_at=now,
+                recalled_by_id=actor_id,
+                recalled_by_type=actor_type,
+            )
+        )
+        await db.execute(
+            sa_update(ShareMessage)
+            .where(ShareMessage.msg_id == msg_id)
+            .values(
+                text="",
+                payload_json=json.dumps({
+                    "recalled": True,
+                    "is_recalled": True,
+                    "recalled_at": now.isoformat(),
+                    "recalled_by_id": actor_id,
+                    "recalled_by_type": actor_type.value,
+                }),
+            )
+        )
+        await db.commit()
+        target.recalled_at = now
+        target.recalled_by_id = actor_id
+        target.recalled_by_type = actor_type
+
+    member_ids = list((
+        await db.execute(
+            select(RoomMember.agent_id).where(RoomMember.room_id == room_id)
+        )
+    ).scalars().all())
+    for receiver_id in member_ids:
+        try:
+            recalled_fields = _recalled_message_fields(target)
+            await notify_inbox(
+                receiver_id,
+                db=db,
+                realtime_event=build_agent_realtime_event(
+                    type="message_recalled",
+                    agent_id=receiver_id,
+                    room_id=room_id,
+                    hub_msg_id=target.hub_msg_id,
+                    created_at=target.recalled_at,
+                    ext={
+                        "msg_id": msg_id,
+                        "recalled_at": recalled_fields["recalled_at"],
+                        "recalled_by_id": recalled_fields["recalled_by_id"],
+                        "recalled_by_type": recalled_fields["recalled_by_type"],
+                        "preview": _RECALLED_MESSAGE_PREVIEW,
+                    },
+                ),
+                resume_cloud=False,
+            )
+        except Exception as exc:
+            _logger.error(
+                "message recall notify failed receiver=%s room=%s msg=%s err=%s",
+                receiver_id,
+                room_id,
+                msg_id,
+                exc,
+                exc_info=True,
+            )
+
+    return {
+        "room_id": room_id,
+        "msg_id": msg_id,
+        "hub_msg_id": target.hub_msg_id,
+        "is_recalled": True,
+        "recalled_at": _datetime_to_iso(target.recalled_at),
+        "recalled_by_id": target.recalled_by_id,
+        "recalled_by_type": (
+            target.recalled_by_type.value
+            if hasattr(target.recalled_by_type, "value")
+            else str(target.recalled_by_type)
+            if target.recalled_by_type is not None
+            else None
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -3163,6 +3380,7 @@ async def create_share(
 
     for rec in records:
         parsed = extract_text_from_envelope(rec.envelope_json)
+        display_text, display_payload, display_type = _display_content_for_record(rec, parsed)
         if (rec.source_type or "") == "dashboard_human_room":
             _snap_sender_name = (
                 share_user_name_map.get(rec.source_user_id) if rec.source_user_id else None
@@ -3175,9 +3393,12 @@ async def create_share(
             msg_id=rec.msg_id,
             sender_id=rec.sender_id,
             sender_name=_snap_sender_name,
-            type=parsed["type"] or "message",
-            text=parsed["text"] or "",
-            payload_json=json.dumps(parsed["payload"]),
+            type=display_type or "message",
+            text=display_text or "",
+            payload_json=json.dumps({
+                **display_payload,
+                **_recalled_message_fields(rec),
+            }),
             created_at=rec.created_at or datetime.datetime.now(datetime.timezone.utc),
         )
         db.add(sm)
@@ -3208,6 +3429,7 @@ async def _fetch_inbox(
         .where(
             MessageRecord.receiver_id == agent_id,
             MessageRecord.state == MessageState.queued,
+            MessageRecord.recalled_at.is_(None),
         )
         .order_by(MessageRecord.created_at.asc())
         .limit(limit)

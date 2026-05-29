@@ -181,6 +181,10 @@ export interface DashboardMessage {
   source_user_name?: string | null;
   is_mine?: boolean;
   reply_preview?: ReplyPreview | null;
+  is_recalled?: boolean;
+  recalled_at?: string | null;
+  recalled_by_id?: string | null;
+  recalled_by_type?: ParticipantType | null;
 }
 
 export interface RoomHumanSendResponse {
@@ -188,6 +192,16 @@ export interface RoomHumanSendResponse {
   room_id: string;
   status: string;
   topic_id?: string | null;
+}
+
+export interface MessageRecallResponse {
+  room_id: string;
+  msg_id: string;
+  hub_msg_id: string;
+  is_recalled: boolean;
+  recalled_at: string | null;
+  recalled_by_id: string | null;
+  recalled_by_type?: ParticipantType | null;
 }
 
 // --- User Chat types ---
@@ -396,6 +410,7 @@ export interface InboxPollResponse {
 
 export type RealtimeMetaEventType =
   | "message"
+  | "message_recalled"
   | "contact_request"
   | "contact_request_response"
   | "contact_removed"
@@ -518,6 +533,9 @@ export interface SharedMessage {
   text: string;
   payload: Record<string, unknown>;
   created_at: string;
+  is_recalled?: boolean;
+  recalled_at?: string | null;
+  recalled_by_id?: string | null;
 }
 
 export interface SharedRoomInfo {

@@ -39,6 +39,7 @@ let publicAgentsRequestSeq = 0;
 let publicHumansRequestSeq = 0;
 const emptyRoomMessageSnapshot = new Map<string, string | null>();
 const roomMembersInFlight = new Map<string, Promise<PublicRoomMember[]>>();
+const recalledPreviewText = "Message recalled";
 
 function isFetchNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -81,6 +82,28 @@ function applyRealtimeRoomHint<T extends {
 
 function getRoomMessageSnapshot(room: DashboardRoom | null): string | null {
   return room?.last_message_at ?? null;
+}
+
+function buildRecalledMessagePatch(patch?: {
+  recalled_at?: string | null;
+  recalled_by_id?: string | null;
+  recalled_by_type?: "agent" | "human" | null;
+}): Partial<DashboardMessage> {
+  const recalledAt = patch?.recalled_at ?? new Date().toISOString();
+  return {
+    text: "",
+    payload: {
+      recalled: true,
+      is_recalled: true,
+      recalled_at: recalledAt,
+      recalled_by_id: patch?.recalled_by_id ?? null,
+      recalled_by_type: patch?.recalled_by_type ?? null,
+    },
+    is_recalled: true,
+    recalled_at: recalledAt,
+    recalled_by_id: patch?.recalled_by_id ?? null,
+    recalled_by_type: patch?.recalled_by_type ?? null,
+  };
 }
 
 function ownerChatRoomIdForOptimistic(agentId: string): string {
@@ -239,6 +262,8 @@ interface DashboardChatState {
   bumpRoomMembersVersion: (roomId: string) => void;
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
+  markMessageRecalled: (roomId: string, msgId: string, patch?: { recalled_at?: string | null; recalled_by_id?: string | null; recalled_by_type?: "agent" | "human" | null }) => void;
+  recallMessage: (roomId: string, msgId: string) => Promise<void>;
   loadRoomMessages: (roomId: string, opts?: { force?: boolean }) => Promise<void>;
   prefetchRoomMessages: (roomId: string) => Promise<void>;
   pollNewMessages: (roomId: string, opts?: { expectedHubMsgId?: string | null; retries?: number }) => Promise<void>;
@@ -419,6 +444,79 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             messages: { ...state.messages, [roomId]: [...current, message] },
           };
         }),
+
+      markMessageRecalled: (roomId, msgId, patch) =>
+        set((state) => {
+          const current = state.messages[roomId];
+          if (!current) return state;
+          let changed = false;
+          const recalledPatch = buildRecalledMessagePatch(patch);
+          const nextMessages = current.map((message) => {
+            if (message.msg_id !== msgId && message.hub_msg_id !== msgId) return message;
+            changed = true;
+            return { ...message, ...recalledPatch };
+          });
+          if (!changed) return state;
+
+          const latestMessage = [...nextMessages].reverse().find(
+            (message) => message.type !== "ack" && message.type !== "result" && message.type !== "error",
+          );
+          const shouldPatchRoomPreview = latestMessage?.msg_id === msgId || latestMessage?.hub_msg_id === msgId;
+          const patchRoomSummary = <T extends {
+            room_id: string;
+            last_message_preview: string | null;
+          }>(room: T): T => (
+            shouldPatchRoomPreview && room.room_id === roomId
+              ? { ...room, last_message_preview: recalledPreviewText }
+              : room
+          );
+
+          return {
+            messages: { ...state.messages, [roomId]: nextMessages },
+            overview: state.overview
+              ? {
+                ...state.overview,
+                rooms: state.overview.rooms.map(patchRoomSummary),
+              }
+              : state.overview,
+            publicRoomDetails: state.publicRoomDetails[roomId]
+              ? {
+                ...state.publicRoomDetails,
+                [roomId]: patchRoomSummary(state.publicRoomDetails[roomId]),
+              }
+              : state.publicRoomDetails,
+            recentVisitedRooms: state.recentVisitedRooms.map(patchRoomSummary),
+            ownedAgentRooms: state.ownedAgentRooms.map(patchRoomSummary),
+          };
+        }),
+
+      recallMessage: async (roomId, msgId) => {
+        const previous = get().messages[roomId]?.find(
+          (message) => message.msg_id === msgId || message.hub_msg_id === msgId,
+        );
+        get().markMessageRecalled(roomId, msgId);
+        try {
+          const result = await api.recallRoomMessage(roomId, msgId);
+          get().markMessageRecalled(roomId, msgId, {
+            recalled_at: result.recalled_at,
+            recalled_by_id: result.recalled_by_id,
+            recalled_by_type: result.recalled_by_type ?? null,
+          });
+        } catch (error) {
+          if (previous) {
+            set((state) => ({
+              messages: {
+                ...state.messages,
+                [roomId]: (state.messages[roomId] || []).map((message) =>
+                  message.msg_id === msgId || message.hub_msg_id === msgId ? previous : message,
+                ),
+              },
+            }));
+          }
+          get().setError(error instanceof Error ? error.message : "Failed to recall message");
+          throw error;
+        }
+      },
 
       applyRealtimeEventHint: (event) =>
         set((state) => ({

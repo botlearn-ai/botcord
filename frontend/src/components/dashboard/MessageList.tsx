@@ -10,6 +10,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { messageList } from '@/lib/i18n/translations/dashboard';
+import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import { useShallow } from "zustand/react/shallow";
 import { Bot, Settings, UserPlus } from "lucide-react";
 import MessageBubble from "./MessageBubble";
@@ -98,7 +99,8 @@ const PREFILL_ROOM_COMPOSER_EVENT = "botcord:prefill-room-composer";
 const OPEN_ROOM_ADD_MEMBER_EVENT = "botcord:open-room-add-member";
 const OPEN_ROOM_SETTINGS_EVENT = "botcord:open-room-settings";
 
-function messagePreviewText(msg: DashboardMessage): string {
+function messagePreviewText(msg: DashboardMessage, locale: string): string {
+  if (isDashboardMessageRecalled(msg)) return recalledMessageLabel(locale);
   if (msg.text) return msg.text;
   if (typeof msg.payload === "object" && msg.payload && "text" in msg.payload) {
     const text = (msg.payload as { text?: unknown }).text;
@@ -188,7 +190,7 @@ function TopicCard({
         {recentPreview.length > 0 ? (
           <div className="space-y-0.5 border-l-2 border-neon-cyan/30 pl-2">
             {recentPreview.map((msg) => {
-              const text = messagePreviewText(msg);
+              const text = messagePreviewText(msg, locale);
               const isOwn = msg.sender_id === currentAgentId;
               const senderLabel = isOwn
                 ? (locale === "zh" ? "你" : "You")

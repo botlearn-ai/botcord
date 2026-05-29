@@ -1876,6 +1876,7 @@ async def _fetch_queued_messages(
         .where(
             MessageRecord.receiver_id == agent_id,
             MessageRecord.state == MessageState.queued,
+            MessageRecord.recalled_at.is_(None),
         )
         .order_by(MessageRecord.created_at.asc())
         .limit(limit)

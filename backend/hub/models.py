@@ -571,6 +571,13 @@ class MessageRecord(Base):
     acked_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    recalled_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    recalled_by_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    recalled_by_type: Mapped[ParticipantType | None] = mapped_column(
+        Enum(ParticipantType, name="participanttype"), nullable=True
+    )
     mentioned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     source_type: Mapped[str] = mapped_column(
         String(32), nullable=False, default="agent", server_default="agent"

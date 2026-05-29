@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   leaveRoom: vi.fn(),
   getOverview: vi.fn(),
   getPublicRoom: vi.fn(),
+  recallRoomMessage: vi.fn(),
   listAgentRooms: vi.fn(),
 }));
 
@@ -15,6 +16,7 @@ vi.mock("@/lib/api", () => ({
     leaveRoom: mocks.leaveRoom,
     getOverview: mocks.getOverview,
     getPublicRoom: mocks.getPublicRoom,
+    recallRoomMessage: mocks.recallRoomMessage,
   },
   humansApi: {
     listAgentRooms: mocks.listAgentRooms,
@@ -88,6 +90,7 @@ describe("useDashboardChatStore message polling", () => {
     mocks.leaveRoom.mockReset();
     mocks.getOverview.mockReset();
     mocks.getPublicRoom.mockReset();
+    mocks.recallRoomMessage.mockReset();
     mocks.listAgentRooms.mockReset();
     useDashboardSessionStore.setState({
       token: "test-token",
@@ -144,6 +147,49 @@ describe("useDashboardChatStore message polling", () => {
 
     expect(mocks.getRoomMessages).toHaveBeenCalledTimes(1);
     expect(useDashboardChatStore.getState().messages.rm_empty).toEqual([]);
+  });
+
+  it("marks a cached message recalled after the backend confirms recall", async () => {
+    mocks.recallRoomMessage.mockResolvedValue({
+      room_id: "rm_empty",
+      msg_id: "msg_1",
+      hub_msg_id: "hub_1",
+      is_recalled: true,
+      recalled_at: "2026-05-11T08:01:00Z",
+      recalled_by_id: "hu_1",
+      recalled_by_type: "human",
+    });
+    useDashboardChatStore.setState({
+      overview: makeOverview("2026-05-11T08:00:00Z"),
+      messages: {
+        rm_empty: [{
+          hub_msg_id: "hub_1",
+          msg_id: "msg_1",
+          sender_id: "hu_1",
+          sender_name: "Human",
+          type: "message",
+          text: "hello",
+          payload: { text: "hello" },
+          room_id: "rm_empty",
+          topic: null,
+          topic_id: null,
+          goal: null,
+          state: "queued",
+          state_counts: null,
+          created_at: "2026-05-11T08:00:00Z",
+          is_mine: true,
+        }],
+      },
+    });
+
+    await useDashboardChatStore.getState().recallMessage("rm_empty", "msg_1");
+
+    const message = useDashboardChatStore.getState().messages.rm_empty[0];
+    expect(message.is_recalled).toBe(true);
+    expect(message.text).toBe("");
+    expect(message.payload.recalled).toBe(true);
+    expect(message.recalled_at).toBe("2026-05-11T08:01:00Z");
+    expect(useDashboardChatStore.getState().overview?.rooms[0].last_message_preview).toBe("Message recalled");
   });
 
   it("clears the opened room and cached messages after leaving the current room", async () => {

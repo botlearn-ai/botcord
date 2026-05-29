@@ -74,6 +74,7 @@ async def get_share(
                 payload = json.loads(sm.payload_json)
             except (json.JSONDecodeError, TypeError):
                 pass
+        is_recalled = bool(payload.get("is_recalled") or payload.get("recalled"))
 
         messages.append({
             "hub_msg_id": sm.hub_msg_id,
@@ -81,8 +82,11 @@ async def get_share(
             "sender_id": sm.sender_id,
             "sender_name": sm.sender_name,
             "type": sm.type,
-            "text": sm.text or "",
+            "text": "" if is_recalled else sm.text or "",
             "payload": payload,
+            "is_recalled": is_recalled,
+            "recalled_at": payload.get("recalled_at") if is_recalled else None,
+            "recalled_by_id": payload.get("recalled_by_id") if is_recalled else None,
             "created_at": sm.created_at.isoformat() if sm.created_at else None,
         })
 

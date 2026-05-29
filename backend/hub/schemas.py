@@ -654,6 +654,9 @@ class DashboardMessage(BaseModel):
     state: str
     state_counts: dict[str, int] | None = None
     created_at: datetime.datetime
+    is_recalled: bool = False
+    recalled_at: datetime.datetime | None = None
+    recalled_by_id: str | None = None
 
 
 class DashboardMessageResponse(BaseModel):

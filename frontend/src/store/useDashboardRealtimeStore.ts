@@ -28,6 +28,10 @@ function isMessageRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
   return type === "message" || type === "ack" || type === "result" || type === "error" || type === "system";
 }
 
+function isMessageRecallRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
+  return type === "message_recalled";
+}
+
 function isTypingRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
   return type === "typing";
 }
@@ -123,6 +127,24 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
         }
 
         const chatStore = useDashboardChatStore.getState();
+        if (currentEvent?.room_id && isMessageRecallRealtimeEvent(currentEvent.type)) {
+          const msgId = typeof currentEvent.ext.msg_id === "string"
+            ? currentEvent.ext.msg_id
+            : currentEvent.hub_msg_id;
+          if (msgId) {
+            chatStore.markMessageRecalled(currentEvent.room_id, msgId, {
+              recalled_at: typeof currentEvent.ext.recalled_at === "string"
+                ? currentEvent.ext.recalled_at
+                : currentEvent.created_at,
+              recalled_by_id: typeof currentEvent.ext.recalled_by_id === "string"
+                ? currentEvent.ext.recalled_by_id
+                : null,
+              recalled_by_type: currentEvent.ext.recalled_by_type === "agent" || currentEvent.ext.recalled_by_type === "human"
+                ? currentEvent.ext.recalled_by_type
+                : null,
+            });
+          }
+        }
         if (currentEvent?.room_id && isRoomMemberRealtimeEvent(currentEvent.type)) {
           chatStore.bumpRoomMembersVersion(currentEvent.room_id);
         }
