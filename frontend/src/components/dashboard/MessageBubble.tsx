@@ -480,7 +480,6 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     && !isRecalled;
 
   const roomSummary = message.room_id ? getRoomSummary(message.room_id) : null;
-  const recallLabel = locale === "zh" ? "撤回消息" : "Recall message";
   const canRecall = canRecallDashboardMessage({
     message,
     room: roomSummary,
@@ -535,19 +534,6 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
       onClick={handleSelectSender}
       onKeyDown={handleSelectSenderByKey}
     />
-  );
-
-  const recallButton = canRecall && (
-    <button
-      type="button"
-      disabled={recallPending}
-      onMouseDown={(e) => { e.preventDefault(); void handleRecallClick(); }}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
-      aria-label={recallLabel}
-      title={recallLabel}
-    >
-      <RotateCcw className="h-3.5 w-3.5" />
-    </button>
   );
 
   const moreButton = !isRecalled && (displayText || canRecall) && (
@@ -612,9 +598,8 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     </div>
   );
 
-  const actionButtons = (recallButton || moreButton) && (
+  const actionButtons = moreButton && (
     <div className="flex shrink-0 items-center gap-1 self-start pt-1">
-      {recallButton}
       {moreButton}
     </div>
   );
