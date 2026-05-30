@@ -327,7 +327,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
     set((state) => ({
       messages: state.messages.map((m) =>
         m.clientId === clientId
-          ? { ...m, hubMsgId, status: "confirmed" as const, createdAt, attachments: attachments ?? m.attachments, sendText: undefined, retryFiles: undefined }
+          ? { ...m, hubMsgId, status: "confirmed" as const, createdAt, attachments: attachments ?? m.attachments, sendText: undefined, retryFiles: undefined, retryReplyTo: undefined }
           : m
       ),
     }));
@@ -374,6 +374,8 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           attachments: msg.attachments ?? m.attachments,
           sendText: undefined,
           retryFiles: undefined,
+          retryReplyTo: undefined,
+          replyPreview: msg.replyPreview ?? m.replyPreview,
         });
 
         const optimistic = state.messages.find((m) =>
@@ -448,6 +450,8 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
               error: undefined,
               sendText: undefined,
               retryFiles: undefined,
+              retryReplyTo: undefined,
+              replyPreview: match.replyPreview ?? m.replyPreview,
             };
           }
           return m;

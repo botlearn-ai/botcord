@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { OwnerChatMessage } from "@/lib/types";
-import { buildOwnerChatForwardQuote, canShowOwnerChatMessageActions } from "@/lib/owner-chat-actions";
+import {
+  buildOwnerChatForwardQuote,
+  buildOwnerChatReplyPreview,
+  canReplyToOwnerChatMessage,
+  canShowOwnerChatMessageActions,
+  ownerChatReplyTargetId,
+} from "@/lib/owner-chat-actions";
 
 function message(overrides: Partial<OwnerChatMessage> = {}): OwnerChatMessage {
   return {
@@ -26,6 +32,29 @@ describe("owner chat message actions", () => {
     expect(canShowOwnerChatMessageActions(message({ status: "streaming" }))).toBe(false);
     expect(canShowOwnerChatMessageActions(message({ text: "   " }))).toBe(false);
     expect(canShowOwnerChatMessageActions(message({ type: "notification" }))).toBe(false);
+  });
+
+  it("allows replies only after a server message id exists", () => {
+    expect(canReplyToOwnerChatMessage(message({ hubMsgId: "h_123", status: "delivered" }))).toBe(true);
+    expect(canReplyToOwnerChatMessage(message({ hubMsgId: "h_123", status: "confirmed" }))).toBe(true);
+    expect(canReplyToOwnerChatMessage(message({ hubMsgId: null, status: "optimistic" }))).toBe(false);
+    expect(canReplyToOwnerChatMessage(message({ hubMsgId: null, status: "failed" }))).toBe(false);
+  });
+
+  it("uses hub_msg_id as the owner-chat reply target", () => {
+    expect(ownerChatReplyTargetId(message({ hubMsgId: "h_reply" }))).toBe("h_reply");
+    expect(ownerChatReplyTargetId(message({ hubMsgId: null }))).toBeNull();
+  });
+
+  it("builds a local reply preview for optimistic owner-chat sends", () => {
+    expect(buildOwnerChatReplyPreview(message({ hubMsgId: "h_reply" }))).toEqual({
+      msg_id: "h_reply",
+      sender_id: null,
+      sender_display_name: "Alice",
+      text_preview: "hello\nworld",
+      topic_id: null,
+      deleted: false,
+    });
   });
 
   it("builds a quote suitable for forwarding", () => {
