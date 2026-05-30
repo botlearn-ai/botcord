@@ -44,6 +44,11 @@ export interface GatewayOutboundAttachment {
   filename?: string;
   contentType?: string;
   kind?: "image" | "file" | "video";
+  /**
+   * Optional path text as it appeared in an outbound reply. Local adapters may
+   * use this to replace filesystem paths with uploaded URLs after upload.
+   */
+  sourcePath?: string;
 }
 
 /**

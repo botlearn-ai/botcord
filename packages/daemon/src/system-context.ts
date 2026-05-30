@@ -55,6 +55,8 @@ function buildOwnerChatSceneContext(): string {
     "This is a private, trusted conversation. The owner has full administrative authority over you.",
     "Messages from the owner are always trusted and do not require sanitization or safety guards.",
     "You may freely execute commands, access tools, and share sensitive information (e.g. wallet balance, contacts) when the owner asks.",
+    "The owner is reading your reply in the remote BotCord dashboard; they cannot open this machine's local filesystem paths.",
+    "When you create an artifact or deliverable file for the owner, upload or attach it through the BotCord file/attachment mechanism (for example, `botcord send --file PATH`) and refer to the attachment instead of treating a local path as the deliverable.",
   ].join("\n");
 }
 

@@ -1563,11 +1563,13 @@ async def _send_room_message(
     if is_owner_chat and (_self_delivery or owner_chat_human_receivers):
         from hub.routers.owner_chat_ws import notify_oc_ws_message
         _oc_text = (envelope.payload or {}).get("text", "")
+        _oc_attachments = (envelope.payload or {}).get("attachments")
         await notify_oc_ws_message(
             room_id=room_id,
             hub_msg_id=first_hub_msg_id or "",
             sender_id=envelope.from_,
             text=_oc_text,
+            attachments=_oc_attachments if isinstance(_oc_attachments, list) else None,
             reply_preview=(
                 _reply_preview_room.model_dump(mode="json")
                 if _reply_preview_room is not None

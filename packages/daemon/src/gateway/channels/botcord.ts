@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import WebSocket from "ws";
 import {
   BotCordClient,
@@ -6,6 +7,7 @@ import {
   loadStoredCredentials,
   updateCredentialsToken,
   type InboxMessage,
+  type MessageAttachment,
 } from "@botcord/protocol-core";
 import type {
   ChannelAdapter,
@@ -57,16 +59,26 @@ export interface BotCordChannelClient {
     roomId?: string;
   }): Promise<{ messages: InboxMessage[]; count: number; has_more: boolean }>;
   ackMessages(messageIds: string[]): Promise<void>;
+  uploadFile?(
+    filePath: string,
+    filename: string,
+    contentType?: string,
+  ): Promise<{
+    original_filename: string;
+    url: string;
+    content_type?: string;
+    size_bytes?: number;
+  }>;
   sendMessage(
     to: string,
     text: string,
-    options?: { replyTo?: string; topic?: string },
+    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[] },
   ): Promise<{ hub_msg_id?: string; message_id?: string } & Record<string, unknown>>;
   sendTypedMessage?(
     to: string,
     type: "result" | "error",
     text: string,
-    options?: { replyTo?: string; topic?: string },
+    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[] },
   ): Promise<{ hub_msg_id?: string; message_id?: string } & Record<string, unknown>>;
   getHubUrl(): string;
   onTokenRefresh?: (token: string, expiresAt: number) => void;
@@ -116,6 +128,65 @@ function isUnclaimedAgentError(err: unknown): boolean {
     message.includes("agent_not_claimed_generic") ||
     message.includes("agent_not_claimed")
   );
+}
+
+async function uploadOutboundAttachments(
+  client: BotCordChannelClient,
+  attachments: NonNullable<ChannelSendContext["message"]["attachments"]>,
+  log: GatewayLogger,
+): Promise<{ attachments: MessageAttachment[]; replacements: Array<{ sourcePath: string; url: string }> }> {
+  if (attachments.length === 0) return { attachments: [], replacements: [] };
+  if (!client.uploadFile) {
+    log.warn("botcord send: outbound attachments skipped because uploadFile is unavailable", {
+      count: attachments.length,
+    });
+    return { attachments: [], replacements: [] };
+  }
+
+  const uploaded: MessageAttachment[] = [];
+  const replacements: Array<{ sourcePath: string; url: string }> = [];
+  for (const attachment of attachments) {
+    if (!attachment.filePath) {
+      log.warn("botcord send: attachment without filePath skipped", {
+        filename: attachment.filename ?? null,
+      });
+      continue;
+    }
+    try {
+      const resp = await client.uploadFile(
+        attachment.filePath,
+        attachment.filename ?? basename(attachment.filePath),
+        attachment.contentType,
+      );
+      if (attachment.sourcePath) {
+        replacements.push({ sourcePath: attachment.sourcePath, url: resp.url });
+      }
+      uploaded.push({
+        filename: resp.original_filename,
+        url: resp.url,
+        ...(resp.content_type ? { content_type: resp.content_type } : {}),
+        ...(typeof resp.size_bytes === "number" ? { size_bytes: resp.size_bytes } : {}),
+      });
+    } catch (err) {
+      log.warn("botcord send: attachment upload failed; continuing without it", {
+        filename: attachment.filename ?? attachment.filePath,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return { attachments: uploaded, replacements };
+}
+
+function rewriteUploadedAttachmentPaths(
+  text: string,
+  replacements: Array<{ sourcePath: string; url: string }>,
+): string {
+  let out = text;
+  for (const { sourcePath, url } of replacements) {
+    if (!sourcePath || !url) continue;
+    out = out.replaceAll(sourcePath, url);
+  }
+  return out;
 }
 
 /** Default factory: wrap `loadStoredCredentials` + `new BotCordClient`. */
@@ -911,13 +982,16 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     async send(ctx: ChannelSendContext): Promise<ChannelSendResult> {
       const client = ensureClient();
       const { message } = ctx;
-      const options: { replyTo?: string; topic?: string } = {};
+      const options: { replyTo?: string; topic?: string; attachments?: MessageAttachment[] } = {};
       if (message.replyTo) options.replyTo = message.replyTo;
       if (message.threadId) options.topic = message.threadId;
+      const upload = await uploadOutboundAttachments(client, message.attachments ?? [], ctx.log);
+      if (upload.attachments.length > 0) options.attachments = upload.attachments;
+      const text = rewriteUploadedAttachmentPaths(message.text, upload.replacements);
       const resp =
         message.type === "error" && client.sendTypedMessage
-          ? await client.sendTypedMessage(message.conversationId, "error", message.text, options)
-          : await client.sendMessage(message.conversationId, message.text, options);
+          ? await client.sendTypedMessage(message.conversationId, "error", text, options)
+          : await client.sendMessage(message.conversationId, text, options);
       const providerMessageId =
         (resp && typeof resp.hub_msg_id === "string" && resp.hub_msg_id) ||
         (resp && typeof (resp as { message_id?: unknown }).message_id === "string"

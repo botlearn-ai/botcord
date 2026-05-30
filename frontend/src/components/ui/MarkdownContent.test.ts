@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeMessageContent, splitPlainMentionText } from "./MarkdownContent";
+import {
+  isPreviewableMarkdownImageSrc,
+  normalizeMessageContent,
+  splitPlainMentionText,
+} from "./MarkdownContent";
 
 function mentionProps(node: unknown) {
   return (node as { properties?: Record<string, unknown> }).properties;
@@ -43,5 +47,15 @@ describe("normalizeMessageContent", () => {
 
   it("preserves existing real line breaks", () => {
     expect(normalizeMessageContent("line one\nline two")).toBe("line one\nline two");
+  });
+});
+
+describe("isPreviewableMarkdownImageSrc", () => {
+  it("allows only absolute http(s) image URLs", () => {
+    expect(isPreviewableMarkdownImageSrc("https://example.com/card.png")).toBe(true);
+    expect(isPreviewableMarkdownImageSrc("http://example.com/card.png")).toBe(true);
+    expect(isPreviewableMarkdownImageSrc("output/xhs-01-cover.png")).toBe(false);
+    expect(isPreviewableMarkdownImageSrc("social-card-botcord-agent-hub/index.html")).toBe(false);
+    expect(isPreviewableMarkdownImageSrc("/hub/files/f_123")).toBe(false);
   });
 });

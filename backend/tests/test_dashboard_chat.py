@@ -404,6 +404,7 @@ async def test_dashboard_chat_inbox_includes_source_type(
 async def test_agent_reply_to_owner_chat_creates_record(
     client: AsyncClient,
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """When an agent sends a reply to its owner-chat room (rm_oc_*), a delivered
     MessageRecord is created for the human owner so the dashboard can display it."""
@@ -453,12 +454,20 @@ async def test_agent_reply_to_owner_chat_creates_record(
     }
 
     # Agent sends a reply back to this room via /hub/send
+    notify_mock = AsyncMock()
+    monkeypatch.setattr("hub.routers.owner_chat_ws.notify_oc_ws_message", notify_mock)
+    attachment = {
+        "filename": "xhs-01-cover.png",
+        "url": "https://api.botcord.chat/hub/files/f_cover",
+        "content_type": "image/png",
+        "size_bytes": 1234,
+    }
     envelope = _build_envelope(
         sk=sk,
         key_id=key_id,
         from_id=agent_id,
         to_id=room_id,
-        payload={"text": "Hello, owner!"},
+        payload={"text": "Hello, owner!", "attachments": [attachment]},
     )
 
     resp = await client.post("/hub/send", json=envelope, headers=headers)
@@ -478,6 +487,8 @@ async def test_agent_reply_to_owner_chat_creates_record(
     assert record.room_id == room_id
     assert record.sender_id == agent_id
     assert record.receiver_id == owner_human_id
+    notify_mock.assert_awaited_once()
+    assert notify_mock.await_args.kwargs["attachments"] == [attachment]
     # Crucially: state is 'delivered' (not 'queued') so it never appears in
     # inbox polling — the agent must not re-process its own reply.
     assert record.state.value == "delivered"

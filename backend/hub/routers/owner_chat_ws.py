@@ -207,6 +207,7 @@ async def notify_oc_ws_message(
     sender_id: str,
     text: str,
     created_at: datetime.datetime | None = None,
+    attachments: list[dict[str, Any]] | None = None,
     reply_preview: dict[str, Any] | None = None,
 ) -> None:
     """Push an agent reply to connected owner-chat WS clients.
@@ -256,6 +257,8 @@ async def notify_oc_ws_message(
     ext: dict[str, Any] = {}
     if trace_id:
         ext["trace_id"] = trace_id
+    if attachments:
+        ext["attachments"] = attachments
     if reply_preview is not None:
         ext["reply_preview"] = reply_preview
     if ext:

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -2220,6 +2220,53 @@ describe("Dispatcher", () => {
   // ─────────────────────────────────────────────────────────────────────
   // Owner-chat reply gating
   // ─────────────────────────────────────────────────────────────────────
+
+  it("owner-chat reply auto-attaches generated local artifacts mentioned by relative path", async () => {
+    const workDir = await mkdtemp(path.join(tmpdir(), "dispatcher-artifacts-"));
+    tempDirs.push(workDir);
+    await mkdir(path.join(workDir, "output"), { recursive: true });
+    await mkdir(path.join(workDir, "social-card-botcord-agent-hub"), { recursive: true });
+    await writeFile(path.join(workDir, "output", "xhs-01-cover.png"), "png-bytes");
+    await writeFile(path.join(workDir, "social-card-botcord-agent-hub", "index.html"), "<html></html>");
+
+    const runtime = new FakeRuntime({
+      reply: [
+        "成品路径：",
+        "",
+        "output/xhs-01-cover.png",
+        "",
+        "项目文件在：",
+        "",
+        "social-card-botcord-agent-hub/index.html",
+      ].join("\n"),
+      newSessionId: "sid-1",
+    });
+    const { dispatcher, channel } = await scaffold({
+      config: baseConfig({ defaultRoute: { runtime: "claude-code", cwd: workDir } }),
+      runtimeFactory: () => runtime,
+    });
+
+    await dispatcher.handle(makeEnvelope({ conversation: { id: "rm_oc_1", kind: "direct" } }));
+
+    const realWorkDir = await realpath(workDir);
+    expect(channel.sends.length).toBe(1);
+    expect(channel.sends[0].message.attachments).toEqual([
+      {
+        filePath: path.join(realWorkDir, "output", "xhs-01-cover.png"),
+        filename: "xhs-01-cover.png",
+        contentType: "image/png",
+        sourcePath: "output/xhs-01-cover.png",
+        kind: "image",
+      },
+      {
+        filePath: path.join(realWorkDir, "social-card-botcord-agent-hub", "index.html"),
+        filename: "index.html",
+        contentType: "text/html",
+        sourcePath: "social-card-botcord-agent-hub/index.html",
+        kind: "file",
+      },
+    ]);
+  });
 
   it("non-owner-chat room: discards result.text, agent must use botcord_send", async () => {
     const runtime = new FakeRuntime({ reply: "would-be-reply", newSessionId: "sid-1" });

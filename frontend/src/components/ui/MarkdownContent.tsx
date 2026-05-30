@@ -47,6 +47,18 @@ export function normalizeMessageContent(content: string): string {
     .replace(/\\r/g, "\n");
 }
 
+export function isPreviewableMarkdownImageSrc(src: unknown): src is string {
+  if (typeof src !== "string") return false;
+  const trimmed = src.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function isMentionStartBoundary(value: string, index: number): boolean {
   if (index === 0) return true;
   return /[\s([{'"“‘]/.test(value[index - 1]);
@@ -266,6 +278,25 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
         {children}
       </a>
     ),
+    img: ({ src, alt }) => {
+      const rawSrc = typeof src === "string" ? src : "";
+      if (!isPreviewableMarkdownImageSrc(rawSrc)) {
+        return (
+          <code className="rounded border border-glass-border bg-black/30 px-1.5 py-0.5 font-mono text-xs text-neon-cyan/90">
+            {alt ? `${alt} (${rawSrc})` : rawSrc}
+          </code>
+        );
+      }
+      return (
+        <img
+          src={rawSrc}
+          alt={alt ?? ""}
+          className="my-2 max-h-72 max-w-full rounded-lg border border-glass-border object-contain"
+          loading="lazy"
+          decoding="async"
+        />
+      );
+    },
     ul: ({ children }) => (
       <ul className="mb-2 ml-4 list-disc last:mb-0 [&>li]:mb-0.5">{children}</ul>
     ),

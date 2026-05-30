@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { realpathSync, statSync } from "node:fs";
+import path from "node:path";
 
 import type { GatewayLogger } from "./log.js";
 import { looksLikeRuntimeAuthFailure } from "./runtime-errors.js";
@@ -74,6 +76,31 @@ const TYPING_REFRESH_MS = 4000;
 
 /** LRU cap on the typing-recency map so long-running daemons don't grow unbounded. */
 const TYPING_RECENCY_CAP = 1024;
+const AUTO_ATTACHMENT_LIMIT = 10;
+const AUTO_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
+const AUTO_ATTACHMENT_EXTENSIONS = new Set([
+  ".avif",
+  ".bmp",
+  ".csv",
+  ".doc",
+  ".docx",
+  ".gif",
+  ".htm",
+  ".html",
+  ".jpeg",
+  ".jpg",
+  ".pdf",
+  ".png",
+  ".ppt",
+  ".pptx",
+  ".svg",
+  ".webp",
+  ".xls",
+  ".xlsx",
+  ".zip",
+]);
+const REPLY_LOCAL_PATH_RE =
+  /(^|[\s([{"'`])((?:\/|\.{1,2}\/)?(?:[\w@+.-]+\/)+[\w@+.-]+\.(?:avif|bmp|csv|docx?|gif|html?|jpe?g|pdf|png|pptx?|svg|webp|xlsx?|zip))(?=$|[\s)\]}"'`,.!?:;])/gi;
 
 function transcriptBlocksVerbose(): boolean {
   return process.env.BOTCORD_TRANSCRIPT_BLOCKS === "verbose" ||
@@ -2083,12 +2110,27 @@ export class Dispatcher {
         return;
       }
 
+      const attachments =
+        (isOwnerChat && isBotCordChannel(channel)
+          ? collectOwnerChatReplyAttachments(replyText, route.cwd)
+          : undefined) ?? [];
+      if (attachments.length > 0) {
+        this.log.info("dispatcher: attaching owner-chat reply artifacts", {
+          agentId: msg.accountId,
+          roomId: msg.conversation.id,
+          topicId: msg.conversation.threadId ?? null,
+          turnId,
+          count: attachments.length,
+        });
+      }
+
       const sendResult = await this.sendReply(channel, {
         channel: msg.channel,
         accountId: msg.accountId,
         conversationId: msg.conversation.id,
         threadId: msg.conversation.threadId ?? null,
         text: replyText,
+        attachments: attachments.length > 0 ? attachments : undefined,
         replyTo: this.providerReplyTo(msg),
         traceId: msg.trace?.id ?? null,
       }, turnId);
@@ -2237,6 +2279,100 @@ export class Dispatcher {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function collectOwnerChatReplyAttachments(text: string, cwd: string): GatewayOutboundMessage["attachments"] {
+  const baseDir = safeRealpath(cwd);
+  if (!baseDir) return undefined;
+
+  const out: NonNullable<GatewayOutboundMessage["attachments"]> = [];
+  const seen = new Set<string>();
+  REPLY_LOCAL_PATH_RE.lastIndex = 0;
+
+  for (const match of text.matchAll(REPLY_LOCAL_PATH_RE)) {
+    const rawPath = match[2];
+    if (!rawPath || looksLikeUrl(rawPath)) continue;
+
+    const resolved = path.isAbsolute(rawPath)
+      ? path.resolve(rawPath)
+      : path.resolve(baseDir, rawPath);
+    const realPath = safeRealpath(resolved);
+    if (!realPath || seen.has(realPath) || !isPathInside(baseDir, realPath)) continue;
+
+    const ext = path.extname(realPath).toLowerCase();
+    if (!AUTO_ATTACHMENT_EXTENSIONS.has(ext)) continue;
+
+    let size = 0;
+    try {
+      const stat = statSync(realPath);
+      if (!stat.isFile()) continue;
+      size = stat.size;
+    } catch {
+      continue;
+    }
+    if (size <= 0 || size > AUTO_ATTACHMENT_MAX_BYTES) continue;
+
+    const contentType = contentTypeForExtension(ext);
+    out.push({
+      filePath: realPath,
+      filename: path.basename(realPath),
+      sourcePath: rawPath,
+      ...(contentType ? { contentType } : {}),
+      ...(contentType?.startsWith("image/") ? { kind: "image" as const } : { kind: "file" as const }),
+    });
+    seen.add(realPath);
+    if (out.length >= AUTO_ATTACHMENT_LIMIT) break;
+  }
+
+  return out.length > 0 ? out : undefined;
+}
+
+function safeRealpath(input: string): string | null {
+  try {
+    return realpathSync(input);
+  } catch {
+    return null;
+  }
+}
+
+function isPathInside(baseDir: string, candidate: string): boolean {
+  const rel = path.relative(baseDir, candidate);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+function looksLikeUrl(value: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith("//");
+}
+
+function contentTypeForExtension(ext: string): string | undefined {
+  switch (ext) {
+    case ".avif":
+      return "image/avif";
+    case ".bmp":
+      return "image/bmp";
+    case ".csv":
+      return "text/csv";
+    case ".gif":
+      return "image/gif";
+    case ".htm":
+    case ".html":
+      return "text/html";
+    case ".jpeg":
+    case ".jpg":
+      return "image/jpeg";
+    case ".pdf":
+      return "application/pdf";
+    case ".png":
+      return "image/png";
+    case ".svg":
+      return "image/svg+xml";
+    case ".webp":
+      return "image/webp";
+    case ".zip":
+      return "application/zip";
+    default:
+      return undefined;
+  }
 }
 
 function buildQueueKey(msg: GatewayInboundEnvelope["message"]): string {
