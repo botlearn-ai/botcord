@@ -12,6 +12,7 @@ import type { DashboardMessage, Attachment } from "@/lib/types";
 import { canReplyToDashboardMessage } from "@/lib/dashboard-message-actions";
 import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
+import { getActionMenuPosition } from "@/lib/message-action-menu";
 import { canRecallDashboardMessage, isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
@@ -56,6 +57,11 @@ const showMessageStatus = (() => {
 
 const COLLAPSE_TEXT_LENGTH = 700;
 const COLLAPSE_LINE_COUNT = 10;
+const ACTION_MENU_WIDTH = 112;
+const ACTION_MENU_ITEM_HEIGHT = 30;
+const ACTION_MENU_VERTICAL_PADDING = 8;
+const ACTION_MENU_GAP = 6;
+const ACTION_MENU_VIEWPORT_PADDING = 8;
 
 function shouldCollapseMessage(text: string): boolean {
   return text.length > COLLAPSE_TEXT_LENGTH || text.split(/\r\n|\r|\n/).length > COLLAPSE_LINE_COUNT;
@@ -352,10 +358,13 @@ function SenderAvatar({
 export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName, sourceId, mentionCandidates }: MessageBubbleProps) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [recallPending, setRecallPending] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
   const locale = useLanguage();
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
   const getRoomSummary = useDashboardChatStore((state) => state.getRoomSummary);
@@ -529,6 +538,72 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     }
   }, [displayText]);
 
+  const actionMenuItemCount =
+    (canQuoteReply ? 1 : 0)
+    + (displayText ? 1 : 0)
+    + (canRecall ? 1 : 0)
+    + (displayText ? 1 : 0);
+
+  const updateActionMenuPosition = useCallback(() => {
+    const trigger = moreButtonRef.current;
+    if (!trigger || typeof window === "undefined") return;
+
+    const rect = trigger.getBoundingClientRect();
+    const menuRect = actionMenuRef.current?.getBoundingClientRect();
+    const menuWidth = menuRect?.width ?? ACTION_MENU_WIDTH;
+    const menuHeight = menuRect?.height ?? (actionMenuItemCount * ACTION_MENU_ITEM_HEIGHT + ACTION_MENU_VERTICAL_PADDING);
+    const { left, top } = getActionMenuPosition({
+      anchorRect: rect,
+      menuWidth,
+      menuHeight,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      alignRight: isOwn,
+      gap: ACTION_MENU_GAP,
+      viewportPadding: ACTION_MENU_VIEWPORT_PADDING,
+    });
+
+    setMenuPosition((prev) => (
+      prev && prev.left === left && prev.top === top ? prev : { left, top }
+    ));
+  }, [actionMenuItemCount, isOwn]);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuPosition(null);
+      return;
+    }
+
+    updateActionMenuPosition();
+    window.addEventListener("resize", updateActionMenuPosition);
+    window.addEventListener("scroll", updateActionMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateActionMenuPosition);
+      window.removeEventListener("scroll", updateActionMenuPosition, true);
+    };
+  }, [menuOpen, updateActionMenuPosition]);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (moreButtonRef.current?.contains(target) || actionMenuRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen]);
+
   const sideAvatar = !fullWidth && (
     <SenderAvatar
       senderId={message.sender_id}
@@ -543,15 +618,30 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
   const moreButton = !isRecalled && (displayText || canQuoteReply || canRecall) && (
     <div className="relative shrink-0">
       <button
+        ref={moreButtonRef}
         type="button"
-        onClick={() => setMenuOpen((v) => !v)}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (menuOpen) {
+            setMenuOpen(false);
+            return;
+          }
+          updateActionMenuPosition();
+          setMenuOpen(true);
+        }}
         className={`flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors ${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         aria-label="More actions"
+        aria-expanded={menuOpen}
       >
         <MoreHorizontal className="h-3.5 w-3.5" />
       </button>
-      {menuOpen && (
-        <div className={`absolute top-full mt-1 z-30 min-w-[80px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl ${isOwn ? "right-0" : "left-0"}`}>
+      {menuOpen && menuPosition && typeof document !== "undefined" && createPortal(
+        <div
+          ref={actionMenuRef}
+          className="fixed z-[9999] min-w-[112px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
+          style={{ left: menuPosition.left, top: menuPosition.top }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
           {canQuoteReply && (
             <button
               type="button"
@@ -597,7 +687,8 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
               {copied ? "已复制" : "复制"}
             </button>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -613,7 +704,7 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
     <div
       className={`flex items-start gap-2 ${isOwn && !fullWidth ? "justify-end" : "justify-start"} mb-2`}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setMenuOpen(false); }}
+      onMouseLeave={() => setHovered(false)}
     >
       {/* For own messages: button left of bubble */}
       {isOwn && !fullWidth && actionButtons}
