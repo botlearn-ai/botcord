@@ -1273,6 +1273,31 @@ async def _seed_one_connection(db_session: AsyncSession, seed: dict) -> str:
     return gw_id
 
 
+async def _seed_feishu_connection(db_session: AsyncSession, seed: dict) -> str:
+    gw_id = "gw_feishu_aaaaaa111111"
+    row = AgentGatewayConnection(
+        id=gw_id,
+        user_id=seed["user_id"],
+        agent_id="ag_daemon",
+        daemon_instance_id=seed["daemon_id"],
+        provider="feishu",
+        label="feishu",
+        enabled=True,
+        status="active",
+        config_json={
+            "allowedChatIds": ["oc_team"],
+            "allowedSenderIds": ["ou_alice"],
+            "tokenPreview": "feis...7890",
+            "appId": "cli_feishu_123",
+            "domain": "feishu",
+            "userOpenId": "ou_alice",
+        },
+    )
+    db_session.add(row)
+    await db_session.commit()
+    return gw_id
+
+
 @pytest.mark.asyncio
 async def test_patch_updates_settings_without_token(client, seed, db_session, monkeypatch):
     gw_id = await _seed_one_connection(db_session, seed)
@@ -1299,6 +1324,43 @@ async def test_patch_updates_settings_without_token(client, seed, db_session, mo
     assert body["config"]["tokenPreview"] == "1234...wxyz"
     # `secret` was NOT forwarded (no rotation requested).
     assert "secret" not in captured["params"]
+
+
+@pytest.mark.asyncio
+async def test_patch_feishu_settings_without_login_id(client, seed, db_session, monkeypatch):
+    gw_id = await _seed_feishu_connection(db_session, seed)
+
+    captured: dict = {}
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        captured["type"] = type_
+        captured["params"] = params
+        return {"ok": True, "result": {"status": {"running": True}}}
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.patch(
+        f"/api/agents/ag_daemon/gateways/{gw_id}",
+        headers=headers,
+        json={
+            "label": "renamed feishu",
+            "config": {
+                "allowedChatIds": ["oc_other"],
+                "allowedSenderIds": ["ou_bob"],
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["label"] == "renamed feishu"
+    assert body["config"]["allowedChatIds"] == ["oc_other"]
+    assert body["config"]["allowedSenderIds"] == ["ou_bob"]
+    assert body["config"]["appId"] == "cli_feishu_123"
+    assert captured["type"] == "upsert_gateway"
+    assert captured["params"]["type"] == "feishu"
+    assert "loginId" not in captured["params"]
+    assert captured["params"]["settings"]["allowedChatIds"] == ["oc_other"]
+    assert captured["params"]["settings"]["allowedSenderIds"] == ["ou_bob"]
 
 
 @pytest.mark.asyncio

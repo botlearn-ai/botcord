@@ -271,6 +271,9 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     }
 
     const cfg = cfgIO.load();
+    const existingProfiles = cfg.thirdPartyGateways ?? [];
+    const prevProfile = existingProfiles.find((g) => g.id === params.id);
+    const hadExistingProfile = prevProfile !== undefined;
 
     // accountId must belong to a daemon-bound agent. An empty agent set
     // (no agents provisioned yet) is itself a hard reject — otherwise we
@@ -349,43 +352,66 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     } else if (params.type === "feishu") {
       const loginId = params.loginId;
       if (!loginId) {
-        return badParams("upsert_gateway: feishu requires loginId");
+        if (
+          !prevProfile ||
+          prevProfile.type !== "feishu" ||
+          prevProfile.accountId !== params.accountId ||
+          !prevProfile.appId
+        ) {
+          return badParams("upsert_gateway: feishu requires loginId");
+        }
+        const existing = loadGatewaySecret<{ appSecret?: string }>(params.id);
+        if (!existing?.appSecret) {
+          return badParams("upsert_gateway: feishu requires loginId");
+        }
+        if (
+          params.settings?.domain !== undefined &&
+          params.settings.domain !== (prevProfile.domain ?? "feishu")
+        ) {
+          return badParams("upsert_gateway: feishu domain change requires a fresh loginId");
+        }
+        secretPayload = { appSecret: existing.appSecret };
+        tokenPreviewSource = existing.appSecret;
+        feishuAppId = prevProfile.appId;
+        feishuDomain = params.settings?.domain ?? prevProfile.domain ?? "feishu";
+        feishuUserOpenId = prevProfile.userOpenId;
+      } else {
+        const resolved = sessions.resolve(loginId);
+        if (resolved.state !== "live") {
+          return {
+            ok: false,
+            error:
+              resolved.state === "missing"
+                ? { code: "login_missing", message: `feishu login session "${loginId}" not found` }
+                : { code: "login_expired", message: `feishu login session "${loginId}" expired` },
+          };
+        }
+        const session = resolved.session!;
+        if (session.provider !== "feishu") {
+          return badParams(`upsert_gateway: login session provider "${session.provider}" != "feishu"`);
+        }
+        if (session.accountId !== params.accountId) {
+          return {
+            ok: false,
+            error: {
+              code: "login_account_mismatch",
+              message: "feishu login session accountId does not match upsert request",
+            },
+          };
+        }
+        if (!session.appId || !session.appSecret) {
+          return {
+            ok: false,
+            error: { code: "login_unconfirmed", message: "feishu login session has no app credentials yet" },
+          };
+        }
+        secretPayload = { appSecret: session.appSecret };
+        tokenPreviewSource = session.appSecret;
+        feishuAppId = session.appId;
+        feishuDomain = session.domain ?? params.settings?.domain ?? "feishu";
+        feishuUserOpenId = session.userOpenId;
+        sessions.update(loginId, { gatewayId: params.id });
       }
-      const resolved = sessions.resolve(loginId);
-      if (resolved.state !== "live") {
-        return {
-          ok: false,
-          error:
-            resolved.state === "missing"
-              ? { code: "login_missing", message: `feishu login session "${loginId}" not found` }
-              : { code: "login_expired", message: `feishu login session "${loginId}" expired` },
-        };
-      }
-      const session = resolved.session!;
-      if (session.provider !== "feishu") {
-        return badParams(`upsert_gateway: login session provider "${session.provider}" != "feishu"`);
-      }
-      if (session.accountId !== params.accountId) {
-        return {
-          ok: false,
-          error: {
-            code: "login_account_mismatch",
-            message: "feishu login session accountId does not match upsert request",
-          },
-        };
-      }
-      if (!session.appId || !session.appSecret) {
-        return {
-          ok: false,
-          error: { code: "login_unconfirmed", message: "feishu login session has no app credentials yet" },
-        };
-      }
-      secretPayload = { appSecret: session.appSecret };
-      tokenPreviewSource = session.appSecret;
-      feishuAppId = session.appId;
-      feishuDomain = session.domain ?? params.settings?.domain ?? "feishu";
-      feishuUserOpenId = session.userOpenId;
-      sessions.update(loginId, { gatewayId: params.id });
     } else {
       return badParams(`upsert_gateway: unknown provider "${(params as { type: string }).type}"`);
     }
@@ -393,12 +419,9 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     // W3/W6: remember whether a profile already exists for this id BEFORE we
     // write the secret/config. For UPDATE path, capture previous profile +
     // previous secret so addChannel failure can restore prior state.
-    const existingProfiles = cfg.thirdPartyGateways ?? [];
-    const hadExistingProfile = existingProfiles.some((g) => g.id === params.id);
-    const prevProfile = existingProfiles.find((g) => g.id === params.id);
     // W6: load the previous secret for UPDATE rollback BEFORE overwriting.
     const prevSecret = hadExistingProfile
-      ? loadGatewaySecret<{ botToken?: string }>(params.id)
+      ? loadGatewaySecret<{ botToken?: string; appSecret?: string }>(params.id)
       : null;
 
     // Persist secret first (so a config write that succeeds is never
@@ -458,20 +481,27 @@ export function createGatewayControl(ctx: GatewayControlContext) {
           }
           try {
             if (prevProfile) {
-              cfgIO.save(upsertProfileInConfig(cfgIO.load(), prevProfile));
+              cfgIO.save(replaceProfileInConfig(cfgIO.load(), prevProfile));
             }
           } catch {
             // best-effort
           }
           try {
-            if (prevProfile && prevSecret?.botToken) {
+            if (
+              prevProfile &&
+              ((prevProfile.type === "telegram" && prevSecret?.botToken) ||
+                (prevProfile.type === "feishu" && prevSecret?.appSecret))
+            ) {
               await ctx.gateway.addChannel(
                 buildChannelConfig(
                   {
                     ...params,
                     type: prevProfile.type as typeof params.type,
+                    accountId: prevProfile.accountId,
                     enabled: prevProfile.enabled !== false,
-                    secret: { botToken: prevSecret.botToken },
+                    ...(prevProfile.type === "telegram"
+                      ? { secret: { botToken: prevSecret.botToken } }
+                      : {}),
                     settings: {
                       baseUrl: prevProfile.baseUrl,
                       allowedSenderIds: prevProfile.allowedSenderIds,
@@ -1074,6 +1104,9 @@ function validateOutboundConversation(
       },
     };
   }
+  if (profile.type === "feishu" && (profile.allowedChatIds ?? []).length === 0) {
+    return null;
+  }
   const allowed = new Set((profile.allowedChatIds ?? []).map(String));
   if (!allowed.has(chatId)) {
     return {
@@ -1155,6 +1188,21 @@ function upsertProfileInConfig(
   const compact = compactProfile(patch);
   if (idx >= 0) {
     list[idx] = { ...list[idx], ...compact };
+  } else {
+    list.push(compact);
+  }
+  return { ...cfg, thirdPartyGateways: list };
+}
+
+function replaceProfileInConfig(
+  cfg: DaemonConfig,
+  profile: ThirdPartyGatewayProfile,
+): DaemonConfig {
+  const list = (cfg.thirdPartyGateways ?? []).slice();
+  const idx = list.findIndex((g) => g.id === profile.id);
+  const compact = compactProfile(profile);
+  if (idx >= 0) {
+    list[idx] = compact;
   } else {
     list.push(compact);
   }

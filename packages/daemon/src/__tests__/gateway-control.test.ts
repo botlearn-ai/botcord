@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import type { DaemonConfig } from "../config.js";
+import { saveGatewaySecret } from "../gateway/channels/secret-store.js";
 import { LoginSessionStore } from "../gateway/channels/login-session.js";
 import { createGatewayControl } from "../gateway-control.js";
 
@@ -324,6 +325,129 @@ describe("gateway_login_start / status", () => {
     const secretPath = trackSecret(gwId);
     const secret = JSON.parse(readFileSync(secretPath, "utf8")) as { appSecret?: string };
     expect(secret.appSecret).toBe("feishu-secret-1234567890");
+
+    const updateAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "feishu",
+      accountId: "ag_alice",
+      enabled: true,
+      settings: {
+        allowedSenderIds: ["ou_bob"],
+        allowedChatIds: ["oc_team"],
+        domain: "feishu",
+      },
+    });
+    expect(updateAck.ok).toBe(true);
+    expect(state.cfg.thirdPartyGateways?.[0]).toMatchObject({
+      id: gwId,
+      type: "feishu",
+      appId: "cli_feishu_123",
+      allowedSenderIds: ["ou_bob"],
+      allowedChatIds: ["oc_team"],
+    });
+    expect(gw.addChannel).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: gwId,
+        type: "feishu",
+        appId: "cli_feishu_123",
+        allowedChatIds: ["oc_team"],
+      }),
+    );
+  });
+
+  it("rejects changing Feishu domain without a fresh loginId", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+    });
+    const gwId = uniqId("fs-domain");
+    trackSecret(gwId);
+
+    sessions.create({
+      loginId: "fsl_domain_seed",
+      accountId: "ag_alice",
+      provider: "feishu",
+      appId: "cli_domain_seed",
+      appSecret: "feishu-domain-secret-seed",
+      domain: "feishu",
+      userOpenId: "ou_domain_seed",
+    });
+    const installAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "feishu",
+      accountId: "ag_alice",
+      enabled: true,
+      loginId: "fsl_domain_seed",
+      settings: { domain: "feishu" },
+    });
+    expect(installAck.ok).toBe(true);
+
+    const updateAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "feishu",
+      accountId: "ag_alice",
+      enabled: true,
+      settings: { domain: "lark" },
+    });
+    expect(updateAck.ok).toBe(false);
+    expect(updateAck.error?.code).toBe("bad_params");
+    expect(updateAck.error?.message).toContain("domain change requires a fresh loginId");
+  });
+
+  it("rejects changing Feishu domain without loginId when saved profile omits domain (implicit feishu)", async () => {
+    const gw = makeFakeGateway();
+    const { state, io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+    });
+    const gwId = uniqId("fs-domain-implicit");
+    trackSecret(gwId);
+
+    sessions.create({
+      loginId: "fsl_domain_implicit_seed",
+      accountId: "ag_alice",
+      provider: "feishu",
+      appId: "cli_domain_implicit_seed",
+      appSecret: "feishu-domain-implicit-secret-seed",
+      domain: "feishu",
+      userOpenId: "ou_domain_implicit_seed",
+    });
+    const installAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "feishu",
+      accountId: "ag_alice",
+      enabled: true,
+      loginId: "fsl_domain_implicit_seed",
+      settings: { domain: "feishu" },
+    });
+    expect(installAck.ok).toBe(true);
+
+    // Simulate legacy/missing persisted domain. The daemon should treat this
+    // as implicit "feishu" when validating no-login domain changes.
+    const saved = state.cfg.thirdPartyGateways?.find((g) => g.id === gwId);
+    expect(saved).toBeDefined();
+    if (saved) {
+      delete saved.domain;
+      io.save(state.cfg);
+    }
+
+    const updateAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "feishu",
+      accountId: "ag_alice",
+      enabled: true,
+      settings: { domain: "lark" },
+    });
+    expect(updateAck.ok).toBe(false);
+    expect(updateAck.error?.code).toBe("bad_params");
+    expect(updateAck.error?.message).toContain("domain change requires a fresh loginId");
   });
 
   it("discovers recent WeChat senders from a confirmed login session", async () => {
@@ -584,6 +708,170 @@ describe("W6: UPDATE rollback on addChannel failure", () => {
       expect(onDisk.botToken).toBe("old-token:123456789012345");
     }
   });
+
+  it("restores previous Feishu secret/config and re-adds old channel when update addChannel fails", async () => {
+    const gw = makeFakeGateway();
+    const { state, io } = makeConfigIO({ ...baseCfg(), agents: ["ag_alice", "ag_bob"] });
+    const sessions = new LoginSessionStore();
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+    });
+    const gwId = uniqId("w6fs");
+    trackSecret(gwId);
+
+    sessions.create({
+      loginId: "fsl_w6_old",
+      accountId: "ag_alice",
+      provider: "feishu",
+      appId: "cli_old",
+      appSecret: "old-feishu-secret-12345",
+      userOpenId: "ou_old",
+      domain: "feishu",
+    });
+    const firstAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "feishu",
+      accountId: "ag_alice",
+      enabled: true,
+      loginId: "fsl_w6_old",
+      settings: { allowedChatIds: ["oc_old"], domain: "feishu" },
+    });
+    expect(firstAck.ok).toBe(true);
+
+    sessions.create({
+      loginId: "fsl_w6_new",
+      accountId: "ag_bob",
+      provider: "feishu",
+      appId: "cli_new",
+      appSecret: "new-feishu-secret-ABCDE",
+      userOpenId: "ou_new",
+      domain: "lark",
+    });
+
+    let addCallCount = 0;
+    gw.addChannel = vi.fn(async (cfg: { id: string; accountId: string }) => {
+      addCallCount += 1;
+      if (addCallCount === 1) throw new Error("simulated feishu update failure");
+      gw.channels.set(cfg.id, {
+        id: cfg.id,
+        status: { channel: cfg.id, accountId: cfg.accountId, running: true, connected: true, authorized: true, lastPollAt: Date.now() },
+      });
+    });
+
+    const updateAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "feishu",
+      accountId: "ag_bob",
+      enabled: true,
+      loginId: "fsl_w6_new",
+      settings: { allowedChatIds: ["oc_new"], domain: "lark" },
+    });
+    expect(updateAck.ok).toBe(false);
+    expect(updateAck.error?.code).toBe("addChannel_failed");
+    expect(addCallCount).toBe(2);
+
+    const profile = state.cfg.thirdPartyGateways?.find((g) => g.id === gwId);
+    expect(profile).toMatchObject({
+      id: gwId,
+      type: "feishu",
+      appId: "cli_old",
+      domain: "feishu",
+      userOpenId: "ou_old",
+      allowedChatIds: ["oc_old"],
+    });
+
+    const secretPath = trackSecret(gwId);
+    const onDisk = JSON.parse(readFileSync(secretPath, "utf8")) as { appSecret?: string };
+    expect(onDisk.appSecret).toBe("old-feishu-secret-12345");
+    expect(gw.addChannel).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: gwId,
+        type: "feishu",
+        accountId: "ag_alice",
+        appId: "cli_old",
+        domain: "feishu",
+        allowedChatIds: ["oc_old"],
+      }),
+    );
+  });
+
+  it("replaces previous Feishu profile on rollback so failed update fields are removed", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("w6fs-replace");
+    trackSecret(gwId);
+    saveGatewaySecret(gwId, { appSecret: "old-feishu-secret-replace" });
+    const { state, io } = makeConfigIO({
+      ...baseCfg(),
+      agents: ["ag_alice", "ag_bob"],
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "feishu",
+          accountId: "ag_alice",
+          enabled: true,
+          appId: "cli_old_replace",
+        },
+      ],
+    });
+    const sessions = new LoginSessionStore();
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+    });
+
+    sessions.create({
+      loginId: "fsl_w6_replace_new",
+      accountId: "ag_bob",
+      provider: "feishu",
+      appId: "cli_new_replace",
+      appSecret: "new-feishu-secret-replace",
+      userOpenId: "ou_new_replace",
+      domain: "lark",
+    });
+
+    let addCallCount = 0;
+    gw.addChannel = vi.fn(async (cfg: { id: string; accountId: string }) => {
+      addCallCount += 1;
+      if (addCallCount === 1) throw new Error("simulated feishu update failure");
+      gw.channels.set(cfg.id, {
+        id: cfg.id,
+        status: { channel: cfg.id, accountId: cfg.accountId, running: true, connected: true, authorized: true, lastPollAt: Date.now() },
+      });
+    });
+
+    const updateAck = await ctrl.handleUpsert({
+      id: gwId,
+      type: "feishu",
+      accountId: "ag_bob",
+      enabled: true,
+      loginId: "fsl_w6_replace_new",
+      settings: {
+        allowedSenderIds: ["ou_new_replace"],
+        allowedChatIds: ["oc_new_replace"],
+        splitAt: 2000,
+        domain: "lark",
+      },
+    });
+
+    expect(updateAck.ok).toBe(false);
+    expect(updateAck.error?.code).toBe("addChannel_failed");
+    expect(addCallCount).toBe(2);
+    expect(state.cfg.thirdPartyGateways).toEqual([
+      {
+        id: gwId,
+        type: "feishu",
+        accountId: "ag_alice",
+        enabled: true,
+        appId: "cli_old_replace",
+      },
+    ]);
+
+    const onDisk = JSON.parse(readFileSync(trackSecret(gwId), "utf8")) as { appSecret?: string };
+    expect(onDisk.appSecret).toBe("old-feishu-secret-replace");
+  });
 });
 
 describe("list_gateways", () => {
@@ -679,6 +967,90 @@ describe("gateway_send", () => {
       agentId: "ag_alice",
       gatewayId: gwId,
       conversationId: "feishu:chat:oc_other",
+      text: "hello",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("conversation_not_allowed");
+    expect(gw.sendOutbound).not.toHaveBeenCalled();
+  });
+
+  it("allows Feishu outbound when allowedChatIds is empty", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("send-fs-allow-all");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "feishu",
+          accountId: "ag_alice",
+          enabled: true,
+          allowedChatIds: [],
+        },
+      ],
+    });
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "feishu:chat:oc_any",
+      text: "hello",
+    });
+
+    expect(ack.ok).toBe(true);
+    expect(gw.sendOutbound).toHaveBeenCalledOnce();
+  });
+
+  it("allows Feishu outbound when allowedChatIds is omitted", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("send-fs-allow-omitted");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "feishu",
+          accountId: "ag_alice",
+          enabled: true,
+        },
+      ],
+    });
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "feishu:chat:oc_any",
+      text: "hello",
+    });
+
+    expect(ack.ok).toBe(true);
+    expect(gw.sendOutbound).toHaveBeenCalledOnce();
+  });
+
+  it("denies Telegram outbound when allowedChatIds is empty", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("send-tg-deny-empty");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "telegram",
+          accountId: "ag_alice",
+          enabled: true,
+          allowedChatIds: [],
+        },
+      ],
+    });
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "telegram:group:-100123",
       text: "hello",
     });
 
