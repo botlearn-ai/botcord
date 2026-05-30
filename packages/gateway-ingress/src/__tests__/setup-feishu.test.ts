@@ -219,6 +219,9 @@ async function call(
   return { status: res.status, body, raw };
 }
 
+const timeoutAfter = (ms: number, message: string) =>
+  new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms));
+
 describe("setup-server — Feishu full flow", () => {
   let h: Harness;
 
@@ -442,7 +445,9 @@ describe("setup-server — Feishu full flow", () => {
               },
             });
           },
-          close: () => {},
+          close: () => {
+            throw new Error("close failed");
+          },
         }),
       },
     });
@@ -609,7 +614,7 @@ describe("setup-server — Feishu error semantics", () => {
     expect((wrongUserFinalize.body.error as { code: string }).code).toBe("unauthorized");
   });
 
-  it("returns provider_unreachable when Feishu discovery websocket start fails", async () => {
+  it("returns provider_unreachable when Feishu discovery websocket start fails and close never settles", async () => {
     await h.server.close();
     rmSync(h.dir, { recursive: true, force: true });
     h = await buildHarness({
@@ -617,11 +622,55 @@ describe("setup-server — Feishu error semantics", () => {
         createDispatcher: () => ({ register: () => {} }),
         createWsClient: () => ({
           start: () => Promise.reject(new Error("ws start failed")),
-          close: () => {},
+          close: () => new Promise<never>(() => {}),
         }),
       },
     });
     const agentId = "ag_fs_ws_start_fail";
+    const baseCtx = { user_id: "u", hosting_kind: "cloud" } as const;
+    const start = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/start`,
+      { body: { ...baseCtx } },
+      h.responses,
+    );
+    const loginId = start.body.loginId as string;
+    h.state.phase = "confirmed";
+    await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/status`,
+      { body: { ...baseCtx, loginId } },
+      h.responses,
+    );
+
+    const discover = await Promise.race([
+      call(
+        h.url,
+        `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/discover`,
+        { body: { ...baseCtx, loginId, timeoutSeconds: 0 } },
+        h.responses,
+      ),
+      timeoutAfter(100, "discovery waited for close"),
+    ]);
+
+    expect(discover.status).toBe(502);
+    expect((discover.body.error as { code: string }).code).toBe("provider_unreachable");
+    expect(JSON.stringify(discover.body)).not.toContain(FAKE_APP_SECRET);
+  });
+
+  it("returns empty discovery results when listen succeeds with no matching message and close rejects", async () => {
+    await h.server.close();
+    rmSync(h.dir, { recursive: true, force: true });
+    h = await buildHarness({
+      feishuSdkOverride: {
+        createDispatcher: () => ({ register: () => {} }),
+        createWsClient: () => ({
+          start: () => undefined,
+          close: () => Promise.reject(new Error("close failed")),
+        }),
+      },
+    });
+    const agentId = "ag_fs_empty_close_reject";
     const baseCtx = { user_id: "u", hosting_kind: "cloud" } as const;
     const start = await call(
       h.url,
@@ -645,9 +694,96 @@ describe("setup-server — Feishu error semantics", () => {
       h.responses,
     );
 
-    expect(discover.status).toBe(502);
-    expect((discover.body.error as { code: string }).code).toBe("provider_unreachable");
-    expect(JSON.stringify(discover.body)).not.toContain(FAKE_APP_SECRET);
+    expect(discover.status).toBe(200);
+    expect(discover.body.chats).toEqual([]);
+    expect(discover.body.candidates).toEqual([]);
+  });
+
+  it("returns empty discovery results when listen succeeds with no matching message and close throws", async () => {
+    await h.server.close();
+    rmSync(h.dir, { recursive: true, force: true });
+    h = await buildHarness({
+      feishuSdkOverride: {
+        createDispatcher: () => ({ register: () => {} }),
+        createWsClient: () => ({
+          start: () => undefined,
+          close: () => {
+            throw new Error("close failed");
+          },
+        }),
+      },
+    });
+    const agentId = "ag_fs_empty_close_throw";
+    const baseCtx = { user_id: "u", hosting_kind: "cloud" } as const;
+    const start = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/start`,
+      { body: { ...baseCtx } },
+      h.responses,
+    );
+    const loginId = start.body.loginId as string;
+    h.state.phase = "confirmed";
+    await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/status`,
+      { body: { ...baseCtx, loginId } },
+      h.responses,
+    );
+
+    const discover = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/discover`,
+      { body: { ...baseCtx, loginId, timeoutSeconds: 0 } },
+      h.responses,
+    );
+
+    expect(discover.status).toBe(200);
+    expect(discover.body.chats).toEqual([]);
+    expect(discover.body.candidates).toEqual([]);
+  });
+
+  it("returns empty discovery results when listen succeeds with no matching message and close never settles", async () => {
+    await h.server.close();
+    rmSync(h.dir, { recursive: true, force: true });
+    h = await buildHarness({
+      feishuSdkOverride: {
+        createDispatcher: () => ({ register: () => {} }),
+        createWsClient: () => ({
+          start: () => undefined,
+          close: () => new Promise<never>(() => {}),
+        }),
+      },
+    });
+    const agentId = "ag_fs_empty_close_never";
+    const baseCtx = { user_id: "u", hosting_kind: "cloud" } as const;
+    const start = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/start`,
+      { body: { ...baseCtx } },
+      h.responses,
+    );
+    const loginId = start.body.loginId as string;
+    h.state.phase = "confirmed";
+    await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/status`,
+      { body: { ...baseCtx, loginId } },
+      h.responses,
+    );
+
+    const discover = await Promise.race([
+      call(
+        h.url,
+        `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/discover`,
+        { body: { ...baseCtx, loginId, timeoutSeconds: 0 } },
+        h.responses,
+      ),
+      timeoutAfter(100, "discovery waited for close"),
+    ]);
+
+    expect(discover.status).toBe(200);
+    expect(discover.body.chats).toEqual([]);
+    expect(discover.body.candidates).toEqual([]);
   });
 
   it("returns gateway_conflict when the same appId is already owned by an active gateway", async () => {
