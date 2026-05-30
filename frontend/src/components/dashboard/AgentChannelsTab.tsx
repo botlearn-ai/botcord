@@ -1026,6 +1026,7 @@ function FeishuAddForm({
 }) {
   const startFeishuLogin = useAgentGatewayStore((s) => s.startFeishuLogin);
   const pollFeishuLogin = useAgentGatewayStore((s) => s.pollFeishuLogin);
+  const discoverFeishuChats = useAgentGatewayStore((s) => s.discoverFeishuChats);
   const create = useAgentGatewayStore((s) => s.create);
   const [domain, setDomain] = useState<"feishu" | "lark">("feishu");
   const [phase, setPhase] = useState<"idle" | "scanning" | "ready">("idle");
@@ -1038,15 +1039,43 @@ function FeishuAddForm({
   const [label, setLabel] = useState("");
   const [senderIds, setSenderIds] = useState("");
   const [chatIds, setChatIds] = useState("");
+  const [chatIdsTouched, setChatIdsTouched] = useState(false);
+  const [discoveredChats, setDiscoveredChats] = useState<
+    Array<{ chatId: string; senderOpenId: string; kind?: "direct" | "group" | null; label?: string | null; lastSeenAt?: number | null }>
+  >([]);
+  const [discoveringChats, setDiscoveringChats] = useState(false);
+  const [chatDiscoverySkipped, setChatDiscoverySkipped] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chatIdsRef = useRef("");
+  const chatIdsTouchedRef = useRef(false);
+  const chatDiscoveryRequestRef = useRef(0);
 
   useEffect(() => {
     return () => {
       if (pollTimer.current) clearInterval(pollTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    chatIdsRef.current = chatIds;
+  }, [chatIds]);
+
+  useEffect(() => {
+    chatIdsTouchedRef.current = chatIdsTouched;
+  }, [chatIdsTouched]);
+
+  function resetChatDiscoveryState() {
+    chatDiscoveryRequestRef.current += 1;
+    chatIdsRef.current = "";
+    chatIdsTouchedRef.current = false;
+    setChatIds("");
+    setChatIdsTouched(false);
+    setDiscoveredChats([]);
+    setDiscoveringChats(false);
+    setChatDiscoverySkipped(false);
+  }
 
   async function doPoll(id: string) {
     try {
@@ -1066,6 +1095,7 @@ function FeishuAddForm({
       } else if (r.status === "expired" || r.status === "failed") {
         if (pollTimer.current) clearInterval(pollTimer.current);
         pollTimer.current = null;
+        resetChatDiscoveryState();
       }
     } catch (err) {
       if (!isAckTimeoutError(err)) {
@@ -1079,6 +1109,7 @@ function FeishuAddForm({
   async function handleStart() {
     setBusy(true);
     setError(null);
+    resetChatDiscoveryState();
     try {
       const r = await startFeishuLogin(agentId, { domain });
       setLoginId(r.loginId);
@@ -1097,6 +1128,7 @@ function FeishuAddForm({
           setLoginId(null);
           setQrcodeUrl(null);
           setStatus("expired");
+          resetChatDiscoveryState();
           if (pollTimer.current) clearInterval(pollTimer.current);
           pollTimer.current = null;
         } else {
@@ -1146,6 +1178,7 @@ function FeishuAddForm({
           setAppId(null);
           setUserOpenId(null);
           setTokenPreview(null);
+          resetChatDiscoveryState();
           if (pollTimer.current) clearInterval(pollTimer.current);
           pollTimer.current = null;
         } else {
@@ -1154,6 +1187,51 @@ function FeishuAddForm({
       }
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleDiscoverChats() {
+    if (!loginId) return;
+    const requestId = chatDiscoveryRequestRef.current + 1;
+    chatDiscoveryRequestRef.current = requestId;
+    setDiscoveringChats(true);
+    setError(null);
+    setChatDiscoverySkipped(false);
+    try {
+      const r = await discoverFeishuChats(agentId, loginId, { timeoutSeconds: 6 });
+      if (chatDiscoveryRequestRef.current !== requestId) return;
+      setDiscoveredChats(r.chats);
+      if (
+        r.chats[0] &&
+        !chatIdsTouchedRef.current &&
+        chatIdsRef.current.trim().length === 0
+      ) {
+        chatIdsRef.current = r.chats[0].chatId;
+        setChatIds(r.chats[0].chatId);
+      }
+    } catch (err) {
+      if (chatDiscoveryRequestRef.current !== requestId) return;
+      if (!isAckTimeoutError(err)) {
+        if (isLoginExpiredError(err)) {
+          setError(loginExpiredMessage("feishu"));
+          setPhase("idle");
+          setLoginId(null);
+          setQrcodeUrl(null);
+          setStatus("expired");
+          setAppId(null);
+          setUserOpenId(null);
+          setTokenPreview(null);
+          resetChatDiscoveryState();
+          if (pollTimer.current) clearInterval(pollTimer.current);
+          pollTimer.current = null;
+        } else {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      }
+    } finally {
+      if (chatDiscoveryRequestRef.current === requestId) {
+        setDiscoveringChats(false);
+      }
     }
   }
 
@@ -1222,6 +1300,58 @@ function FeishuAddForm({
       {phase === "ready" && (
         <StepSection
           step={2}
+          title="发现飞书 chat_id"
+          description="在目标单聊或群聊里给 Bot 发一条消息，daemon 会临时监听并填入 chat_id。"
+          complete={allowedChatIds.length > 0 || chatDiscoverySkipped}
+        >
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleDiscoverChats}
+                disabled={discoveringChats || busy || !loginId}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-2 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
+              >
+                {discoveringChats ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                {discoveringChats ? "监听中" : "刷新"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setChatDiscoverySkipped(true)}
+                disabled={discoveringChats || busy}
+                className="rounded-lg border border-glass-border px-3 py-2 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+              >
+                跳过
+              </button>
+            </div>
+            {discoveredChats.length > 0 ? (
+              <div className="space-y-1">
+                {discoveredChats.slice(0, 5).map((chat) => (
+                  <button
+                    key={`${chat.chatId}:${chat.senderOpenId}`}
+                    type="button"
+                    onClick={() => {
+                      chatIdsRef.current = chat.chatId;
+                      chatIdsTouchedRef.current = true;
+                      setChatIds(chat.chatId);
+                      setChatIdsTouched(true);
+                      setChatDiscoverySkipped(false);
+                    }}
+                    className="flex w-full items-center justify-between rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-left text-xs text-text-secondary hover:border-neon-cyan/40 hover:text-text-primary"
+                  >
+                    <span className="min-w-0 truncate font-mono">{chat.chatId}</span>
+                    <span className="ml-3 shrink-0 text-[11px]">{chat.kind === "direct" ? "单聊" : "群聊"}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </StepSection>
+      )}
+
+      {phase === "ready" && (
+        <StepSection
+          step={3}
           title="设置允许的飞书用户"
           description="默认只允许扫码创建者触发，也可以追加其他 open_id。群聊可选填 chat_id。"
           complete={allowedSenderIds.length > 0}
@@ -1246,7 +1376,14 @@ function FeishuAddForm({
             <Field label="允许的群 chat_id（可选）">
               <textarea
                 value={chatIds}
-                onChange={(e) => setChatIds(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  chatIdsRef.current = next;
+                  chatIdsTouchedRef.current = true;
+                  setChatIds(next);
+                  setChatIdsTouched(true);
+                  setChatDiscoverySkipped(false);
+                }}
                 rows={2}
                 placeholder="oc_xxxxx"
                 className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40"

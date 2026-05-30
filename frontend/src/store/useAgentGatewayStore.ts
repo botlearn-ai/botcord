@@ -108,6 +108,18 @@ export interface WechatSenderDiscoveryResponse {
   senders: WechatSenderDiscoveryItem[];
 }
 
+export interface FeishuChatDiscoveryItem {
+  chatId: string;
+  senderOpenId: string;
+  kind?: "direct" | "group" | null;
+  label?: string | null;
+  lastSeenAt?: number | null;
+}
+
+export interface FeishuChatDiscoveryResponse {
+  chats: FeishuChatDiscoveryItem[];
+}
+
 export interface GatewayTestResult {
   ok: boolean;
   message?: string | null;
@@ -230,6 +242,11 @@ interface AgentGatewayState {
     domain?: "feishu" | "lark" | null;
     userOpenId?: string | null;
   }>;
+  discoverFeishuChats: (
+    agentId: string,
+    loginId: string,
+    opts?: { timeoutSeconds?: number },
+  ) => Promise<FeishuChatDiscoveryResponse>;
 }
 
 function base(agentId: string): string {
@@ -538,5 +555,42 @@ export const useAgentGatewayStore = create<AgentGatewayState>((set, get) => ({
       domain: json.domain ?? null,
       userOpenId: json.userOpenId ?? null,
     };
+  },
+
+  async discoverFeishuChats(agentId, loginId, opts) {
+    const res = await apiFetch(`${base(agentId)}/feishu/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        loginId,
+        timeoutSeconds: opts?.timeoutSeconds ?? 4,
+      }),
+    });
+    if (!res.ok) {
+      const err = await readErr(res);
+      if (err.status === 409) {
+        set((s) => ({ daemonOffline: { ...s.daemonOffline, [agentId]: true } }));
+      }
+      throw err;
+    }
+    const json = (await res.json()) as { chats?: unknown[] };
+    const chats: FeishuChatDiscoveryItem[] = [];
+    if (Array.isArray(json.chats)) {
+      for (const item of json.chats) {
+        if (!item || typeof item !== "object") continue;
+        const raw = item as Record<string, unknown>;
+        const chatId = typeof raw.chatId === "string" ? raw.chatId : "";
+        const senderOpenId = typeof raw.senderOpenId === "string" ? raw.senderOpenId : "";
+        if (!chatId || !senderOpenId) continue;
+        chats.push({
+          chatId,
+          senderOpenId,
+          kind: raw.kind === "direct" || raw.kind === "group" ? raw.kind : null,
+          label: typeof raw.label === "string" ? raw.label : null,
+          lastSeenAt: typeof raw.lastSeenAt === "number" ? raw.lastSeenAt : null,
+        });
+      }
+    }
+    return { chats };
   },
 }));

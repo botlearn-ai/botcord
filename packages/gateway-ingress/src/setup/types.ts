@@ -60,6 +60,8 @@ export interface DiscoverRequest extends SetupRequestContext {
 export interface DiscoverResult {
   /** Sender / chat candidates for allowlist UI. Shape is provider-defined. */
   candidates: Array<Record<string, unknown>>;
+  /** Provider-specific chat candidates. Present for Feishu chat_id discovery. */
+  chats?: Array<Record<string, unknown>>;
 }
 
 export interface FinalizeRequest extends SetupRequestContext {

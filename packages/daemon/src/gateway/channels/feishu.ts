@@ -70,6 +70,31 @@ interface FeishuMessageEvent {
   message?: FeishuEventMessage;
 }
 
+export interface FeishuDiscoveredChat {
+  chatId: string;
+  senderOpenId: string;
+  kind: "direct" | "group";
+  label?: string | null;
+  lastSeenAt: number;
+}
+
+export interface FeishuChatDiscoveryOptions {
+  appId: string;
+  appSecret: string;
+  domain?: FeishuDomain;
+  userOpenId: string;
+  timeoutSeconds?: number;
+  sdkOverride?: {
+    createWsClient(args: Record<string, unknown>): {
+      start(opts: unknown): unknown;
+      close(opts?: unknown): unknown;
+    };
+    createDispatcher(): {
+      register(handlers: Record<string, (data: unknown) => unknown>): void;
+    };
+  };
+}
+
 interface FeishuProviderState {
   seenMessageIds?: Record<string, number>;
 }
@@ -130,6 +155,90 @@ function senderLabel(event: FeishuMessageEvent): string | undefined {
   const senderOpenId = event.sender?.sender_id?.open_id;
   const hit = mentions.find((m) => m.id?.open_id && m.id.open_id === senderOpenId);
   return typeof hit?.name === "string" && hit.name ? hit.name : undefined;
+}
+
+export function feishuDiscoveryChatFromEvent(
+  event: FeishuMessageEvent,
+  allowedSenderOpenId: string,
+  now: () => number = () => Date.now(),
+): FeishuDiscoveredChat | null {
+  const message = event.message;
+  const senderOpenId = event.sender?.sender_id?.open_id;
+  const chatId = message?.chat_id;
+  if (!message || !senderOpenId || !chatId) return null;
+  if (senderOpenId !== allowedSenderOpenId) return null;
+  const chatType = message.chat_type ?? "";
+  const kind: "direct" | "group" = chatType === "p2p" ? "direct" : "group";
+  const label = senderLabel(event) ?? null;
+  return {
+    chatId,
+    senderOpenId,
+    kind,
+    label,
+    lastSeenAt: Number(message.create_time) || now(),
+  };
+}
+
+export async function discoverFeishuChats(
+  opts: FeishuChatDiscoveryOptions,
+): Promise<FeishuDiscoveredChat[]> {
+  const timeoutSeconds =
+    typeof opts.timeoutSeconds === "number"
+      ? Math.min(Math.max(Math.floor(opts.timeoutSeconds), 0), 10)
+      : 0;
+  const chats = new Map<string, FeishuDiscoveredChat>();
+  const sdk = Lark as unknown as {
+    EventDispatcher: new (args?: Record<string, unknown>) => {
+      register(handlers: Record<string, (data: unknown) => unknown>): void;
+    };
+    WSClient: new (args: Record<string, unknown>) => {
+      start(opts: unknown): unknown;
+      close(opts?: unknown): unknown;
+    };
+    LoggerLevel?: { info?: unknown };
+  };
+  const dispatcher = opts.sdkOverride
+    ? opts.sdkOverride.createDispatcher()
+    : new sdk.EventDispatcher({});
+  dispatcher.register({
+    "im.message.receive_v1": (data: unknown) => {
+      const discovered = feishuDiscoveryChatFromEvent(
+        data as FeishuMessageEvent,
+        opts.userOpenId,
+      );
+      if (!discovered) return;
+      const previous = chats.get(discovered.chatId);
+      chats.set(discovered.chatId, {
+        ...previous,
+        ...discovered,
+        label: discovered.label ?? previous?.label ?? null,
+        lastSeenAt: Math.max(previous?.lastSeenAt ?? 0, discovered.lastSeenAt),
+      });
+    },
+  });
+  const wsClientArgs = {
+    appId: opts.appId,
+    appSecret: opts.appSecret,
+    domain: sdkDomain(opts.domain),
+    loggerLevel: sdk.LoggerLevel?.info,
+  };
+  const wsClient = opts.sdkOverride
+    ? opts.sdkOverride.createWsClient(wsClientArgs)
+    : new sdk.WSClient(wsClientArgs);
+  try {
+    const startFailure = Promise.resolve()
+      .then(() => wsClient.start({ eventDispatcher: dispatcher }))
+      .then(
+        () => new Promise<never>(() => {}),
+        (err) => Promise.reject(err),
+      );
+    const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    await Promise.race([startFailure, delay(0)]);
+    await Promise.race([startFailure, delay(timeoutSeconds * 1000)]);
+  } finally {
+    wsClient.close({ force: true });
+  }
+  return [...chats.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt);
 }
 
 export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter {

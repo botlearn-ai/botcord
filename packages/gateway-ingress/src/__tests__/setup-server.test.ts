@@ -326,6 +326,63 @@ describe("setup-server — WeChat full flow", () => {
       expect(raw).not.toContain(FAKE_BOT_TOKEN);
     }
   });
+
+  it("merges top-level discover options without overriding nested options", async () => {
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    await h.server.close();
+    rmSync(h.dir, { recursive: true, force: true });
+    h = await buildHarness({
+      adapters: {
+        telegram: {
+          provider: "telegram",
+          discover: async (req) => {
+            seen.push(req.options);
+            return { candidates: [] };
+          },
+          finalize: async () => {
+            throw new Error("not used");
+          },
+        },
+      },
+    });
+
+    const agentId = "ag_discover_options";
+    const topLevel = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/telegram/discover`,
+      {
+        body: {
+          user_id: "usr_1",
+          hosting_kind: "cloud",
+          loginId: "tgl_options",
+          timeoutSeconds: 6,
+          options: { mode: "top-level-timeout" },
+        },
+      },
+      h.responses,
+    );
+    const nested = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/telegram/discover`,
+      {
+        body: {
+          user_id: "usr_1",
+          hosting_kind: "cloud",
+          loginId: "tgl_options",
+          timeoutSeconds: 6,
+          options: { timeoutSeconds: 2, mode: "nested-wins" },
+        },
+      },
+      h.responses,
+    );
+
+    expect(topLevel.status).toBe(200);
+    expect(nested.status).toBe(200);
+    expect(seen).toEqual([
+      { timeoutSeconds: 6, mode: "top-level-timeout" },
+      { timeoutSeconds: 2, mode: "nested-wins" },
+    ]);
+  });
 });
 
 describe("setup-server — auth", () => {

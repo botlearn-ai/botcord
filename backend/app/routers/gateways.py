@@ -1899,3 +1899,93 @@ async def wechat_recent_senders(
     if not isinstance(senders, list):
         senders = result.get("users")
     return {"senders": senders if isinstance(senders, list) else []}
+
+
+@router.post("/{agent_id}/gateways/feishu/chats")
+async def feishu_recent_chats(
+    agent_id: str,
+    body: WechatSenderDiscoveryIn,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Proxy temporary Feishu chat_id discovery to the daemon login session.
+
+    Called after Feishu registration confirms and before saving the gateway, so
+    the daemon can listen with the freshly confirmed app credentials and capture
+    the chat_id from a message sent by the registered user.
+    """
+    _rate_limit(ctx.user_id, "feishu-login")
+    agent = await _load_owned_agent(db, ctx, agent_id)
+
+    if agent.hosting_kind == "cloud":
+        _log_setup_event(
+            agent=agent, host=None, provider="feishu",
+            login_id=body.login_id, outcome="started", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        try:
+            result = await ingress_client.discover(
+                agent_id, "feishu",
+                user_id=ctx.user_id,
+                request_id=_request_id_for(ctx),
+                body={
+                    "loginId": body.login_id,
+                    "timeoutSeconds": body.timeout_seconds,
+                },
+            )
+        except HTTPException as exc:
+            _log_setup_event(
+                agent=agent, host=None, provider="feishu",
+                login_id=body.login_id, outcome="error",
+                error_code=_extract_error_code(exc), ctx=ctx,
+                setup_owner="gateway-ingress",
+            )
+            raise
+        _log_setup_event(
+            agent=agent, host=None, provider="feishu",
+            login_id=body.login_id, outcome="ok", ctx=ctx,
+            setup_owner="gateway-ingress",
+        )
+        chats = result.get("chats")
+        if not isinstance(chats, list):
+            chats = result.get("candidates")
+        return {"chats": chats if isinstance(chats, list) else []}
+
+    agent, host = await _load_gateway_host_or_422(db, ctx, agent_id)
+    await _ensure_gateway_host_online(db, ctx, agent, host)
+
+    _log_setup_event(
+        agent=agent, host=host, provider="feishu",
+        login_id=body.login_id, outcome="started", ctx=ctx,
+    )
+
+    try:
+        ack = await _send_gateway_control_frame(
+            host,
+            "gateway_recent_senders",
+            {
+                "provider": "feishu",
+                "loginId": body.login_id,
+                "accountId": agent_id,
+                "timeoutSeconds": body.timeout_seconds,
+            },
+            db=db,
+            ctx=ctx,
+            agent=agent,
+            retry_cloud_disconnect=True,
+        )
+        result = _ack_or_raise(ack)
+    except HTTPException as exc:
+        _log_setup_event(
+            agent=agent, host=host, provider="feishu",
+            login_id=body.login_id, outcome="error",
+            error_code=_extract_error_code(exc), ctx=ctx,
+        )
+        raise
+
+    _log_setup_event(
+        agent=agent, host=host, provider="feishu",
+        login_id=body.login_id, outcome="ok", ctx=ctx,
+    )
+    chats = result.get("chats")
+    return {"chats": chats if isinstance(chats, list) else []}

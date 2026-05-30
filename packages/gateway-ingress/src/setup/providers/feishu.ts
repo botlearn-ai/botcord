@@ -10,16 +10,19 @@
  *
  * See `docs/cloud-gateway-ingress-remediation-plan.md` §5.2.
  *
- * Feishu is event-subscription oriented, so `discover` is not
- * implemented at the MVP stage: the user's own `userOpenId` is captured
- * at registration time and can default into `allowedSenderIds`, and the
- * `allowedChatIds` allowlist is filled in by the user at finalize time.
+ * After registration confirms, `discover` temporarily opens the Feishu
+ * event websocket with the setup-session app credentials and captures
+ * chat_id values only from the registered userOpenId.
  */
+
+import * as Lark from "@larksuiteoapi/node-sdk";
 
 import type { GatewayConnection } from "../../types.js";
 import { maskTokenPreview, mintGatewayId, mintLoginId } from "../sessions.js";
 import {
   SetupError,
+  type DiscoverRequest,
+  type DiscoverResult,
   type FinalizeRequest,
   type FinalizeResult,
   type LoginStartRequest,
@@ -41,10 +44,97 @@ import {
 
 export interface FeishuSetupAdapterOptions {
   fetchImpl?: FetchLike;
+  /** Test hook: bypass the lark SDK for temporary discovery sockets. */
+  sdkOverride?: FeishuDiscoverySdkOverride;
 }
 
 function parseDomain(raw: unknown): FeishuDomain {
   return raw === "lark" ? "lark" : "feishu";
+}
+
+interface FeishuEventSender {
+  sender_id?: {
+    open_id?: string;
+    user_id?: string;
+    union_id?: string;
+  };
+  sender_type?: string;
+  tenant_key?: string;
+}
+
+interface FeishuEventMessage {
+  message_id?: string;
+  create_time?: string;
+  chat_id?: string;
+  chat_type?: string;
+  mentions?: Array<{ id?: { open_id?: string; user_id?: string }; name?: string }>;
+}
+
+interface FeishuMessageEvent {
+  sender?: FeishuEventSender;
+  message?: FeishuEventMessage;
+}
+
+interface FeishuDiscoveredChat {
+  chatId: string;
+  senderOpenId: string;
+  kind: "direct" | "group";
+  label?: string | null;
+  lastSeenAt: number;
+}
+
+export interface FeishuDiscoverySdkOverride {
+  createWsClient(args: Record<string, unknown>): {
+    start(opts: unknown): unknown;
+    close(opts?: unknown): unknown;
+  };
+  createDispatcher(): {
+    register(handlers: Record<string, (data: unknown) => unknown>): void;
+  };
+}
+
+function sdkDomain(domain: FeishuDomain | undefined): unknown {
+  const sdk = Lark as unknown as { Domain?: { Feishu?: unknown; Lark?: unknown } };
+  return domain === "lark" ? sdk.Domain?.Lark : sdk.Domain?.Feishu;
+}
+
+function senderLabel(event: FeishuMessageEvent): string | undefined {
+  const mentions = event.message?.mentions ?? [];
+  const senderOpenId = event.sender?.sender_id?.open_id;
+  const hit = mentions.find((m) => m.id?.open_id && m.id.open_id === senderOpenId);
+  return typeof hit?.name === "string" && hit.name ? hit.name : undefined;
+}
+
+function discoveryChatFromEvent(
+  event: FeishuMessageEvent,
+  allowedSenderOpenId: string,
+  now: () => number,
+): FeishuDiscoveredChat | null {
+  const message = event.message;
+  const senderOpenId = event.sender?.sender_id?.open_id;
+  const chatId = message?.chat_id;
+  if (!message || !senderOpenId || !chatId) return null;
+  if (senderOpenId !== allowedSenderOpenId) return null;
+  return {
+    chatId,
+    senderOpenId,
+    kind: message.chat_type === "p2p" ? "direct" : "group",
+    label: senderLabel(event) ?? null,
+    lastSeenAt: Number(message.create_time) || now(),
+  };
+}
+
+function parseTimeoutSeconds(raw: unknown): number {
+  return typeof raw === "number" ? Math.min(Math.max(Math.floor(raw), 0), 10) : 0;
+}
+
+function assertSessionOwner(
+  session: { agentId: string; userId?: string },
+  req: { agentId: string; userId: string },
+): void {
+  if (session.agentId !== req.agentId || (session.userId && session.userId !== req.userId)) {
+    throw new SetupError("unauthorized", "login session does not belong to this requester");
+  }
 }
 
 /**
@@ -66,6 +156,7 @@ export function createFeishuSetupAdapter(
   opts: FeishuSetupAdapterOptions = {},
 ): ProviderSetupAdapter {
   const fetchImpl = opts.fetchImpl;
+  const sdkOverride = opts.sdkOverride;
 
   async function loginStart(
     req: LoginStartRequest,
@@ -121,6 +212,7 @@ export function createFeishuSetupAdapter(
     if (!session || session.provider !== "feishu") {
       throw new SetupError("login_missing", "login id is unknown");
     }
+    assertSessionOwner(session, req);
 
     // Already confirmed: return cached preview, never re-poll, never
     // surface appSecret. The dashboard polls this endpoint on a timer
@@ -212,6 +304,87 @@ export function createFeishuSetupAdapter(
     };
   }
 
+  async function discover(
+    req: DiscoverRequest,
+    ctx: SetupContext,
+  ): Promise<DiscoverResult> {
+    const { state, session } = ctx.sessions.resolve(req.loginId);
+    if (state === "missing") throw new SetupError("login_missing", "login id is unknown");
+    if (state === "expired") throw new SetupError("login_expired", "login session expired");
+    if (!session || session.provider !== "feishu") {
+      throw new SetupError("login_missing", "login id is unknown");
+    }
+    assertSessionOwner(session, req);
+    const { appId, appSecret, domain, userOpenId } = session.secretPayload;
+    if (
+      session.status !== "confirmed" ||
+      !appId ||
+      !appSecret ||
+      !userOpenId
+    ) {
+      throw new SetupError("login_unconfirmed", "feishu login is not confirmed yet");
+    }
+
+    const chats = new Map<string, FeishuDiscoveredChat>();
+    const dispatcher = createDiscoveryDispatcher();
+    dispatcher.register({
+      "im.message.receive_v1": (data: unknown) => {
+        const discovered = discoveryChatFromEvent(
+          data as FeishuMessageEvent,
+          userOpenId,
+          ctx.now,
+        );
+        if (!discovered) return;
+        const previous = chats.get(discovered.chatId);
+        chats.set(discovered.chatId, {
+          ...previous,
+          ...discovered,
+          label: discovered.label ?? previous?.label ?? null,
+          lastSeenAt: Math.max(previous?.lastSeenAt ?? 0, discovered.lastSeenAt),
+        });
+      },
+    });
+    const wsClient = createDiscoveryWsClient({
+      appId,
+      appSecret,
+      domain: sdkDomain(domain),
+    });
+    try {
+      const startFailure = Promise.resolve()
+        .then(() => wsClient.start({ eventDispatcher: dispatcher }))
+        .then(
+          () => new Promise<never>(() => {}),
+          (err) => Promise.reject(err),
+        );
+      const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+      await Promise.race([startFailure, delay(0)]);
+      await Promise.race([
+        startFailure,
+        delay(parseTimeoutSeconds(req.options?.timeoutSeconds) * 1000),
+      ]);
+    } catch (err) {
+      ctx.log.warn("feishu discover failed", {
+        agentId: req.agentId,
+        loginId: req.loginId,
+        err: redact(String(err), appSecret),
+      });
+      throw new SetupError("provider_unreachable", "feishu discovery endpoint unreachable");
+    } finally {
+      try {
+        wsClient.close({ force: true });
+      } catch {
+        // best effort
+      }
+    }
+    const values = [...chats.values()]
+      .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+      .map((chat) => ({ ...chat }));
+    return {
+      candidates: values,
+      chats: values,
+    };
+  }
+
   async function finalize(
     req: FinalizeRequest,
     ctx: SetupContext,
@@ -222,6 +395,7 @@ export function createFeishuSetupAdapter(
     if (!session || session.provider !== "feishu") {
       throw new SetupError("login_missing", "login id is unknown");
     }
+    assertSessionOwner(session, req);
     const { appId, appSecret, domain, userOpenId } = session.secretPayload;
     if (
       session.status !== "confirmed" ||
@@ -343,10 +517,41 @@ export function createFeishuSetupAdapter(
     }
   }
 
+  function createDiscoveryDispatcher(): {
+    register(handlers: Record<string, (data: unknown) => unknown>): void;
+  } {
+    if (sdkOverride) return sdkOverride.createDispatcher();
+    const sdk = Lark as unknown as {
+      EventDispatcher: new (args?: Record<string, unknown>) => {
+        register(handlers: Record<string, (data: unknown) => unknown>): void;
+      };
+    };
+    return new sdk.EventDispatcher({});
+  }
+
+  function createDiscoveryWsClient(args: Record<string, unknown>): {
+    start(opts: unknown): unknown;
+    close(opts?: unknown): unknown;
+  } {
+    if (sdkOverride) return sdkOverride.createWsClient(args);
+    const sdk = Lark as unknown as {
+      WSClient: new (args: Record<string, unknown>) => {
+        start(opts: unknown): unknown;
+        close(opts?: unknown): unknown;
+      };
+      LoggerLevel?: { info?: unknown };
+    };
+    return new sdk.WSClient({
+      ...args,
+      loggerLevel: sdk.LoggerLevel?.info,
+    });
+  }
+
   return {
     provider: "feishu",
     loginStart,
     loginStatus,
+    discover,
     finalize,
     test,
   };

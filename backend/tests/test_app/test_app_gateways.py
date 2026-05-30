@@ -1610,6 +1610,51 @@ async def test_wechat_recent_senders_proxies(client, seed, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_feishu_recent_chats_proxies(client, seed, monkeypatch):
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        assert type_ == "gateway_recent_senders"
+        assert params == {
+            "provider": "feishu",
+            "loginId": "fsl_xyz",
+            "accountId": "ag_daemon",
+            "timeoutSeconds": 6,
+        }
+        return {
+            "ok": True,
+            "result": {
+                "chats": [
+                    {
+                        "chatId": "oc_team",
+                        "senderOpenId": "ou_alice",
+                        "kind": "group",
+                        "label": "Alice",
+                        "lastSeenAt": 1700000000000,
+                    },
+                ],
+            },
+        }
+
+    _patch_daemon(monkeypatch, online=True, send=fake_send)
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_daemon/gateways/feishu/chats",
+        headers=headers,
+        json={"loginId": "fsl_xyz", "timeoutSeconds": 6},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["chats"] == [
+        {
+            "chatId": "oc_team",
+            "senderOpenId": "ou_alice",
+            "kind": "group",
+            "label": "Alice",
+            "lastSeenAt": 1700000000000,
+        },
+    ]
+
+
+@pytest.mark.asyncio
 async def test_wechat_login_start_offline_returns_409(client, seed, monkeypatch, caplog):
     _patch_daemon(monkeypatch, online=False)
     headers = {"Authorization": f"Bearer {seed['token']}"}
