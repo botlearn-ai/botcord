@@ -297,6 +297,8 @@ export interface OwnerChatMessage {
   sendText?: string;
   /** Unsent files preserved for retry. */
   retryFiles?: File[];
+  /** Reply target preserved for retry after upload or send failures. */
+  retryReplyTo?: string | null;
   /** Links streaming placeholder to its final delivered message. */
   traceId?: string;
   /** Quote-reply target preview (mirrors backend reply_preview). */

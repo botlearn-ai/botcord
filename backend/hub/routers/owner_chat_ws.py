@@ -32,8 +32,10 @@ from hub.routers.dashboard_chat import (
     _OWNER_CHAT_ROOM_PREFIX,
 )
 from hub.routers.hub import (
-    notify_inbox,
+    _load_reply_previews,
+    _load_reply_target,
     build_message_realtime_event,
+    notify_inbox,
 )
 from hub.services.cloud_agent import resume_cloud_agent_for_inbox
 from hub.validators import normalize_file_url
@@ -406,6 +408,10 @@ async def owner_chat_ws(ws: WebSocket):
             elif msg_type == "send":
                 text = (msg.get("text") or "").strip()
                 client_msg_id = msg.get("client_msg_id") or None
+                raw_reply_to = msg.get("reply_to") or msg.get("replyTo") or None
+                reply_to_value = str(raw_reply_to).strip() if raw_reply_to is not None else None
+                if reply_to_value == "":
+                    reply_to_value = None
 
                 # Optional attachments (pre-uploaded via /api/dashboard/upload).
                 # URLs are normalized to absolute `HUB_PUBLIC_BASE_URL + /hub/files/f_*`;
@@ -447,50 +453,77 @@ async def owner_chat_ws(ws: WebSocket):
                         err_resp2["client_msg_id"] = str(client_msg_id)[:64]
                     await ws.send_json(err_resp2)
                     continue
+                if reply_to_value is not None and len(reply_to_value) > 64:
+                    err_resp3: dict = {"type": "error", "message": "Reply target is too long"}
+                    if client_msg_id:
+                        err_resp3["client_msg_id"] = str(client_msg_id)[:64]
+                    await ws.send_json(err_resp3)
+                    continue
 
                 logger.info("Owner-chat WS recv: user=%s agent=%s text_len=%d attachments=%d", user_id, agent_id, len(text), len(attachments))
 
                 cloud_resume_ok = False
-
-                # Create MessageRecord (same logic as dashboard_chat.send_chat_message)
-                msg_id = str(uuid.uuid4())
-                ts = int(time.time())
                 payload: dict = {"text": text}
                 if attachments:
                     payload["attachments"] = attachments
-                envelope_data = {
-                    "v": "a2a/0.1",
-                    "msg_id": msg_id,
-                    "ts": ts,
-                    "from": agent_id,
-                    "to": agent_id,
-                    "type": "message",
-                    "reply_to": None,
-                    "ttl_sec": 3600,
-                    "payload": payload,
-                    "payload_hash": "",
-                    "sig": {"alg": "ed25519", "key_id": "dashboard", "value": ""},
-                }
-                envelope_json = json.dumps(envelope_data)
-
-                hub_msg_id = generate_hub_msg_id()
-                record = MessageRecord(
-                    hub_msg_id=hub_msg_id,
-                    msg_id=msg_id,
-                    sender_id=agent_id,
-                    receiver_id=agent_id,
-                    room_id=room_id,
-                    state=MessageState.queued,
-                    envelope_json=envelope_json,
-                    ttl_sec=3600,
-                    mentioned=True,
-                    source_type="dashboard_user_chat",
-                    source_user_id=user_id,
-                    source_session_kind="owner_chat",
-                )
+                canonical_reply_msg_id: str | None = None
+                reply_preview = None
 
                 async with async_session() as db:
+                    if reply_to_value is not None:
+                        try:
+                            target = await _load_reply_target(
+                                db,
+                                room_id=room_id,
+                                reply_to_value=reply_to_value,
+                            )
+                        except HTTPException as exc:
+                            detail = exc.detail if isinstance(exc.detail, str) else "Invalid reply target"
+                            reply_err: dict = {"type": "error", "message": detail}
+                            if client_msg_id:
+                                reply_err["client_msg_id"] = str(client_msg_id)[:64]
+                            await ws.send_json(reply_err)
+                            continue
+                        canonical_reply_msg_id = target.msg_id
+                        previews = await _load_reply_previews(db, {canonical_reply_msg_id})
+                        reply_preview = previews.get(canonical_reply_msg_id)
+
                     cloud_resume_ok = await resume_cloud_agent_for_inbox(db, agent_id)
+
+                    # Create MessageRecord (same logic as dashboard_chat.send_chat_message)
+                    msg_id = str(uuid.uuid4())
+                    ts = int(time.time())
+                    envelope_data = {
+                        "v": "a2a/0.1",
+                        "msg_id": msg_id,
+                        "ts": ts,
+                        "from": agent_id,
+                        "to": agent_id,
+                        "type": "message",
+                        "reply_to": canonical_reply_msg_id,
+                        "ttl_sec": 3600,
+                        "payload": payload,
+                        "payload_hash": "",
+                        "sig": {"alg": "ed25519", "key_id": "dashboard", "value": ""},
+                    }
+                    envelope_json = json.dumps(envelope_data)
+
+                    hub_msg_id = generate_hub_msg_id()
+                    record = MessageRecord(
+                        hub_msg_id=hub_msg_id,
+                        msg_id=msg_id,
+                        sender_id=agent_id,
+                        receiver_id=agent_id,
+                        room_id=room_id,
+                        state=MessageState.queued,
+                        envelope_json=envelope_json,
+                        ttl_sec=3600,
+                        mentioned=True,
+                        source_type="dashboard_user_chat",
+                        source_user_id=user_id,
+                        source_session_kind="owner_chat",
+                        reply_to_msg_id=canonical_reply_msg_id,
+                    )
 
                     try:
                         async with db.begin_nested():
@@ -531,6 +564,8 @@ async def owner_chat_ws(ws: WebSocket):
                             created_at=record.created_at,
                             payload=payload,
                             sender_name=display_name,
+                            reply_to=canonical_reply_msg_id,
+                            reply_preview=reply_preview,
                         ),
                         resume_cloud=not cloud_resume_ok,
                     )
@@ -560,8 +595,13 @@ async def owner_chat_ws(ws: WebSocket):
                 }
                 if client_msg_id:
                     echo["client_msg_id"] = str(client_msg_id)[:64]
+                ext: dict[str, Any] = {}
                 if attachments:
-                    echo["ext"] = {"attachments": attachments}
+                    ext["attachments"] = attachments
+                if reply_preview is not None:
+                    ext["reply_preview"] = reply_preview.model_dump(mode="json")
+                if ext:
+                    echo["ext"] = ext
                 await ws.send_json(echo)
 
     except WebSocketDisconnect:

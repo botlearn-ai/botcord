@@ -26,7 +26,7 @@ export interface WsAttachment {
 }
 
 export interface OwnerChatWsClient {
-  send: (text: string, attachments?: WsAttachment[], clientMsgId?: string) => boolean;
+  send: (text: string, attachments?: WsAttachment[], clientMsgId?: string, replyTo?: string | null) => boolean;
   close: () => void;
 }
 
@@ -154,7 +154,7 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
     }, delay);
   }
 
-  function send(text: string, attachments?: WsAttachment[], clientMsgId?: string): boolean {
+  function send(text: string, attachments?: WsAttachment[], clientMsgId?: string, replyTo?: string | null): boolean {
     if (!ws || !authenticated || ws.readyState !== WebSocket.OPEN) {
       opts.onSendFailed?.(text, clientMsgId);
       return false;
@@ -166,6 +166,9 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
       }
       if (clientMsgId) {
         msg.client_msg_id = clientMsgId;
+      }
+      if (replyTo) {
+        msg.reply_to = replyTo;
       }
       ws.send(JSON.stringify(msg));
       return true;

@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, Bot, Check, Copy, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, FileText, PanelLeftOpen, Settings2, User } from "lucide-react";
+import { ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, FileText, PanelLeftOpen, Settings2, User, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -29,7 +29,13 @@ import CopyableId from "@/components/ui/CopyableId";
 import MessageComposer from "./MessageComposer";
 import ReplyQuoteBlock from "./ReplyQuoteBlock";
 import ForwardModal from "./ForwardModal";
-import { buildOwnerChatForwardQuote, canShowOwnerChatMessageActions } from "@/lib/owner-chat-actions";
+import {
+  buildOwnerChatForwardQuote,
+  buildOwnerChatReplyPreview,
+  canReplyToOwnerChatMessage,
+  canShowOwnerChatMessageActions,
+  ownerChatReplyTargetId,
+} from "@/lib/owner-chat-actions";
 
 const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
@@ -93,6 +99,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const agentTyping = useOwnerChatStore((s) => s.agentTyping);
   const activeTraceId = useOwnerChatStore((s) => s.activeTraceId);
   const roomId = useOwnerChatStore((s) => s.roomId);
+  const replyingTo = useOwnerChatStore((s) => s.replyingTo);
 
   const [chatRoomName, setChatRoomName] = useState("");
   const [initializingRoom, setInitializingRoom] = useState(false);
@@ -103,6 +110,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
   const settingsLabel = locale === "zh" ? "Bot 设置" : "Bot settings";
+  const replyLabel = locale === "zh" ? "回复" : "Reply";
   const forwardLabel = locale === "zh" ? "转发" : "Forward";
   const copyLabel = locale === "zh" ? "复制" : "Copy";
   const copiedLabel = locale === "zh" ? "已复制" : "Copied";
@@ -231,20 +239,25 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
 
   // ------ Send message ------
 
-  const sendMessage = useCallback(async (text: string, clientId: string, attachments?: Attachment[]) => {
+  const sendMessage = useCallback(async (
+    text: string,
+    clientId: string,
+    attachments?: Attachment[],
+    replyTo?: string | null,
+  ) => {
     const wsAtts: WsAttachment[] | undefined = attachments?.map((a) => ({
       filename: a.filename, url: a.url, content_type: a.content_type, size_bytes: a.size_bytes,
     }));
 
     // Try WS first
     if (wsClientRef.current && wsConnected) {
-      const sent = wsClientRef.current.send(text, wsAtts, clientId);
+      const sent = wsClientRef.current.send(text, wsAtts, clientId, replyTo);
       if (sent) return;
     }
 
     // HTTP fallback
     try {
-      const result = await api.sendUserChatMessage(text, attachments, chatAgentId || undefined);
+      const result = await api.sendUserChatMessage(text, attachments, chatAgentId || undefined, replyTo);
       useOwnerChatStore.getState().confirmOptimistic(clientId, result.hub_msg_id, new Date().toISOString(), attachments);
     } catch (err: any) {
       useOwnerChatStore.getState().failOptimistic(clientId, err?.message || "Failed to send");
@@ -256,6 +269,10 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
 
     const clientId = crypto.randomUUID();
     const displayText = text || (rawFiles.length > 0 ? `[${rawFiles.length} file(s)]` : "");
+    const replyTargetMsgId = replyingTo ? ownerChatReplyTargetId(replyingTo) : null;
+    const optimisticReplyPreview = replyingTo && replyTargetMsgId
+      ? buildOwnerChatReplyPreview(replyingTo)
+      : null;
 
     const optimisticMsg: OwnerChatMessage = {
       clientId,
@@ -269,17 +286,22 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
       type: "message",
       sendText: text,
       retryFiles: rawFiles.length > 0 ? rawFiles : undefined,
+      retryReplyTo: replyTargetMsgId,
+      replyPreview: optimisticReplyPreview ?? undefined,
     };
     useOwnerChatStore.getState().addOptimistic(optimisticMsg);
+    if (replyTargetMsgId) {
+      useOwnerChatStore.getState().setReplyingTo(null);
+    }
     scrollToBottom();
 
     try {
       const attachments = rawFiles.length > 0 ? await uploadFiles(rawFiles) : undefined;
-      await sendMessage(text, clientId, attachments);
+      await sendMessage(text, clientId, attachments, replyTargetMsgId);
     } catch (err: any) {
       useOwnerChatStore.getState().failOptimistic(clientId, err?.message || "Upload failed");
     }
-  }, [roomId, sendMessage, uploadFiles, scrollToBottom]);
+  }, [roomId, replyingTo, sendMessage, uploadFiles, scrollToBottom]);
 
   const handleRetry = useCallback(async (msg: OwnerChatMessage) => {
     useOwnerChatStore.getState().resetForRetry(msg.clientId);
@@ -288,11 +310,17 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
       if (!attachments && msg.retryFiles && msg.retryFiles.length > 0) {
         attachments = await uploadFiles(msg.retryFiles);
       }
-      await sendMessage(msg.sendText || msg.text, msg.clientId, attachments);
+      await sendMessage(msg.sendText || msg.text, msg.clientId, attachments, msg.retryReplyTo);
     } catch (err: any) {
       useOwnerChatStore.getState().failOptimistic(msg.clientId, err?.message || "Retry failed");
     }
   }, [sendMessage, uploadFiles]);
+
+  const handleReply = useCallback((msg: OwnerChatMessage) => {
+    setActionMenuOpenId(null);
+    if (!canReplyToOwnerChatMessage(msg)) return;
+    useOwnerChatStore.getState().setReplyingTo(msg);
+  }, []);
 
   const handleForward = useCallback((msg: OwnerChatMessage) => {
     setActionMenuOpenId(null);
@@ -316,6 +344,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
     const menuOpen = actionMenuOpenId === msg.clientId;
     const visible = hoveredActionId === msg.clientId || menuOpen;
     const copied = copiedMessageId === msg.clientId;
+    const canReply = canReplyToOwnerChatMessage(msg);
     return (
       <div className="relative shrink-0 self-start pt-1">
         <button
@@ -327,7 +356,17 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
         {menuOpen && (
-          <div className={`absolute top-full mt-1 z-30 min-w-[80px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl ${alignRight ? "right-0" : "left-0"}`}>
+          <div className={`absolute top-full mt-1 z-30 min-w-[96px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl ${alignRight ? "right-0" : "left-0"}`}>
+            {canReply && (
+              <button
+                type="button"
+                onMouseDown={(event) => { event.preventDefault(); handleReply(msg); }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+              >
+                <CornerUpLeft className="h-3.5 w-3.5 text-zinc-500" />
+                {replyLabel}
+              </button>
+            )}
             <button
               type="button"
               onMouseDown={(event) => { event.preventDefault(); handleForward(msg); }}
@@ -754,16 +793,61 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
 
       {/* Input */}
       <div className="border-t border-zinc-800 px-4 py-3">
-        <MessageComposer
-          onSend={handleSend}
-          allowAttachments
-          placeholder="输入消息，@ 可引用联系人或房间..."
-          mentionCandidates={mentionCandidates}
-        />
+        <div className="flex flex-col gap-1">
+          {replyingTo && (
+            <OwnerChatReplyingToBar
+              target={replyingTo}
+              locale={locale}
+              onCancel={() => useOwnerChatStore.getState().setReplyingTo(null)}
+            />
+          )}
+          <MessageComposer
+            onSend={handleSend}
+            allowAttachments
+            placeholder="输入消息，@ 可引用联系人或房间..."
+            mentionCandidates={mentionCandidates}
+          />
+        </div>
       </div>
       {forwardQuote && (
         <ForwardModal quoteText={forwardQuote} onClose={() => setForwardQuote(null)} />
       )}
+    </div>
+  );
+}
+
+interface OwnerChatReplyingToBarProps {
+  target: OwnerChatMessage;
+  locale: "zh" | "en";
+  onCancel: () => void;
+}
+
+function OwnerChatReplyingToBar({ target, locale, onCancel }: OwnerChatReplyingToBarProps) {
+  const name = target.senderName || (locale === "zh" ? "消息" : "Message");
+  const preview = (target.text || "").slice(0, 80);
+  const replyingLabel = locale === "zh" ? "正在回复" : "Replying to";
+  const cancelLabel = locale === "zh" ? "取消引用" : "Cancel reply";
+
+  return (
+    <div className="mx-1 flex items-start gap-2 rounded-md border-l-2 border-neon-cyan/60 bg-glass-bg/60 pl-2 pr-1 py-1.5 text-xs">
+      <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-neon-cyan/80" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[11px] font-medium text-neon-cyan/90">
+          {replyingLabel} · {name}
+        </div>
+        {preview && (
+          <div className="truncate text-[11px] text-text-secondary/80">{preview}</div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded p-0.5 text-text-secondary/60 hover:bg-glass-bg hover:text-text-secondary transition-colors"
+        aria-label={cancelLabel}
+        title={cancelLabel}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
