@@ -515,6 +515,16 @@ function csvToList(raw: string): string[] {
     .filter(Boolean);
 }
 
+function normalizeFeishuChatIds(ids: string[]): string[] {
+  return ids.map((id) =>
+    id.startsWith("feishu:user:")
+      ? id.slice("feishu:user:".length)
+      : id.startsWith("feishu:chat:")
+        ? id.slice("feishu:chat:".length)
+        : id,
+  );
+}
+
 function TelegramAddForm({
   agentId,
   daemonOffline,
@@ -1099,7 +1109,7 @@ function FeishuAddForm({
   }
 
   const allowedSenderIds = csvToList(senderIds);
-  const allowedChatIds = csvToList(chatIds);
+  const allowedChatIds = normalizeFeishuChatIds(csvToList(chatIds));
   const canSave =
     phase === "ready" &&
     !!loginId &&
@@ -1859,7 +1869,10 @@ function GatewayEditForm({
     }
   }, [wechatLoginExpired, wechatStatus]);
 
-  const allowedChatIds = csvToList(chatIds);
+  const allowedChatIds =
+    gateway.provider === "feishu"
+      ? normalizeFeishuChatIds(csvToList(chatIds))
+      : csvToList(chatIds);
   const allowedSenderIds = csvToList(senderIds);
   const whitelistIncomplete =
     gateway.provider === "telegram"
