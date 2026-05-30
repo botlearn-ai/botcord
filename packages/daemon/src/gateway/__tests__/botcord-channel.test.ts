@@ -123,6 +123,56 @@ describe("createBotCordChannel — send()", () => {
     expect(result.providerMessageId).toBe("m_provider");
   });
 
+  it("uploads outbound attachments and includes them in sendMessage", async () => {
+    const client = makeClient({
+      uploadFile: vi.fn().mockResolvedValue({
+        original_filename: "xhs-01-cover.png",
+        url: "https://hub.test/hub/files/f_1",
+        content_type: "image/png",
+        size_bytes: 1234,
+      }),
+    });
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+    });
+    await channel.send({
+      message: {
+        channel: "botcord",
+        accountId: "ag_self",
+        conversationId: "rm_oc_1",
+        text: "done: output/xhs-01-cover.png",
+        attachments: [{
+          filePath: "/tmp/work/output/xhs-01-cover.png",
+          filename: "xhs-01-cover.png",
+          contentType: "image/png",
+          sourcePath: "output/xhs-01-cover.png",
+        }],
+      },
+      log: silentLog,
+    });
+
+    expect(client.uploadFile).toHaveBeenCalledWith(
+      "/tmp/work/output/xhs-01-cover.png",
+      "xhs-01-cover.png",
+      "image/png",
+    );
+    expect(client.sendMessage).toHaveBeenCalledWith(
+      "rm_oc_1",
+      "done: https://hub.test/hub/files/f_1",
+      {
+        attachments: [{
+          filename: "xhs-01-cover.png",
+          url: "https://hub.test/hub/files/f_1",
+          content_type: "image/png",
+          size_bytes: 1234,
+        }],
+      },
+    );
+  });
+
   it("omits topic/replyTo when not provided and returns null when response lacks ids", async () => {
     const client = makeClient({
       sendMessage: vi.fn().mockResolvedValue({ queued: true, status: "queued" }),
