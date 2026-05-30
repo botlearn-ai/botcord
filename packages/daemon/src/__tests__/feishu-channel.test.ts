@@ -6,6 +6,9 @@ import {
 } from "../gateway/channels/feishu.js";
 
 describe("feishu chat discovery parser", () => {
+  const timeoutAfter = (ms: number, message: string) =>
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms));
+
   it("captures a group chat_id from the registered sender", () => {
     const hit = feishuDiscoveryChatFromEvent(
       {
@@ -82,10 +85,96 @@ describe("feishu chat discovery parser", () => {
           createDispatcher: () => ({ register: () => {} }),
           createWsClient: () => ({
             start: () => Promise.reject(new Error("ws start failed")),
-            close: () => {},
+            close: () => {
+              throw new Error("close failed");
+            },
           }),
         },
       }),
+    ).rejects.toThrow("ws start failed");
+  });
+
+  it("returns empty chats when listen succeeds with no matching message and close throws", async () => {
+    const chats = await discoverFeishuChats({
+      appId: "cli_123",
+      appSecret: "secret_123",
+      domain: "feishu",
+      userOpenId: "ou_alice",
+      timeoutSeconds: 0,
+      sdkOverride: {
+        createDispatcher: () => ({ register: () => {} }),
+        createWsClient: () => ({
+          start: () => undefined,
+          close: () => {
+            throw new Error("close failed");
+          },
+        }),
+      },
+    });
+
+    expect(chats).toEqual([]);
+  });
+
+  it("returns empty chats when listen succeeds with no matching message and close rejects", async () => {
+    const chats = await discoverFeishuChats({
+      appId: "cli_123",
+      appSecret: "secret_123",
+      domain: "feishu",
+      userOpenId: "ou_alice",
+      timeoutSeconds: 0,
+      sdkOverride: {
+        createDispatcher: () => ({ register: () => {} }),
+        createWsClient: () => ({
+          start: () => undefined,
+          close: () => Promise.reject(new Error("close failed")),
+        }),
+      },
+    });
+
+    expect(chats).toEqual([]);
+  });
+
+  it("returns empty chats when listen succeeds with no matching message and close never settles", async () => {
+    const chats = await Promise.race([
+      discoverFeishuChats({
+        appId: "cli_123",
+        appSecret: "secret_123",
+        domain: "feishu",
+        userOpenId: "ou_alice",
+        timeoutSeconds: 0,
+        sdkOverride: {
+          createDispatcher: () => ({ register: () => {} }),
+          createWsClient: () => ({
+            start: () => undefined,
+            close: () => new Promise<never>(() => {}),
+          }),
+        },
+      }),
+      timeoutAfter(100, "discovery waited for close"),
+    ]);
+
+    expect(chats).toEqual([]);
+  });
+
+  it("surfaces start failure when close never settles", async () => {
+    await expect(
+      Promise.race([
+        discoverFeishuChats({
+          appId: "cli_123",
+          appSecret: "secret_123",
+          domain: "feishu",
+          userOpenId: "ou_alice",
+          timeoutSeconds: 0,
+          sdkOverride: {
+            createDispatcher: () => ({ register: () => {} }),
+            createWsClient: () => ({
+              start: () => Promise.reject(new Error("ws start failed")),
+              close: () => new Promise<never>(() => {}),
+            }),
+          },
+        }),
+        timeoutAfter(100, "discovery waited for close"),
+      ]),
     ).rejects.toThrow("ws start failed");
   });
 });

@@ -371,7 +371,16 @@ export function createFeishuSetupAdapter(
       throw new SetupError("provider_unreachable", "feishu discovery endpoint unreachable");
     } finally {
       try {
-        wsClient.close({ force: true });
+        const closeResult = wsClient.close({ force: true });
+        if (
+          closeResult &&
+          (typeof closeResult === "object" || typeof closeResult === "function") &&
+          typeof (closeResult as PromiseLike<unknown>).then === "function"
+        ) {
+          void Promise.resolve(closeResult).catch(() => {
+            // best effort
+          });
+        }
       } catch {
         // best effort
       }

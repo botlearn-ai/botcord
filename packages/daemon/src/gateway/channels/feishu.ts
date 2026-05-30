@@ -236,7 +236,20 @@ export async function discoverFeishuChats(
     await Promise.race([startFailure, delay(0)]);
     await Promise.race([startFailure, delay(timeoutSeconds * 1000)]);
   } finally {
-    wsClient.close({ force: true });
+    try {
+      const closeResult = wsClient.close({ force: true });
+      if (
+        closeResult &&
+        (typeof closeResult === "object" || typeof closeResult === "function") &&
+        typeof (closeResult as PromiseLike<unknown>).then === "function"
+      ) {
+        void Promise.resolve(closeResult).catch(() => {
+          // best effort
+        });
+      }
+    } catch {
+      // best effort
+    }
   }
   return [...chats.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt);
 }
