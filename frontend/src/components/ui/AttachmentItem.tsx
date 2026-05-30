@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { ExternalLink, X } from "lucide-react";
 import type { Attachment } from "@/lib/types";
 
 const HUB_BASE_URL =
@@ -29,26 +32,120 @@ export function isImageAttachment(attachment: Attachment): boolean {
   return /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(name);
 }
 
+function ImagePreviewOverlay({
+  src,
+  title,
+  onClose,
+}: {
+  src: string;
+  title: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      className="fixed inset-0 z-[9999] flex flex-col bg-black/90 backdrop-blur-sm"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-glass-border bg-deep-black/85 px-3 py-2 sm:px-5">
+        <span className="min-w-0 truncate text-sm font-medium text-text-primary">{title}</span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <a
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+            aria-label="Open original image"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <ExternalLink className="h-4 w-4" />
+          </a>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+            aria-label="Close image preview"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-6">
+        <img
+          src={src}
+          alt={title}
+          className="max-h-[calc(100vh-6.5rem)] max-w-full object-contain shadow-2xl"
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function AttachmentItem({ attachment }: { attachment: Attachment }) {
   const attachmentUrl = resolveAttachmentUrl(attachment.url);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   if (isImageAttachment(attachment)) {
+    const title = attachment.filename || "Image attachment";
+
     return (
-      <a
-        href={attachmentUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block"
-      >
-        <img
-          src={attachmentUrl}
-          alt={attachment.filename || "Image attachment"}
-          className="max-h-48 max-w-full rounded-lg border border-glass-border object-cover hover:opacity-80 transition-opacity"
-        />
-        {attachment.filename && (
-          <span className="mt-0.5 block text-[10px] text-text-secondary/60">{attachment.filename}</span>
+      <>
+        <div className="max-w-full">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setPreviewOpen(true);
+            }}
+            className="group block max-w-full text-left"
+            aria-label={`Preview ${title}`}
+          >
+            <img
+              src={attachmentUrl}
+              alt={title}
+              className="max-h-48 max-w-full cursor-zoom-in rounded-lg border border-glass-border object-contain transition-opacity group-hover:opacity-80"
+              loading="lazy"
+              decoding="async"
+            />
+          </button>
+          {attachment.filename && (
+            <span className="mt-0.5 block text-[10px] text-text-secondary/60">{attachment.filename}</span>
+          )}
+        </div>
+        {previewOpen && (
+          <ImagePreviewOverlay
+            src={attachmentUrl}
+            title={title}
+            onClose={() => setPreviewOpen(false)}
+          />
         )}
-      </a>
+      </>
     );
   }
 
