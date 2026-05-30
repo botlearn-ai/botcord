@@ -33,6 +33,9 @@ const DEVICE_CODE = "dc_alpha_beta_gamma_12345";
 const VERIFICATION_URL = "https://accounts.feishu.cn/personal_agent?code=dc_alpha";
 
 type RegistrationPhase = "pending" | "confirmed" | "denied" | "expired" | "fail";
+type FeishuSdkOverride = NonNullable<
+  Parameters<typeof createFeishuSetupAdapter>[0]
+>["sdkOverride"];
 
 interface Harness {
   dir: string;
@@ -50,6 +53,7 @@ async function buildHarness(
   opts: {
     adapters?: Record<string, ProviderSetupAdapter>;
     ttlMs?: number;
+    feishuSdkOverride?: FeishuSdkOverride;
   } = {},
 ): Promise<Harness> {
   const dir = mkdtempSync(join(tmpdir(), "ingress-setup-feishu-"));
@@ -112,7 +116,10 @@ async function buildHarness(
   }) as never;
 
   const adapters: Record<string, ProviderSetupAdapter> = {
-    feishu: createFeishuSetupAdapter({ fetchImpl }),
+    feishu: createFeishuSetupAdapter({
+      fetchImpl,
+      ...(opts.feishuSdkOverride ? { sdkOverride: opts.feishuSdkOverride } : {}),
+    }),
     ...(opts.adapters ?? {}),
   };
 
@@ -405,6 +412,81 @@ describe("setup-server — Feishu full flow", () => {
     const connection = create.body.connection as { config: Record<string, unknown> };
     expect(connection.config.allowedSenderIds).toEqual([FAKE_OPEN_ID]);
   });
+
+  it("discovers Feishu chat_id from the registered user before finalize", async () => {
+    await h.server.close();
+    rmSync(h.dir, { recursive: true, force: true });
+    let handlers: Record<string, (data: unknown) => unknown> = {};
+    const starts: Record<string, unknown>[] = [];
+    h = await buildHarness({
+      feishuSdkOverride: {
+        createDispatcher: () => ({
+          register: (next) => {
+            handlers = next;
+          },
+        }),
+        createWsClient: (args) => ({
+          start: () => {
+            starts.push(args);
+            handlers["im.message.receive_v1"]?.({
+              sender: { sender_id: { open_id: "ou_intruder" } },
+              message: { chat_id: "oc_wrong", chat_type: "group", create_time: "1" },
+            });
+            handlers["im.message.receive_v1"]?.({
+              sender: { sender_id: { open_id: FAKE_OPEN_ID } },
+              message: {
+                chat_id: "oc_team",
+                chat_type: "group",
+                create_time: "1700000000123",
+                mentions: [{ id: { open_id: FAKE_OPEN_ID }, name: "Alice" }],
+              },
+            });
+          },
+          close: () => {},
+        }),
+      },
+    });
+
+    const agentId = "ag_fs_discover";
+    const baseCtx = { user_id: "u", hosting_kind: "cloud" } as const;
+    const start = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/start`,
+      { body: { ...baseCtx } },
+      h.responses,
+    );
+    const loginId = start.body.loginId as string;
+    h.state.phase = "confirmed";
+    await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/status`,
+      { body: { ...baseCtx, loginId } },
+      h.responses,
+    );
+
+    const discover = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/discover`,
+      { body: { ...baseCtx, loginId, timeoutSeconds: 1 } },
+      h.responses,
+    );
+
+    expect(discover.status).toBe(200);
+    expect(starts).toHaveLength(1);
+    expect(starts[0]?.appId).toBe(FAKE_APP_ID);
+    expect(starts[0]?.appSecret).toBe(FAKE_APP_SECRET);
+    expect(discover.body.chats).toEqual([
+      {
+        chatId: "oc_team",
+        senderOpenId: FAKE_OPEN_ID,
+        kind: "group",
+        label: "Alice",
+        lastSeenAt: 1700000000123,
+      },
+    ]);
+    expect(discover.body.candidates).toEqual(discover.body.chats);
+    expect(JSON.stringify(discover.body)).not.toContain(FAKE_APP_SECRET);
+  });
 });
 
 describe("setup-server — Feishu error semantics", () => {
@@ -469,6 +551,103 @@ describe("setup-server — Feishu error semantics", () => {
     );
     expect(res.status).toBe(409);
     expect((res.body.error as { code: string }).code).toBe("login_unconfirmed");
+  });
+
+  it("rejects Feishu setup session access from a mismatched agent or user", async () => {
+    const agentId = "ag_owner";
+    const baseCtx = { user_id: "owner", hosting_kind: "cloud" } as const;
+    const start = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/start`,
+      { body: { ...baseCtx } },
+      h.responses,
+    );
+    const loginId = start.body.loginId as string;
+
+    const wrongStatus = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/status`,
+      { body: { user_id: "intruder", hosting_kind: "cloud", loginId } },
+      h.responses,
+    );
+    expect(wrongStatus.status).toBe(401);
+    expect((wrongStatus.body.error as { code: string }).code).toBe("unauthorized");
+
+    h.state.phase = "confirmed";
+    const confirmed = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/status`,
+      { body: { ...baseCtx, loginId } },
+      h.responses,
+    );
+    expect(confirmed.status).toBe(200);
+
+    const wrongAgentDiscover = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/ag_other/gateways/feishu/discover`,
+      { body: { ...baseCtx, loginId, timeoutSeconds: 0 } },
+      h.responses,
+    );
+    expect(wrongAgentDiscover.status).toBe(401);
+    expect((wrongAgentDiscover.body.error as { code: string }).code).toBe("unauthorized");
+
+    const wrongUserFinalize = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways`,
+      {
+        body: {
+          user_id: "intruder",
+          hosting_kind: "cloud",
+          provider: "feishu",
+          loginId,
+          config: {},
+        },
+      },
+      h.responses,
+    );
+    expect(wrongUserFinalize.status).toBe(401);
+    expect((wrongUserFinalize.body.error as { code: string }).code).toBe("unauthorized");
+  });
+
+  it("returns provider_unreachable when Feishu discovery websocket start fails", async () => {
+    await h.server.close();
+    rmSync(h.dir, { recursive: true, force: true });
+    h = await buildHarness({
+      feishuSdkOverride: {
+        createDispatcher: () => ({ register: () => {} }),
+        createWsClient: () => ({
+          start: () => Promise.reject(new Error("ws start failed")),
+          close: () => {},
+        }),
+      },
+    });
+    const agentId = "ag_fs_ws_start_fail";
+    const baseCtx = { user_id: "u", hosting_kind: "cloud" } as const;
+    const start = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/start`,
+      { body: { ...baseCtx } },
+      h.responses,
+    );
+    const loginId = start.body.loginId as string;
+    h.state.phase = "confirmed";
+    await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/login/status`,
+      { body: { ...baseCtx, loginId } },
+      h.responses,
+    );
+
+    const discover = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/feishu/discover`,
+      { body: { ...baseCtx, loginId, timeoutSeconds: 0 } },
+      h.responses,
+    );
+
+    expect(discover.status).toBe(502);
+    expect((discover.body.error as { code: string }).code).toBe("provider_unreachable");
+    expect(JSON.stringify(discover.body)).not.toContain(FAKE_APP_SECRET);
   });
 
   it("returns gateway_conflict when the same appId is already owned by an active gateway", async () => {

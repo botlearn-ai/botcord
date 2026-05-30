@@ -198,7 +198,7 @@ async function handle(
       if (!adapter.discover) throw new SetupError("not_found", "discover not supported");
       const loginId = requireString(body, "loginId");
       const out = await adapter.discover(
-        { ...reqCtx, loginId, options: pick(body, "options") },
+        { ...reqCtx, loginId, options: mergeDiscoverOptions(body) },
         ctx,
       );
       sendJson(res, 200, { ok: true, ...out });
@@ -474,6 +474,18 @@ function pick(body: Record<string, unknown>, key: string): Record<string, unknow
   const v = body[key];
   if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
   return undefined;
+}
+
+function mergeDiscoverOptions(body: Record<string, unknown>): Record<string, unknown> | undefined {
+  const merged: Record<string, unknown> = {};
+  for (const key of ["timeoutSeconds"]) {
+    if (key in body) merged[key] = body[key];
+  }
+  const nested = pick(body, "options");
+  if (nested) {
+    for (const [k, v] of Object.entries(nested)) merged[k] = v;
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 /**

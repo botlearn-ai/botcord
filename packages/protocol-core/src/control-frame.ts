@@ -950,6 +950,15 @@ export interface GatewayRecentSender {
   label?: string | null;
 }
 
+export interface GatewayRecentFeishuChat {
+  chatId: string;
+  senderOpenId: string;
+  kind: "direct" | "group";
+  label?: string | null;
+  lastSeenAt: number;
+}
+
 export interface GatewayRecentSendersResult {
-  senders: GatewayRecentSender[];
+  senders?: GatewayRecentSender[];
+  chats?: GatewayRecentFeishuChat[];
 }

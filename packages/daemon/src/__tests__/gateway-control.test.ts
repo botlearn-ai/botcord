@@ -530,6 +530,127 @@ describe("gateway_login_start / status", () => {
     expect(ack.ok).toBe(false);
     expect(ack.error?.code).toBe("login_unconfirmed");
   });
+
+  it("discovers Feishu chats from a confirmed login session owned by the account", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    sessions.create({
+      loginId: "fsl_discover",
+      accountId: "ag_alice",
+      provider: "feishu",
+      qrcode: "DEVICE",
+      appId: "cli_feishu_123",
+      appSecret: "feishu-secret-1234567890",
+      domain: "feishu",
+      userOpenId: "ou_alice",
+    });
+    const discoverChats = vi.fn(async (opts) => {
+      expect(opts).toEqual({
+        appId: "cli_feishu_123",
+        appSecret: "feishu-secret-1234567890",
+        domain: "feishu",
+        userOpenId: "ou_alice",
+        timeoutSeconds: 6,
+      });
+      return [
+        {
+          chatId: "oc_team",
+          senderOpenId: "ou_alice",
+          kind: "group" as const,
+          label: "Alice",
+          lastSeenAt: 1700000000000,
+        },
+      ];
+    });
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+      feishuDiscoveryClient: { discoverChats },
+    });
+
+    const ack = await ctrl.handleRecentSenders({
+      provider: "feishu",
+      loginId: "fsl_discover",
+      accountId: "ag_alice",
+      timeoutSeconds: 6,
+    });
+
+    expect(ack.ok).toBe(true);
+    expect(ack.result).toEqual({
+      chats: [
+        {
+          chatId: "oc_team",
+          senderOpenId: "ou_alice",
+          kind: "group",
+          label: "Alice",
+          lastSeenAt: 1700000000000,
+        },
+      ],
+    });
+  });
+
+  it("rejects Feishu chat discovery for a different accountId", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    sessions.create({
+      loginId: "fsl_wrong_owner",
+      accountId: "ag_alice",
+      provider: "feishu",
+      qrcode: "DEVICE",
+      appId: "cli_feishu_123",
+      appSecret: "feishu-secret-1234567890",
+      domain: "feishu",
+      userOpenId: "ou_alice",
+    });
+    const discoverChats = vi.fn(async () => []);
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+      feishuDiscoveryClient: { discoverChats },
+    });
+
+    const ack = await ctrl.handleRecentSenders({
+      provider: "feishu",
+      loginId: "fsl_wrong_owner",
+      accountId: "ag_other",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("forbidden");
+    expect(discoverChats).not.toHaveBeenCalled();
+  });
+
+  it("rejects Feishu chat discovery before registration is confirmed", async () => {
+    const gw = makeFakeGateway();
+    const { io } = makeConfigIO(baseCfg());
+    const sessions = new LoginSessionStore();
+    sessions.create({
+      loginId: "fsl_pending",
+      accountId: "ag_alice",
+      provider: "feishu",
+      qrcode: "DEVICE",
+      domain: "feishu",
+    });
+    const ctrl = createGatewayControl({
+      gateway: gw as any,
+      configIO: io,
+      loginSessions: sessions,
+      feishuDiscoveryClient: { discoverChats: vi.fn(async () => []) },
+    });
+
+    const ack = await ctrl.handleRecentSenders({
+      provider: "feishu",
+      loginId: "fsl_pending",
+      accountId: "ag_alice",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("login_unconfirmed");
+  });
 });
 
 describe("frame schema validation", () => {

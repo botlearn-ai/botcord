@@ -38,6 +38,10 @@ import {
   startFeishuRegistration,
   type FeishuDomain,
 } from "./gateway/channels/feishu-registration.js";
+import {
+  discoverFeishuChats,
+  type FeishuDiscoveredChat,
+} from "./gateway/channels/feishu.js";
 import { WECHAT_BASE_INFO, wechatHeaders } from "./gateway/channels/wechat-http.js";
 import { assertSafeBaseUrl, UnsafeBaseUrlError } from "./gateway/channels/url-guard.js";
 import { log as daemonLog } from "./log.js";
@@ -172,8 +176,17 @@ interface GatewayRecentSender {
   label?: string | null;
 }
 
+interface GatewayRecentFeishuChat {
+  chatId: string;
+  senderOpenId: string;
+  kind: "direct" | "group";
+  label?: string | null;
+  lastSeenAt: number;
+}
+
 interface GatewayRecentSendersResult {
-  senders: GatewayRecentSender[];
+  senders?: GatewayRecentSender[];
+  chats?: GatewayRecentFeishuChat[];
 }
 
 interface GatewaySendParams {
@@ -213,6 +226,9 @@ export interface GatewayControlContext {
     startFeishuRegistration: typeof startFeishuRegistration;
     pollFeishuRegistration: typeof pollFeishuRegistration;
   };
+  feishuDiscoveryClient?: {
+    discoverChats: typeof discoverFeishuChats;
+  };
   /** Override the global fetch — used by `test_gateway` for Telegram getMe. */
   fetchImpl?: FetchLike;
 }
@@ -228,6 +244,7 @@ export function createGatewayControl(ctx: GatewayControlContext) {
   const wechatLogin = ctx.wechatLoginClient ?? { getBotQrcode, getQrcodeStatus };
   const feishuLogin =
     ctx.feishuLoginClient ?? { startFeishuRegistration, pollFeishuRegistration };
+  const feishuDiscovery = ctx.feishuDiscoveryClient ?? { discoverChats: discoverFeishuChats };
   // W7: validate fetch availability at construction so a missing global is
   // diagnosed at startup, not during the first control frame. Tests inject
   // `ctx.fetchImpl` explicitly and bypass the global lookup entirely.
@@ -898,7 +915,7 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     if (!isProvider(params.provider)) {
       return badParams(`gateway_recent_senders: unknown provider "${String(params.provider)}"`);
     }
-    if (params.provider !== "wechat") {
+    if (params.provider !== "wechat" && params.provider !== "feishu") {
       return badParams(`gateway_recent_senders: provider "${params.provider}" not supported`);
     }
     if (!params.loginId) {
@@ -913,12 +930,12 @@ export function createGatewayControl(ctx: GatewayControlContext) {
         ok: false,
         error:
           resolved.state === "missing"
-            ? { code: "login_missing", message: `wechat login session "${params.loginId}" not found` }
-            : { code: "login_expired", message: `wechat login session "${params.loginId}" expired` },
+            ? { code: "login_missing", message: `${params.provider} login session "${params.loginId}" not found` }
+            : { code: "login_expired", message: `${params.provider} login session "${params.loginId}" expired` },
       };
     }
     const session = resolved.session!;
-    if (session.provider !== "wechat") {
+    if (session.provider !== params.provider) {
       return badParams("gateway_recent_senders: provider does not match login session");
     }
     if (session.accountId !== params.accountId) {
@@ -929,6 +946,43 @@ export function createGatewayControl(ctx: GatewayControlContext) {
           message: "gateway_recent_senders: accountId does not match login session",
         },
       };
+    }
+    if (params.provider === "feishu") {
+      if (!session.appId || !session.appSecret || !session.userOpenId) {
+        return {
+          ok: false,
+          error: {
+            code: "login_unconfirmed",
+            message: "feishu login session has no app credentials yet",
+          },
+        };
+      }
+      try {
+        const chats = await feishuDiscovery.discoverChats({
+          appId: session.appId,
+          appSecret: session.appSecret,
+          domain: session.domain ?? "feishu",
+          userOpenId: session.userOpenId,
+          timeoutSeconds: params.timeoutSeconds,
+        });
+        const result: GatewayRecentSendersResult = {
+          chats: chats.map((c: FeishuDiscoveredChat) => ({
+            chatId: c.chatId,
+            senderOpenId: c.senderOpenId,
+            kind: c.kind,
+            label: c.label ?? null,
+            lastSeenAt: c.lastSeenAt,
+          })),
+        };
+        return { ok: true, result };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        daemonLog.warn("gateway_recent_senders.feishu discovery failed", { error: message });
+        return {
+          ok: false,
+          error: { code: "provider_unreachable", message },
+        };
+      }
     }
     if (!session.botToken) {
       return {
