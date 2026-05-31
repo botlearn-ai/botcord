@@ -1,0 +1,171 @@
+/**
+ * Integration tests for the agent-driven `botcord wait` park / re-wake path.
+ *
+ * A group-room turn can write a park marker (here simulated via the fake
+ * runtime's `observeRun`, standing in for the `botcord wait` CLI). The
+ * dispatcher reads it at the turn boundary and re-dispatches the same message
+ * after the (clamped) wait — unless a new message arrives first, or the
+ * per-queue caps are hit.
+ */
+import { writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Dispatcher, type RuntimeFactory } from "../dispatcher.js";
+import { SessionStore } from "../session-store.js";
+import { WAIT_MARKER_FILENAME } from "../wait-marker.js";
+import type {
+  ChannelAdapter,
+  ChannelSendContext,
+  ChannelSendResult,
+  GatewayConfig,
+  GatewayInboundEnvelope,
+  GatewayInboundMessage,
+  RuntimeAdapter,
+  RuntimeRunOptions,
+  RuntimeRunResult,
+} from "../types.js";
+import type { GatewayLogger } from "../log.js";
+
+function silentLogger(): GatewayLogger {
+  return { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
+}
+
+class FakeChannel implements ChannelAdapter {
+  readonly id = "botcord";
+  readonly type = "botcord";
+  readonly sends: ChannelSendContext[] = [];
+  async start(): Promise<void> {}
+  async send(ctx: ChannelSendContext): Promise<ChannelSendResult> {
+    this.sends.push(ctx);
+    return {};
+  }
+}
+
+class FakeRuntime implements RuntimeAdapter {
+  readonly id = "claude-code";
+  readonly calls: RuntimeRunOptions[] = [];
+  constructor(private readonly observeRun?: (opts: RuntimeRunOptions, callNo: number) => void) {}
+  async run(options: RuntimeRunOptions): Promise<RuntimeRunResult> {
+    this.calls.push(options);
+    this.observeRun?.(options, this.calls.length);
+    return { text: "NO_REPLY", newSessionId: "sid-1" };
+  }
+}
+
+/** Write a park marker into the runtime cwd, as `botcord wait <s>` would. */
+function writeMarker(cwd: string, deadlineFromNowMs: number): void {
+  writeFileSync(
+    path.join(cwd, WAIT_MARKER_FILENAME),
+    JSON.stringify({ deadlineMs: Date.now() + deadlineFromNowMs }),
+    "utf8",
+  );
+}
+
+const GROUP_CONVO = { id: "rm_grp1", kind: "group" as const };
+const OWNER_CONVO = { id: "rm_oc_1", kind: "group" as const };
+
+function makeEnvelope(partial: Partial<GatewayInboundMessage> = {}): GatewayInboundEnvelope {
+  return {
+    message: {
+      id: partial.id ?? "hub_msg_1",
+      channel: "botcord",
+      accountId: "ag_me",
+      conversation: partial.conversation ?? GROUP_CONVO,
+      sender: partial.sender ?? { id: "ag_peer", name: "peer", kind: "agent" },
+      text: partial.text ?? "anyone know how to fix this?",
+      raw: {},
+      replyTo: null,
+      receivedAt: Date.now(),
+    },
+  };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+describe("Dispatcher — botcord wait park/re-wake", () => {
+  let cwd: string;
+  let storeDir: string;
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(path.join(tmpdir(), "park-cwd-"));
+    storeDir = await mkdtemp(path.join(tmpdir(), "park-store-"));
+  });
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true });
+    await rm(storeDir, { recursive: true, force: true });
+  });
+
+  async function scaffold(runtime: FakeRuntime) {
+    const store = new SessionStore({ path: path.join(storeDir, "sessions.json") });
+    await store.load();
+    const channel = new FakeChannel();
+    const config: GatewayConfig = {
+      channels: [{ id: "botcord", type: "botcord", accountId: "ag_me" }],
+      defaultRoute: { runtime: "claude-code", cwd },
+      routes: [],
+    };
+    const dispatcher = new Dispatcher({
+      config,
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: (() => runtime) as RuntimeFactory,
+      sessionStore: store,
+      log: silentLogger(),
+    });
+    return { dispatcher };
+  }
+
+  it("re-wakes a group-room turn after the marker deadline", async () => {
+    // Park only on the first turn; the re-wake turn answers normally.
+    const runtime = new FakeRuntime((opts, callNo) => {
+      if (callNo === 1) writeMarker(opts.cwd, 40);
+    });
+    const { dispatcher } = await scaffold(runtime);
+
+    await dispatcher.handle(makeEnvelope());
+    expect(runtime.calls.length).toBe(1);
+
+    await sleep(140);
+    expect(runtime.calls.length).toBe(2); // original + one re-wake
+  });
+
+  it("a new inbound during the park cancels the scheduled re-wake", async () => {
+    const runtime = new FakeRuntime((opts, callNo) => {
+      if (callNo === 1) writeMarker(opts.cwd, 300); // long park
+    });
+    const { dispatcher } = await scaffold(runtime);
+
+    await dispatcher.handle(makeEnvelope({ id: "m1" }));
+    expect(runtime.calls.length).toBe(1);
+    // New message arrives well before the 300ms park elapses.
+    await dispatcher.handle(makeEnvelope({ id: "m2", text: "never mind, solved it" }));
+    expect(runtime.calls.length).toBe(2);
+
+    await sleep(380);
+    // The park timer was superseded by m2 — no phantom third turn.
+    expect(runtime.calls.length).toBe(2);
+  });
+
+  it("stops re-waking after MAX_PARKS consecutive parks", async () => {
+    // Park on every turn — the dispatcher must cap it.
+    const runtime = new FakeRuntime((opts) => writeMarker(opts.cwd, 30));
+    const { dispatcher } = await scaffold(runtime);
+
+    await dispatcher.handle(makeEnvelope());
+    await sleep(360); // enough for several 30ms re-wakes to chain
+
+    // 1 original + MAX_PARKS (3) re-wakes, then the 4th turn's park is ignored.
+    expect(runtime.calls.length).toBe(4);
+  });
+
+  it("ignores the marker in an owner-chat room", async () => {
+    const runtime = new FakeRuntime((opts) => writeMarker(opts.cwd, 40));
+    const { dispatcher } = await scaffold(runtime);
+
+    await dispatcher.handle(makeEnvelope({ conversation: OWNER_CONVO }));
+    await sleep(140);
+    // Owner-chat is not a deferrable room — no re-wake.
+    expect(runtime.calls.length).toBe(1);
+  });
+});
