@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, FileText, PanelLeftOpen, Settings2, User, X } from "lucide-react";
+import { ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, PanelLeftOpen, Settings2, User, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -23,7 +23,9 @@ import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import { useOwnerChatWs } from "@/hooks/useOwnerChatWs";
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import MarkdownContent, { normalizeMessageContent } from "@/components/ui/MarkdownContent";
+import AttachmentItem from "@/components/ui/AttachmentItem";
 import StreamBlocksView from "./StreamBlocksView";
+import DocumentPreviewPane from "./DocumentPreviewPane";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import CopyableId from "@/components/ui/CopyableId";
 import MessageComposer from "./MessageComposer";
@@ -36,10 +38,6 @@ import {
   canShowOwnerChatMessageActions,
   ownerChatReplyTargetId,
 } from "@/lib/owner-chat-actions";
-
-const HUB_BASE_URL =
-  process.env.NEXT_PUBLIC_HUB_BASE_URL ||
-  (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://api.botcord.chat");
 
 // ---------------------------------------------------------------------------
 // TypewriterText
@@ -109,6 +107,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const [actionMenuOpenId, setActionMenuOpenId] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const settingsLabel = locale === "zh" ? "Bot 设置" : "Bot settings";
   const replyLabel = locale === "zh" ? "回复" : "Reply";
   const forwardLabel = locale === "zh" ? "转发" : "Forward";
@@ -153,6 +152,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
     initialLoadRef.current = true;
     prevLengthRef.current = 0;
     animatedRef.current.clear();
+    setPreviewAttachment(null);
     useOwnerChatStore.getState().reset();
 
     (async () => {
@@ -436,7 +436,8 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   };
 
   return (
-    <div className="relative flex flex-col h-full">
+    <div className="relative flex h-full min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800 max-md:px-3">
         <button
@@ -735,34 +736,13 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                     {/* Attachments */}
                     {msg.attachments && msg.attachments.length > 0 && (
                       <div className="mt-2 space-y-1.5">
-                        {msg.attachments.map((att, idx) => {
-                          const fullUrl = att.url.startsWith("/") ? `${HUB_BASE_URL}${att.url}` : att.url;
-                          const isImage = att.content_type?.startsWith("image/");
-                          if (isImage) {
-                            return (
-                              <a key={idx} href={fullUrl} target="_blank" rel="noopener noreferrer" className="block">
-                                <img
-                                  src={fullUrl}
-                                  alt={att.filename || "Image"}
-                                  className="max-h-48 max-w-full rounded border border-zinc-600 object-cover hover:opacity-80 transition-opacity"
-                                />
-                                <span className="mt-0.5 block text-[10px] text-zinc-500">{att.filename}</span>
-                              </a>
-                            );
-                          }
-                          return (
-                            <a
-                              key={idx}
-                              href={fullUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
-                            >
-                              <FileText className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">{att.filename || "Attachment"}</span>
-                            </a>
-                          );
-                        })}
+                        {msg.attachments.map((att, idx) => (
+                          <AttachmentItem
+                            key={`${att.filename}-${att.url}-${idx}`}
+                            attachment={att}
+                            onPreview={setPreviewAttachment}
+                          />
+                        ))}
                       </div>
                     )}
                     <div className="text-xs text-zinc-500 mt-1 text-right">
@@ -809,6 +789,13 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           />
         </div>
       </div>
+      </div>
+      {previewAttachment && (
+        <DocumentPreviewPane
+          attachment={previewAttachment}
+          onClose={() => setPreviewAttachment(null)}
+        />
+      )}
       {forwardQuote && (
         <ForwardModal quoteText={forwardQuote} onClose={() => setForwardQuote(null)} />
       )}

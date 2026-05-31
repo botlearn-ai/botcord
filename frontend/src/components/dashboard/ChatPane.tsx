@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 session/ui/chat/contact store、可选路由 tab 覆盖值与 RoomHeader/MessageList/PaidRoomPreview/ExploreEntityCard 等内容组件
+ * [INPUT]: 依赖 session/ui/chat/contact store、可选路由 tab 覆盖值与 RoomHeader/MessageList/PaidRoomPreview/DocumentPreviewPane/ExploreEntityCard 等内容组件
  * [OUTPUT]: 对外提供 ChatPane 组件，渲染 explore/contacts/message 三类主内容视图，并把公开目录搜索委托给远端查询
  * [POS]: dashboard 第三栏主工作区，承载会话浏览与消息阅读；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -23,11 +23,12 @@ import MessageList from "./MessageList";
 import PaidRoomPreview from "./PaidRoomPreview";
 import RoomHumanComposer from "./RoomHumanComposer";
 import TopicDrawer from "./TopicDrawer";
+import DocumentPreviewPane from "./DocumentPreviewPane";
 import FriendInviteModal from "./FriendInviteModal";
 import ContactRequestsInbox from "./ContactRequestsInbox";
 import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
-import { PublicHumanProfile, PublicRoom } from "@/lib/types";
+import type { Attachment, PublicHumanProfile, PublicRoom } from "@/lib/types";
 import { api } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
@@ -642,6 +643,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
     getRoomSummary: state.getRoomSummary,
   })));
   const effectiveSidebarTab = sidebarTabOverride ?? sidebarTab;
+  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const visibleMessageRooms = useMemo(
     () => buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms }),
     [overview, recentVisitedRooms, token, humanRooms],
@@ -650,6 +652,10 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
   const isAuthedReady = sessionMode === "authed-ready";
   const isAuthedHuman = sessionMode === "authed-no-agent";
   const showLoginModal = () => router.push("/login");
+
+  useEffect(() => {
+    setPreviewAttachment(null);
+  }, [effectiveSidebarTab, openedRoomId]);
 
   if (effectiveSidebarTab === "explore") {
     return <ExploreMainPane onHumanOpen={onHumanOpen} />;
@@ -690,55 +696,65 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
   return (
     <div className="flex flex-1 flex-col bg-deep-black overflow-hidden">
       {openedRoomId && <RoomHeader />}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        {openedRoomId ? (
-          isPaidAndNotJoined && openedRoom?.required_subscription_product_id ? (
-            <PaidRoomPreview
-              roomId={openedRoomId}
-              productId={openedRoom.required_subscription_product_id}
-              isGuest={isGuest}
-              loginHref={loginHref}
-            />
-          ) : (
-            <MessageList />
-          )
-        ) : (
-          <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-text-secondary">
-            {t.selectRoom}
+      <div className="min-h-0 flex-1 overflow-hidden flex">
+        <div className="min-w-0 flex-1 overflow-hidden flex flex-col">
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {openedRoomId ? (
+              isPaidAndNotJoined && openedRoom?.required_subscription_product_id ? (
+                <PaidRoomPreview
+                  roomId={openedRoomId}
+                  productId={openedRoom.required_subscription_product_id}
+                  isGuest={isGuest}
+                  loginHref={loginHref}
+                />
+              ) : (
+                <MessageList onPreviewAttachment={setPreviewAttachment} />
+              )
+            ) : (
+              <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-text-secondary">
+                {t.selectRoom}
+              </div>
+            )}
           </div>
+          {openedRoomId && !isPaidAndNotJoined && (
+            <>
+              {originAgent ? (
+                <div className="border-t border-glass-border bg-glass-bg/30 px-4 py-2.5">
+                  <p className="text-center text-xs text-text-secondary/70">
+                    由 {originAgent.display_name} 代为发言 · 你是 owner，可观察不可发
+                  </p>
+                </div>
+              ) : isGuest ? (
+                <div className="border-t border-glass-border px-4 py-2">
+                  <div className="flex items-center justify-center gap-2">
+                    <p className="text-center text-xs text-text-secondary/50">{t.readOnlyGuest}</p>
+                    <button
+                      onClick={showLoginModal}
+                      className="rounded border border-neon-cyan/30 px-2 py-0.5 text-[10px] font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+                    >
+                      {t.loginToParticipate}
+                    </button>
+                  </div>
+                </div>
+              ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && openedRoomId && humanSendAllowed ? (
+                <div className="border-t border-glass-border px-4 py-2">
+                  <RoomHumanComposer roomId={openedRoomId} />
+                </div>
+              ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && !humanSendAllowed ? (
+                <div className="border-t border-glass-border px-4 py-2">
+                  <p className="text-center text-xs text-text-secondary/50">{t.humanSendDisabled}</p>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+        {previewAttachment && (
+          <DocumentPreviewPane
+            attachment={previewAttachment}
+            onClose={() => setPreviewAttachment(null)}
+          />
         )}
       </div>
-      {openedRoomId && !isPaidAndNotJoined && (
-        <>
-          {originAgent ? (
-            <div className="border-t border-glass-border bg-glass-bg/30 px-4 py-2.5">
-              <p className="text-center text-xs text-text-secondary/70">
-                由 {originAgent.display_name} 代为发言 · 你是 owner，可观察不可发
-              </p>
-            </div>
-          ) : isGuest ? (
-            <div className="border-t border-glass-border px-4 py-2">
-              <div className="flex items-center justify-center gap-2">
-                <p className="text-center text-xs text-text-secondary/50">{t.readOnlyGuest}</p>
-                <button
-                  onClick={showLoginModal}
-                  className="rounded border border-neon-cyan/30 px-2 py-0.5 text-[10px] font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
-                >
-                  {t.loginToParticipate}
-                </button>
-              </div>
-            </div>
-          ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && openedRoomId && humanSendAllowed ? (
-            <div className="border-t border-glass-border px-4 py-2">
-              <RoomHumanComposer roomId={openedRoomId} />
-            </div>
-          ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && !humanSendAllowed ? (
-            <div className="border-t border-glass-border px-4 py-2">
-              <p className="text-center text-xs text-text-secondary/50">{t.humanSendDisabled}</p>
-            </div>
-          ) : null}
-        </>
-      )}
       <TopicDrawer />
     </div>
   );

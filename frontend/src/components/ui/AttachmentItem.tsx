@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, FileText, X } from "lucide-react";
 import type { Attachment } from "@/lib/types";
+import { isPreviewableAttachment } from "@/lib/attachment-preview";
 
 const HUB_BASE_URL =
   process.env.NEXT_PUBLIC_HUB_BASE_URL ||
   (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "https://api.botcord.chat");
+
+const failedAttachmentImageUrls = new Set<string>();
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -32,14 +35,32 @@ export function isImageAttachment(attachment: Attachment): boolean {
   return /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(name);
 }
 
+function attachmentImageFailureKey(url: string): string {
+  return url.trim();
+}
+
+export function rememberFailedAttachmentImageUrl(url: string): void {
+  const key = attachmentImageFailureKey(url);
+  if (key) {
+    failedAttachmentImageUrls.add(key);
+  }
+}
+
+export function hasFailedAttachmentImageUrl(url: string): boolean {
+  const key = attachmentImageFailureKey(url);
+  return key ? failedAttachmentImageUrls.has(key) : false;
+}
+
 function ImagePreviewOverlay({
   src,
   title,
   onClose,
+  onImageError,
 }: {
   src: string;
   title: string;
   onClose: () => void;
+  onImageError: () => void;
 }) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -100,6 +121,7 @@ function ImagePreviewOverlay({
           src={src}
           alt={title}
           className="max-h-[calc(100vh-6.5rem)] max-w-full object-contain shadow-2xl"
+          onError={onImageError}
         />
       </div>
     </div>,
@@ -107,11 +129,75 @@ function ImagePreviewOverlay({
   );
 }
 
-export default function AttachmentItem({ attachment }: { attachment: Attachment }) {
+interface AttachmentItemProps {
+  attachment: Attachment;
+  onPreview?: (attachment: Attachment) => void;
+}
+
+function AttachmentFileLink({
+  attachment,
+  attachmentUrl,
+  onPreview,
+}: {
+  attachment: Attachment;
+  attachmentUrl: string;
+  onPreview?: (attachment: Attachment) => void;
+}) {
+  const canPreview = Boolean(onPreview && isPreviewableAttachment(attachment));
+  const content = (
+    <>
+      <FileText className="h-4 w-4 shrink-0 text-text-secondary" />
+      <span className="truncate">{attachment.filename || "Attachment"}</span>
+      {attachment.size_bytes != null && (
+        <span className="shrink-0 text-text-secondary/50">{formatFileSize(attachment.size_bytes)}</span>
+      )}
+    </>
+  );
+
+  if (canPreview) {
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onPreview?.(attachment);
+        }}
+        className="flex max-w-full items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/50 px-2.5 py-1.5 text-left text-xs text-text-primary hover:border-neon-cyan/30 transition-colors"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <a
+      href={attachmentUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/50 px-2.5 py-1.5 text-xs text-text-primary hover:border-neon-cyan/30 transition-colors"
+    >
+      {content}
+    </a>
+  );
+}
+
+export default function AttachmentItem({ attachment, onPreview }: AttachmentItemProps) {
   const attachmentUrl = resolveAttachmentUrl(attachment.url);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [imageFailed, setImageFailed] = useState(() => hasFailedAttachmentImageUrl(attachmentUrl));
 
-  if (isImageAttachment(attachment)) {
+  useEffect(() => {
+    setPreviewOpen(false);
+    setImageFailed(hasFailedAttachmentImageUrl(attachmentUrl));
+  }, [attachmentUrl]);
+
+  const handleImageError = () => {
+    rememberFailedAttachmentImageUrl(attachmentUrl);
+    setPreviewOpen(false);
+    setImageFailed(true);
+  };
+
+  if (isImageAttachment(attachment) && !imageFailed) {
     const title = attachment.filename || "Image attachment";
 
     return (
@@ -132,6 +218,7 @@ export default function AttachmentItem({ attachment }: { attachment: Attachment 
               className="max-h-48 max-w-full cursor-zoom-in rounded-lg border border-glass-border object-contain transition-opacity group-hover:opacity-80"
               loading="lazy"
               decoding="async"
+              onError={handleImageError}
             />
           </button>
           {attachment.filename && (
@@ -143,36 +230,12 @@ export default function AttachmentItem({ attachment }: { attachment: Attachment 
             src={attachmentUrl}
             title={title}
             onClose={() => setPreviewOpen(false)}
+            onImageError={handleImageError}
           />
         )}
       </>
     );
   }
 
-  return (
-    <a
-      href={attachmentUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/50 px-2.5 py-1.5 text-xs text-text-primary hover:border-neon-cyan/30 transition-colors"
-    >
-      <svg
-        className="h-4 w-4 shrink-0 text-text-secondary"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        strokeWidth={1.5}
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
-        />
-      </svg>
-      <span className="truncate">{attachment.filename || "Attachment"}</span>
-      {attachment.size_bytes != null && (
-        <span className="shrink-0 text-text-secondary/50">{formatFileSize(attachment.size_bytes)}</span>
-      )}
-    </a>
-  );
+  return <AttachmentFileLink attachment={attachment} attachmentUrl={attachmentUrl} onPreview={onPreview} />;
 }

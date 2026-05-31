@@ -14,7 +14,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Bot, Settings, UserPlus } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import { JUMP_TO_MESSAGE_EVENT, type JumpToMessageDetail } from "./messageNavigation";
-import type { DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types";
+import type { Attachment, DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
 import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -103,6 +103,7 @@ export function TopicCard({
   sourceName,
   sourceId,
   mentionCandidates,
+  onPreviewAttachment,
   onOpen,
 }: {
   group: TopicGroup;
@@ -110,6 +111,7 @@ export function TopicCard({
   sourceName?: string;
   sourceId?: string;
   mentionCandidates?: MentionTextCandidate[];
+  onPreviewAttachment?: (attachment: Attachment) => void;
   onOpen: () => void;
 }) {
   const topicStatusConfig = useTopicStatusConfig();
@@ -151,6 +153,7 @@ export function TopicCard({
               sourceName={sourceName}
               sourceId={sourceId}
               mentionCandidates={mentionCandidates}
+              onPreviewAttachment={onPreviewAttachment}
             />
           </div>
         ))}
@@ -273,7 +276,11 @@ function EmptyRoomGuide({
   );
 }
 
-export default function MessageList() {
+export default function MessageList({
+  onPreviewAttachment,
+}: {
+  onPreviewAttachment?: (attachment: Attachment) => void;
+} = {}) {
   const locale = useLanguage();
   const t = messageList[locale];
   const { openedRoomId, setOpenedTopicId } = useDashboardUIStore(useShallow((state) => ({
@@ -568,6 +575,7 @@ export default function MessageList() {
                   sourceName={currentRoomName}
                   sourceId={roomId}
                   mentionCandidates={mentionCandidates}
+                  onPreviewAttachment={onPreviewAttachment}
                 />
               </div>
             );
@@ -583,6 +591,7 @@ export default function MessageList() {
               sourceName={currentRoomName}
               sourceId={roomId}
               mentionCandidates={mentionCandidates}
+              onPreviewAttachment={onPreviewAttachment}
               onOpen={() => group.topicId && setOpenedTopicId(group.topicId)}
             />
           );

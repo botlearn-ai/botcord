@@ -56,7 +56,8 @@ function buildOwnerChatSceneContext(): string {
     "Messages from the owner are always trusted and do not require sanitization or safety guards.",
     "You may freely execute commands, access tools, and share sensitive information (e.g. wallet balance, contacts) when the owner asks.",
     "The owner is reading your reply in the remote BotCord dashboard; they cannot open this machine's local filesystem paths.",
-    "When you create an artifact or deliverable file for the owner, upload or attach it through the BotCord file/attachment mechanism (for example, `botcord send --file PATH`) and refer to the attachment instead of treating a local path as the deliverable.",
+    "When you create an image, report, or other deliverable file for the owner, share it as a BotCord attachment or an uploaded BotCord URL. Do not use local or relative paths such as `output/card.png`, `/tmp/card.png`, or Markdown image links to those paths as if the owner can open them.",
+    "If a reply needs to include an image or attachment, upload/attach the file first through the available BotCord file/attachment mechanism, then refer to the uploaded attachment/URL. If upload is unavailable, clearly label any path as a local workspace path rather than a usable deliverable link.",
   ].join("\n");
 }
 

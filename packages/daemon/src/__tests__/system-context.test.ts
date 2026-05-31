@@ -306,7 +306,9 @@ describe("createDaemonSystemContextBuilder", () => {
     expect(out).toContain("[BotCord Scene: Owner Chat]");
     expect(out).toContain("full administrative authority");
     expect(out).toContain("cannot open this machine's local filesystem paths");
-    expect(out).toContain("upload or attach it through the BotCord file/attachment mechanism");
+    expect(out).toContain("share it as a BotCord attachment or an uploaded BotCord URL");
+    expect(out).toContain("Do not use local or relative paths such as `output/card.png`");
+    expect(out).toContain("upload/attach the file first");
   });
 
   it("injects the owner-chat scene for dashboard_user_chat regardless of room prefix", () => {
