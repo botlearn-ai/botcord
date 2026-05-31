@@ -185,6 +185,7 @@ export default function AttachmentItem({ attachment, onPreview }: AttachmentItem
   const attachmentUrl = resolveAttachmentUrl(attachment.url);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [imageFailed, setImageFailed] = useState(() => hasFailedAttachmentImageUrl(attachmentUrl));
+  const imageAttachment = isImageAttachment(attachment);
 
   useEffect(() => {
     setPreviewOpen(false);
@@ -197,7 +198,7 @@ export default function AttachmentItem({ attachment, onPreview }: AttachmentItem
     setImageFailed(true);
   };
 
-  if (isImageAttachment(attachment) && !imageFailed) {
+  if (imageAttachment && !imageFailed) {
     const title = attachment.filename || "Image attachment";
 
     return (
@@ -207,7 +208,11 @@ export default function AttachmentItem({ attachment, onPreview }: AttachmentItem
             type="button"
             onClick={(event) => {
               event.stopPropagation();
-              setPreviewOpen(true);
+              if (onPreview) {
+                onPreview(attachment);
+              } else {
+                setPreviewOpen(true);
+              }
             }}
             className="group block max-w-full text-left"
             aria-label={`Preview ${title}`}
@@ -225,7 +230,7 @@ export default function AttachmentItem({ attachment, onPreview }: AttachmentItem
             <span className="mt-0.5 block text-[10px] text-text-secondary/60">{attachment.filename}</span>
           )}
         </div>
-        {previewOpen && (
+        {!onPreview && previewOpen && (
           <ImagePreviewOverlay
             src={attachmentUrl}
             title={title}
@@ -237,5 +242,11 @@ export default function AttachmentItem({ attachment, onPreview }: AttachmentItem
     );
   }
 
-  return <AttachmentFileLink attachment={attachment} attachmentUrl={attachmentUrl} onPreview={onPreview} />;
+  return (
+    <AttachmentFileLink
+      attachment={attachment}
+      attachmentUrl={attachmentUrl}
+      onPreview={imageAttachment ? undefined : onPreview}
+    />
+  );
 }

@@ -1,6 +1,6 @@
 import type { Attachment } from "@/lib/types";
 
-export type AttachmentPreviewKind = "markdown" | "html" | "json" | "text";
+export type AttachmentPreviewKind = "image" | "markdown" | "html" | "json" | "text";
 
 export const DOCUMENT_PREVIEW_MAX_BYTES = 1024 * 1024;
 
@@ -8,6 +8,7 @@ const BOTCORD_FILE_PATH_RE = /^\/hub\/files\/(f_[a-zA-Z0-9_-]+)$/;
 
 const TEXT_EXTENSION_RE = /\.(csv|env|ini|log|sql|toml|tsv|txt|xml|ya?ml)$/i;
 const CODE_EXTENSION_RE = /\.(css|go|java|js|jsx|jsonl|kt|mjs|php|py|rb|rs|sh|tsx?|vue)$/i;
+const IMAGE_EXTENSION_RE = /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i;
 
 function lowerContentType(attachment: Attachment): string {
   return (attachment.content_type || "").split(";")[0]?.trim().toLowerCase() || "";
@@ -21,6 +22,9 @@ export function getAttachmentPreviewKind(attachment: Attachment): AttachmentPrev
   const contentType = lowerContentType(attachment);
   const name = lowerFilename(attachment);
 
+  if (contentType.startsWith("image/") || IMAGE_EXTENSION_RE.test(name)) {
+    return "image";
+  }
   if (contentType === "text/markdown" || contentType === "text/x-markdown" || /\.mdx?$/i.test(name)) {
     return "markdown";
   }
@@ -44,7 +48,9 @@ export function getAttachmentPreviewKind(attachment: Attachment): AttachmentPrev
 }
 
 export function isPreviewableAttachment(attachment: Attachment): boolean {
-  if (!getAttachmentPreviewKind(attachment)) return false;
+  const kind = getAttachmentPreviewKind(attachment);
+  if (!kind) return false;
+  if (kind === "image") return true;
   return attachment.size_bytes == null || attachment.size_bytes <= DOCUMENT_PREVIEW_MAX_BYTES;
 }
 
