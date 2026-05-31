@@ -4,10 +4,11 @@ import logging
 import jwt
 from fastapi import Depends, Header, HTTPException
 from jwt import PyJWKClient
+from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.config import FRONTEND_BASE_URL, JWT_ALGORITHM, JWT_EXPIRE_HOURS, JWT_SECRET, SUPABASE_JWT_SECRET, SUPABASE_JWT_JWKS_URL
+from hub.config import FRONTEND_BASE_URL, JWT_ALGORITHM, JWT_EXPIRE_HOURS, JWT_SECRET, SUPABASE_JWT_SECRET, SUPABASE_JWT_JWKS_URL, SUPABASE_URL
 from hub.database import get_db
 from hub.i18n import I18nHTTPException
 from hub.models import Agent, User
@@ -18,6 +19,18 @@ _logger = logging.getLogger(__name__)
 _jwks_client: PyJWKClient | None = None
 if SUPABASE_JWT_JWKS_URL:
     _jwks_client = PyJWKClient(SUPABASE_JWT_JWKS_URL, cache_keys=True)
+
+_SUPABASE_HS_ALGORITHMS = ["HS256"]
+_SUPABASE_ASYMMETRIC_ALGORITHMS = ["ES256", "RS256"]
+_SUPABASE_JWKS_SUFFIX = "/.well-known/jwks.json"
+
+
+def _expected_supabase_issuer() -> str | None:
+    if SUPABASE_URL:
+        return f"{SUPABASE_URL.rstrip('/')}/auth/v1"
+    if SUPABASE_JWT_JWKS_URL and SUPABASE_JWT_JWKS_URL.endswith(_SUPABASE_JWKS_SUFFIX):
+        return SUPABASE_JWT_JWKS_URL[: -len(_SUPABASE_JWKS_SUFFIX)].rstrip("/")
+    return None
 
 
 def create_agent_token(agent_id: str) -> tuple[str, int]:
@@ -121,18 +134,52 @@ def verify_supabase_token(token: str) -> str:
     if not SUPABASE_JWT_SECRET and not _jwks_client:
         raise jwt.InvalidTokenError("Supabase auth not configured")
 
-    if _jwks_client:
-        signing_key = _jwks_client.get_signing_key_from_jwt(token)
-        payload = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["ES256", "RS256"],
-            audience="authenticated",
-        )
-    else:
-        payload = jwt.decode(
-            token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated",
-        )
+    try:
+        header = jwt.get_unverified_header(token)
+    except jwt.PyJWTError as exc:
+        raise jwt.InvalidTokenError("Invalid token header") from exc
+
+    alg = header.get("alg")
+    if not isinstance(alg, str):
+        raise jwt.InvalidTokenError("Missing token algorithm")
+
+    expected_issuer = _expected_supabase_issuer()
+    decode_kwargs = {"audience": "authenticated"}
+    if expected_issuer:
+        decode_kwargs["issuer"] = expected_issuer
+
+    try:
+        if alg == "HS256":
+            if not SUPABASE_JWT_SECRET:
+                raise jwt.InvalidTokenError("Supabase HS256 auth not configured")
+            payload = jwt.decode(
+                token,
+                SUPABASE_JWT_SECRET,
+                algorithms=_SUPABASE_HS_ALGORITHMS,
+                **decode_kwargs,
+            )
+        elif alg in _SUPABASE_ASYMMETRIC_ALGORITHMS:
+            if not _jwks_client:
+                raise jwt.InvalidTokenError("Supabase JWKS auth not configured")
+            signing_key = _jwks_client.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=[alg],
+                **decode_kwargs,
+            )
+        else:
+            raise jwt.InvalidTokenError("Unsupported token algorithm")
+    except jwt.InvalidTokenError as exc:
+        raise jwt.InvalidTokenError("Invalid token") from exc
+    except (
+        PyJWKClientConnectionError,
+        PyJWKClientError,
+        jwt.PyJWTError,
+        ValueError,
+        TypeError,
+    ) as exc:
+        raise jwt.InvalidTokenError("Invalid token") from exc
 
     sub = payload.get("sub")
     if not sub:
