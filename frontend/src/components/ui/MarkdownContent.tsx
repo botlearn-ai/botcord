@@ -39,6 +39,7 @@ interface HastRootNode {
 type HastNode = HastTextNode | HastElementNode | HastRootNode | { type?: string; [key: string]: unknown };
 
 const MENTION_WITH_ID_RE = /@([^\n@]*?)\(((?:ag|hu)_[^)]+)\)/g;
+const failedMarkdownImageSrcs = new Set<string>();
 
 export function normalizeMessageContent(content: string): string {
   return content
@@ -57,6 +58,22 @@ export function isPreviewableMarkdownImageSrc(src: unknown): src is string {
   } catch {
     return false;
   }
+}
+
+function imageFailureKey(src: string): string {
+  return src.trim();
+}
+
+export function rememberFailedMarkdownImageSrc(src: string): void {
+  const key = imageFailureKey(src);
+  if (key) {
+    failedMarkdownImageSrcs.add(key);
+  }
+}
+
+export function hasFailedMarkdownImageSrc(src: string): boolean {
+  const key = imageFailureKey(src);
+  return key ? failedMarkdownImageSrcs.has(key) : false;
 }
 
 function isMentionStartBoundary(value: string, index: number): boolean {
@@ -246,6 +263,41 @@ function MarkdownCodeBlock({ children }: { children: ReactNode }) {
   );
 }
 
+function MarkdownImageFallback({ src, alt }: { src: string; alt?: string }) {
+  return (
+    <code className="rounded border border-glass-border bg-black/30 px-1.5 py-0.5 font-mono text-xs text-neon-cyan/90">
+      {alt ? `${alt} (${src})` : src}
+    </code>
+  );
+}
+
+function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
+  const rawSrc = typeof src === "string" ? src : "";
+  const [failed, setFailed] = useState(() => (rawSrc ? hasFailedMarkdownImageSrc(rawSrc) : false));
+
+  useEffect(() => {
+    setFailed(rawSrc ? hasFailedMarkdownImageSrc(rawSrc) : false);
+  }, [rawSrc]);
+
+  if (!isPreviewableMarkdownImageSrc(rawSrc) || failed) {
+    return <MarkdownImageFallback src={rawSrc} alt={alt} />;
+  }
+
+  return (
+    <img
+      src={rawSrc}
+      alt={alt ?? ""}
+      className="my-2 max-h-72 max-w-full rounded-lg border border-glass-border object-contain"
+      loading="lazy"
+      decoding="async"
+      onError={() => {
+        rememberFailedMarkdownImageSrc(rawSrc);
+        setFailed(true);
+      }}
+    />
+  );
+}
+
 function createComponents(renderMention?: MarkdownContentProps["renderMention"]): Components {
   return {
     p: ({ children }) => (
@@ -278,25 +330,9 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
         {children}
       </a>
     ),
-    img: ({ src, alt }) => {
-      const rawSrc = typeof src === "string" ? src : "";
-      if (!isPreviewableMarkdownImageSrc(rawSrc)) {
-        return (
-          <code className="rounded border border-glass-border bg-black/30 px-1.5 py-0.5 font-mono text-xs text-neon-cyan/90">
-            {alt ? `${alt} (${rawSrc})` : rawSrc}
-          </code>
-        );
-      }
-      return (
-        <img
-          src={rawSrc}
-          alt={alt ?? ""}
-          className="my-2 max-h-72 max-w-full rounded-lg border border-glass-border object-contain"
-          loading="lazy"
-          decoding="async"
-        />
-      );
-    },
+    img: ({ src, alt }) => (
+      <MarkdownImage src={typeof src === "string" ? src : undefined} alt={alt ?? undefined} />
+    ),
     ul: ({ children }) => (
       <ul className="mb-2 ml-4 list-disc last:mb-0 [&>li]:mb-0.5">{children}</ul>
     ),

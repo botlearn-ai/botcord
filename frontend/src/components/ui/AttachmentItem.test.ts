@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isImageAttachment, resolveAttachmentUrl } from "./AttachmentItem";
+import {
+  hasFailedAttachmentImageUrl,
+  isImageAttachment,
+  rememberFailedAttachmentImageUrl,
+  resolveAttachmentUrl,
+} from "./AttachmentItem";
 
 describe("AttachmentItem helpers", () => {
   it("resolves hub-relative attachment URLs", () => {
@@ -22,5 +27,15 @@ describe("AttachmentItem helpers", () => {
       filename: "report.pdf",
       url: "/hub/files/f_789",
     })).toBe(false);
+  });
+
+  it("remembers failed image attachment URLs for the current session", () => {
+    const attachmentUrl = "https://api.botcord.chat/hub/files/f_failed_session_test";
+
+    expect(hasFailedAttachmentImageUrl(attachmentUrl)).toBe(false);
+
+    rememberFailedAttachmentImageUrl(` ${attachmentUrl} `);
+
+    expect(hasFailedAttachmentImageUrl(attachmentUrl)).toBe(true);
   });
 });

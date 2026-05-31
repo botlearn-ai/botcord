@@ -38,6 +38,7 @@ interface MessageBubbleProps {
   sourceId?: string;
   /** Known participants used to resolve plain-text @display-name mentions. */
   mentionCandidates?: MentionTextCandidate[];
+  onPreviewAttachment?: (attachment: Attachment) => void;
 }
 
 const stateColors: Record<string, { color: string; icon: string }> = {
@@ -355,7 +356,15 @@ function SenderAvatar({
   );
 }
 
-export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = false, sourceName, sourceId, mentionCandidates }: MessageBubbleProps) {
+export default function MessageBubble({
+  message,
+  isOwn: isOwnProp,
+  fullWidth = false,
+  sourceName,
+  sourceId,
+  mentionCandidates,
+  onPreviewAttachment,
+}: MessageBubbleProps) {
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null);
@@ -812,7 +821,11 @@ export default function MessageBubble({ message, isOwn: isOwnProp, fullWidth = f
         {!isRecalled && attachments.length > 0 && (
           <div className="mt-1.5 flex flex-col gap-1.5">
             {attachments.map((att, i) => (
-              <AttachmentItem key={`${att.filename}-${i}`} attachment={att} />
+              <AttachmentItem
+                key={`${att.filename}-${att.url}-${i}`}
+                attachment={att}
+                onPreview={onPreviewAttachment}
+              />
             ))}
           </div>
         )}

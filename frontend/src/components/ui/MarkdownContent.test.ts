@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  hasFailedMarkdownImageSrc,
   isPreviewableMarkdownImageSrc,
   normalizeMessageContent,
+  rememberFailedMarkdownImageSrc,
   splitPlainMentionText,
 } from "./MarkdownContent";
 
@@ -57,5 +59,16 @@ describe("isPreviewableMarkdownImageSrc", () => {
     expect(isPreviewableMarkdownImageSrc("output/xhs-01-cover.png")).toBe(false);
     expect(isPreviewableMarkdownImageSrc("social-card-botcord-agent-hub/index.html")).toBe(false);
     expect(isPreviewableMarkdownImageSrc("/hub/files/f_123")).toBe(false);
+  });
+});
+
+describe("failed markdown image tracking", () => {
+  it("remembers failed image URLs for the current session", () => {
+    const imageUrl = "https://example.com/card-session-failure.png";
+    expect(hasFailedMarkdownImageSrc(imageUrl)).toBe(false);
+
+    rememberFailedMarkdownImageSrc(` ${imageUrl} `);
+
+    expect(hasFailedMarkdownImageSrc(imageUrl)).toBe(true);
   });
 });
