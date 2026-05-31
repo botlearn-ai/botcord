@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, FileText, Loader2, X } from "lucide-react";
+import { Download, FileText, Loader2, X } from "lucide-react";
 import type { Attachment } from "@/lib/types";
 import {
   DOCUMENT_PREVIEW_MAX_BYTES,
@@ -38,10 +38,10 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const tooLarge = attachment.size_bytes != null && attachment.size_bytes > DOCUMENT_PREVIEW_MAX_BYTES;
+  const tooLarge = kind !== "image" && attachment.size_bytes != null && attachment.size_bytes > DOCUMENT_PREVIEW_MAX_BYTES;
 
   useEffect(() => {
-    if (!kind || tooLarge) {
+    if (!kind || tooLarge || kind === "image") {
       setContent("");
       setError(null);
       setLoading(false);
@@ -109,6 +109,19 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
     if (error) {
       return <PreviewStateMessage title="Preview failed" detail={error} />;
     }
+    if (kind === "image") {
+      return (
+        <div className="flex min-h-full items-center justify-center p-3 sm:p-6">
+          <img
+            src={sourceUrl}
+            alt={title}
+            className="max-h-full max-w-full object-contain shadow-2xl"
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+      );
+    }
     if (kind === "markdown") {
       return (
         <div className="min-h-full px-4 py-3">
@@ -149,11 +162,12 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
           href={sourceUrl}
           target="_blank"
           rel="noopener noreferrer"
+          download={title}
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
-          aria-label="Open original"
-          title="Open original"
+          aria-label="Download attachment"
+          title="Download"
         >
-          <ExternalLink className="h-4 w-4" />
+          <Download className="h-4 w-4" />
         </a>
         <button
           type="button"

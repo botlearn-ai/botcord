@@ -8,7 +8,8 @@ import {
 } from "./attachment-preview";
 
 describe("attachment preview helpers", () => {
-  it("detects markdown, html, json, and text attachments", () => {
+  it("detects image, markdown, html, json, and text attachments", () => {
+    expect(getAttachmentPreviewKind({ filename: "cover.png", url: "/hub/files/f_png" })).toBe("image");
     expect(getAttachmentPreviewKind({ filename: "notes.md", url: "/hub/files/f_md" })).toBe("markdown");
     expect(getAttachmentPreviewKind({ filename: "page.html", url: "/hub/files/f_html" })).toBe("html");
     expect(getAttachmentPreviewKind({ filename: "data.bin", url: "/hub/files/f_json", content_type: "application/json" })).toBe("json");
