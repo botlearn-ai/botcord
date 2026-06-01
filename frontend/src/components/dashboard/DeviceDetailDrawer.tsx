@@ -389,9 +389,10 @@ export default function DeviceDetailDrawer() {
         {showInstall ? (
           <div className="mt-3">
             <DaemonInstallCommand
+              targetDaemonId={device.id}
               labels={{
                 title: "重新启动 BotCord Daemon",
-                hint: "在这台同一设备的终端运行；daemon 会使用本机保存的设备 ID 重新连接。",
+                hint: "在这台设备的终端运行；此命令会恢复当前设备 ID，即使本机凭据已丢失。",
                 copy: "复制",
                 copied: "已复制",
                 refresh: "刷新",

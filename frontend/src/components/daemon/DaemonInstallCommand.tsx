@@ -49,6 +49,8 @@ export interface DaemonInstallCommandLabels {
 
 interface DaemonInstallCommandProps {
   labels: DaemonInstallCommandLabels;
+  /** Bind the generated install ticket to an existing daemon instance. */
+  targetDaemonId?: string;
   /** Optional outer-state spinner — combined with internal token-loading state. */
   busy?: boolean;
   /** Optional callback fired in addition to refreshing the install token. */
@@ -57,6 +59,7 @@ interface DaemonInstallCommandProps {
 
 export default function DaemonInstallCommand({
   labels,
+  targetDaemonId,
   busy,
   onRefresh,
 }: DaemonInstallCommandProps) {
@@ -74,9 +77,10 @@ export default function DaemonInstallCommand({
         copyTimerRef.current = null;
       }
     };
-    // Run once on mount — manual refresh handles retries.
+    // Refresh when switching from a generic install command to a device-bound
+    // reconnect command. Manual refresh handles token retries.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [targetDaemonId]);
 
   async function refreshInstallCommand(): Promise<void> {
     setTokenLoading(true);
@@ -85,7 +89,9 @@ export default function DaemonInstallCommand({
       const res = await apiFetch("/daemon/auth/install-ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          ...(targetDaemonId ? { daemon_instance_id: targetDaemonId } : {}),
+        }),
       });
       if (!res.ok) {
         throw new Error(await res.text());
