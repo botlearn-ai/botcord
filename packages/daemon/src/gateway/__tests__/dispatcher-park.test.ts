@@ -11,7 +11,7 @@ import { writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Dispatcher, type RuntimeFactory } from "../dispatcher.js";
 import { SessionStore } from "../session-store.js";
 import { WAIT_MARKER_FILENAME } from "../wait-marker.js";
@@ -50,7 +50,7 @@ class FakeRuntime implements RuntimeAdapter {
   async run(options: RuntimeRunOptions): Promise<RuntimeRunResult> {
     this.calls.push(options);
     this.observeRun?.(options, this.calls.length);
-    return { text: "NO_REPLY", newSessionId: "sid-1" };
+    return { text: "NO_REPLY", newSessionId: "" };
   }
 }
 
@@ -94,6 +94,7 @@ describe("Dispatcher — botcord wait park/re-wake", () => {
     storeDir = await mkdtemp(path.join(tmpdir(), "park-store-"));
   });
   afterEach(async () => {
+    vi.useRealTimers();
     await rm(cwd, { recursive: true, force: true });
     await rm(storeDir, { recursive: true, force: true });
   });
@@ -156,6 +157,7 @@ describe("Dispatcher — botcord wait park/re-wake", () => {
   });
 
   it("isolates concurrent group-room turns for the same agent/cwd", async () => {
+    vi.useFakeTimers();
     // Two different group rooms → two queues → two markers under one workspace.
     // Each parks once; neither clobbers the other.
     const parked = new Set<string>();
@@ -176,7 +178,7 @@ describe("Dispatcher — botcord wait park/re-wake", () => {
     // Distinct per-queue marker paths.
     expect(runtime.calls[0]!.waitMarkerFile).not.toBe(runtime.calls[1]!.waitMarkerFile);
 
-    await sleep(160);
+    await vi.advanceTimersByTimeAsync(160);
     // Both rooms re-woke exactly once → 4 total, not 2 (one swallowed) or 3.
     expect(runtime.calls.length).toBe(4);
     const reWokenRooms = runtime.calls.map((c) => c.context?.roomId).sort();
