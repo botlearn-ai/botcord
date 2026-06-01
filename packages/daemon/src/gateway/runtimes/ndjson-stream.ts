@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { buildCliEnv } from "../cli-resolver.js";
 import { consoleLogger } from "../log.js";
+import { safeCommand, sanitizeRuntimeFailureText, tailText } from "../runtime-failure.js";
 import type {
   RuntimeAdapter,
   RuntimeProbeResult,
@@ -118,6 +119,7 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
       argv: args,
     });
 
+    const startedAt = Date.now();
     const child = spawn(binary, args, {
       cwd: opts.cwd,
       env: this.spawnEnv(opts),
@@ -174,9 +176,10 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
     };
 
     let stderrTail = "";
+    let stdoutTail = "";
     child.stderr?.setEncoding("utf8");
     child.stderr?.on("data", (chunk: string) => {
-      stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CAP);
+      stderrTail = sanitizeRuntimeFailureText(stderrTail + chunk);
     });
 
     let seq = 0;
@@ -212,6 +215,7 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
     };
 
     child.stdout!.on("data", (chunk: string) => {
+      stdoutTail = sanitizeRuntimeFailureText(stdoutTail + chunk);
       stdoutBuf += chunk;
       let idx: number;
       while ((idx = stdoutBuf.indexOf("\n")) !== -1) {
@@ -221,12 +225,13 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
       }
     });
 
-    let code = 0;
+    let code: number | null = 0;
+    let signal: NodeJS.Signals | null = null;
     try {
-      code = await new Promise<number>((resolve, reject) => {
+      ({ code, signal } = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
         child.on("error", reject);
-        child.on("close", (c) => resolve(c ?? 0));
-      });
+        child.on("close", (c, s) => resolve({ code: c, signal: s }));
+      }));
     } finally {
       opts.signal.removeEventListener("abort", onAbort);
       if (killTimer) clearTimeout(killTimer);
@@ -249,6 +254,21 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
       newSessionId: state.newSessionId,
       ...(state.costUsd !== undefined ? { costUsd: state.costUsd } : {}),
       ...(state.errorText ? { error: state.errorText } : {}),
+      ...(state.errorText
+        ? {
+            runtimeFailure: {
+              runtime: this.id,
+              cwd: opts.cwd,
+              command: safeCommand([binary, ...args]),
+              exit_code: code,
+              signal,
+              duration_ms: Date.now() - startedAt,
+              stderr_tail: tailText(stderrTail),
+              stdout_tail: tailText(stdoutTail),
+              error_message: sanitizeRuntimeFailureText(state.errorText, 2048),
+            },
+          }
+        : {}),
     };
   }
 }

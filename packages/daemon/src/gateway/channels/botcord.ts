@@ -78,7 +78,7 @@ export interface BotCordChannelClient {
     to: string,
     type: "result" | "error",
     text: string,
-    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[] },
+    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[]; errorRef?: string },
   ): Promise<{ hub_msg_id?: string; message_id?: string } & Record<string, unknown>>;
   getHubUrl(): string;
   onTokenRefresh?: (token: string, expiresAt: number) => void;
@@ -982,9 +982,15 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     async send(ctx: ChannelSendContext): Promise<ChannelSendResult> {
       const client = ensureClient();
       const { message } = ctx;
-      const options: { replyTo?: string; topic?: string; attachments?: MessageAttachment[] } = {};
+      const options: {
+        replyTo?: string;
+        topic?: string;
+        attachments?: MessageAttachment[];
+        errorRef?: string;
+      } = {};
       if (message.replyTo) options.replyTo = message.replyTo;
       if (message.threadId) options.topic = message.threadId;
+      if (message.errorRef) options.errorRef = message.errorRef;
       const upload = await uploadOutboundAttachments(client, message.attachments ?? [], ctx.log);
       if (upload.attachments.length > 0) options.attachments = upload.attachments;
       const text = rewriteUploadedAttachmentPaths(message.text, upload.replacements);

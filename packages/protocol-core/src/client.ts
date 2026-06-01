@@ -237,10 +237,18 @@ export class BotCordClient {
     to: string,
     type: "result" | "error",
     text: string,
-    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[] },
+    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[]; errorRef?: string },
   ): Promise<SendResponse> {
     const payload: Record<string, unknown> =
-      type === "error" ? { error: { code: "agent_error", message: text } } : { text };
+      type === "error"
+        ? {
+            error: {
+              code: "agent_error",
+              message: text,
+              ...(options?.errorRef ? { error_ref: options.errorRef } : {}),
+            },
+          }
+        : { text };
     if (options?.attachments && options.attachments.length > 0) {
       payload.attachments = options.attachments;
     }

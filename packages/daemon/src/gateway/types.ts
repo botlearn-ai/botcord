@@ -1,4 +1,5 @@
 import type { GatewayLogger } from "./log.js";
+import type { RuntimeFailureSummary } from "./runtime-failure.js";
 import type {
   GatewayInboundEnvelope as CanonicalGatewayInboundEnvelope,
   GatewayInboundMessage as CanonicalGatewayInboundMessage,
@@ -426,6 +427,8 @@ export interface RuntimeRunResult {
   costUsd?: number;
   /** Populated when the runtime reported a hard error. */
   error?: string;
+  /** Safe local-only summary used to correlate owner-visible error refs. */
+  runtimeFailure?: Partial<RuntimeFailureSummary>;
   /**
    * Optional token-count breakdown reported by the runtime. Used by the
    * cloud daemon's ``cloud_run`` settle hook to charge a run against the

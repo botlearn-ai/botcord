@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import type { GatewayLogger } from "./log.js";
+import type { RuntimeFailureSummary } from "./runtime-failure.js";
 import { transcriptFilePath } from "./transcript-paths.js";
 
 /**
@@ -117,6 +118,9 @@ export interface TurnErrorTranscriptRecord extends TranscriptRecordBase {
   phase: "runtime" | "timeout" | "budget";
   error: string;
   durationMs: number;
+  errorRef?: string;
+  runtime?: string;
+  runtimeFailure?: RuntimeFailureSummary;
 }
 
 export interface AttentionSkippedTranscriptRecord extends TranscriptRecordBase {
