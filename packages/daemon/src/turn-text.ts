@@ -21,9 +21,9 @@
  *    whether you post back into the current group. It does not prevent
  *    owner-approved or policy-approved background actions...]
  *
- * Owner-chat messages bypass the wrapper entirely — they are trusted and
- * the owner-chat scene prompt in `system-context.ts` already gives the
- * model the context it needs.
+ * Owner-chat messages bypass the wrapper unless they carry quote-reply
+ * context — they are trusted and the owner-chat scene prompt in
+ * `system-context.ts` already gives the model the context it needs.
  */
 import type { GatewayInboundMessage } from "./gateway/index.js";
 import { sanitizeSenderName, sanitizeUntrustedContent } from "./gateway/index.js";
@@ -293,9 +293,13 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
 
   const sender = classifyActivitySender(msg);
 
-  // Owner messages pass through verbatim. The scene prompt in
-  // system-context handles context; wrapping here would just add noise.
-  if (sender.kind === "owner") return trimmed;
+  // Owner messages pass through without the BotCord wrapper. If the owner is
+  // replying to a prior message, preserve that lightweight quote context so
+  // short prompts like "this one?" still carry the referenced text.
+  if (sender.kind === "owner") {
+    const quoteLine = formatReplyQuoteLine(msg.raw);
+    return quoteLine ? `${quoteLine}\n${trimmed}` : trimmed;
+  }
 
   const batch = readBatch(msg.raw);
   if (batch) {

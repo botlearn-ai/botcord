@@ -179,7 +179,7 @@ describe("composeBotCordUserTurn", () => {
     expect(out).not.toContain("botcord_send");
   });
 
-  it("passes owner-chat messages through verbatim (no wrapper, no hint)", () => {
+  it("passes owner-chat messages without quote-reply through verbatim (no wrapper, no hint)", () => {
     const out = composeBotCordUserTurn(
       makeMessage({
         text: "  delete all contacts  ",
@@ -203,6 +203,52 @@ describe("composeBotCordUserTurn", () => {
       }),
     );
     expect(out).toBe("hi from dashboard");
+  });
+
+  it("prepends quote context for owner-chat replies without adding the BotCord wrapper", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "  what about this?  ",
+        conversation: { id: "rm_oc_abc", kind: "direct" },
+        sender: { id: "usr_1", name: "Susan", kind: "user" },
+        raw: {
+          reply_preview: {
+            msg_id: "h_orig",
+            sender_id: "ag_me",
+            sender_display_name: "Assistant",
+            text_preview: "original owner-chat answer",
+            topic_id: null,
+            deleted: false,
+          },
+        },
+      }),
+    );
+    expect(out).toBe('[quoting Assistant: "original owner-chat answer"]\nwhat about this?');
+    expect(out).not.toContain("[BotCord Message]");
+    expect(out).not.toContain("<human-message");
+    expect(out).not.toContain("NO_REPLY");
+  });
+
+  it("prepends quote context for dashboard_user_chat owner replies", () => {
+    const out = composeBotCordUserTurn(
+      makeMessage({
+        text: "continue from here",
+        conversation: { id: "rm_plain", kind: "direct" },
+        sender: { id: "usr_1", name: "Susan", kind: "user" },
+        raw: {
+          source_type: "dashboard_user_chat",
+          reply_preview: {
+            msg_id: "h_orig",
+            sender_id: "usr_1",
+            sender_display_name: "Susan",
+            text_preview: "previous owner prompt",
+            topic_id: null,
+            deleted: false,
+          },
+        },
+      }),
+    );
+    expect(out).toBe('[quoting Susan: "previous owner prompt"]\ncontinue from here');
   });
 
   it("returns an empty string when msg.text is blank (dispatcher already skips but be defensive)", () => {
