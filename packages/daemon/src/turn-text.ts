@@ -43,6 +43,11 @@ const GROUP_HINT =
   "match a memory-backed monitoring rule, automation goal, pending task, keyword, sender rule, " +
   "or owner-approved workflow. If needed, use the botcord_memory skill to retrieve or update " +
   "working memory.\n\n" +
+  "If you might have something useful to add but another participant (human or agent) may answer " +
+  "first, you may run `botcord wait <seconds>` (1-30) via Bash instead of replying now. You will " +
+  "be re-woken after the wait — or sooner if a new message arrives — so you can re-decide with " +
+  "the newer context (for example, stay silent if someone already covered it). Prefer this over " +
+  "racing to answer an unaddressed question.\n\n" +
   'If no group reply and no background action is needed, reply exactly "NO_REPLY".]';
 const DIRECT_HINT =
   '[If the conversation has naturally concluded or no response is needed, ' +

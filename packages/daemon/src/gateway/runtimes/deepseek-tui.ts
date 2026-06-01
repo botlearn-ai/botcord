@@ -237,6 +237,7 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
         hubUrl: opts.hubUrl,
         accountId: opts.accountId,
         basePath: process.env.PATH,
+        waitMarkerFile: opts.waitMarkerFile,
       }),
       FORCE_COLOR: "0",
       NO_COLOR: "1",

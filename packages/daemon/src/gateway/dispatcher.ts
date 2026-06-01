@@ -6,6 +6,7 @@ import type { GatewayLogger } from "./log.js";
 import { looksLikeRuntimeAuthFailure } from "./runtime-errors.js";
 import { resolveRoute } from "./router.js";
 import { sessionKey, type SessionStore } from "./session-store.js";
+import { clearWaitMarker, consumeWaitMarker, resolveWaitMarkerPath, MAX_WAIT_MS } from "./wait-marker.js";
 import {
   truncateTextField,
   type DeliveryStatus,
@@ -51,6 +52,11 @@ const SECRET_KEY_RE = /token|secret|private.?key|api.?key|authorization|password
 
 /** Maximum number of buffered serial entries per queue. Excess entries drop oldest. */
 const MAX_BATCH_BUFFER_ENTRIES = 40;
+
+/** Max consecutive agent-driven `botcord wait` parks on one queue before the
+ *  next turn is forced to produce a real decision. Total accumulated wait is
+ *  separately bounded by {@link MAX_WAIT_MS}. */
+const MAX_PARKS = 3;
 
 /**
  * Soft cap on the total characters across raw.batch members in a merged
@@ -430,6 +436,19 @@ interface QueueState {
   serialBuffer: BufferedSerialEntry[];
   /** True when the serial-drain worker is actively running (or about to). */
   serialWorkerActive: boolean;
+  /**
+   * Active re-wake timer scheduled when a group-room turn ran `botcord wait`.
+   * Null when no park is pending. An external arrival on this queue clears it
+   * (the new message supersedes the scheduled re-wake); the timer callback
+   * nulls it itself before re-dispatching.
+   */
+  park: NodeJS.Timeout | null;
+  /** Consecutive parks on this queue; reset when a turn ends without one (or
+   *  an external message arrives). Capped by {@link MAX_PARKS}. */
+  parkCount: number;
+  /** Total park time accumulated across consecutive parks (ms). Capped by
+   *  {@link MAX_WAIT_MS}. */
+  parkAccumMs: number;
 }
 
 interface CloudRunBudgetCaps {
@@ -801,6 +820,9 @@ export class Dispatcher {
         cancelGen: 0,
         serialBuffer: [],
         serialWorkerActive: false,
+        park: null,
+        parkCount: 0,
+        parkAccumMs: 0,
       };
       this.queues.set(key, q);
     }
@@ -1008,6 +1030,7 @@ export class Dispatcher {
     mergedFromTurnIds: string[] = [],
   ): Promise<void> {
     const q = this.getQueue(queueKey);
+    this.supersedePendingPark(q);
     // Bump the generation on every arrival. Older arrivals still awaiting
     // the prior turn's teardown will observe `myGen !== q.cancelGen` when
     // they resume and drop out, so only the newest message reaches runTurn.
@@ -1096,6 +1119,7 @@ export class Dispatcher {
     mergedFromTurnIds: string[] = [],
   ): Promise<void> {
     const q = this.getQueue(queueKey);
+    this.supersedePendingPark(q);
     q.serialBuffer.push({ route, msg, channel, turnId });
     while (q.serialBuffer.length > MAX_BATCH_BUFFER_ENTRIES) {
       const dropped = q.serialBuffer.shift()!;
@@ -1308,6 +1332,21 @@ export class Dispatcher {
       blocks: [],
     };
     q.current = slot;
+
+    // Agent-driven `botcord wait` is offered only in non-owner BotCord group
+    // rooms (kind === "group"). When eligible, scope the park marker per queue
+    // (concurrent group-room turns share one agent workspace) and expose its
+    // path to the CLI subprocess via `BOTCORD_WAIT_FILE`.
+    const parkEligible =
+      isBotCordChannel(channel) &&
+      !isOwnerChatRoom(msg) &&
+      msg.conversation.kind === "group";
+    const waitMarkerFile = parkEligible
+      ? resolveWaitMarkerPath(route.cwd, queueKey)
+      : undefined;
+    // Drop any stale marker so that whatever `botcord wait` writes during this
+    // turn is unambiguously from this turn (read back in `finally`).
+    if (waitMarkerFile) clearWaitMarker(waitMarkerFile);
 
     // Dispatched record — marks "this turn entered runtime".
     {
@@ -1700,6 +1739,7 @@ export class Dispatcher {
             cwd: route.cwd,
             accountId: msg.accountId,
             hubUrl: this.resolveHubUrl?.(msg.accountId),
+            ...(waitMarkerFile ? { waitMarkerFile } : {}),
             extraArgs: route.extraArgs,
             signal: controller.signal,
             trustLevel,
@@ -2159,8 +2199,124 @@ export class Dispatcher {
       // newer arrival should find `q.current === slot`, call `abort()`, and
       // let our abort-checks above drop this turn silently.
       if (q.current === slot) q.current = null;
+      // Agent-driven defer: a group-room turn may have run `botcord wait` to
+      // park its decision. Honor it now (timer lives here, not in the runtime).
+      this.maybeSchedulePark(queueKey, route, msg, channel, slot, controller, waitMarkerFile);
       resolveDone();
     }
+  }
+
+  /**
+   * Clear a pending re-wake timer because an external message just arrived on
+   * the queue (it supersedes the scheduled re-wake and restarts the dithering
+   * budget). No-op when the timer-fire path already nulled `q.park` — so a
+   * re-wake does NOT reset the consecutive-park counters, keeping the caps
+   * effective across re-wakes.
+   */
+  private supersedePendingPark(q: QueueState): void {
+    if (!q.park) return;
+    clearTimeout(q.park);
+    q.park = null;
+    q.parkCount = 0;
+    q.parkAccumMs = 0;
+  }
+
+  /**
+   * Read the park marker a group-room turn may have written via `botcord wait`
+   * and, if present and within the per-queue caps ({@link MAX_PARKS} /
+   * {@link MAX_WAIT_MS} total), schedule a re-wake that re-dispatches the same
+   * message after the (clamped) wait. A turn that ends without a marker — or in
+   * a non-deferrable room (`waitMarkerFile` unset), or aborted/timed-out —
+   * resets the consecutive-park counters. New messages arriving during the wait
+   * cancel it via {@link supersedePendingPark} (the agent then re-decides with
+   * fresh context). `waitMarkerFile` is the per-queue marker path resolved at
+   * dispatch (undefined when the room is not park-eligible).
+   */
+  private maybeSchedulePark(
+    queueKey: string,
+    route: GatewayRoute,
+    msg: GatewayInboundEnvelope["message"],
+    channel: ChannelAdapter,
+    slot: TurnSlot,
+    controller: AbortController,
+    waitMarkerFile: string | undefined,
+  ): void {
+    const q = this.queues.get(queueKey);
+    if (!q) return;
+
+    if (!waitMarkerFile || slot.timedOut || controller.signal.aborted) {
+      // Not eligible / unclean completion — never honor a marker here.
+      if (waitMarkerFile) clearWaitMarker(waitMarkerFile);
+      q.parkCount = 0;
+      q.parkAccumMs = 0;
+      return;
+    }
+
+    const marker = consumeWaitMarker(waitMarkerFile);
+    if (!marker) {
+      q.parkCount = 0;
+      q.parkAccumMs = 0;
+      return;
+    }
+
+    if (q.parkCount >= MAX_PARKS || q.parkAccumMs >= MAX_WAIT_MS) {
+      this.log.info("dispatcher: park request ignored — cap reached", {
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        queueKey,
+        parkCount: q.parkCount,
+        parkAccumMs: q.parkAccumMs,
+      });
+      q.parkCount = 0;
+      q.parkAccumMs = 0;
+      return;
+    }
+
+    const remainingBudget = MAX_WAIT_MS - q.parkAccumMs;
+    const waitMs = Math.max(0, Math.min(marker.deadlineMs - Date.now(), remainingBudget));
+    if (waitMs <= 0) {
+      q.parkCount = 0;
+      q.parkAccumMs = 0;
+      return;
+    }
+
+    q.parkCount += 1;
+    q.parkAccumMs += waitMs;
+    this.log.info("dispatcher: parking group-room turn (botcord wait)", {
+      agentId: msg.accountId,
+      roomId: msg.conversation.id,
+      topicId: msg.conversation.threadId ?? null,
+      queueKey,
+      waitMs,
+      parkCount: q.parkCount,
+      reason: marker.reason ?? null,
+    });
+
+    const timer = setTimeout(() => {
+      q.park = null;
+      this.log.info("dispatcher: park elapsed — re-waking", {
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        topicId: msg.conversation.threadId ?? null,
+        queueKey,
+      });
+      void this.runSerial(
+        queueKey,
+        route,
+        this.recomposeUserTurn(msg),
+        msg,
+        channel,
+        randomUUID(),
+      ).catch((err) => {
+        this.log.warn("dispatcher: park re-wake failed", {
+          queueKey,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, waitMs);
+    if (typeof timer.unref === "function") timer.unref();
+    q.park = timer;
   }
 
   private async sendReply(
