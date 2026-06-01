@@ -30,6 +30,7 @@ import {
 import { resolveBootAgents } from "./agent-discovery.js";
 import {
   defaultTranscriptRoot,
+  lookupRuntimeFailureTranscript,
   resolveTranscriptEnabled,
   transcriptAgentRoot,
   transcriptFilePath,
@@ -166,6 +167,10 @@ Commands:
   memory clear [--agent <ag_xxx>]         Wipe all working memory
                                           (--agent required if the daemon runs
                                            more than one; optional otherwise)
+  debug runtime-error --agent <ag_xxx> --room <rm_xxx> [--topic <tp>]
+                      (--turn-id <turnId> | --error-ref <errorRef>) [--json]
+                                          Resolve a local runtime error ref from
+                                          transcript JSONL.
 
 Env:
   BOTCORD_<RUNTIME>_BIN   Override CLI path per runtime (e.g. BOTCORD_CODEX_BIN)
@@ -194,6 +199,7 @@ const BOOLEAN_FLAGS = new Set([
   "h",
   "mentioned",
   "relogin",
+  "yes",
 ]);
 
 /** Flags that may be repeated on the command line; all values are collected. */
@@ -1086,6 +1092,44 @@ function cmdTranscriptPrune(args: ParsedArgs): void {
   console.log(`removed ${removed} rotated transcript file(s)`);
 }
 
+function cmdDebug(args: ParsedArgs): void {
+  if (args.sub !== "runtime-error") {
+    console.error("usage: botcord-daemon debug runtime-error --agent <ag_xxx> --room <rm_xxx> [--topic <tp>] (--turn-id <turnId> | --error-ref <errorRef>) [--json]");
+    process.exit(1);
+  }
+  const agent = transcriptStringFlag(args, "agent");
+  const room = transcriptStringFlag(args, "room");
+  const topic = transcriptStringFlag(args, "topic");
+  const turnId = transcriptStringFlag(args, "turn-id");
+  const errorRef = transcriptStringFlag(args, "error-ref");
+  if (!agent || !room || (!turnId && !errorRef)) {
+    console.error("debug runtime-error requires --agent <ag_xxx> --room <rm_xxx> and --turn-id <turnId> or --error-ref <errorRef>");
+    process.exit(1);
+  }
+  const found = lookupRuntimeFailureTranscript({
+    rootDir: defaultTranscriptRoot(),
+    agentId: agent,
+    roomId: room,
+    topicId: topic,
+    turnId,
+    errorRef,
+  });
+  if (!found) {
+    console.error("no runtime failure found for the supplied selector");
+    process.exit(1);
+  }
+  const summary = {
+    file: found.file,
+    ts: found.record.ts ?? null,
+    turn_id: found.record.turnId ?? null,
+    error_ref: found.record.errorRef ?? null,
+    runtime: found.record.runtime ?? found.record.runtimeFailure?.runtime ?? null,
+    message: found.record.error ?? found.record.runtimeFailure?.error_message ?? null,
+    failure: found.record.runtimeFailure ?? null,
+  };
+  console.log(JSON.stringify(summary, null, 2));
+}
+
 function formatRouteMatch(m: RouteRuleMatch): string {
   const parts: string[] = [];
   if (m.channel) parts.push(`channel=${m.channel}`);
@@ -1486,6 +1530,9 @@ async function main(): Promise<void> {
         break;
       case "memory":
         await cmdMemory(args);
+        break;
+      case "debug":
+        cmdDebug(args);
         break;
       default:
         console.error(`unknown command: ${args.cmd}`);

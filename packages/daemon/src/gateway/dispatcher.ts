@@ -3,6 +3,14 @@ import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
 import type { GatewayLogger } from "./log.js";
+import {
+  errorInfo,
+  makeRuntimeErrorRef,
+  safeCommand,
+  sanitizeRuntimeFailureText,
+  tailText,
+  type RuntimeFailureSummary,
+} from "./runtime-failure.js";
 import { looksLikeRuntimeAuthFailure } from "./runtime-errors.js";
 import { resolveRoute } from "./router.js";
 import { sessionKey, type SessionStore } from "./session-store.js";
@@ -1884,26 +1892,12 @@ export class Dispatcher {
       }
 
       if (threw) {
-        const errMsg = threw instanceof Error ? threw.message : String(threw);
-        this.log.error("dispatcher: runtime threw", {
-          agentId: msg.accountId,
-          roomId: msg.conversation.id,
-          topicId: msg.conversation.threadId ?? null,
+        const failure = this.captureRuntimeFailure({
+          msg,
+          route,
           turnId,
-          queueKey,
-          runtime: route.runtime,
-          error: errMsg,
-        });
-        this.transcript.write({
-          ts: nowIso(),
-          kind: "turn_error",
-          turnId,
-          agentId: msg.accountId,
-          roomId: msg.conversation.id,
-          topicId: msg.conversation.threadId ?? null,
-          phase: "runtime",
-          error: errMsg,
-          durationMs: Date.now() - slot.dispatchedAt,
+          startedAt: slot.dispatchedAt,
+          error: threw,
         });
         if (canDeliverRuntimeDiagnostics) {
           await this.sendReply(channel, {
@@ -1912,7 +1906,8 @@ export class Dispatcher {
             conversationId: msg.conversation.id,
             threadId: msg.conversation.threadId ?? null,
             type: "error",
-            text: `⚠️ Runtime error: ${truncate(errMsg, 500)}`,
+            text: `⚠️ Runtime error: ${truncate(failure.safeMessage, 500)} [error_ref: ${failure.errorRef}]`,
+            errorRef: failure.errorRef,
             replyTo: this.providerReplyTo(msg),
             traceId: msg.trace?.id ?? null,
           }, turnId);
@@ -2023,13 +2018,13 @@ export class Dispatcher {
 
       if (!replyText) {
         if (effectiveError) {
-          this.log.warn("dispatcher: runtime returned error without reply text", {
-            agentId: msg.accountId,
-            roomId: msg.conversation.id,
-            topicId: msg.conversation.threadId ?? null,
+          const failure = this.captureRuntimeFailure({
+            msg,
+            route,
             turnId,
-            runtime: route.runtime,
+            startedAt: slot.dispatchedAt,
             error: effectiveError,
+            result,
           });
           if (canDeliverRuntimeDiagnostics) {
             const sendResult = await this.sendReply(channel, {
@@ -2038,7 +2033,8 @@ export class Dispatcher {
               conversationId: msg.conversation.id,
               threadId: msg.conversation.threadId ?? null,
               type: "error",
-              text: `⚠️ Runtime error: ${truncate(effectiveError, 500)}`,
+              text: `⚠️ Runtime error: ${truncate(failure.safeMessage, 500)} [error_ref: ${failure.errorRef}]`,
+              errorRef: failure.errorRef,
               replyTo: this.providerReplyTo(msg),
               traceId: msg.trace?.id ?? null,
             }, turnId);
@@ -2274,6 +2270,84 @@ export class Dispatcher {
     if (args.blocks.length > 0) rec.blocks = args.blocks;
     if (args.finalText.truncated) rec.truncated = { finalText: true };
     this.transcript.write(rec);
+  }
+
+  private captureRuntimeFailure(args: {
+    msg: GatewayInboundMessage;
+    route: GatewayRoute;
+    turnId: string;
+    startedAt: number;
+    error: unknown;
+    result?: RuntimeRunResult;
+  }): { errorRef: string; summary: RuntimeFailureSummary; safeMessage: string } {
+    const info = errorInfo(args.error);
+    const resultFailure = args.result?.runtimeFailure ?? {};
+    const safeMessage =
+      sanitizeRuntimeFailureText(
+        info.error_message || String(args.result?.error ?? "runtime error"),
+        2048,
+      ) || "runtime error";
+    const summary: RuntimeFailureSummary = {
+      agent_id: args.msg.accountId,
+      room_id: args.msg.conversation.id,
+      topic_id: args.msg.conversation.threadId ?? null,
+      turn_id: args.turnId,
+      runtime: args.route.runtime,
+      cwd: typeof resultFailure.cwd === "string" ? resultFailure.cwd : args.route.cwd,
+      command: safeCommand(resultFailure.command ?? null),
+      exit_code: typeof resultFailure.exit_code === "number" ? resultFailure.exit_code : null,
+      signal: typeof resultFailure.signal === "string" ? resultFailure.signal : null,
+      duration_ms:
+        typeof resultFailure.duration_ms === "number"
+          ? resultFailure.duration_ms
+          : Date.now() - args.startedAt,
+      stderr_tail:
+        typeof resultFailure.stderr_tail === "string"
+          ? tailText(sanitizeRuntimeFailureText(resultFailure.stderr_tail))
+          : null,
+      stdout_tail:
+        typeof resultFailure.stdout_tail === "string"
+          ? tailText(sanitizeRuntimeFailureText(resultFailure.stdout_tail))
+          : null,
+      error_name:
+        typeof resultFailure.error_name === "string"
+          ? resultFailure.error_name
+          : info.error_name,
+      error_message:
+        typeof resultFailure.error_message === "string"
+          ? sanitizeRuntimeFailureText(resultFailure.error_message, 2048)
+          : safeMessage,
+    };
+    const errorRef = makeRuntimeErrorRef(summary);
+    this.log.error("dispatcher: runtime failure captured", {
+      errorRef,
+      agentId: summary.agent_id,
+      roomId: summary.room_id,
+      topicId: summary.topic_id ?? null,
+      turnId: summary.turn_id,
+      runtime: summary.runtime,
+      cwd: summary.cwd ?? null,
+      exitCode: summary.exit_code ?? null,
+      signal: summary.signal ?? null,
+      durationMs: summary.duration_ms ?? null,
+      errorName: summary.error_name ?? null,
+      errorMessage: summary.error_message ?? null,
+    });
+    this.transcript.write({
+      ts: nowIso(),
+      kind: "turn_error",
+      turnId: args.turnId,
+      agentId: args.msg.accountId,
+      roomId: args.msg.conversation.id,
+      topicId: args.msg.conversation.threadId ?? null,
+      phase: "runtime",
+      error: safeMessage,
+      durationMs: summary.duration_ms ?? Date.now() - args.startedAt,
+      errorRef,
+      runtime: args.route.runtime,
+      runtimeFailure: summary,
+    });
+    return { errorRef, summary, safeMessage };
   }
 }
 

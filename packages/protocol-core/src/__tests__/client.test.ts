@@ -67,4 +67,35 @@ describe("BotCordClient token refresh", () => {
     expect(inboxRequests[0].authorization).toBe("Bearer old-token");
     expect(inboxRequests[1].authorization).toBe("Bearer new-token");
   });
+
+  it("includes structured error_ref on typed error messages", async () => {
+    let sentBody: any;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        sentBody = JSON.parse(String(init?.body));
+        return Response.json({ hub_msg_id: "hub_1" });
+      }),
+    );
+
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    await client.sendTypedMessage("rm_1", "error", "Runtime error: codex error", {
+      errorRef: "err_abc123",
+    });
+
+    expect(sentBody.type).toBe("error");
+    expect(sentBody.payload.error).toMatchObject({
+      code: "agent_error",
+      message: "Runtime error: codex error",
+      error_ref: "err_abc123",
+    });
+  });
 });

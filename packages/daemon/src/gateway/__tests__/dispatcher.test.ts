@@ -20,6 +20,7 @@ import type {
   StreamBlock,
 } from "../types.js";
 import type { GatewayLogger } from "../log.js";
+import type { TranscriptRecord, TranscriptWriter } from "../transcript.js";
 
 function silentLogger(): GatewayLogger {
   return { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
@@ -159,6 +160,15 @@ class FakeRuntime implements RuntimeAdapter {
   }
 }
 
+class CaptureTranscript implements TranscriptWriter {
+  readonly enabled = true;
+  readonly rootDir = "";
+  readonly records: TranscriptRecord[] = [];
+  write(rec: TranscriptRecord): void {
+    this.records.push(rec);
+  }
+}
+
 function makeMessage(partial: Partial<GatewayInboundMessage> = {}): GatewayInboundMessage {
   return {
     id: partial.id ?? "hub_msg_abc",
@@ -245,6 +255,7 @@ describe("Dispatcher", () => {
     runtimeAuthFailureThreshold?: number;
     runtimeAuthFailureCooldownMs?: number;
     buildRuntimeRecoveryContext?: (message: GatewayInboundMessage) => Promise<string | null> | string | null;
+    transcript?: TranscriptWriter;
   }) {
     const { store, dir } = await makeStore();
     tempDirs.push(dir);
@@ -260,6 +271,7 @@ describe("Dispatcher", () => {
       runtimeAuthFailureThreshold: args.runtimeAuthFailureThreshold,
       runtimeAuthFailureCooldownMs: args.runtimeAuthFailureCooldownMs,
       buildRuntimeRecoveryContext: args.buildRuntimeRecoveryContext,
+      transcript: args.transcript,
     });
     return { dispatcher, channel, store };
   }
@@ -710,10 +722,15 @@ describe("Dispatcher", () => {
     expect(store.all().length).toBe(0);
   });
 
-  it("runtime empty text with error: sends owner-chat error reply", async () => {
-    const runtime = new FakeRuntime({ reply: "", newSessionId: "", errorText: "missing openclawAgent" });
+  it("runtime empty text with error: sends redacted owner-chat error reply", async () => {
+    const runtime = new FakeRuntime({
+      reply: "",
+      newSessionId: "",
+      errorText: "missing openclawAgent token=abc123 drt_liveSECRET",
+    });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const transcript = new CaptureTranscript();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime, transcript });
 
     await dispatcher.handle(makeEnvelope({ id: "msg_error" }));
 
@@ -721,6 +738,26 @@ describe("Dispatcher", () => {
     expect(channel.sends[0].message.type).toBe("error");
     expect(channel.sends[0].message.text).toContain("Runtime error");
     expect(channel.sends[0].message.text).toContain("missing openclawAgent");
+    expect(channel.sends[0].message.text).toContain("token=[REDACTED]");
+    expect(channel.sends[0].message.text).toContain("drt_[REDACTED]");
+    expect(channel.sends[0].message.text).not.toContain("abc123");
+    expect(channel.sends[0].message.text).not.toContain("liveSECRET");
+    expect(channel.sends[0].message.errorRef).toMatch(/^err_/);
+    const err = transcript.records.find((r) => r.kind === "turn_error");
+    expect(err).toMatchObject({
+      kind: "turn_error",
+      phase: "runtime",
+      errorRef: channel.sends[0].message.errorRef,
+      runtime: "claude-code",
+      runtimeFailure: expect.objectContaining({
+        agent_id: "ag_me",
+        room_id: "rm_oc_1",
+        runtime: "claude-code",
+        error_message: "missing openclawAgent token=[REDACTED] drt_[REDACTED]",
+      }),
+    });
+    expect(JSON.stringify(err)).not.toContain("abc123");
+    expect(JSON.stringify(err)).not.toContain("liveSECRET");
   });
 
   it("cancel-previous: prior turn is aborted and does not write session, new turn writes", async () => {
@@ -1520,16 +1557,34 @@ describe("Dispatcher", () => {
     });
   });
 
-  it("runtime throws: sends error reply, does not write session", async () => {
-    const runtime = new FakeRuntime({ throwError: "boom" });
+  it("runtime throws: sends redacted error reply, does not write session", async () => {
+    const runtime = new FakeRuntime({ throwError: "boom Authorization: Bearer secret-token token=abc123" });
     const channel = new FakeChannel();
-    const { dispatcher, store } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const transcript = new CaptureTranscript();
+    const { dispatcher, store } = await scaffold({ channel, runtimeFactory: () => runtime, transcript });
 
     await dispatcher.handle(makeEnvelope({ id: "m1" }));
     expect(channel.sends.length).toBe(1);
     expect(channel.sends[0].message.type).toBe("error");
     expect(channel.sends[0].message.text).toContain("Runtime error");
     expect(channel.sends[0].message.text).toContain("boom");
+    expect(channel.sends[0].message.text).toContain("Authorization: Bearer [REDACTED]");
+    expect(channel.sends[0].message.text).toContain("token=[REDACTED]");
+    expect(channel.sends[0].message.text).not.toContain("secret-token");
+    expect(channel.sends[0].message.text).not.toContain("abc123");
+    expect(channel.sends[0].message.errorRef).toMatch(/^err_/);
+    const err = transcript.records.find((r) => r.kind === "turn_error");
+    expect(err).toMatchObject({
+      kind: "turn_error",
+      phase: "runtime",
+      errorRef: channel.sends[0].message.errorRef,
+      runtimeFailure: expect.objectContaining({
+        error_name: "Error",
+        error_message: "boom Authorization: Bearer [REDACTED] token=[REDACTED]",
+      }),
+    });
+    expect(JSON.stringify(err)).not.toContain("secret-token");
+    expect(JSON.stringify(err)).not.toContain("abc123");
     expect(store.all().length).toBe(0);
   });
 

@@ -223,6 +223,36 @@ describe("createBotCordChannel — send()", () => {
     expect(client.sendMessage).not.toHaveBeenCalled();
     expect(result.providerMessageId).toBe("m_provider_typed");
   });
+
+  it("forwards runtime diagnostic error refs to BotCord typed error envelopes", async () => {
+    const client = makeClient();
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+    });
+    await channel.send({
+      message: {
+        channel: "botcord",
+        accountId: "ag_self",
+        conversationId: "rm_group_a",
+        threadId: "tp_42",
+        replyTo: "env_source",
+        type: "error",
+        text: "Runtime error: boom",
+        errorRef: "err_abc123",
+      },
+      log: silentLog,
+    });
+
+    expect(client.sendTypedMessage).toHaveBeenCalledWith("rm_group_a", "error", "Runtime error: boom", {
+      topic: "tp_42",
+      replyTo: "env_source",
+      errorRef: "err_abc123",
+    });
+    expect(client.sendMessage).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------

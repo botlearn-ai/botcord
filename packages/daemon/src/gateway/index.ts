@@ -34,6 +34,13 @@ export {
   transcriptAgentRoot,
 } from "./transcript-paths.js";
 export {
+  lookupRuntimeFailureTranscript,
+  makeRuntimeErrorRef,
+  sanitizeRuntimeFailureText,
+  type RuntimeFailureSummary,
+  type RuntimeFailureLookupResult,
+} from "./runtime-failure.js";
+export {
   ClaudeCodeAdapter,
   probeClaude,
   resolveClaudeCommand,

@@ -64,6 +64,7 @@ export interface GatewayOutboundMessage {
   threadId?: string | null;
   type?: "message" | "error";
   text: string;
+  errorRef?: string | null;
   attachments?: GatewayOutboundAttachment[];
   replyTo?: string | null;
   traceId?: string | null;
