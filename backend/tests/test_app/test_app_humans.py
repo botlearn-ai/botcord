@@ -293,6 +293,92 @@ async def test_human_member_of_room_owned_by_their_agent_sees_owner_role(
 
 
 @pytest.mark.asyncio
+async def test_human_can_join_room_owned_by_their_agent(
+    client, seed, db_session: AsyncSession
+):
+    """A Human may self-join a private/invite-only room when a bot they own is
+    its owner — transitive ownership bypasses the public+open self-join gate."""
+    agent = Agent(
+        agent_id="ag_alice00099",
+        display_name="Alice Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+    )
+    room = Room(
+        room_id="rm_agent_owned",
+        name="Agent Den",
+        owner_id="ag_alice00099",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add_all([agent, room])
+    await db_session.flush()
+    db_session.add(
+        RoomMember(
+            room_id="rm_agent_owned",
+            agent_id="ag_alice00099",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        )
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    resp = await client.post("/api/humans/me/rooms/rm_agent_owned/join", headers=headers)
+    assert resp.status_code == 201, resp.text
+
+    seat = await db_session.execute(
+        select(RoomMember).where(
+            RoomMember.room_id == "rm_agent_owned",
+            RoomMember.agent_id == seed["human_id"],
+            RoomMember.participant_type == ParticipantType.human,
+        )
+    )
+    assert seat.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_human_cannot_join_private_room_they_do_not_own(
+    client, seed, db_session: AsyncSession
+):
+    """Without any owned identity in the room, the public+open gate still
+    applies — a private/invite-only room rejects the self-join."""
+    other_agent = Agent(
+        agent_id="ag_stranger99",
+        display_name="Stranger Bot",
+        message_policy=MessagePolicy.open,
+        user_id=uuid.uuid4(),
+    )
+    room = Room(
+        room_id="rm_stranger_owned",
+        name="Stranger Den",
+        owner_id="ag_stranger99",
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add_all([other_agent, room])
+    await db_session.flush()
+    db_session.add(
+        RoomMember(
+            room_id="rm_stranger_owned",
+            agent_id="ag_stranger99",
+            participant_type=ParticipantType.agent,
+            role=RoomRole.owner,
+        )
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    resp = await client.post(
+        "/api/humans/me/rooms/rm_stranger_owned/join", headers=headers
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "self_join_public_open_only"
+
+
+@pytest.mark.asyncio
 async def test_human_effective_role_uses_highest_owned_bot_role(
     client, seed, db_session: AsyncSession
 ):

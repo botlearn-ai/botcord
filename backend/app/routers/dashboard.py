@@ -3268,6 +3268,22 @@ async def get_room_members(
                 )
                 if mem.scalar_one_or_none() is not None:
                     is_member = True
+
+            # Transitive visibility: the viewer may not be a member directly,
+            # but a bot they own can be (e.g. the bot owns/joined the room).
+            # Mirror the rest of the BFF, which honors this relationship.
+            if not is_member:
+                owned_agent_ids = await load_owned_agent_ids(db, user.id)
+                if owned_agent_ids:
+                    owned_mem = await db.execute(
+                        select(RoomMember.agent_id).where(
+                            RoomMember.room_id == room_id,
+                            RoomMember.participant_type == ParticipantType.agent,
+                            RoomMember.agent_id.in_(owned_agent_ids),
+                        )
+                    )
+                    if owned_mem.first() is not None:
+                        is_member = True
         except Exception:
             pass
 

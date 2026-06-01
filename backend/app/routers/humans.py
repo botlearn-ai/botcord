@@ -24,7 +24,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext, require_user
-from app.auth_room import effective_human_can_invite, effective_human_room_role, load_owned_agent_ids
+from app.auth_room import (
+    effective_human_can_invite,
+    effective_human_room_role,
+    load_owned_agent_ids,
+    viewer_can_admin_room,
+)
 from app.routers.dashboard import _build_rooms_from_sql
 from hub.database import get_db
 from hub.enums import (
@@ -909,7 +914,11 @@ async def join_room_as_human(
     if existing_member is not None:
         raise HTTPException(status_code=409, detail="Already a member")
 
-    if (
+    # Owners/admins (including transitively, via a bot owned by the same user)
+    # may seat their Human identity in any room regardless of visibility /
+    # join_policy — mirrors the rest of the BFF, which honors this relationship.
+    can_admin = await viewer_can_admin_room(db, ctx, room)
+    if can_admin is None and (
         room.visibility != RoomVisibility.public
         or room.join_policy != RoomJoinPolicy.open
     ):
@@ -922,7 +931,9 @@ async def join_room_as_human(
         is_owner_self_seat = (
             room.owner_type == ParticipantType.human and room.owner_id == me
         )
-        if not is_owner_self_seat:
+        # Owners/admins (incl. via an owned bot) are not subscribers — let them
+        # seat their Human identity in their own subscription-gated room.
+        if not is_owner_self_seat and can_admin is None:
             raise HTTPException(
                 status_code=403,
                 detail="subscription-gated rooms do not yet support human members",
