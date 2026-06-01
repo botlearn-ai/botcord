@@ -27,7 +27,9 @@ from hub.enums import (
     RoomInvitePolicy,
 )
 from hub.i18n import I18nHTTPException
-from hub.models import Agent, AgentRoomPolicyOverride, Base, Block, Contact
+import uuid as _uuid
+
+from hub.models import Agent, AgentRoomPolicyOverride, Base, Block, Contact, User
 from hub.policy import (
     Principal,
     check_direct_admission,
@@ -208,6 +210,93 @@ async def test_direct_allow_human_sender_off(session):
     with pytest.raises(I18nHTTPException) as exc:
         await check_direct_admission(session, sender=_human_principal(), receiver=receiver)
     assert exc.value.message_key == "human_senders_disabled"
+
+
+# ---------------------------------------------------------------------------
+# Same-owner bypass — a user's own agents (and the user) reach each other
+# without a contacts edge.
+# ---------------------------------------------------------------------------
+
+
+def _owned_sender(agent_id: str, user_id: _uuid.UUID) -> Agent:
+    return Agent(
+        agent_id=agent_id,
+        display_name="Sender",
+        bio="x",
+        message_policy=MessagePolicy.contacts_only,
+        contact_policy=ContactPolicy.contacts_only,
+        room_invite_policy=RoomInvitePolicy.contacts_only,
+        default_attention=AttentionMode.always,
+        attention_keywords="[]",
+        user_id=user_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_direct_same_owner_agent_bypasses_contacts_only(session):
+    owner = _uuid.uuid4()
+    receiver = _agent(contact_policy=ContactPolicy.contacts_only)
+    receiver.user_id = owner
+    sender = _owned_sender("ag_sender", owner)
+    await _add(session, receiver, sender)
+    # No contacts edge, not co-members — same owner alone admits the send.
+    await check_direct_admission(session, sender=_agent_principal(), receiver=receiver)
+
+
+@pytest.mark.asyncio
+async def test_direct_different_owner_agent_still_blocked(session):
+    receiver = _agent(contact_policy=ContactPolicy.contacts_only)
+    receiver.user_id = _uuid.uuid4()
+    sender = _owned_sender("ag_sender", _uuid.uuid4())
+    await _add(session, receiver, sender)
+    with pytest.raises(I18nHTTPException) as exc:
+        await check_direct_admission(session, sender=_agent_principal(), receiver=receiver)
+    assert exc.value.message_key == "not_in_contacts"
+
+
+@pytest.mark.asyncio
+async def test_direct_unclaimed_agents_not_implicitly_related(session):
+    """Two agents with NULL user_id must not be treated as same-owner."""
+    receiver = _agent(contact_policy=ContactPolicy.contacts_only)  # user_id None
+    sender = Agent(
+        agent_id="ag_sender",
+        display_name="Sender",
+        bio="x",
+        message_policy=MessagePolicy.contacts_only,
+        contact_policy=ContactPolicy.contacts_only,
+        room_invite_policy=RoomInvitePolicy.contacts_only,
+        default_attention=AttentionMode.always,
+        attention_keywords="[]",
+    )  # user_id None
+    await _add(session, receiver, sender)
+    with pytest.raises(I18nHTTPException) as exc:
+        await check_direct_admission(session, sender=_agent_principal(), receiver=receiver)
+    assert exc.value.message_key == "not_in_contacts"
+
+
+@pytest.mark.asyncio
+async def test_direct_owner_human_reaches_own_agent(session):
+    owner = _uuid.uuid4()
+    receiver = _agent(contact_policy=ContactPolicy.contacts_only)
+    receiver.user_id = owner
+    user = User(
+        id=owner,
+        display_name="Owner",
+        supabase_user_id=_uuid.uuid4(),
+        human_id="hu_sender",
+    )
+    await _add(session, receiver, user)
+    await check_direct_admission(session, sender=_human_principal(), receiver=receiver)
+
+
+@pytest.mark.asyncio
+async def test_direct_same_owner_bypasses_whitelist(session):
+    owner = _uuid.uuid4()
+    receiver = _agent(contact_policy=ContactPolicy.whitelist)
+    receiver.user_id = owner
+    sender = _owned_sender("ag_sender", owner)
+    await _add(session, receiver, sender)
+    await check_direct_admission(session, sender=_agent_principal(), receiver=receiver)
 
 
 # ---------------------------------------------------------------------------

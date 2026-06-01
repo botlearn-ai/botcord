@@ -9,6 +9,7 @@
 
 import datetime
 import json
+import uuid as _uuid
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -24,7 +25,7 @@ from hub.enums import (
     RoomInvitePolicy,
 )
 from hub.i18n import I18nHTTPException
-from hub.models import Agent, AgentRoomPolicyOverride, Block, Contact, RoomMember
+from hub.models import Agent, AgentRoomPolicyOverride, Block, Contact, RoomMember, User
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,38 @@ async def _shares_room(
         )
     )
     return result.first() is not None
+
+
+async def _owning_user_id(db: AsyncSession, principal: Principal) -> _uuid.UUID | None:
+    """Resolve the human user who owns a principal, or None if unowned.
+
+    Agents map through ``Agent.user_id`` (NULL until claimed); humans map
+    through ``User.human_id`` to their own ``User.id``."""
+    if principal.type == ParticipantType.agent:
+        return await db.scalar(
+            select(Agent.user_id).where(Agent.agent_id == principal.id)
+        )
+    if principal.type == ParticipantType.human:
+        return await db.scalar(
+            select(User.id).where(User.human_id == principal.id)
+        )
+    return None
+
+
+async def _same_owner(
+    db: AsyncSession,
+    *,
+    receiver: Agent,
+    sender: Principal,
+) -> bool:
+    """True iff sender and receiver belong to the same human owner. Lets a
+    user's own agents (and the user themselves) reach each other without a
+    contacts edge. Unowned principals (``user_id`` NULL) never match — two
+    unclaimed agents are not implicitly related."""
+    if receiver.user_id is None:
+        return False
+    sender_owner = await _owning_user_id(db, sender)
+    return sender_owner is not None and sender_owner == receiver.user_id
 
 
 def _effective_contact_policy(agent: Agent) -> ContactPolicy:
@@ -161,6 +194,8 @@ async def check_direct_admission(
     if policy == ContactPolicy.contacts_only:
         if await _is_contact(db, owner_id=receiver.agent_id, peer=sender):
             return
+        if await _same_owner(db, receiver=receiver, sender=sender):
+            return
         if allow_same_room_bypass and await _shares_room(
             db, receiver_agent_id=receiver.agent_id, sender=sender
         ):
@@ -169,6 +204,8 @@ async def check_direct_admission(
     if policy == ContactPolicy.whitelist:
         # Reuse contacts as the whitelist source — see design doc §8.1.
         if await _is_contact(db, owner_id=receiver.agent_id, peer=sender):
+            return
+        if await _same_owner(db, receiver=receiver, sender=sender):
             return
         raise I18nHTTPException(status_code=403, message_key="not_in_whitelist")
     if policy == ContactPolicy.closed:
