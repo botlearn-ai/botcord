@@ -314,6 +314,64 @@ async def test_install_ticket_can_reauthorize_existing_daemon_instance(
 
 
 @pytest.mark.asyncio
+async def test_install_ticket_can_be_bound_to_existing_daemon_instance(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    bundle = await _provision_instance_via_device_code(
+        client, seed_user, label="MacBook"
+    )
+    instance_id = bundle["daemon_instance_id"]
+    old_refresh = bundle["refresh_token"]
+    other_bundle = await _provision_instance_via_device_code(
+        client, seed_user, label="Other MacBook"
+    )
+
+    r = await client.post(
+        "/daemon/auth/install-ticket",
+        json={"daemon_instance_id": instance_id, "label": "MacBook Reloaded"},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 200, r.text
+    issued = r.json()
+    assert issued["install_token"].startswith("dit_")
+    assert issued["daemon_instance_id"] == instance_id
+
+    # The daemon running the install command may have no local user-auth file,
+    # or it may still have a stale auth file for another local device. The
+    # ticket-bound target wins either way.
+    r = await client.post(
+        "/daemon/auth/install-token",
+        json={
+            "install_token": issued["install_token"],
+            "daemon_instance_id": other_bundle["daemon_instance_id"],
+        },
+    )
+    assert r.status_code == 200, r.text
+    rebound = r.json()
+    assert rebound["daemon_instance_id"] == instance_id
+    assert rebound["refresh_token"].startswith("drt_")
+    assert rebound["refresh_token"] != old_refresh
+
+    from sqlalchemy import select
+
+    res = await db_session.execute(
+        select(DaemonInstance).where(DaemonInstance.id == instance_id)
+    )
+    inst = res.scalar_one()
+    assert inst.label == "MacBook Reloaded"
+
+    res = await db_session.execute(
+        select(DaemonInstallTicket).where(
+            DaemonInstallTicket.token_hash
+            == hashlib.sha256(issued["install_token"].encode("utf-8")).hexdigest()
+        )
+    )
+    ticket = res.scalar_one()
+    assert ticket.consumed_at is not None
+    assert ticket.daemon_instance_id == instance_id
+
+
+@pytest.mark.asyncio
 async def test_install_ticket_requires_user_auth(client: AsyncClient):
     r = await client.post("/daemon/auth/install-ticket", json={})
     assert r.status_code == 401

@@ -279,12 +279,14 @@ _BACKGROUND_CLEANUPS: set[asyncio.Task] = set()
 
 class _InstallTicketRequest(BaseModel):
     label: str | None = Field(default=None, max_length=64)
+    daemon_instance_id: str | None = Field(default=None, max_length=32)
 
 
 class _InstallTicketResponse(BaseModel):
     install_token: str
     expires_in: int
     expires_at: datetime.datetime
+    daemon_instance_id: str | None = None
 
 
 @router.post("/daemon/auth/install-ticket", response_model=_InstallTicketResponse)
@@ -300,12 +302,33 @@ async def issue_install_ticket(
         if isinstance(body.label, str) and body.label.strip()
         else None
     )
+    daemon_instance_id = (
+        body.daemon_instance_id.strip()
+        if isinstance(body.daemon_instance_id, str)
+        and body.daemon_instance_id.strip()
+        else None
+    )
+    if daemon_instance_id:
+        result = await db.execute(
+            select(DaemonInstance).where(DaemonInstance.id == daemon_instance_id)
+        )
+        instance = result.scalar_one_or_none()
+        if instance is None or str(instance.user_id) != str(ctx.user_id):
+            raise HTTPException(status_code=404, detail="daemon_instance_not_found")
+        if instance.revoked_at is not None:
+            raise HTTPException(status_code=409, detail="daemon_revoked")
+        if instance.kind != "local":
+            raise HTTPException(status_code=400, detail="daemon_not_local")
+        if label is None:
+            label = instance.label
+
     row = DaemonInstallTicket(
         id=generate_daemon_install_ticket_id(),
         user_id=ctx.user_id,
         token_hash=_hash_install_token(install_token),
         label=label,
         expires_at=expires_at,
+        daemon_instance_id=daemon_instance_id,
     )
     db.add(row)
     await db.commit()
@@ -313,6 +336,7 @@ async def issue_install_ticket(
         install_token=install_token,
         expires_in=DAEMON_INSTALL_TICKET_TTL_SECONDS,
         expires_at=expires_at,
+        daemon_instance_id=daemon_instance_id,
     )
 
 
@@ -344,7 +368,7 @@ async def redeem_install_token(
         if isinstance(body.label, str) and body.label.strip()
         else row.label
     )
-    requested_daemon_id = (
+    requested_daemon_id = row.daemon_instance_id or (
         body.daemon_instance_id.strip()
         if isinstance(body.daemon_instance_id, str) and body.daemon_instance_id.strip()
         else None
