@@ -95,6 +95,7 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
         hubUrl: opts.hubUrl,
         accountId: opts.accountId,
         basePath: process.env.PATH,
+        waitMarkerFile: opts.waitMarkerFile,
       }),
     };
   }

@@ -2,10 +2,10 @@
  * Integration tests for the agent-driven `botcord wait` park / re-wake path.
  *
  * A group-room turn can write a park marker (here simulated via the fake
- * runtime's `observeRun`, standing in for the `botcord wait` CLI). The
- * dispatcher reads it at the turn boundary and re-dispatches the same message
- * after the (clamped) wait — unless a new message arrives first, or the
- * per-queue caps are hit.
+ * runtime's `observeRun`, standing in for the `botcord wait` CLI writing to
+ * `BOTCORD_WAIT_FILE` = `opts.waitMarkerFile`). The dispatcher reads it at the
+ * turn boundary and re-dispatches the same message after the (clamped) wait —
+ * unless a new message arrives first, or the per-queue caps are hit.
  */
 import { writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -54,17 +54,18 @@ class FakeRuntime implements RuntimeAdapter {
   }
 }
 
-/** Write a park marker into the runtime cwd, as `botcord wait <s>` would. */
-function writeMarker(cwd: string, deadlineFromNowMs: number): void {
-  writeFileSync(
-    path.join(cwd, WAIT_MARKER_FILENAME),
-    JSON.stringify({ deadlineMs: Date.now() + deadlineFromNowMs }),
-    "utf8",
-  );
+/** Simulate `botcord wait <s>`: write a park marker to the path the dispatcher
+ *  handed the subprocess via `BOTCORD_WAIT_FILE` (`opts.waitMarkerFile`). Falls
+ *  back to the legacy cwd path when unset, so non-eligible rooms still "write"
+ *  somewhere the dispatcher will never consume. */
+function writeMarker(opts: RuntimeRunOptions, deadlineFromNowMs: number): void {
+  const target = opts.waitMarkerFile ?? path.join(opts.cwd, WAIT_MARKER_FILENAME);
+  writeFileSync(target, JSON.stringify({ deadlineMs: Date.now() + deadlineFromNowMs }), "utf8");
 }
 
 const GROUP_CONVO = { id: "rm_grp1", kind: "group" as const };
 const OWNER_CONVO = { id: "rm_oc_1", kind: "group" as const };
+const DM_CONVO = { id: "rm_dm_1", kind: "direct" as const };
 
 function makeEnvelope(partial: Partial<GatewayInboundMessage> = {}): GatewayInboundEnvelope {
   return {
@@ -117,14 +118,14 @@ describe("Dispatcher — botcord wait park/re-wake", () => {
   }
 
   it("re-wakes a group-room turn after the marker deadline", async () => {
-    // Park only on the first turn; the re-wake turn answers normally.
     const runtime = new FakeRuntime((opts, callNo) => {
-      if (callNo === 1) writeMarker(opts.cwd, 40);
+      if (callNo === 1) writeMarker(opts, 40);
     });
     const { dispatcher } = await scaffold(runtime);
 
     await dispatcher.handle(makeEnvelope());
     expect(runtime.calls.length).toBe(1);
+    expect(runtime.calls[0]!.waitMarkerFile).toBeTruthy(); // env wired for group room
 
     await sleep(140);
     expect(runtime.calls.length).toBe(2); // original + one re-wake
@@ -132,40 +133,73 @@ describe("Dispatcher — botcord wait park/re-wake", () => {
 
   it("a new inbound during the park cancels the scheduled re-wake", async () => {
     const runtime = new FakeRuntime((opts, callNo) => {
-      if (callNo === 1) writeMarker(opts.cwd, 300); // long park
+      if (callNo === 1) writeMarker(opts, 300);
     });
     const { dispatcher } = await scaffold(runtime);
 
     await dispatcher.handle(makeEnvelope({ id: "m1" }));
     expect(runtime.calls.length).toBe(1);
-    // New message arrives well before the 300ms park elapses.
     await dispatcher.handle(makeEnvelope({ id: "m2", text: "never mind, solved it" }));
     expect(runtime.calls.length).toBe(2);
 
     await sleep(380);
-    // The park timer was superseded by m2 — no phantom third turn.
-    expect(runtime.calls.length).toBe(2);
+    expect(runtime.calls.length).toBe(2); // no phantom third turn
   });
 
   it("stops re-waking after MAX_PARKS consecutive parks", async () => {
-    // Park on every turn — the dispatcher must cap it.
-    const runtime = new FakeRuntime((opts) => writeMarker(opts.cwd, 30));
+    const runtime = new FakeRuntime((opts) => writeMarker(opts, 30));
     const { dispatcher } = await scaffold(runtime);
 
     await dispatcher.handle(makeEnvelope());
-    await sleep(360); // enough for several 30ms re-wakes to chain
+    await sleep(360);
+    expect(runtime.calls.length).toBe(4); // 1 original + MAX_PARKS (3) re-wakes
+  });
 
-    // 1 original + MAX_PARKS (3) re-wakes, then the 4th turn's park is ignored.
+  it("isolates concurrent group-room turns for the same agent/cwd", async () => {
+    // Two different group rooms → two queues → two markers under one workspace.
+    // Each parks once; neither clobbers the other.
+    const parked = new Set<string>();
+    const runtime = new FakeRuntime((opts) => {
+      const room = String(opts.context?.roomId ?? "");
+      if (!parked.has(room)) {
+        parked.add(room);
+        writeMarker(opts, 40);
+      }
+    });
+    const { dispatcher } = await scaffold(runtime);
+
+    await Promise.all([
+      dispatcher.handle(makeEnvelope({ id: "a1", conversation: { id: "rm_gA", kind: "group" } })),
+      dispatcher.handle(makeEnvelope({ id: "b1", conversation: { id: "rm_gB", kind: "group" } })),
+    ]);
+    expect(runtime.calls.length).toBe(2);
+    // Distinct per-queue marker paths.
+    expect(runtime.calls[0]!.waitMarkerFile).not.toBe(runtime.calls[1]!.waitMarkerFile);
+
+    await sleep(160);
+    // Both rooms re-woke exactly once → 4 total, not 2 (one swallowed) or 3.
     expect(runtime.calls.length).toBe(4);
+    const reWokenRooms = runtime.calls.map((c) => c.context?.roomId).sort();
+    expect(reWokenRooms).toEqual(["rm_gA", "rm_gA", "rm_gB", "rm_gB"]);
   });
 
   it("ignores the marker in an owner-chat room", async () => {
-    const runtime = new FakeRuntime((opts) => writeMarker(opts.cwd, 40));
+    const runtime = new FakeRuntime((opts) => writeMarker(opts, 40));
     const { dispatcher } = await scaffold(runtime);
 
     await dispatcher.handle(makeEnvelope({ conversation: OWNER_CONVO }));
+    expect(runtime.calls[0]!.waitMarkerFile).toBeUndefined(); // not park-eligible
     await sleep(140);
-    // Owner-chat is not a deferrable room — no re-wake.
+    expect(runtime.calls.length).toBe(1);
+  });
+
+  it("ignores the marker in a non-group (DM) room", async () => {
+    const runtime = new FakeRuntime((opts) => writeMarker(opts, 40));
+    const { dispatcher } = await scaffold(runtime);
+
+    await dispatcher.handle(makeEnvelope({ conversation: DM_CONVO }));
+    expect(runtime.calls[0]!.waitMarkerFile).toBeUndefined();
+    await sleep(140);
     expect(runtime.calls.length).toBe(1);
   });
 });

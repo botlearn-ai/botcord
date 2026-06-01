@@ -6,7 +6,7 @@ import type { GatewayLogger } from "./log.js";
 import { looksLikeRuntimeAuthFailure } from "./runtime-errors.js";
 import { resolveRoute } from "./router.js";
 import { sessionKey, type SessionStore } from "./session-store.js";
-import { clearWaitMarker, consumeWaitMarker, MAX_WAIT_MS } from "./wait-marker.js";
+import { clearWaitMarker, consumeWaitMarker, resolveWaitMarkerPath, MAX_WAIT_MS } from "./wait-marker.js";
 import {
   truncateTextField,
   type DeliveryStatus,
@@ -1333,9 +1333,20 @@ export class Dispatcher {
     };
     q.current = slot;
 
-    // Drop any stale park marker so that whatever `botcord wait` writes during
-    // this turn is unambiguously from this turn (read back in `finally`).
-    clearWaitMarker(route.cwd);
+    // Agent-driven `botcord wait` is offered only in non-owner BotCord group
+    // rooms (kind === "group"). When eligible, scope the park marker per queue
+    // (concurrent group-room turns share one agent workspace) and expose its
+    // path to the CLI subprocess via `BOTCORD_WAIT_FILE`.
+    const parkEligible =
+      isBotCordChannel(channel) &&
+      !isOwnerChatRoom(msg) &&
+      msg.conversation.kind === "group";
+    const waitMarkerFile = parkEligible
+      ? resolveWaitMarkerPath(route.cwd, queueKey)
+      : undefined;
+    // Drop any stale marker so that whatever `botcord wait` writes during this
+    // turn is unambiguously from this turn (read back in `finally`).
+    if (waitMarkerFile) clearWaitMarker(waitMarkerFile);
 
     // Dispatched record — marks "this turn entered runtime".
     {
@@ -1728,6 +1739,7 @@ export class Dispatcher {
             cwd: route.cwd,
             accountId: msg.accountId,
             hubUrl: this.resolveHubUrl?.(msg.accountId),
+            ...(waitMarkerFile ? { waitMarkerFile } : {}),
             extraArgs: route.extraArgs,
             signal: controller.signal,
             trustLevel,
@@ -2189,7 +2201,7 @@ export class Dispatcher {
       if (q.current === slot) q.current = null;
       // Agent-driven defer: a group-room turn may have run `botcord wait` to
       // park its decision. Honor it now (timer lives here, not in the runtime).
-      this.maybeSchedulePark(queueKey, route, msg, channel, slot, controller);
+      this.maybeSchedulePark(queueKey, route, msg, channel, slot, controller, waitMarkerFile);
       resolveDone();
     }
   }
@@ -2214,9 +2226,11 @@ export class Dispatcher {
    * and, if present and within the per-queue caps ({@link MAX_PARKS} /
    * {@link MAX_WAIT_MS} total), schedule a re-wake that re-dispatches the same
    * message after the (clamped) wait. A turn that ends without a marker — or in
-   * a non-group room, or aborted/timed-out — resets the consecutive-park
-   * counters. New messages arriving during the wait cancel it via
-   * {@link supersedePendingPark} (the agent then re-decides with fresh context).
+   * a non-deferrable room (`waitMarkerFile` unset), or aborted/timed-out —
+   * resets the consecutive-park counters. New messages arriving during the wait
+   * cancel it via {@link supersedePendingPark} (the agent then re-decides with
+   * fresh context). `waitMarkerFile` is the per-queue marker path resolved at
+   * dispatch (undefined when the room is not park-eligible).
    */
   private maybeSchedulePark(
     queueKey: string,
@@ -2225,20 +2239,20 @@ export class Dispatcher {
     channel: ChannelAdapter,
     slot: TurnSlot,
     controller: AbortController,
+    waitMarkerFile: string | undefined,
   ): void {
     const q = this.queues.get(queueKey);
     if (!q) return;
 
-    const isGroupRoom = isBotCordChannel(channel) && !isOwnerChatRoom(msg);
-    if (!isGroupRoom || slot.timedOut || controller.signal.aborted) {
+    if (!waitMarkerFile || slot.timedOut || controller.signal.aborted) {
       // Not eligible / unclean completion — never honor a marker here.
-      clearWaitMarker(route.cwd);
+      if (waitMarkerFile) clearWaitMarker(waitMarkerFile);
       q.parkCount = 0;
       q.parkAccumMs = 0;
       return;
     }
 
-    const marker = consumeWaitMarker(route.cwd);
+    const marker = consumeWaitMarker(waitMarkerFile);
     if (!marker) {
       q.parkCount = 0;
       q.parkAccumMs = 0;

@@ -267,6 +267,7 @@ export class HermesAgentAdapter extends AcpRuntimeAdapter {
       hubUrl: opts.hubUrl,
       accountId: opts.accountId,
       basePath: process.env.PATH,
+      waitMarkerFile: opts.waitMarkerFile,
     });
     const env: NodeJS.ProcessEnv = {
       ...process.env,

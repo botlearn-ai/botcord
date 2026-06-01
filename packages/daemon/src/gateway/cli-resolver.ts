@@ -77,10 +77,12 @@ export function buildCliEnv(opts: {
   hubUrl?: string;
   accountId?: string;
   basePath?: string | undefined;
+  waitMarkerFile?: string;
 }): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   if (opts.hubUrl) env.BOTCORD_HUB = opts.hubUrl;
   if (opts.accountId) env.BOTCORD_AGENT_ID = opts.accountId;
+  if (opts.waitMarkerFile) env.BOTCORD_WAIT_FILE = opts.waitMarkerFile;
   const cli = resolveBundledCliBin();
   if (cli) {
     const existing = opts.basePath ?? "";

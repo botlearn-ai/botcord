@@ -364,6 +364,14 @@ export interface RuntimeRunOptions {
    * unspecified and the bundled CLI falls back to its own default.
    */
   hubUrl?: string;
+  /**
+   * Absolute path the spawned CLI should write a `botcord wait` park marker to,
+   * exposed to the subprocess as `BOTCORD_WAIT_FILE`. Scoped per queue by the
+   * dispatcher so concurrent group-room turns sharing one workspace don't
+   * clobber each other. Unset for non-deferrable rooms (owner-chat / DM /
+   * non-group), in which case `botcord wait` is a harmless no-op.
+   */
+  waitMarkerFile?: string;
   signal: AbortSignal;
   extraArgs?: string[];
   trustLevel: TrustLevel;

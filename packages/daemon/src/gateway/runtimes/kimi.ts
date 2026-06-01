@@ -210,6 +210,7 @@ export class KimiAdapter extends NdjsonStreamAdapter {
       hubUrl: opts.hubUrl,
       accountId: opts.accountId,
       basePath: process.env.PATH,
+      waitMarkerFile: opts.waitMarkerFile,
     });
     return {
       ...process.env,
