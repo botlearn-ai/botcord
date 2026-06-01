@@ -425,3 +425,31 @@ async def test_inbox_basic(client: AsyncClient, seed: dict, db_session: AsyncSes
     )
     assert resp3.status_code == 200
     assert resp3.json()["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_room_members_visible_to_human_owner_via_owned_bot(
+    client: AsyncClient, seed: dict
+):
+    """A Human viewer (no X-Active-Agent) can list members of a private room
+    when a bot they own owns it — transitive ownership, not direct membership."""
+    resp = await client.get(
+        "/api/dashboard/rooms/rm_priv0001/members",
+        headers={"Authorization": f"Bearer {seed['token1']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    member_ids = {m["agent_id"] for m in resp.json()["members"]}
+    assert "ag_owner001" in member_ids
+
+
+@pytest.mark.asyncio
+async def test_room_members_private_hidden_from_stranger(
+    client: AsyncClient, seed: dict
+):
+    """A Human viewer who neither belongs to nor owns the room sees the private
+    room masked as 404."""
+    resp = await client.get(
+        "/api/dashboard/rooms/rm_priv0001/members",
+        headers={"Authorization": f"Bearer {seed['token2']}"},
+    )
+    assert resp.status_code == 404
