@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DashboardOverview, HumanAgentRoomSummary } from "@/lib/types";
+import type { DashboardMessage, DashboardOverview, HumanAgentRoomSummary } from "@/lib/types";
 
 const mocks = vi.hoisted(() => ({
   getRoomMessages: vi.fn(),
@@ -84,6 +84,27 @@ function makeOwnedAgentRoom(overrides: Partial<HumanAgentRoomSummary> = {}): Hum
   };
 }
 
+function makeMessage(overrides: Partial<DashboardMessage> = {}): DashboardMessage {
+  return {
+    hub_msg_id: "hub_1",
+    msg_id: "msg_1",
+    sender_id: "hu_1",
+    sender_name: "Human",
+    type: "message",
+    text: "hello",
+    payload: { text: "hello" },
+    room_id: "rm_empty",
+    topic: null,
+    topic_id: null,
+    goal: null,
+    state: "queued",
+    state_counts: null,
+    created_at: "2026-05-11T08:00:00Z",
+    is_mine: true,
+    ...overrides,
+  };
+}
+
 describe("useDashboardChatStore message polling", () => {
   beforeEach(() => {
     mocks.getRoomMessages.mockReset();
@@ -147,6 +168,71 @@ describe("useDashboardChatStore message polling", () => {
 
     expect(mocks.getRoomMessages).toHaveBeenCalledTimes(1);
     expect(useDashboardChatStore.getState().messages.rm_empty).toEqual([]);
+  });
+
+  it("merges a full room reload by stable msg id instead of replacing attachment objects", async () => {
+    const attachment = {
+      filename: "screenshot.png",
+      url: "https://api.botcord.chat/hub/files/f_image",
+      content_type: "image/png",
+      size_bytes: 1234,
+    };
+    const existingAttachments = [attachment];
+    useDashboardChatStore.setState({
+      messages: {
+        rm_empty: [
+          makeMessage({
+            hub_msg_id: "hub_sender_row",
+            msg_id: "msg_shared",
+            payload: { text: "hello", attachments: existingAttachments },
+          }),
+        ],
+      },
+    });
+    mocks.getRoomMessages.mockResolvedValue({
+      messages: [
+        makeMessage({
+          hub_msg_id: "hub_representative_row",
+          msg_id: "msg_shared",
+          payload: { text: "hello", attachments: [{ ...attachment }] },
+        }),
+      ],
+      has_more: false,
+    });
+
+    await useDashboardChatStore.getState().loadRoomMessages("rm_empty");
+
+    const [message] = useDashboardChatStore.getState().messages.rm_empty;
+    expect(message.hub_msg_id).toBe("hub_representative_row");
+    expect(message.msg_id).toBe("msg_shared");
+    expect(message.payload.attachments).toBe(existingAttachments);
+  });
+
+  it("deduplicates polled messages by stable msg id when hub rows differ", async () => {
+    useDashboardChatStore.setState({
+      messages: {
+        rm_empty: [
+          makeMessage({
+            hub_msg_id: "hub_sender_row",
+            msg_id: "msg_shared",
+          }),
+        ],
+      },
+    });
+    mocks.getRoomMessages.mockResolvedValue({
+      messages: [
+        makeMessage({
+          hub_msg_id: "hub_representative_row",
+          msg_id: "msg_shared",
+        }),
+      ],
+      has_more: false,
+    });
+
+    await useDashboardChatStore.getState().pollNewMessages("rm_empty");
+
+    expect(useDashboardChatStore.getState().messages.rm_empty).toHaveLength(1);
+    expect(useDashboardChatStore.getState().messages.rm_empty[0].hub_msg_id).toBe("hub_sender_row");
   });
 
   it("marks a cached message recalled after the backend confirms recall", async () => {

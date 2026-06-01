@@ -97,6 +97,10 @@ const PREFILL_ROOM_COMPOSER_EVENT = "botcord:prefill-room-composer";
 const OPEN_ROOM_ADD_MEMBER_EVENT = "botcord:open-room-add-member";
 const OPEN_ROOM_SETTINGS_EVENT = "botcord:open-room-settings";
 
+function messageRenderKey(message: DashboardMessage): string {
+  return message.msg_id || message.hub_msg_id;
+}
+
 export function TopicCard({
   group,
   currentAgentId,
@@ -143,7 +147,7 @@ export function TopicCard({
       <div className="space-y-2">
         {group.messages.map((msg) => (
           <div
-            key={msg.hub_msg_id}
+            key={messageRenderKey(msg)}
             data-msg-id={msg.msg_id}
             className="scroll-mt-4 transition-shadow"
           >
@@ -565,7 +569,7 @@ export default function MessageList({
             const msg = item.message;
             return (
               <div
-                key={msg.hub_msg_id}
+                key={messageRenderKey(msg)}
                 data-msg-id={msg.msg_id}
                 className="scroll-mt-4 transition-shadow"
               >

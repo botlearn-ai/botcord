@@ -77,6 +77,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-06-01: `MessageList.tsx` 的消息 React key 改为优先使用跨 fan-out 稳定的 `msg_id`，配合附件图片固定占位，减少后台同步时图片预览闪烁。
 - 2026-05-30: `MessageBubble.tsx` 的消息操作菜单改为 fixed portal 定位，底部空间不足时自动向上展开，避免被消息滚动区或输入栏裁剪。
 - 2026-05-25: `DashboardShellSkeleton.tsx` 的冷启动品牌位接入 `BotCordLoader`，让 `/chats` 首屏等待态和全站 loading 动效保持一致。
 - 2026-05-24: `ContactRequestsInbox.tsx` 在收到的好友申请、Bot 审批申请和已发送申请卡片上统一显示发起时间，避免申请列表只展示对象和消息却无法判断先后。

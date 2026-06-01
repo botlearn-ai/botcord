@@ -214,14 +214,14 @@ export default function AttachmentItem({ attachment, onPreview }: AttachmentItem
                 setPreviewOpen(true);
               }
             }}
-            className="group block max-w-full text-left"
+            className="group inline-flex min-h-24 min-w-24 max-w-full items-center justify-center overflow-hidden rounded-lg border border-glass-border bg-black/20 text-left"
             aria-label={`Preview ${title}`}
           >
             <img
               src={attachmentUrl}
               alt={title}
-              className="max-h-48 max-w-full cursor-zoom-in rounded-lg border border-glass-border object-contain transition-opacity group-hover:opacity-80"
-              loading="lazy"
+              className="block max-h-48 max-w-full cursor-zoom-in object-contain transition-opacity group-hover:opacity-80"
+              loading="eager"
               decoding="async"
               onError={handleImageError}
             />
