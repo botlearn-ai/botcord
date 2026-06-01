@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 zustand/persist 保存 dashboard 会话与目录数据，依赖 @/lib/api 发起房间/目录/Agent 查询，依赖 session/ui/unread/contact store 提供鉴权、界面上下文与未读协调
- * [OUTPUT]: 对外提供 useDashboardChatStore，管理 overview、消息缓存、公开目录远端搜索结果、Agent 卡片数据与 chat 相关异步动作
+ * [OUTPUT]: 对外提供 useDashboardChatStore，管理 overview、按稳定 msg_id 合并的消息缓存、公开目录远端搜索结果、Agent 卡片数据与 chat 相关异步动作
  * [POS]: frontend dashboard 的 chat 数据状态源，负责真正的会话数据与目录数据，不负责阅读语义和连接生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -104,6 +104,65 @@ function buildRecalledMessagePatch(patch?: {
     recalled_by_id: patch?.recalled_by_id ?? null,
     recalled_by_type: patch?.recalled_by_type ?? null,
   };
+}
+
+function dashboardMessageStableId(message: Pick<DashboardMessage, "hub_msg_id" | "msg_id">): string {
+  return message.msg_id || message.hub_msg_id;
+}
+
+function sameAttachmentIdentity(a: unknown, b: unknown): boolean {
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  return left.url === right.url
+    && left.filename === right.filename
+    && left.content_type === right.content_type
+    && left.size_bytes === right.size_bytes;
+}
+
+function preserveStableAttachmentPayload(
+  existing: DashboardMessage,
+  incoming: DashboardMessage,
+): DashboardMessage {
+  const existingAttachments = existing.payload?.attachments;
+  const incomingAttachments = incoming.payload?.attachments;
+  if (
+    !Array.isArray(existingAttachments)
+    || !Array.isArray(incomingAttachments)
+    || existingAttachments.length !== incomingAttachments.length
+    || !incomingAttachments.every((att, index) => sameAttachmentIdentity(existingAttachments[index], att))
+  ) {
+    return incoming;
+  }
+
+  return {
+    ...incoming,
+    payload: {
+      ...incoming.payload,
+      attachments: existingAttachments,
+    },
+  };
+}
+
+function mergeLoadedRoomMessages(
+  currentMessages: DashboardMessage[] | undefined,
+  loadedNewestFirst: DashboardMessage[],
+): DashboardMessage[] {
+  const loadedChronological = [...loadedNewestFirst].reverse();
+  if (!currentMessages || currentMessages.length === 0) return loadedChronological;
+
+  const byStableId = new Map<string, DashboardMessage>();
+  const byHubMsgId = new Map<string, DashboardMessage>();
+  for (const message of currentMessages) {
+    byStableId.set(dashboardMessageStableId(message), message);
+    byHubMsgId.set(message.hub_msg_id, message);
+  }
+
+  return loadedChronological.map((incoming) => {
+    const existing = byStableId.get(dashboardMessageStableId(incoming))
+      ?? byHubMsgId.get(incoming.hub_msg_id);
+    return existing ? preserveStableAttachmentPayload(existing, incoming) : incoming;
+  });
 }
 
 function ownerChatRoomIdForOptimistic(agentId: string): string {
@@ -641,7 +700,10 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             emptyRoomMessageSnapshot.delete(roomId);
           }
           set((state) => ({
-            messages: { ...state.messages, [roomId]: result.messages.reverse() },
+            messages: {
+              ...state.messages,
+              [roomId]: mergeLoadedRoomMessages(state.messages[roomId], result.messages),
+            },
             messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
           }));
         } catch (error) {
@@ -698,8 +760,12 @@ export const useDashboardChatStore = create<DashboardChatState>()(
               const newMsgs = result.messages.reverse();
               set((state) => {
                 const current = state.messages[roomId] || [];
-                const existingIds = new Set(current.map((message) => message.hub_msg_id));
-                const deduped = newMsgs.filter((message) => !existingIds.has(message.hub_msg_id));
+                const existingStableIds = new Set(current.map(dashboardMessageStableId));
+                const existingHubMsgIds = new Set(current.map((message) => message.hub_msg_id));
+                const deduped = newMsgs.filter((message) =>
+                  !existingStableIds.has(dashboardMessageStableId(message))
+                  && !existingHubMsgIds.has(message.hub_msg_id)
+                );
                 if (deduped.length === 0) return state;
                 const currentWithoutMatchedOptimistic = current.filter((message) => {
                   if (!message.hub_msg_id?.startsWith("tmp_")) return true;
