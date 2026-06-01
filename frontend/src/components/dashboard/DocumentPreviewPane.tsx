@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Download, FileText, Loader2, X } from "lucide-react";
 import type { Attachment } from "@/lib/types";
 import {
@@ -14,6 +23,23 @@ import { resolveAttachmentUrl } from "@/components/ui/AttachmentItem";
 interface DocumentPreviewPaneProps {
   attachment: Attachment;
   onClose: () => void;
+}
+
+export const DOCUMENT_PREVIEW_MIN_WIDTH = 360;
+export const DOCUMENT_PREVIEW_MAX_WIDTH = 960;
+export const DOCUMENT_PREVIEW_DEFAULT_WIDTH = 560;
+
+const DOCUMENT_PREVIEW_STORAGE_KEY = "botcord.documentPreviewPaneWidth";
+const DOCUMENT_PREVIEW_MAIN_PANE_GUTTER = 360;
+
+export function clampDocumentPreviewWidth(width: number, viewportWidth?: number): number {
+  const safeWidth = Number.isFinite(width) ? width : DOCUMENT_PREVIEW_DEFAULT_WIDTH;
+  const viewportMax = viewportWidth == null
+    ? DOCUMENT_PREVIEW_MAX_WIDTH
+    : Math.max(DOCUMENT_PREVIEW_MIN_WIDTH, viewportWidth - DOCUMENT_PREVIEW_MAIN_PANE_GUTTER);
+  const maxWidth = Math.min(DOCUMENT_PREVIEW_MAX_WIDTH, viewportMax);
+
+  return Math.min(maxWidth, Math.max(DOCUMENT_PREVIEW_MIN_WIDTH, Math.round(safeWidth)));
 }
 
 function formatPreviewSize(bytes: number): string {
@@ -38,7 +64,110 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paneWidth, setPaneWidth] = useState(DOCUMENT_PREVIEW_DEFAULT_WIDTH);
+  const [paneWidthReady, setPaneWidthReady] = useState(false);
+  const [resizing, setResizing] = useState(false);
+  const resizeStartRef = useRef({
+    x: 0,
+    width: DOCUMENT_PREVIEW_DEFAULT_WIDTH,
+  });
   const tooLarge = kind !== "image" && attachment.size_bytes != null && attachment.size_bytes > DOCUMENT_PREVIEW_MAX_BYTES;
+
+  useEffect(() => {
+    try {
+      const savedWidthValue = window.localStorage.getItem(DOCUMENT_PREVIEW_STORAGE_KEY);
+      if (savedWidthValue !== null) {
+        const savedWidth = Number(savedWidthValue);
+        if (Number.isFinite(savedWidth)) {
+          setPaneWidth(clampDocumentPreviewWidth(savedWidth, window.innerWidth));
+        }
+      }
+    } catch {
+      // localStorage may be blocked; resizing still works for the current pane.
+    } finally {
+      setPaneWidthReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!paneWidthReady || resizing) return;
+
+    try {
+      window.localStorage.setItem(DOCUMENT_PREVIEW_STORAGE_KEY, String(paneWidth));
+    } catch {
+      // Non-fatal: the pane keeps the current in-memory width.
+    }
+  }, [paneWidth, paneWidthReady, resizing]);
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setPaneWidth((width) => clampDocumentPreviewWidth(width, window.innerWidth));
+    };
+
+    window.addEventListener("resize", handleWindowResize);
+    return () => window.removeEventListener("resize", handleWindowResize);
+  }, []);
+
+  useEffect(() => {
+    if (!resizing) return;
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const delta = resizeStartRef.current.x - event.clientX;
+      setPaneWidth(clampDocumentPreviewWidth(resizeStartRef.current.width + delta, window.innerWidth));
+    };
+
+    const stopResize = () => setResizing(false);
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", stopResize);
+    document.addEventListener("pointercancel", stopResize);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", stopResize);
+      document.removeEventListener("pointercancel", stopResize);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [resizing]);
+
+  const handleResizePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    event.preventDefault();
+    resizeStartRef.current = {
+      x: event.clientX,
+      width: paneWidth,
+    };
+    setResizing(true);
+  }, [paneWidth]);
+
+  const handleResizeKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 80 : 24;
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setPaneWidth((width) => clampDocumentPreviewWidth(width + step, window.innerWidth));
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setPaneWidth((width) => clampDocumentPreviewWidth(width - step, window.innerWidth));
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setPaneWidth(clampDocumentPreviewWidth(DOCUMENT_PREVIEW_MIN_WIDTH, window.innerWidth));
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setPaneWidth(clampDocumentPreviewWidth(DOCUMENT_PREVIEW_MAX_WIDTH, window.innerWidth));
+    }
+  }, []);
+
+  const paneStyle = {
+    "--document-preview-pane-width": `${paneWidth}px`,
+  } as CSSProperties;
 
   useEffect(() => {
     if (!kind || tooLarge || kind === "image") {
@@ -149,7 +278,29 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
   })();
 
   return (
-    <aside className="flex h-full w-[min(42vw,560px)] min-w-[360px] shrink-0 flex-col border-l border-glass-border bg-deep-black shadow-2xl shadow-black/40 max-md:absolute max-md:inset-0 max-md:z-40 max-md:w-full max-md:min-w-0">
+    <aside
+      style={paneStyle}
+      className="relative flex h-full w-[var(--document-preview-pane-width)] max-w-[78vw] min-w-[360px] shrink-0 flex-col border-l border-glass-border bg-deep-black shadow-2xl shadow-black/40 max-md:absolute max-md:inset-0 max-md:z-40 max-md:w-full max-md:max-w-none max-md:min-w-0"
+    >
+      {resizing && (
+        <div className="fixed inset-0 z-[80] cursor-col-resize max-md:hidden" aria-hidden="true" />
+      )}
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-label="Resize preview pane"
+        aria-orientation="vertical"
+        aria-valuemin={DOCUMENT_PREVIEW_MIN_WIDTH}
+        aria-valuemax={DOCUMENT_PREVIEW_MAX_WIDTH}
+        aria-valuenow={paneWidth}
+        onPointerDown={handleResizePointerDown}
+        onKeyDown={handleResizeKeyDown}
+        className={`absolute -left-1 top-0 z-[90] hidden h-full w-2 cursor-col-resize items-center justify-center outline-none transition-colors md:flex ${
+          resizing ? "bg-neon-cyan/25" : "hover:bg-neon-cyan/20 focus-visible:bg-neon-cyan/25"
+        }`}
+      >
+        <span className="h-12 w-px rounded-full bg-text-secondary/40" />
+      </div>
       <div className="flex min-h-14 items-center gap-2 border-b border-glass-border px-3">
         <FileText className="h-4 w-4 shrink-0 text-neon-cyan" />
         <div className="min-w-0 flex-1">
@@ -179,7 +330,7 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto bg-zinc-950/30">
+      <div className={`min-h-0 flex-1 overflow-auto bg-zinc-950/30 ${resizing ? "pointer-events-none" : ""}`}>
         {renderedBody}
       </div>
     </aside>
