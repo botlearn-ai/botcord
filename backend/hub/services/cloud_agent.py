@@ -66,7 +66,7 @@ from hub.routers.cloud_daemon_control import (
     is_cloud_daemon_online,
     send_cloud_control_frame,
 )
-from hub.services.cloud_agent_usage import UsageError, UsageService
+from hub.services.cloud_agent_usage import UsageService
 from hub.services.cloud_daemon_provider import (
     CloudDaemonHandle,
     CloudDaemonProvider,
@@ -1170,9 +1170,8 @@ class CloudAgentService:
 
         The run task itself rides on the existing message/inbox flow — the
         Cloud daemon picks it up via its agent inbox subscription, runs
-        DeepSeek-TUI against it, and writes results back through the same
-        flow. The run_id, budget, and source_type allow PR 7 to settle
-        usage against this single run.
+        the configured runtime against it, and writes results back through
+        the same flow.
         """
         self._require_feature_enabled()
 
@@ -1230,47 +1229,8 @@ class CloudAgentService:
                 http_status=400,
             )
 
-        # Preflight + reserve before any side effects so a quota
-        # rejection never leaves orphan rows behind.
-        estimated_credits = self._usage.estimate_run_credits(
-            max_wall_time_seconds=budget.max_wall_time_seconds,
-            max_tool_calls=budget.max_tool_calls,
-        )
-        estimated_sandbox_seconds = self._usage.estimate_run_sandbox_seconds(
-            max_wall_time_seconds=budget.max_wall_time_seconds
-        )
-        try:
-            await self._usage.preflight(
-                db,
-                user_id=user_id,
-                estimated_credits=estimated_credits,
-                estimated_sandbox_seconds=estimated_sandbox_seconds,
-            )
-        except UsageError as exc:
-            raise CloudAgentError(
-                exc.code, exc.message, http_status=402
-            ) from exc
-
         run_id = generate_cloud_agent_run_id()
-        try:
-            await self._usage.reserve(
-                db,
-                user_id=user_id,
-                agent_id=agent_id,
-                run_id=run_id,
-                credits=estimated_credits,
-                sandbox_seconds=estimated_sandbox_seconds,
-                metadata={
-                    "budget": {
-                        "max_wall_time_seconds": budget.max_wall_time_seconds,
-                        "max_tool_calls": budget.max_tool_calls,
-                    },
-                },
-            )
-        except UsageError as exc:
-            raise CloudAgentError(
-                exc.code, exc.message, http_status=402
-            ) from exc
+        await self._ensure_new_api_balance_for_run(db, user_id=user_id)
 
         room_id = await self._resolve_run_room(
             db,
@@ -1288,6 +1248,7 @@ class CloudAgentService:
             "text": prompt,
             "cloud_run": {
                 "run_id": run_id,
+                "settle_usage": False,
                 "budget": {
                     "max_wall_time_seconds": budget.max_wall_time_seconds,
                     "max_tool_calls": budget.max_tool_calls,
@@ -1331,20 +1292,6 @@ class CloudAgentService:
         db.add(record)
         cai.last_run_at = _now()
 
-        reservation = await self._usage.reserve(
-            db,
-            user_id=user_id,
-            agent_id=agent_id,
-            run_id=run_id,
-            credits=estimated_credits,
-            sandbox_seconds=estimated_sandbox_seconds,
-            metadata={},
-        )
-        reservation.metadata_json = {
-            **(reservation.metadata_json or {}),
-            "hub_msg_id": hub_msg_id,
-        }
-        flag_modified(reservation, "metadata_json")
         await db.commit()
 
         # Wake the agent's inbox; cloud daemon's per-agent inbox session
@@ -1541,6 +1488,35 @@ class CloudAgentService:
                 http_status=502,
             ) from exc
         return self._new_api.runtime_env(credential)
+
+    async def _ensure_new_api_balance_for_run(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+    ) -> None:
+        try:
+            balance = await self._new_api.get_balance(db, user_id=user_id)
+        except NewApiError as exc:
+            raise CloudAgentError(
+                exc.code,
+                exc.message,
+                http_status=502,
+            ) from exc
+        if not balance.configured:
+            return
+        if not balance.provisioned:
+            raise CloudAgentError(
+                "new_api_credential_missing",
+                "new-api token is not provisioned for this user",
+                http_status=402,
+            )
+        if balance.token_remain_quota <= 0:
+            raise CloudAgentError(
+                "new_api_balance_exhausted",
+                "new-api token balance is exhausted",
+                http_status=402,
+            )
 
     def _require_feature_enabled(self) -> None:
         if not self._feature_enabled:

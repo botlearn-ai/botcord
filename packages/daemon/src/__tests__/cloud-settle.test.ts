@@ -226,6 +226,22 @@ describe("buildCloudRunSettleHook", () => {
     );
   });
 
+  it("skips settle when cloud_run disables usage settlement", async () => {
+    const { fetchFn, calls } = makeFakeFetch();
+    const hook = buildCloudRunSettleHook({
+      hubUrl: "http://localhost:9000",
+      accessToken: "tok_xyz",
+      fetchFn,
+    });
+    await hook({
+      envelopeType: "cloud_run",
+      runId: "crun_no_usage",
+      settleUsage: false,
+      wallTimeMs: 45_321,
+    });
+    expect(calls).toEqual([]);
+  });
+
   it("floors sandbox_seconds at 1 even for sub-second runs", async () => {
     const { fetchFn, calls } = makeFakeFetch();
     const hook = buildCloudRunSettleHook({

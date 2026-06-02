@@ -1,9 +1,9 @@
 /**
  * Cloud Agent run settle helper.
  *
- * After a `cloud_run` envelope completes (or fails), the daemon POSTs the
- * observed usage back to the Hub so the wallet ledger can finalize the
- * reservation. The Hub-side endpoint is
+ * After a `cloud_run` envelope completes (or fails), the daemon can POST the
+ * observed usage back to the Hub when the envelope enables settlement. The
+ * Hub-side endpoint is
  * `POST /internal/cloud-agents/runs/{run_id}/settle` — see
  * ``backend/hub/services/cloud_agent_usage.py``.
  *
@@ -85,6 +85,8 @@ export interface CloudRunSettleHookDeps {
 export interface CloudRunSettleHookEvent {
   envelopeType?: string | undefined;
   runId?: string | undefined;
+  /** Explicit false disables Hub usage settlement for this run. */
+  settleUsage?: boolean | undefined;
   wallTimeMs: number;
   tokens?: {
     inputCacheHitTokens?: number;
@@ -105,6 +107,9 @@ export function buildCloudRunSettleHook(
   const model = deps.defaultModel ?? "deepseek-v4-flash";
   return async (event) => {
     if (event.envelopeType !== "cloud_run") return;
+    if (event.settleUsage === false) {
+      return;
+    }
     const runId = event.runId;
     if (typeof runId !== "string" || runId.length === 0) {
       log?.warn("cloud_run envelope missing run_id; skipping settle", {

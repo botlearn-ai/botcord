@@ -180,10 +180,9 @@ export async function startCloudDaemon(
     recordActivity(msg);
   };
 
-  // Settle ``cloud_run`` envelopes against the Hub usage ledger once the
-  // runtime turn finishes. Pure adapter from the dispatcher's hook shape
-  // to the settle helper's input shape — the actual HTTP call lives in
-  // :func:`buildCloudRunSettleHook` so it's unit-testable.
+  // Optionally settle ``cloud_run`` envelopes against the Hub usage ledger
+  // once the runtime turn finishes. The Hub can disable this per run through
+  // payload.cloud_run.settle_usage=false.
   const settleHook = buildCloudRunSettleHook({
     hubUrl: cloudCfg.hubUrl,
     accessToken: cloudCfg.accessToken,
@@ -199,13 +198,21 @@ export async function startCloudDaemon(
       ?.envelope as
       | {
           type?: string;
-          payload?: { cloud_run?: { run_id?: unknown } | null } | null;
+          payload?: {
+            cloud_run?: {
+              run_id?: unknown;
+              settle_usage?: unknown;
+            } | null;
+          } | null;
         }
       | undefined;
-    const runId = envelope?.payload?.cloud_run?.run_id;
+    const cloudRun = envelope?.payload?.cloud_run;
+    const runId = cloudRun?.run_id;
+    const settleUsage = cloudRun?.settle_usage;
     await settleHook({
       envelopeType: envelope?.type,
       runId: typeof runId === "string" ? runId : undefined,
+      settleUsage: typeof settleUsage === "boolean" ? settleUsage : undefined,
       wallTimeMs: event.wallTimeMs,
       tokens: {
         ...(event.result?.inputCacheHitTokens !== undefined
