@@ -420,6 +420,83 @@ async def test_dashboard_owner_can_recall_any_room_message(
 
 
 @pytest.mark.asyncio
+async def test_dashboard_owner_can_recall_error_room_message(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_data: dict,
+):
+    db_session.add(MessageRecord(
+        hub_msg_id="hm_recall_error",
+        msg_id="msg_recall_error",
+        sender_id="ag_other00001",
+        receiver_id="ag_dashtest001",
+        room_id="rm_testroom001",
+        envelope_json='{"from":"ag_other00001","type":"error","payload":{"error":{"code":"agent_error","message":"tool failed"}}}',
+        state=MessageState.queued,
+        ttl_sec=3600,
+        created_at=datetime.datetime.now(datetime.timezone.utc),
+    ))
+    await db_session.commit()
+
+    headers = {
+        "Authorization": f"Bearer {seed_data['token']}",
+        "X-Active-Agent": "ag_dashtest001",
+    }
+    resp = await client.post(
+        "/api/dashboard/rooms/rm_testroom001/messages/msg_recall_error/recall",
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["is_recalled"] is True
+
+    messages_resp = await client.get(
+        "/api/dashboard/rooms/rm_testroom001/messages",
+        headers=headers,
+    )
+    assert messages_resp.status_code == 200, messages_resp.text
+    recalled = next(
+        message for message in messages_resp.json()["messages"]
+        if message["msg_id"] == "msg_recall_error"
+    )
+    assert recalled["type"] == "error"
+    assert recalled["text"] == ""
+    assert recalled["payload"]["recalled"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("msg_type", ["ack", "result"])
+async def test_dashboard_recall_rejects_non_error_receipts(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_data: dict,
+    msg_type: str,
+):
+    msg_id = f"msg_recall_{msg_type}"
+    db_session.add(MessageRecord(
+        hub_msg_id=f"hm_recall_{msg_type}",
+        msg_id=msg_id,
+        sender_id="ag_other00001",
+        receiver_id="ag_dashtest001",
+        room_id="rm_testroom001",
+        envelope_json=f'{{"from":"ag_other00001","type":"{msg_type}","payload":{{"text":"receipt"}}}}',
+        state=MessageState.queued,
+        ttl_sec=3600,
+        created_at=datetime.datetime.now(datetime.timezone.utc),
+    ))
+    await db_session.commit()
+
+    resp = await client.post(
+        f"/api/dashboard/rooms/rm_testroom001/messages/{msg_id}/recall",
+        headers={
+            "Authorization": f"Bearer {seed_data['token']}",
+            "X-Active-Agent": "ag_dashtest001",
+        },
+    )
+    assert resp.status_code == 400
+    assert "Only message and error records can be recalled" in resp.text
+
+
+@pytest.mark.asyncio
 async def test_dashboard_member_recall_respects_two_minute_window(
     client: AsyncClient,
     db_session: AsyncSession,

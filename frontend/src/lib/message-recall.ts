@@ -1,6 +1,7 @@
 import type { DashboardMessage, DashboardRoom } from "@/lib/types";
 
 const MESSAGE_RECALL_WINDOW_MS = 2 * 60 * 1000;
+const RECALLABLE_DASHBOARD_MESSAGE_TYPES = new Set(["message", "error"]);
 
 export function isDashboardMessageRecalled(message: Pick<DashboardMessage, "is_recalled" | "recalled_at" | "payload">): boolean {
   return Boolean(
@@ -45,7 +46,7 @@ export function canRecallDashboardMessage({
   nowMs?: number;
 }): boolean {
   if (
-    message.type !== "message"
+    !RECALLABLE_DASHBOARD_MESSAGE_TYPES.has(message.type)
     || !message.room_id
     || !message.msg_id
     || message.room_id.startsWith("rm_oc_")

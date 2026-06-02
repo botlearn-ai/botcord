@@ -127,6 +127,7 @@ class ChatAttachment(BaseModel):
 
 
 _RECEIPT_TYPES = frozenset({"ack", "result", "error"})
+_RECALLABLE_MESSAGE_TYPES = frozenset({"message", "error"})
 _MESSAGE_RECALL_WINDOW = datetime.timedelta(minutes=2)
 _RECALLED_MESSAGE_PREVIEW = "Message recalled"
 
@@ -2525,8 +2526,8 @@ async def recall_room_message(
 
     target = records[0]
     parsed = extract_text_from_envelope(target.envelope_json)
-    if parsed["type"] != "message":
-        raise HTTPException(status_code=400, detail="Only message records can be recalled")
+    if parsed["type"] not in _RECALLABLE_MESSAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Only message and error records can be recalled")
 
     capability = await viewer_can_admin_room(db, ctx, room)
     owned_agent_ids = (
