@@ -1975,7 +1975,7 @@ class NewApiCredential(Base):
     token_id: Mapped[int] = mapped_column(Integer, nullable=False)
     token_name: Mapped[str] = mapped_column(String(128), nullable=False)
     api_base_url: Mapped[str] = mapped_column(Text, nullable=False)
-    api_key: Mapped[str] = mapped_column(Text, nullable=False)
+    api_key_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
     quota: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
     used_quota: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
     token_remain_quota: Mapped[int] = mapped_column(

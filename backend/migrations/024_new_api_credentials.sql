@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS new_api_credentials (
     token_id INTEGER NOT NULL,
     token_name VARCHAR(128) NOT NULL,
     api_base_url TEXT NOT NULL,
-    api_key TEXT NOT NULL,
+    api_key_ciphertext TEXT NOT NULL,
     quota BIGINT NOT NULL DEFAULT 0,
     used_quota BIGINT NOT NULL DEFAULT 0,
     token_remain_quota BIGINT NOT NULL DEFAULT 0,

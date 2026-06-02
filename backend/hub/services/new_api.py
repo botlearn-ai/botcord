@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +18,8 @@ from hub import config as hub_config
 from hub.models import NewApiCredential, User
 
 logger = logging.getLogger(__name__)
+
+_ENCRYPTED_API_KEY_PREFIX = "fernet:"
 
 
 class NewApiError(Exception):
@@ -41,7 +46,7 @@ class NewApiBalance:
 
     @property
     def balance_usd(self) -> float:
-        return self.quota / self.quota_per_usd if self.quota_per_usd > 0 else 0.0
+        return self.token_balance_usd
 
     @property
     def token_balance_usd(self) -> float:
@@ -65,6 +70,7 @@ class NewApiService:
         internal_secret: str | None = None,
         initial_credit_usd: float | None = None,
         timeout_seconds: float | None = None,
+        credential_encryption_key: str | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._base_url = (
@@ -87,6 +93,12 @@ class NewApiService:
             if timeout_seconds is None
             else timeout_seconds
         )
+        encryption_secret = (
+            credential_encryption_key
+            if credential_encryption_key is not None
+            else hub_config.NEW_API_CREDENTIAL_ENCRYPTION_KEY
+        ) or hub_config.JWT_SECRET
+        self._api_key_cipher = _ApiKeyCipher(encryption_secret)
         self._http_client = http_client
 
     def configured(self) -> bool:
@@ -105,7 +117,7 @@ class NewApiService:
         existing = await db.scalar(
             select(NewApiCredential).where(NewApiCredential.user_id == user_id)
         )
-        if existing is not None and existing.api_key and not force_refresh:
+        if existing is not None and existing.api_key_ciphertext and not force_refresh:
             return existing
 
         user = await db.scalar(select(User).where(User.id == user_id))
@@ -136,9 +148,11 @@ class NewApiService:
             )
             return _balance_from_credential(existing, configured=False)
 
-        existing = await self.ensure_credential(db, user_id=user_id)
+        existing = await db.scalar(
+            select(NewApiCredential).where(NewApiCredential.user_id == user_id)
+        )
         if existing is None:
-            return _balance_from_credential(None, configured=False)
+            return _balance_from_credential(None, configured=True)
 
         data = await self._request(
             "POST",
@@ -155,20 +169,18 @@ class NewApiService:
         return _balance_from_credential(credential, configured=True)
 
     def runtime_env(self, credential: NewApiCredential | None) -> dict[str, str]:
-        if credential is None or not credential.api_key:
+        if credential is None or not credential.api_key_ciphertext:
             return {}
         base_url = credential.api_base_url.rstrip("/")
         v1_url = f"{base_url}/v1"
-        api_key = credential.api_key
+        api_key = self._api_key_cipher.decrypt(credential.api_key_ciphertext)
         return {
             "NEW_API_BASE_URL": base_url,
             "NEW_API_API_KEY": api_key,
             "NEW_API_OPENAI_BASE_URL": v1_url,
             "OPENAI_BASE_URL": v1_url,
             "OPENAI_API_KEY": api_key,
-            # Anthropic SDK / Claude Code expect the root URL and append
-            # /v1/messages themselves, so no /v1 suffix here.
-            "ANTHROPIC_BASE_URL": base_url,
+            "ANTHROPIC_BASE_URL": v1_url,
             "ANTHROPIC_API_KEY": api_key,
             "DEEPSEEK_BASE_URL": v1_url,
             "DEEPSEEK_API_KEY": api_key,
@@ -252,7 +264,7 @@ class NewApiService:
                 token_id=_int(token.get("id")),
                 token_name=_string(token.get("name")) or "",
                 api_base_url=self._base_url or "",
-                api_key=api_key or "",
+                api_key_ciphertext="",
                 quota=0,
                 used_quota=0,
                 token_remain_quota=0,
@@ -262,12 +274,20 @@ class NewApiService:
             db.add(existing)
 
         existing.new_api_user_id = _int(data.get("user_id"))
-        existing.new_api_username = _string(data.get("username")) or existing.new_api_username
+        existing.new_api_username = (
+            _string(data.get("username")) or existing.new_api_username
+        )
         existing.token_id = _int(token.get("id"))
         existing.token_name = _string(token.get("name")) or existing.token_name
         existing.api_base_url = self._base_url or existing.api_base_url
         if api_key:
-            existing.api_key = api_key
+            existing.api_key_ciphertext = self._api_key_cipher.encrypt(api_key)
+        elif existing.api_key_ciphertext and not self._api_key_cipher.is_encrypted(
+            existing.api_key_ciphertext
+        ):
+            existing.api_key_ciphertext = self._api_key_cipher.encrypt(
+                existing.api_key_ciphertext
+            )
         existing.quota = _int(data.get("quota"))
         existing.used_quota = _int(data.get("used_quota"))
         existing.token_remain_quota = _int(token.get("remain_quota"))
@@ -319,6 +339,42 @@ def _response_message(parsed: dict[str, Any] | None) -> str | None:
         return None
     message = parsed.get("message")
     return message if isinstance(message, str) and message else None
+
+
+class _ApiKeyCipher:
+    def __init__(self, secret: str) -> None:
+        self._fernet = Fernet(_derive_fernet_key(secret))
+
+    def is_encrypted(self, value: str) -> bool:
+        return value.startswith(_ENCRYPTED_API_KEY_PREFIX)
+
+    def encrypt(self, value: str) -> str:
+        token = self._fernet.encrypt(value.encode("utf-8")).decode("ascii")
+        return f"{_ENCRYPTED_API_KEY_PREFIX}{token}"
+
+    def decrypt(self, value: str) -> str:
+        if not value:
+            return ""
+        if not self.is_encrypted(value):
+            return value
+        encrypted = value.removeprefix(_ENCRYPTED_API_KEY_PREFIX)
+        try:
+            return self._fernet.decrypt(encrypted.encode("ascii")).decode("utf-8")
+        except InvalidToken as exc:
+            raise NewApiError(
+                "new_api_api_key_decrypt_failed",
+                "stored new-api credential cannot be decrypted",
+            ) from exc
+
+
+def _derive_fernet_key(secret: str) -> bytes:
+    candidate = secret.strip().encode("utf-8")
+    try:
+        Fernet(candidate)
+        return candidate
+    except Exception:
+        digest = hashlib.sha256(candidate).digest()
+        return base64.urlsafe_b64encode(digest)
 
 
 def _string(value: Any) -> str | None:

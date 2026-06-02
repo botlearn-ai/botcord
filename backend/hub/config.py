@@ -455,6 +455,9 @@ NEW_API_BASE_URL: str | None = (
     os.getenv("NEW_API_BASE_URL", "").strip().rstrip("/") or None
 )
 NEW_API_INTERNAL_SECRET: str | None = os.getenv("NEW_API_INTERNAL_SECRET")
+NEW_API_CREDENTIAL_ENCRYPTION_KEY: str | None = os.getenv(
+    "NEW_API_CREDENTIAL_ENCRYPTION_KEY"
+)
 NEW_API_REQUEST_TIMEOUT_SECONDS: float = float(
     os.getenv("NEW_API_REQUEST_TIMEOUT_SECONDS", "10")
 )
