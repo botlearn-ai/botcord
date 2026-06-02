@@ -193,6 +193,17 @@ async def test_create_requires_auth(client_factory):
 
 
 @pytest.mark.asyncio
+async def test_api_token_recharge_route_is_not_exposed(client_factory, seed_user):
+    client, _ = await client_factory()
+    r = await client.post(
+        "/api/cloud-agents/api-token/recharge",
+        json={"amount_usd": 10000},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_create_with_agent_token_requires_management_grant(
     client_factory,
     seed_manager_agent,

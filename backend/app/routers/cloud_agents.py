@@ -240,10 +240,6 @@ class CloudAgentApiTokenBalanceOut(BaseModel):
     token_balance_usd: float
 
 
-class CloudAgentApiTokenRechargeRequest(BaseModel):
-    amount_usd: float = Field(gt=0, le=10000)
-
-
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -329,28 +325,6 @@ async def get_cloud_agent_api_token_balance(
 ) -> CloudAgentApiTokenBalanceOut:
     try:
         balance = await service.get_balance(db, user_id=ctx.user_id)
-        await db.commit()
-    except NewApiError as exc:
-        raise HTTPException(
-            status_code=503 if exc.code == "new_api_not_configured" else 502,
-            detail={"code": exc.code, "message": exc.message},
-        ) from exc
-    return _api_token_balance_out(balance)
-
-
-@router.post("/api-token/recharge", response_model=CloudAgentApiTokenBalanceOut)
-async def recharge_cloud_agent_api_token(
-    body: CloudAgentApiTokenRechargeRequest,
-    ctx: RequestContext = Depends(require_user),
-    db: AsyncSession = Depends(get_db),
-    service: NewApiService = Depends(get_new_api_service),
-) -> CloudAgentApiTokenBalanceOut:
-    try:
-        balance = await service.top_up(
-            db,
-            user_id=ctx.user_id,
-            amount_usd=body.amount_usd,
-        )
         await db.commit()
     except NewApiError as exc:
         raise HTTPException(

@@ -154,33 +154,6 @@ class NewApiService:
         await db.flush()
         return _balance_from_credential(credential, configured=True)
 
-    async def top_up(
-        self,
-        db: AsyncSession,
-        *,
-        user_id: uuid.UUID,
-        amount_usd: float,
-    ) -> NewApiBalance:
-        if not self.configured():
-            raise NewApiError("new_api_not_configured", "new-api is not configured")
-        if amount_usd <= 0:
-            raise NewApiError("invalid_amount", "amount_usd must be positive")
-
-        await self.ensure_credential(db, user_id=user_id)
-        data = await self._request(
-            "POST",
-            "/api/botcord/topup",
-            {"external_user_id": str(user_id), "amount_usd": amount_usd},
-        )
-        credential = await self._upsert_credential(
-            db,
-            user_id=user_id,
-            data=data,
-            require_api_key=False,
-        )
-        await db.flush()
-        return _balance_from_credential(credential, configured=True)
-
     def runtime_env(self, credential: NewApiCredential | None) -> dict[str, str]:
         if credential is None or not credential.api_key:
             return {}
