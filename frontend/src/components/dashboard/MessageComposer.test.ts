@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import MessageComposer, {
   getClipboardFiles,
+  getSendableMessageText,
   isImeComposing,
   MESSAGE_COMPOSER_TEXTAREA_ARIA_AUTOCOMPLETE,
   MESSAGE_COMPOSER_TEXTAREA_AUTOCOMPLETE,
@@ -39,6 +40,20 @@ describe("message composer autofill metadata", () => {
     expect(getAttribute("data-bwignore")).toBe("true");
     expect(getAttribute("data-protonpass-ignore")).toBe("true");
     expect(getAttribute("aria-autocomplete")).toBe("none");
+  });
+});
+
+describe("getSendableMessageText", () => {
+  it("preserves leading spaces in text sent to the callback", () => {
+    expect(getSendableMessageText("  hello", false)).toBe("  hello");
+  });
+
+  it("blocks whitespace-only messages when there are no files", () => {
+    expect(getSendableMessageText("   \n\t", false)).toBeNull();
+  });
+
+  it("allows file-only sends with an empty text payload", () => {
+    expect(getSendableMessageText("   \n\t", true)).toBe("");
   });
 });
 
