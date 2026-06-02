@@ -17,11 +17,13 @@ from hub.services.agent_schedules import (
     compute_next_fire_at,
     create_schedule,
     dispatch_schedule_run,
+    LEGACY_SESSION_POLICY,
     now_utc,
     serialize_run,
     serialize_schedule,
     validate_payload_json,
     validate_schedule_json,
+    validate_session_policy,
 )
 
 router = APIRouter(prefix="/hub/schedules", tags=["agent-schedules"])
@@ -32,6 +34,7 @@ class ScheduleBody(BaseModel):
     enabled: bool = True
     schedule: dict[str, Any]
     payload: dict[str, Any] | None = None
+    session_policy: str | None = None
 
 
 class SchedulePatchBody(BaseModel):
@@ -39,6 +42,7 @@ class SchedulePatchBody(BaseModel):
     enabled: bool | None = None
     schedule: dict[str, Any] | None = None
     payload: dict[str, Any] | None = None
+    session_policy: str | None = None
 
 
 async def _load_self_agent(db: AsyncSession, agent_id: str) -> Agent:
@@ -96,6 +100,7 @@ async def create_self_schedule(
         name=body.name,
         schedule_json=body.schedule,
         payload_json=body.payload,
+        session_policy=body.session_policy,
         enabled=body.enabled,
         created_by="agent",
     )
@@ -119,13 +124,27 @@ async def patch_self_schedule(
 ) -> dict[str, Any]:
     row = await _load_self_schedule(db, current_agent, schedule_id)
     schedule_changed = False
+    session_changed = False
     if body.name is not None:
         row.name = body.name.strip()
     if body.schedule is not None:
-        row.schedule_json = validate_schedule_json(body.schedule)
+        schedule_json = validate_schedule_json(body.schedule)
+        if schedule_json != row.schedule_json:
+            session_changed = True
+        row.schedule_json = schedule_json
         schedule_changed = True
     if body.payload is not None:
-        row.payload_json = validate_payload_json(body.payload)
+        payload_json = validate_payload_json(body.payload)
+        if payload_json != row.payload_json:
+            session_changed = True
+        row.payload_json = payload_json
+    if body.session_policy is not None:
+        policy = validate_session_policy(body.session_policy)
+        current_policy = validate_session_policy(row.session_policy, default=LEGACY_SESSION_POLICY)
+        if policy != current_policy:
+            session_changed = True
+        if row.session_policy is not None or policy != LEGACY_SESSION_POLICY:
+            row.session_policy = policy
     if body.enabled is not None:
         row.enabled = body.enabled
         schedule_changed = True
@@ -133,6 +152,8 @@ async def patch_self_schedule(
         row.next_fire_at = compute_next_fire_at(row.schedule_json) if row.enabled else None
         row.locked_until = None
         row.locked_by = None
+    if session_changed:
+        row.session_epoch = (row.session_epoch or 1) + 1
     try:
         await db.commit()
     except Exception as exc:  # noqa: BLE001

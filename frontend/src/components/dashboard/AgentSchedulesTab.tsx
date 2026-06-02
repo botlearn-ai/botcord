@@ -17,6 +17,7 @@ interface AgentSchedule {
     | { kind: "calendar"; frequency: "daily"; time: string; timezone: string }
     | { kind: "calendar"; frequency: "weekly"; time: string; timezone: string; weekdays: number[] };
   payload: { kind: "agent_turn"; message: string };
+  session_policy?: ScheduleSessionPolicy;
   created_by: string;
   next_fire_at?: string | null;
   last_fire_at?: string | null;
@@ -42,6 +43,13 @@ const WEEKDAYS = [
 ];
 const TIME_PATTERN = /^\d{2}:\d{2}$/;
 type ScheduleMode = "every" | "daily" | "weekly";
+type ScheduleSessionPolicy = "fresh_per_run" | "reuse_per_schedule";
+const DEFAULT_SESSION_POLICY: ScheduleSessionPolicy = "fresh_per_run";
+const LEGACY_SESSION_POLICY: ScheduleSessionPolicy = "reuse_per_schedule";
+const SESSION_POLICY_OPTIONS: Array<{ value: ScheduleSessionPolicy; label: string }> = [
+  { value: "fresh_per_run", label: "每次独立" },
+  { value: "reuse_per_schedule", label: "持续工作流" },
+];
 
 function formatTime(value?: string | null): string {
   if (!value) return "未安排";
@@ -75,6 +83,11 @@ function scheduleLabel(schedule: AgentSchedule["schedule"]): string {
   return `${labels || "每周"} ${schedule.time}`;
 }
 
+function sessionPolicyLabel(policy?: ScheduleSessionPolicy): string {
+  const value = policy ?? LEGACY_SESSION_POLICY;
+  return SESSION_POLICY_OPTIONS.find((item) => item.value === value)?.label ?? "持续工作流";
+}
+
 function statusClass(status?: string): string {
   if (status === "dispatched") return "border-green-400/20 bg-green-400/10 text-green-300";
   if (status === "offline") return "border-yellow-400/20 bg-yellow-400/10 text-yellow-300";
@@ -96,6 +109,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
   const [time, setTime] = useState("09:00");
   const [weekdays, setWeekdays] = useState<number[]>([0]);
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
+  const [sessionPolicy, setSessionPolicy] = useState<ScheduleSessionPolicy>(DEFAULT_SESSION_POLICY);
 
   const canSaveForm = useMemo(
     () =>
@@ -147,6 +161,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
     setTime("09:00");
     setWeekdays([0]);
     setMessage(DEFAULT_MESSAGE);
+    setSessionPolicy(DEFAULT_SESSION_POLICY);
   }
 
   function buildScheduleBody() {
@@ -160,6 +175,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
             ? { kind: "calendar" as const, frequency: "daily" as const, time, timezone }
             : { kind: "calendar" as const, frequency: "weekly" as const, time, timezone, weekdays },
       payload: { kind: "agent_turn" as const, message: message.trim() },
+      session_policy: sessionPolicy,
     };
   }
 
@@ -167,6 +183,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
     setEditingScheduleId(schedule.id);
     setName(schedule.name);
     setMessage(schedule.payload.message);
+    setSessionPolicy(schedule.session_policy ?? LEGACY_SESSION_POLICY);
     if (schedule.schedule.kind === "every") {
       setScheduleMode("every");
       setEveryMinutes(Math.max(5, Math.round(schedule.schedule.every_ms / 60000)));
@@ -294,7 +311,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-text-secondary">
-                      {scheduleLabel(schedule.schedule)} · 下次 {formatTime(schedule.next_fire_at)}
+                      {scheduleLabel(schedule.schedule)} · {sessionPolicyLabel(schedule.session_policy)} · 下次 {formatTime(schedule.next_fire_at)}
                     </p>
                     <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{schedule.payload.message}</p>
                   </div>
@@ -437,6 +454,25 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
               ) : null}
             </div>
           )}
+          <div className="grid gap-1">
+            <div className="text-xs text-text-secondary">运行方式</div>
+            <div className="grid grid-cols-2 gap-2">
+              {SESSION_POLICY_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setSessionPolicy(option.value)}
+                  className={`rounded-lg border px-3 py-2 text-sm ${
+                    sessionPolicy === option.value
+                      ? "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan"
+                      : "border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}

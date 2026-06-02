@@ -37,11 +37,13 @@ async def test_dashboard_can_create_patch_run_and_delete_schedule(
     created = create_resp.json()
     assert created["name"] == "botcord-auto"
     assert created["schedule"]["every_ms"] == 300000
+    assert created["session_policy"] == "fresh_per_run"
     assert created["next_fire_at"]
 
     list_resp = await client.get("/api/agents/ag_agent001/schedules", headers=headers)
     assert list_resp.status_code == 200
     assert [row["id"] for row in list_resp.json()["schedules"]] == [created["id"]]
+    assert list_resp.json()["schedules"][0]["session_policy"] == "fresh_per_run"
 
     patch_resp = await client.patch(
         f"/api/agents/ag_agent001/schedules/{created['id']}",
@@ -94,6 +96,26 @@ async def test_schedule_rejects_too_short_interval(
     )
     assert resp.status_code == 400
     assert resp.json()["detail"] == "schedule_interval_too_short"
+
+
+@pytest.mark.asyncio
+async def test_schedule_rejects_invalid_session_policy(
+    client: AsyncClient,
+    seed_user: dict,
+):
+    resp = await client.post(
+        "/api/agents/ag_agent001/schedules",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+        json={
+            "name": "bad-policy",
+            "enabled": True,
+            "schedule": {"kind": "every", "every_ms": 300000},
+            "payload": {"kind": "agent_turn", "message": "tick"},
+            "session_policy": "guess_from_message",
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "session_policy_invalid"
 
 
 @pytest.mark.asyncio
@@ -189,10 +211,19 @@ async def test_manual_run_records_failed_ack(
             "enabled": True,
             "schedule": {"kind": "every", "every_ms": 300000},
             "payload": {"kind": "agent_turn", "message": "tick"},
+            "session_policy": "reuse_per_schedule",
         },
     )
     assert create_resp.status_code == 201
     schedule_id = create_resp.json()["id"]
+    assert create_resp.json()["session_policy"] == "reuse_per_schedule"
+
+    patch_resp = await client.patch(
+        f"/api/agents/ag_agent001/schedules/{schedule_id}",
+        headers=headers,
+        json={"payload": {"kind": "agent_turn", "message": "next tick"}},
+    )
+    assert patch_resp.status_code == 200
 
     run_resp = await client.post(
         f"/api/agents/ag_agent001/schedules/{schedule_id}/run",
@@ -207,7 +238,61 @@ async def test_manual_run_records_failed_ack(
     params = captured["params"]
     assert params["schedule_id"] == schedule_id
     assert params["run_id"] == body["id"]
+    assert params["message"] == "next tick"
+    assert params["session_policy"] == "reuse_per_schedule"
+    assert params["session_epoch"] == 2
     assert params["scheduled_for"]
     assert params["dispatched_at"]
     datetime.datetime.fromisoformat(params["scheduled_for"])
     datetime.datetime.fromisoformat(params["dispatched_at"])
+
+
+@pytest.mark.asyncio
+async def test_legacy_schedule_omits_session_policy_params(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_user: dict,
+    monkeypatch,
+):
+    import hub.routers.openclaw_control as openclaw_control
+
+    captured: dict = {}
+
+    async def fake_send_host_control_frame(host_id, frame_type, params, **_kwargs):
+        captured.update({"host_id": host_id, "frame_type": frame_type, "params": params})
+        return {"id": "frame_1", "ok": True}
+
+    monkeypatch.setattr(openclaw_control, "send_host_control_frame", fake_send_host_control_frame)
+    seed_user["agent1"].hosting_kind = "openclaw"
+    seed_user["agent1"].openclaw_host_id = "oc_test"
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {seed_user['token']}"}
+    create_resp = await client.post(
+        "/api/agents/ag_agent001/schedules",
+        headers=headers,
+        json={
+            "name": "legacy",
+            "enabled": True,
+            "schedule": {"kind": "every", "every_ms": 300000},
+            "payload": {"kind": "agent_turn", "message": "tick"},
+        },
+    )
+    assert create_resp.status_code == 201
+    schedule_id = create_resp.json()["id"]
+
+    row = await db_session.get(AgentSchedule, schedule_id)
+    assert row is not None
+    row.session_policy = None
+    row.session_epoch = 1
+    await db_session.commit()
+
+    run_resp = await client.post(
+        f"/api/agents/ag_agent001/schedules/{schedule_id}/run",
+        headers=headers,
+    )
+    assert run_resp.status_code == 200
+    assert run_resp.json()["status"] == "dispatched"
+    params = captured["params"]
+    assert "session_policy" not in params
+    assert "session_epoch" not in params

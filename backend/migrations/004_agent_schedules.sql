@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS agent_schedules (
   enabled boolean NOT NULL DEFAULT true,
   schedule_json json NOT NULL,
   payload_json json NOT NULL,
+  session_policy varchar(32) NOT NULL DEFAULT 'fresh_per_run',
+  session_epoch integer NOT NULL DEFAULT 1,
   created_by varchar(16) NOT NULL DEFAULT 'owner',
   next_fire_at timestamptz NULL,
   last_fire_at timestamptz NULL,
@@ -13,7 +15,9 @@ CREATE TABLE IF NOT EXISTS agent_schedules (
   locked_by varchar(64) NULL,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
-  CONSTRAINT uq_agent_schedules_agent_name UNIQUE (agent_id, name)
+  CONSTRAINT uq_agent_schedules_agent_name UNIQUE (agent_id, name),
+  CONSTRAINT ck_agent_schedules_session_policy CHECK (session_policy IN ('fresh_per_run', 'reuse_per_schedule')),
+  CONSTRAINT ck_agent_schedules_session_epoch CHECK (session_epoch >= 1)
 );
 
 CREATE INDEX IF NOT EXISTS ix_agent_schedules_due

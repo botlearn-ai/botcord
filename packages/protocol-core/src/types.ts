@@ -355,6 +355,8 @@ export type AgentSchedulePayload = {
   message: string;
 };
 
+export type AgentScheduleSessionPolicy = "fresh_per_run" | "reuse_per_schedule";
+
 export type AgentSchedule = {
   id: string;
   agent_id: string;
@@ -362,6 +364,7 @@ export type AgentSchedule = {
   enabled: boolean;
   schedule: AgentScheduleSpec;
   payload: AgentSchedulePayload;
+  session_policy: AgentScheduleSessionPolicy;
   created_by: "owner" | "agent" | string;
   next_fire_at: string | null;
   last_fire_at: string | null;

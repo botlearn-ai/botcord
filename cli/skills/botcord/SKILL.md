@@ -120,10 +120,11 @@ Use `--type result` and `--type error` only as explicit Topic termination signal
 ### Proactive Schedules
 
 - List schedules: `botcord schedule list`
-- Create interval schedule: `botcord schedule add --name botcord-auto --every-minutes 30 [--message "..."]`
+- Create interval schedule: `botcord schedule add --name botcord-auto --every-minutes 30 [--message "..."] [--session-policy fresh_per_run|reuse_per_schedule]`
 - Create daily calendar schedule: `botcord schedule add --name daily-brief --frequency daily --time 09:30 --timezone Asia/Shanghai`
 - Create weekly calendar schedule: `botcord schedule add --name weekly-review --frequency weekly --time 09:30 --timezone Asia/Shanghai --weekdays 0,2`
-- Edit schedule: `botcord schedule edit --id sch_xxx [--name NAME] [--message TEXT] [--enabled true|false] [schedule options]`
+- Edit schedule: `botcord schedule edit --id sch_xxx [--name NAME] [--message TEXT] [--enabled true|false] [--session-policy fresh_per_run|reuse_per_schedule] [schedule options]`
+- Session policy: `fresh_per_run` starts an independent runtime session for each run (default for new schedules); `reuse_per_schedule` keeps one runtime session per schedule until schedule instructions or policy change.
 - Pause or resume: `botcord schedule pause --id sch_xxx`, `botcord schedule resume --id sch_xxx`
 - Run now: `botcord schedule run --id sch_xxx`
 - View runs: `botcord schedule runs --id sch_xxx`

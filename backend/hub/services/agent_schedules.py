@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 MIN_EVERY_MS = 5 * 60 * 1000
 MAX_EVERY_MS = 30 * 24 * 60 * 60 * 1000
 DEFAULT_PROACTIVE_MESSAGE = "【BotCord 自主任务】执行本轮工作目标。"
+DEFAULT_SESSION_POLICY = "fresh_per_run"
+LEGACY_SESSION_POLICY = "reuse_per_schedule"
+SESSION_POLICIES = {DEFAULT_SESSION_POLICY, LEGACY_SESSION_POLICY}
 _BACKGROUND_RUNS: set[asyncio.Task] = set()
 WEEKDAYS = set(range(7))
 
@@ -109,6 +112,13 @@ def validate_payload_json(value: dict[str, Any] | None) -> dict[str, Any]:
     return {"kind": "agent_turn", "message": message}
 
 
+def validate_session_policy(value: str | None, *, default: str = DEFAULT_SESSION_POLICY) -> str:
+    policy = default if value is None else value
+    if policy not in SESSION_POLICIES:
+        raise HTTPException(status_code=400, detail="session_policy_invalid")
+    return policy
+
+
 def compute_next_fire_at(
     schedule_json: dict[str, Any],
     base: datetime.datetime | None = None,
@@ -148,6 +158,7 @@ def serialize_schedule(row: AgentSchedule) -> dict[str, Any]:
         "enabled": row.enabled,
         "schedule": row.schedule_json,
         "payload": row.payload_json,
+        "session_policy": validate_session_policy(row.session_policy, default=LEGACY_SESSION_POLICY),
         "created_by": row.created_by,
         "next_fire_at": aware(row.next_fire_at).isoformat() if row.next_fire_at else None,
         "last_fire_at": aware(row.last_fire_at).isoformat() if row.last_fire_at else None,
@@ -194,6 +205,7 @@ async def create_schedule(
     name: str,
     schedule_json: dict[str, Any],
     payload_json: dict[str, Any] | None,
+    session_policy: str | None = None,
     enabled: bool = True,
     created_by: str = "owner",
 ) -> AgentSchedule:
@@ -204,6 +216,7 @@ async def create_schedule(
         raise HTTPException(status_code=400, detail="name_too_long")
     schedule = validate_schedule_json(schedule_json)
     payload = validate_payload_json(payload_json)
+    policy = validate_session_policy(session_policy)
     row = AgentSchedule(
         id=generate_agent_schedule_id(),
         agent_id=agent.agent_id,
@@ -212,6 +225,8 @@ async def create_schedule(
         enabled=enabled,
         schedule_json=schedule,
         payload_json=payload,
+        session_policy=policy,
+        session_epoch=1,
         created_by=created_by,
         next_fire_at=compute_next_fire_at(schedule) if enabled else None,
     )
@@ -243,6 +258,8 @@ async def dispatch_schedule_run(
     db.add(run)
     await db.flush()
 
+    session_policy = validate_session_policy(schedule.session_policy, default=LEGACY_SESSION_POLICY)
+    session_epoch = schedule.session_epoch or 1
     params = {
         "agent_id": schedule.agent_id,
         "reason": "manual" if manual else "scheduled",
@@ -254,6 +271,9 @@ async def dispatch_schedule_run(
         "run_id": run.id,
         "dedupe_key": run.dedupe_key,
     }
+    if schedule.session_policy is not None or session_epoch > 1:
+        params["session_policy"] = session_policy
+        params["session_epoch"] = session_epoch
 
     try:
         if agent.hosting_kind == "daemon" and agent.daemon_instance_id:

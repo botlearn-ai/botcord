@@ -670,6 +670,34 @@ interface WakeAgentParams {
   dispatchedAt?: string;
   dedupe_key?: string;
   dedupeKey?: string;
+  session_policy?: string;
+  sessionPolicy?: string;
+  session_epoch?: number;
+  sessionEpoch?: number;
+}
+
+type ScheduleSessionPolicy = "fresh_per_run" | "reuse_per_schedule";
+
+function parseScheduleSessionPolicy(value: unknown): ScheduleSessionPolicy | null | undefined {
+  if (value === undefined) return null;
+  if (value === "fresh_per_run" || value === "reuse_per_schedule") return value;
+  return undefined;
+}
+
+function scheduleThreadId(args: {
+  scheduleId?: string;
+  runId: string;
+  sessionPolicy: ScheduleSessionPolicy;
+  sessionEpoch?: number;
+}): string | null {
+  if (args.sessionPolicy === "fresh_per_run") {
+    return args.scheduleId ? `${args.scheduleId}:run:${args.runId}` : args.runId;
+  }
+  if (!args.scheduleId) return null;
+  if (Number.isInteger(args.sessionEpoch) && args.sessionEpoch! > 0) {
+    return `${args.scheduleId}:v${args.sessionEpoch}`;
+  }
+  return args.scheduleId;
 }
 
 async function handleWakeAgent(gateway: Gateway, raw: unknown): Promise<AckBody> {
@@ -708,6 +736,27 @@ async function handleWakeAgent(gateway: Gateway, raw: unknown): Promise<AckBody>
   const scheduledFor = params.scheduled_for || params.scheduledFor;
   const dispatchedAt = params.dispatched_at || params.dispatchedAt;
   const dedupeKey = params.dedupe_key || params.dedupeKey;
+  const rawSessionPolicy = params.session_policy ?? params.sessionPolicy;
+  const parsedSessionPolicy = parseScheduleSessionPolicy(rawSessionPolicy);
+  if (parsedSessionPolicy === undefined) {
+    return {
+      ok: false,
+      error: {
+        code: "bad_params",
+        message: "wake_agent params.session_policy must be fresh_per_run or reuse_per_schedule",
+      },
+    };
+  }
+  const rawSessionEpoch = params.session_epoch ?? params.sessionEpoch;
+  if (rawSessionEpoch !== undefined && (!Number.isInteger(rawSessionEpoch) || rawSessionEpoch <= 0)) {
+    return {
+      ok: false,
+      error: { code: "bad_params", message: "wake_agent params.session_epoch must be a positive integer" },
+    };
+  }
+  const sessionPolicy = parsedSessionPolicy ?? "reuse_per_schedule";
+  const sessionEpoch = rawSessionEpoch;
+  const threadId = scheduleThreadId({ scheduleId, runId, sessionPolicy, sessionEpoch });
   const conversationId = `rm_schedule_${agentId}`;
   const msg: GatewayInboundMessage = {
     id: runId,
@@ -717,7 +766,7 @@ async function handleWakeAgent(gateway: Gateway, raw: unknown): Promise<AckBody>
       id: conversationId,
       kind: "direct",
       title: "BotCord Scheduler",
-      threadId: scheduleId ?? null,
+      threadId,
     },
     sender: {
       id: "hub",
@@ -732,6 +781,8 @@ async function handleWakeAgent(gateway: Gateway, raw: unknown): Promise<AckBody>
       dispatched_at: dispatchedAt,
       run_id: runId,
       dedupe_key: dedupeKey,
+      session_policy: sessionPolicy,
+      session_epoch: sessionEpoch,
     },
     mentioned: true,
     receivedAt: Date.now(),
