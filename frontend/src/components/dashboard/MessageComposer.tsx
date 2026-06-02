@@ -99,6 +99,11 @@ export function getClipboardFiles(
     .filter((file): file is File => Boolean(file));
 }
 
+export function getSendableMessageText(text: string, hasFiles: boolean): string | null {
+  if (text.trim().length > 0) return text;
+  return hasFiles ? "" : null;
+}
+
 export default function MessageComposer({
   onSend,
   onTransfer,
@@ -270,10 +275,10 @@ export default function MessageComposer({
   }, [pickedMentions, text, mentionCandidates]);
 
   const handleSend = useCallback(async () => {
-    const trimmed = text.trim();
     const hasFiles = files.length > 0;
     const hasLengthError = text.length > MESSAGE_MAX_LENGTH || showLengthError;
-    if ((!trimmed && !hasFiles) || disabled || hasLengthError) return;
+    const sendText = getSendableMessageText(text, hasFiles);
+    if (sendText === null || disabled || hasLengthError) return;
 
     const raw = files.map((pf) => pf.file);
     for (const pf of files) { if (pf.preview) URL.revokeObjectURL(pf.preview); }
@@ -287,7 +292,7 @@ export default function MessageComposer({
       inputRef.current.style.height = "auto";
     }
 
-    await onSend(trimmed, raw, mentions.length > 0 ? mentions : undefined);
+    await onSend(sendText, raw, mentions.length > 0 ? mentions : undefined);
   }, [text, files, disabled, showLengthError, activeMentions, onSend]);
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
