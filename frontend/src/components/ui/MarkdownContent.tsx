@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
+import ImagePreviewOverlay from "@/components/ui/ImagePreviewOverlay";
 
 interface MarkdownContentProps {
   content: string;
@@ -274,27 +275,54 @@ function MarkdownImageFallback({ src, alt }: { src: string; alt?: string }) {
 function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
   const rawSrc = typeof src === "string" ? src : "";
   const [failed, setFailed] = useState(() => (rawSrc ? hasFailedMarkdownImageSrc(rawSrc) : false));
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
+    setPreviewOpen(false);
     setFailed(rawSrc ? hasFailedMarkdownImageSrc(rawSrc) : false);
   }, [rawSrc]);
+
+  const handleImageError = () => {
+    rememberFailedMarkdownImageSrc(rawSrc);
+    setPreviewOpen(false);
+    setFailed(true);
+  };
 
   if (!isPreviewableMarkdownImageSrc(rawSrc) || failed) {
     return <MarkdownImageFallback src={rawSrc} alt={alt} />;
   }
 
+  const title = alt || "Markdown image";
+
   return (
-    <img
-      src={rawSrc}
-      alt={alt ?? ""}
-      className="my-2 max-h-72 max-w-full rounded-lg border border-glass-border object-contain"
-      loading="lazy"
-      decoding="async"
-      onError={() => {
-        rememberFailedMarkdownImageSrc(rawSrc);
-        setFailed(true);
-      }}
-    />
+    <>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setPreviewOpen(true);
+        }}
+        className="group my-2 inline-flex max-w-full items-center justify-center overflow-hidden rounded-lg border border-glass-border bg-black/20 text-left"
+        aria-label={`Preview ${title}`}
+      >
+        <img
+          src={rawSrc}
+          alt={alt ?? ""}
+          className="block max-h-72 max-w-full cursor-zoom-in object-contain transition-opacity group-hover:opacity-80"
+          loading="lazy"
+          decoding="async"
+          onError={handleImageError}
+        />
+      </button>
+      {previewOpen && (
+        <ImagePreviewOverlay
+          src={rawSrc}
+          title={title}
+          onClose={() => setPreviewOpen(false)}
+          onImageError={handleImageError}
+        />
+      )}
+    </>
   );
 }
 

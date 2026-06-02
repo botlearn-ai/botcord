@@ -1,5 +1,7 @@
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import {
+import MarkdownContent, {
   hasFailedMarkdownImageSrc,
   isPreviewableMarkdownImageSrc,
   normalizeMessageContent,
@@ -59,6 +61,20 @@ describe("isPreviewableMarkdownImageSrc", () => {
     expect(isPreviewableMarkdownImageSrc("output/xhs-01-cover.png")).toBe(false);
     expect(isPreviewableMarkdownImageSrc("social-card-botcord-agent-hub/index.html")).toBe(false);
     expect(isPreviewableMarkdownImageSrc("/hub/files/f_123")).toBe(false);
+  });
+});
+
+describe("MarkdownContent images", () => {
+  it("renders previewable markdown images as zoomable preview buttons", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MarkdownContent, {
+        content: "![cover](https://example.com/card.png)",
+      }),
+    );
+
+    expect(html).toContain('aria-label="Preview cover"');
+    expect(html).toContain('src="https://example.com/card.png"');
+    expect(html).toContain("cursor-zoom-in");
   });
 });
 
