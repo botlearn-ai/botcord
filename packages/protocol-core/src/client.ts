@@ -1043,6 +1043,7 @@ export class BotCordClient {
     enabled?: boolean;
     schedule: AgentScheduleSpec;
     payload?: AgentSchedulePayload;
+    session_policy?: AgentSchedule["session_policy"];
   }): Promise<AgentSchedule> {
     const resp = await this.hubFetch("/hub/schedules", {
       method: "POST",
@@ -1051,6 +1052,7 @@ export class BotCordClient {
         enabled: params.enabled ?? true,
         schedule: params.schedule,
         payload: params.payload,
+        session_policy: params.session_policy,
       }),
     });
     return (await resp.json()) as AgentSchedule;
@@ -1063,6 +1065,7 @@ export class BotCordClient {
       enabled?: boolean;
       schedule?: AgentScheduleSpec;
       payload?: AgentSchedulePayload;
+      session_policy?: AgentSchedule["session_policy"];
     },
   ): Promise<AgentSchedule> {
     const resp = await this.hubFetch(`/hub/schedules/${encodeURIComponent(scheduleId)}`, {

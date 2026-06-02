@@ -1479,6 +1479,11 @@ class AgentSchedule(Base):
     __tablename__ = "agent_schedules"
     __table_args__ = (
         UniqueConstraint("agent_id", "name", name="uq_agent_schedules_agent_name"),
+        CheckConstraint(
+            "session_policy IS NULL OR session_policy IN ('fresh_per_run', 'reuse_per_schedule')",
+            name="ck_agent_schedules_session_policy",
+        ),
+        CheckConstraint("session_epoch >= 1", name="ck_agent_schedules_session_epoch"),
         Index("ix_agent_schedules_due", "enabled", "next_fire_at"),
         Index("ix_agent_schedules_agent", "agent_id"),
     )
@@ -1492,6 +1497,8 @@ class AgentSchedule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=sa_text("TRUE"))
     schedule_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     payload_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    session_policy: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    session_epoch: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     created_by: Mapped[str] = mapped_column(String(16), nullable=False, default="owner", server_default="owner")
     next_fire_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_fire_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

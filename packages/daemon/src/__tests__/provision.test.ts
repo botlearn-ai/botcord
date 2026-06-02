@@ -333,7 +333,78 @@ describe("wake_agent handler", () => {
       dispatched_at: "2026-05-19T01:30:02+00:00",
       run_id: "sr_test",
       dedupe_key: "sch_test:1:auto",
+      session_policy: "reuse_per_schedule",
     });
+  });
+
+  it("uses a per-run thread for fresh_per_run scheduled turns", async () => {
+    const gw = makeFakeGateway(["ag_wake"]);
+    const handler = createProvisioner({ gateway: gw as any });
+    const res = await handler({
+      id: "req_wake_fresh",
+      type: "wake_agent",
+      params: {
+        agent_id: "ag_wake",
+        message: "tick",
+        run_id: "sr_fresh",
+        schedule_id: "sch_fresh",
+        session_policy: "fresh_per_run",
+        session_epoch: 3,
+      },
+    });
+
+    expect(res.ok).toBe(true);
+    const msg = gw.injectInbound.mock.calls[0][0];
+    expect(msg.conversation.threadId).toBe("sch_fresh:run:sr_fresh");
+    expect(msg.raw).toMatchObject({
+      session_policy: "fresh_per_run",
+      session_epoch: 3,
+    });
+  });
+
+  it("uses schedule epoch for reuse_per_schedule scheduled turns", async () => {
+    const gw = makeFakeGateway(["ag_wake"]);
+    const handler = createProvisioner({ gateway: gw as any });
+    const res = await handler({
+      id: "req_wake_reuse",
+      type: "wake_agent",
+      params: {
+        agent_id: "ag_wake",
+        message: "tick",
+        run_id: "sr_reuse",
+        schedule_id: "sch_reuse",
+        session_policy: "reuse_per_schedule",
+        session_epoch: 2,
+      },
+    });
+
+    expect(res.ok).toBe(true);
+    const msg = gw.injectInbound.mock.calls[0][0];
+    expect(msg.conversation.threadId).toBe("sch_reuse:v2");
+    expect(msg.raw).toMatchObject({
+      session_policy: "reuse_per_schedule",
+      session_epoch: 2,
+    });
+  });
+
+  it("rejects malformed schedule session policy", async () => {
+    const gw = makeFakeGateway(["ag_wake"]);
+    const handler = createProvisioner({ gateway: gw as any });
+    const res = await handler({
+      id: "req_wake_bad_policy",
+      type: "wake_agent",
+      params: {
+        agent_id: "ag_wake",
+        message: "tick",
+        run_id: "sr_bad_policy",
+        schedule_id: "sch_bad_policy",
+        session_policy: "guess",
+      },
+    });
+
+    expect(res.ok).toBe(false);
+    expect(res.error?.code).toBe("bad_params");
+    expect(gw.injectInbound).not.toHaveBeenCalled();
   });
 
   it("acks wake_agent after queueing instead of waiting for the turn to finish", async () => {

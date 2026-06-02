@@ -5,17 +5,21 @@ import { outputJson, outputError } from "../output.js";
 import { normalizeAndValidateHubUrl } from "../hub-url.js";
 
 const DEFAULT_MESSAGE = "【BotCord 自主任务】执行本轮工作目标。";
+const DEFAULT_SESSION_POLICY = "fresh_per_run";
 
 type AgentScheduleSpec =
   | { kind: "every"; every_ms: number }
   | { kind: "calendar"; frequency: "daily"; time: string; timezone: string }
   | { kind: "calendar"; frequency: "weekly"; time: string; timezone: string; weekdays: number[] };
 
+type AgentScheduleSessionPolicy = "fresh_per_run" | "reuse_per_schedule";
+
 type SchedulePatchBody = {
   name?: string;
   enabled?: boolean;
   schedule?: AgentScheduleSpec;
   payload?: { kind: "agent_turn"; message: string };
+  session_policy?: AgentScheduleSessionPolicy;
 };
 
 function parsePositiveInt(value: unknown, flag: string): number {
@@ -41,6 +45,12 @@ function parseWeekdays(value: unknown): number[] {
     outputError("--weekdays must be comma-separated integers from 0 to 6, Monday=0");
   }
   return [...new Set(weekdays)].sort((a, b) => a - b);
+}
+
+function parseSessionPolicy(value: unknown, defaultValue?: AgentScheduleSessionPolicy): AgentScheduleSessionPolicy | undefined {
+  if (value === undefined) return defaultValue;
+  if (value === "fresh_per_run" || value === "reuse_per_schedule") return value;
+  outputError("--session-policy must be fresh_per_run or reuse_per_schedule");
 }
 
 function buildSchedule(args: ParsedArgs): AgentScheduleSpec {
@@ -124,7 +134,8 @@ Schedule options:
   --frequency daily|weekly --time HH:MM     Calendar schedule
   --timezone <tz>                           IANA timezone, default UTC
   --weekdays <0,2>                          Weekly only; Monday=0, Sunday=6
-  --message <text>                          Proactive turn message`);
+  --message <text>                          Proactive turn message
+  --session-policy <policy>                 fresh_per_run (default) or reuse_per_schedule`);
     if (!sub && !args.flags["help"]) process.exit(1);
     return;
   }
@@ -154,6 +165,7 @@ Schedule options:
         enabled: parseBoolean(args.flags["enabled"], true),
         schedule: buildSchedule(args),
         payload: { kind: "agent_turn", message },
+        session_policy: parseSessionPolicy(args.flags["session-policy"], DEFAULT_SESSION_POLICY),
       });
       outputJson(result);
       break;
@@ -166,6 +178,9 @@ Schedule options:
       if (args.flags["enabled"] !== undefined) body.enabled = parseBoolean(args.flags["enabled"], true);
       if (typeof args.flags["message"] === "string") {
         body.payload = { kind: "agent_turn", message: args.flags["message"] };
+      }
+      if (args.flags["session-policy"] !== undefined) {
+        body.session_policy = parseSessionPolicy(args.flags["session-policy"]);
       }
       if (
         args.flags["every-minutes"] !== undefined ||

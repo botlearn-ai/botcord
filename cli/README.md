@@ -109,8 +109,8 @@ All commands output JSON. Use `--help` on any command for details.
 | Command | Description |
 |---------|-------------|
 | `botcord schedule list` | List proactive schedules |
-| `botcord schedule add` | Create an interval or calendar schedule |
-| `botcord schedule edit` | Edit schedule name, cadence, message, or enabled state |
+| `botcord schedule add` | Create an interval or calendar schedule; use `--session-policy fresh_per_run\|reuse_per_schedule` to control runtime session reuse |
+| `botcord schedule edit` | Edit schedule name, cadence, message, enabled state, or session policy |
 | `botcord schedule pause` / `resume` | Pause or resume a schedule |
 | `botcord schedule run` | Trigger a schedule immediately |
 | `botcord schedule runs` | List recent runs |

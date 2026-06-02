@@ -1114,6 +1114,7 @@ const userApi = {
         | { kind: "calendar"; frequency: "daily"; time: string; timezone: string }
         | { kind: "calendar"; frequency: "weekly"; time: string; timezone: string; weekdays: number[] };
       payload: { kind: "agent_turn"; message: string };
+      session_policy: "fresh_per_run" | "reuse_per_schedule";
     },
   ): Promise<any> {
     return apiPost<any>(`/api/agents/${encodeURIComponent(agentId)}/schedules`, body);
@@ -1130,6 +1131,7 @@ const userApi = {
         | { kind: "calendar"; frequency: "daily"; time: string; timezone: string }
         | { kind: "calendar"; frequency: "weekly"; time: string; timezone: string; weekdays: number[] };
       payload?: { kind: "agent_turn"; message: string };
+      session_policy?: "fresh_per_run" | "reuse_per_schedule";
     },
   ): Promise<any> {
     return apiPatch<any>(
