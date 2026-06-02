@@ -541,13 +541,12 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       else groups.set(key, [msg]);
     }
 
-    // Emit groups in parallel: each `(room_id, topic)` group is an independent
+    // Hand groups off independently: each `(room_id, topic)` group is its own
     // conversation thread, and the dispatcher already keys its per-turn queue
     // by `(channel, accountId, roomId, threadId)` (see `buildQueueKey` in
-    // dispatcher.ts). Awaiting groups serially here forced a slow turn in
-    // room A to block room B's turn from starting; running them concurrently
-    // lets the dispatcher's per-room queues actually run in parallel.
-    const emitTasks: Promise<void>[] = [];
+    // dispatcher.ts). Do not await runtime completion here; one slow room turn
+    // must not hold the channel-wide inbox drain and starve newer messages
+    // from other rooms.
     for (const group of groups.values()) {
       const normalized = normalizeInboxBatch(group, {
         channelId: options.id,
@@ -573,21 +572,25 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           },
         },
       };
-      emitTasks.push(
-        emit(envelope).then(
-          () => {
-            emittedGroups += 1;
-          },
-          (err) => {
-            log.error("botcord emit threw", {
-              hubMsgIds: hubIds,
-              err: String(err),
-            });
-          },
-        ),
-      );
+      emittedGroups += 1;
+      // Fire and continue draining. The dispatcher acks after it accepts
+      // ownership, and the seen-cache suppresses any duplicate observations
+      // before that ack reaches Hub. Awaiting the runtime here would make one
+      // long room turn starve newer inbox messages from other rooms.
+      try {
+        void emit(envelope).catch((err) => {
+          log.error("botcord emit threw", {
+            hubMsgIds: hubIds,
+            err: String(err),
+          });
+        });
+      } catch (err) {
+        log.error("botcord emit threw", {
+          hubMsgIds: hubIds,
+          err: String(err),
+        });
+      }
     }
-    await Promise.all(emitTasks);
     logDrain();
     return { hasMore: Boolean(resp.has_more) };
   }
