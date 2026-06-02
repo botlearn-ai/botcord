@@ -79,6 +79,12 @@ describe("skill snapshots", () => {
 
   it("scans Codex .system skills and prefers Codex copies for Codex agents", () => {
     const agentId = "ag_codex_system";
+    writeSkill(path.join(agentWorkspaceDir(agentId), "skills"), "shared", "Generic workspace copy");
+    writeSkill(
+      path.join(agentWorkspaceDir(agentId), "skills"),
+      "workspace-only",
+      "Generic workspace skill",
+    );
     writeSkill(path.join(agentWorkspaceDir(agentId), ".claude", "skills"), "shared", "Claude copy");
     writeSkill(path.join(agentCodexHomeDir(agentId), "skills"), "shared", "Codex copy");
     writeSkill(
@@ -97,10 +103,16 @@ describe("skill snapshots", () => {
       "agent-system",
       "imagegen",
       "shared",
+      "workspace-only",
     ]);
     expect(codexScanned.find((s) => s.name === "shared")).toMatchObject({
       source: "agent-codex",
       description: "Codex copy",
+    });
+    expect(codexScanned.find((s) => s.name === "workspace-only")).toMatchObject({
+      source: "agent-workspace",
+      runtime: "codex",
+      description: "Generic workspace skill",
     });
 
     const claudeScanned = scanSoftSkills(agentId, { runtime: "claude-code" });
@@ -114,6 +126,47 @@ describe("skill snapshots", () => {
       .toBe("workspace");
     expect(snapshot.skills.find((s) => s.name === "imagegen")?.source)
       .toBe("runtime-global");
+    expect(snapshot.skills.find((s) => s.name === "workspace-only"))
+      .toMatchObject({
+        source: "workspace",
+        sourceDetail: "agent-workspace",
+        runtime: "codex",
+        path: path.join(agentWorkspaceDir(agentId), "skills", "workspace-only", "SKILL.md"),
+      });
+  });
+
+  it("scans generic workspace skills and keeps Claude-native copies ahead", () => {
+    const agentId = "ag_claude_workspace";
+    const genericSkills = path.join(agentWorkspaceDir(agentId), "skills");
+    const claudeSkills = path.join(agentWorkspaceDir(agentId), ".claude", "skills");
+    writeSkill(genericSkills, "shared", "Generic workspace copy");
+    writeSkill(genericSkills, "workspace-only", "Generic workspace skill");
+    writeSkill(claudeSkills, "shared", "Claude copy");
+
+    const claudeScanned = scanSoftSkills(agentId, { runtime: "claude-code" });
+    expect(claudeScanned.map((s) => s.name)).toEqual([
+      "shared",
+      "workspace-only",
+    ]);
+    expect(claudeScanned.find((s) => s.name === "shared")).toMatchObject({
+      source: "agent-claude",
+      runtime: "claude-code",
+      description: "Claude copy",
+    });
+    expect(claudeScanned.find((s) => s.name === "workspace-only")).toMatchObject({
+      source: "agent-workspace",
+      runtime: "claude-code",
+      description: "Generic workspace skill",
+    });
+
+    const snapshot = collectAgentSkillSnapshot(agentId, { runtime: "claude-code" });
+    expect(snapshot.skills.find((s) => s.name === "workspace-only"))
+      .toMatchObject({
+        source: "workspace",
+        sourceDetail: "agent-workspace",
+        runtime: "claude-code",
+        path: path.join(genericSkills, "workspace-only", "SKILL.md"),
+      });
   });
 
   it("scans Hermes home/profile skills without mixing Claude or Codex dirs", () => {

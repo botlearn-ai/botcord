@@ -69,6 +69,11 @@ export function defaultSkillDirs(
     source: "agent-claude",
     runtime: "claude-code",
   };
+  const agentWorkspace = {
+    dir: path.join(agentWorkspaceDir(agentId), "skills"),
+    source: "agent-workspace",
+    ...(opts.runtime ? { runtime: opts.runtime } : {}),
+  };
   const agentCodex = {
     dir: path.join(agentCodexHomeDir(agentId), "skills"),
     source: "agent-codex",
@@ -92,6 +97,7 @@ export function defaultSkillDirs(
   switch (runtimeFamily(opts.runtime)) {
     case "codex":
       dirs.push(agentCodex);
+      dirs.push(agentWorkspace);
       if (includeGlobal) {
         dirs.push({
           dir: path.join(homedir(), ".codex", "skills"),
@@ -102,9 +108,11 @@ export function defaultSkillDirs(
       break;
     case "hermes":
       dirs.push(agentHermes);
+      dirs.push(agentWorkspace);
       break;
     case "gemini":
       dirs.push(...agentGemini);
+      dirs.push(agentWorkspace);
       if (includeGlobal) {
         dirs.push(
           {
@@ -122,6 +130,7 @@ export function defaultSkillDirs(
       break;
     case "claude":
       dirs.push(agentClaude);
+      dirs.push(agentWorkspace);
       if (includeGlobal) {
         dirs.push({
           dir: path.join(homedir(), ".claude", "skills"),
@@ -131,6 +140,7 @@ export function defaultSkillDirs(
       }
       break;
     case "other":
+      dirs.push(agentWorkspace);
       break;
   }
 
