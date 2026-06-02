@@ -7,6 +7,7 @@ import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
 import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
 import { useLanguage } from "@/lib/i18n";
 import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
+import { formatMessageTimestamp } from "@/lib/message-time";
 
 interface SharedMessageBubbleProps {
   message: SharedMessage;
@@ -17,10 +18,7 @@ export default function SharedMessageBubble({ message }: SharedMessageBubbleProp
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text;
   const isRecalled = isDashboardMessageRecalled(message);
-  const timestampLabel = new Date(message.created_at).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const timestampLabel = formatMessageTimestamp(message.created_at);
   const senderInitial = (message.sender_name || message.sender_id || "?").trim().slice(0, 1).toUpperCase();
 
   if (message.type === "system") {
