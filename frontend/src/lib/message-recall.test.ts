@@ -57,6 +57,36 @@ describe("canRecallDashboardMessage", () => {
     })).toBe(true);
   });
 
+  it("allows fresh own error messages to be recalled", () => {
+    expect(canRecallDashboardMessage({
+      message: message({
+        type: "error",
+        payload: { error: { code: "agent_error", message: "failed" } },
+        text: "failed",
+      }),
+      room: room(),
+      isOwn: true,
+      ownedAgentIds: [],
+      humanId: "hu_1",
+      userId: "user_1",
+      nowMs: Date.parse("2026-05-29T08:01:00.000Z"),
+    })).toBe(true);
+  });
+
+  it("does not allow non-error receipt messages to be recalled", () => {
+    for (const type of ["ack", "result"]) {
+      expect(canRecallDashboardMessage({
+        message: message({ type }),
+        room: room(),
+        isOwn: true,
+        ownedAgentIds: [],
+        humanId: "hu_1",
+        userId: "user_1",
+        nowMs: Date.parse("2026-05-29T08:01:00.000Z"),
+      })).toBe(false);
+    }
+  });
+
   it("does not expose recall on temporary optimistic ids", () => {
     expect(canRecallDashboardMessage({
       message: message({ hub_msg_id: "tmp_1", msg_id: "tmp_1" }),
