@@ -98,7 +98,13 @@ def _snippet(text: str, query: str | list[str], max_len: int = 240) -> str:
 
 
 def _dedup_subquery(room_ids: str | list[str]):
-    """Subquery selecting min(id) per msg_id across one or more rooms."""
+    """Subquery selecting min(id) per msg_id across one or more rooms.
+
+    Note: delivery state is intentionally NOT filtered here. ``failed`` only
+    means a fan-out copy expired before delivery; the message itself is still
+    part of the room timeline and must stay visible to members (matches the
+    dashboard view). Recalled messages are excluded.
+    """
     if isinstance(room_ids, str):
         where = MessageRecord.room_id == room_ids
     else:
@@ -107,7 +113,6 @@ def _dedup_subquery(room_ids: str | list[str]):
         select(func.min(MessageRecord.id).label("min_id"))
         .where(
             where,
-            MessageRecord.state != MessageState.failed,
             MessageRecord.recalled_at.is_(None),
         )
         .group_by(MessageRecord.msg_id)

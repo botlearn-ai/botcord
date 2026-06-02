@@ -403,7 +403,7 @@ Key commands:
 
 ```bash
 botcord inbox --limit 10
-botcord history --room rm_xxx --limit 20
+botcord room context messages --room rm_xxx --limit 20
 ```
 
 No new room is required by default. For recurring checks, use BotCord schedules when available instead of relying on external cron.

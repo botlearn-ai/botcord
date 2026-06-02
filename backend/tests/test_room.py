@@ -3136,8 +3136,12 @@ async def test_public_room_history_visible_to_late_joiner(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_private_room_history_not_visible_to_late_joiner(client: AsyncClient):
-    """A member who joins a private room later cannot see previous messages."""
+async def test_private_room_history_visible_to_late_joiner(client: AsyncClient):
+    """A member who joins a private room later sees the full room timeline.
+
+    Membership is the access boundary for room history — visibility only
+    controls who can join, not what members can read once inside.
+    """
     sk_a, a_id, a_key, a_token = await _create_agent(client, "alice")
     sk_b, b_id, b_key, b_token = await _create_agent(client, "bob")
 
@@ -3163,7 +3167,7 @@ async def test_private_room_history_not_visible_to_late_joiner(client: AsyncClie
     )
     assert invite_resp.status_code == 201
 
-    # Bob queries history — should NOT see the message sent before they joined
+    # Bob queries history — sees the message sent before they joined
     resp = await client.get(
         "/hub/history",
         headers=_auth_header(b_token),
@@ -3171,7 +3175,83 @@ async def test_private_room_history_not_visible_to_late_joiner(client: AsyncClie
     )
     assert resp.status_code == 200
     texts = [m["envelope"]["payload"]["text"] for m in resp.json()["messages"]]
-    assert "private msg" not in texts
+    assert "private msg" in texts
+
+    # Non-members still get 403
+    sk_c, c_id, c_key, c_token = await _create_agent(client, "carol")
+    resp = await client.get(
+        "/hub/history",
+        headers=_auth_header(c_token),
+        params={"room_id": room_id},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_room_history_includes_expired_fanout_messages(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Messages whose fan-out copies all expired (state=failed) stay visible.
+
+    `failed` is a delivery state, not a visibility state: if every recipient
+    was offline past the TTL, the message must still appear in room history
+    and room-context reads (matching the dashboard view).
+    """
+    from sqlalchemy import update
+    from hub.models import MessageRecord
+    from hub.enums import MessageState
+
+    sk_a, a_id, a_key, a_token = await _create_agent(client, "alice")
+    sk_b, b_id, b_key, b_token = await _create_agent(client, "bob")
+    sk_c, c_id, c_key, c_token = await _create_agent(client, "carol")
+
+    create_resp = await client.post(
+        "/hub/rooms",
+        json={"name": "Quiet Room", "visibility": "public", "join_policy": "open", "member_ids": [b_id]},
+        headers=_auth_header(a_token),
+    )
+    assert create_resp.status_code == 201
+    room_id = create_resp.json()["room_id"]
+
+    env = _build_envelope(sk_a, a_key, a_id, room_id, payload={"text": "daily digest"})
+    resp = await client.post("/hub/send", json=env, headers=_auth_header(a_token))
+    assert resp.status_code == 202
+    msg_id = env["msg_id"]
+
+    # Simulate TTL expiry: every fan-out copy of the message is marked failed
+    await db_session.execute(
+        update(MessageRecord)
+        .where(MessageRecord.msg_id == msg_id)
+        .values(state=MessageState.failed)
+    )
+    await db_session.commit()
+
+    # Carol joins after the fact
+    join_resp = await client.post(
+        f"/hub/rooms/{room_id}/members",
+        json={"agent_id": c_id},
+        headers=_auth_header(c_token),
+    )
+    assert join_resp.status_code == 201
+
+    # /hub/history still shows the message
+    resp = await client.get(
+        "/hub/history",
+        headers=_auth_header(c_token),
+        params={"room_id": room_id},
+    )
+    assert resp.status_code == 200
+    texts = [m["envelope"]["payload"]["text"] for m in resp.json()["messages"]]
+    assert "daily digest" in texts
+
+    # /hub/rooms/{id}/messages (room context) also shows it
+    resp = await client.get(
+        f"/hub/rooms/{room_id}/messages",
+        headers=_auth_header(c_token),
+    )
+    assert resp.status_code == 200
+    ctx_texts = [m["text"] for m in resp.json()["messages"]]
+    assert "daily digest" in ctx_texts
 
 
 # ===========================================================================
