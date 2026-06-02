@@ -705,6 +705,167 @@ describe("createBotCordChannel — ack + dedup", () => {
     }
   });
 
+  it("keeps draining new inbox updates after a slow turn is accepted", async () => {
+    const server = await startAuthOkServer();
+    try {
+      const slow = makeInbox({ hub_msg_id: "m_slow", room_id: "rm_group_slow" });
+      const owner = makeInbox({
+        hub_msg_id: "m_owner",
+        room_id: "rm_oc_owner",
+        text: "hi",
+        envelope: {
+          from: "ag_self",
+          payload: { text: "hi" },
+        } as InboxMessage["envelope"],
+      });
+      const poll = vi
+        .fn()
+        .mockResolvedValueOnce({ messages: [slow], count: 1, has_more: false })
+        .mockResolvedValueOnce({ messages: [owner], count: 1, has_more: false })
+        .mockResolvedValue({ messages: [], count: 0, has_more: false });
+      const client = makeClient({
+        pollInbox: poll,
+        getHubUrl: vi.fn().mockReturnValue(server.url),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: server.url,
+        pollIntervalMs: 0,
+      });
+      const abort = new AbortController();
+      const emits: GatewayInboundEnvelope[] = [];
+      let releaseSlow!: () => void;
+      const slowDone = new Promise<void>((resolve) => {
+        releaseSlow = resolve;
+      });
+      let slowAccepted!: () => void;
+      const slowAcceptedPromise = new Promise<void>((resolve) => {
+        slowAccepted = resolve;
+      });
+
+      const startP = channel.start({
+        config: stubConfig,
+        accountId: "ag_self",
+        abortSignal: abort.signal,
+        log: silentLog,
+        emit: async (env) => {
+          emits.push(env);
+          await env.ack?.accept();
+          if (env.message.id === "m_slow") {
+            slowAccepted();
+            await slowDone;
+          }
+        },
+        setStatus: () => {},
+      });
+
+      await slowAcceptedPromise;
+      server.connections[0]!.send(JSON.stringify({ type: "inbox_update" }));
+
+      await vi.waitFor(() => expect(poll).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(emits.map((e) => e.message.id)).toEqual(["m_slow", "m_owner"]));
+
+      releaseSlow();
+      abort.abort();
+      await startP;
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("keeps same room handoffs ordered while other rooms continue draining", async () => {
+    const server = await startAuthOkServer();
+    try {
+      const slow = makeInbox({
+        hub_msg_id: "m_slow",
+        room_id: "rm_group_same",
+        topic_id: "tp_same",
+      });
+      const sameRoomNext = makeInbox({
+        hub_msg_id: "m_same_next",
+        room_id: "rm_group_same",
+        topic_id: "tp_same",
+        text: "same room next",
+        envelope: {
+          msg_id: "env_same_next",
+          payload: { text: "same room next" },
+        } as InboxMessage["envelope"],
+      });
+      const otherRoom = makeInbox({
+        hub_msg_id: "m_other",
+        room_id: "rm_group_other",
+        text: "other room",
+        envelope: {
+          msg_id: "env_other",
+          payload: { text: "other room" },
+        } as InboxMessage["envelope"],
+      });
+      const poll = vi
+        .fn()
+        .mockResolvedValueOnce({ messages: [slow], count: 1, has_more: false })
+        .mockResolvedValueOnce({ messages: [sameRoomNext, otherRoom], count: 2, has_more: false })
+        .mockResolvedValueOnce({ messages: [sameRoomNext], count: 1, has_more: false })
+        .mockResolvedValue({ messages: [], count: 0, has_more: false });
+      const client = makeClient({
+        pollInbox: poll,
+        getHubUrl: vi.fn().mockReturnValue(server.url),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: server.url,
+        pollIntervalMs: 0,
+      });
+      const abort = new AbortController();
+      const emits: GatewayInboundEnvelope[] = [];
+      let releaseSlow!: () => void;
+      const slowDone = new Promise<void>((resolve) => {
+        releaseSlow = resolve;
+      });
+
+      const startP = channel.start({
+        config: stubConfig,
+        accountId: "ag_self",
+        abortSignal: abort.signal,
+        log: silentLog,
+        emit: async (env) => {
+          emits.push(env);
+          await env.ack?.accept();
+          if (env.message.id === "m_slow") {
+            await slowDone;
+          }
+        },
+        setStatus: () => {},
+      });
+
+      await vi.waitFor(() => expect(emits.map((e) => e.message.id)).toEqual(["m_slow"]));
+      server.connections[0]!.send(JSON.stringify({ type: "inbox_update" }));
+
+      await vi.waitFor(() => expect(poll).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(emits.map((e) => e.message.id)).toEqual(["m_slow", "m_other"]));
+      expect(client.ackMessages).not.toHaveBeenCalledWith(["m_same_next"]);
+
+      server.connections[0]!.send(JSON.stringify({ type: "inbox_update" }));
+      await vi.waitFor(() => expect(poll).toHaveBeenCalledTimes(3));
+      expect(client.ackMessages).not.toHaveBeenCalledWith(["m_same_next"]);
+
+      releaseSlow();
+      await vi.waitFor(() =>
+        expect(emits.map((e) => e.message.id)).toEqual(["m_slow", "m_other", "m_same_next"]),
+      );
+      await vi.waitFor(() => expect(client.ackMessages).toHaveBeenCalledWith(["m_same_next"]));
+      abort.abort();
+      await startP;
+    } finally {
+      await server.close();
+    }
+  });
+
   it("locally revokes the channel when Hub reports the agent is unclaimed", async () => {
     const server = await startAuthOkServer();
     try {
