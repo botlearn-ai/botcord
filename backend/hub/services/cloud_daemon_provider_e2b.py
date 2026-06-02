@@ -446,6 +446,7 @@ class E2BCloudDaemonProvider:
         runtime: str,
         region: str | None = None,
         provider_sandbox_id: str | None = None,
+        extra_env: dict[str, str] | None = None,
     ) -> CloudDaemonHandle:
         # A fresh cloud-daemon-access token on every start/resume so a
         # leaked token expires quickly; the daemon picks it up from the
@@ -459,6 +460,7 @@ class E2BCloudDaemonProvider:
             cloud_daemon_instance_id=cloud_daemon_instance_id,
             daemon_instance_id=daemon_instance_id,
             access_token=token,
+            extra_env=extra_env,
         )
 
         chosen_region = region or self._default_region
@@ -643,6 +645,7 @@ class E2BCloudDaemonProvider:
         cloud_daemon_instance_id: str,
         daemon_instance_id: str,
         access_token: str,
+        extra_env: dict[str, str] | None = None,
     ) -> dict[str, str]:
         env: dict[str, str] = {
             "BOTCORD_HUB_URL": self._hub_public_base_url,
@@ -653,6 +656,8 @@ class E2BCloudDaemonProvider:
         }
         if self._deepseek_api_key:
             env["DEEPSEEK_API_KEY"] = self._deepseek_api_key
+        if extra_env:
+            env.update({key: value for key, value in extra_env.items() if value})
         return env
 
 

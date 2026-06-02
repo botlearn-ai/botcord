@@ -63,6 +63,27 @@ def _make_service(
     return svc, fake
 
 
+class _StaticNewApiService:
+    async def ensure_credential(self, db, *, user_id, force_refresh=False):
+        return object()
+
+    def runtime_env(self, credential):
+        return {
+            "OPENAI_API_KEY": "sk-user",
+            "OPENAI_BASE_URL": "https://new-api.test/v1",
+        }
+
+
+class _EnvCapturingProvider(FakeCloudDaemonProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.extra_envs: list[dict[str, str]] = []
+
+    async def create_or_resume(self, **kwargs):
+        self.extra_envs.append(dict(kwargs.get("extra_env") or {}))
+        return await super().create_or_resume(**kwargs)
+
+
 # ---------------------------------------------------------------------------
 # Create
 # ---------------------------------------------------------------------------
@@ -118,6 +139,29 @@ async def test_create_returns_ready_with_fake_provider(db_session):
     # Provider was called exactly once for create.
     calls = fake.calls(view.cloud_daemon_instance_id)
     assert calls["create"] == 1
+
+
+@pytest.mark.asyncio
+async def test_create_cloud_agent_passes_new_api_env_to_provider(db_session):
+    provider = _EnvCapturingProvider()
+    svc = CloudAgentService(
+        provider=provider,
+        feature_enabled=True,
+        new_api_service=_StaticNewApiService(),
+    )
+
+    await svc.create_cloud_agent(
+        db_session,
+        user_id=uuid.uuid4(),
+        body=CreateCloudAgentInput(name="Cloud Bot"),
+    )
+
+    assert provider.extra_envs == [
+        {
+            "OPENAI_API_KEY": "sk-user",
+            "OPENAI_BASE_URL": "https://new-api.test/v1",
+        }
+    ]
 
 
 @pytest.mark.asyncio

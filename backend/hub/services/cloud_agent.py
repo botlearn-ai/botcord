@@ -73,6 +73,7 @@ from hub.services.cloud_daemon_provider import (
     get_provider,
 )
 from hub.services.wallet import get_or_create_wallet
+from hub.services.new_api import NewApiError, NewApiService
 
 logger = logging.getLogger(__name__)
 
@@ -285,6 +286,7 @@ class CloudAgentService:
         max_per_user: int | None = None,
         max_agents_per_daemon: int | None = None,
         usage_service: UsageService | None = None,
+        new_api_service: NewApiService | None = None,
     ) -> None:
         self._provider_name = provider_name or CLOUD_AGENT_DEFAULT_PROVIDER
         self._provider = provider  # may be None; resolved lazily
@@ -300,6 +302,7 @@ class CloudAgentService:
             else max_agents_per_daemon
         )
         self._usage = usage_service or UsageService()
+        self._new_api = new_api_service or NewApiService()
 
     # ------------------------------------------------------------------
     # Public lifecycle
@@ -430,6 +433,8 @@ class CloudAgentService:
         cloud_daemon.active_agent_count = (cloud_daemon.active_agent_count or 0) + 1
         await db.flush()
 
+        runtime_env = await self._runtime_env_for_user(db, user_id=user_id)
+
         if is_cloud_daemon_online(cloud_daemon.id):
             cloud_daemon.status = "ready"
             cloud_daemon.error_code = None
@@ -453,6 +458,7 @@ class CloudAgentService:
                 user_id=str(user_id),
                 runtime=cloud_daemon.runtime,
                 provider_sandbox_id=cloud_daemon.provider_sandbox_id,
+                extra_env=runtime_env,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception(
@@ -659,6 +665,7 @@ class CloudAgentService:
 
         provider = self._get_provider()
         if cdi.status != "ready" or not daemon_online:
+            runtime_env = await self._runtime_env_for_user(db, user_id=user_id)
             await _ensure_no_other_active_cloud_daemon(
                 db,
                 user_id=user_id,
@@ -688,6 +695,7 @@ class CloudAgentService:
                 user_id=str(user_id),
                 runtime=cai.runtime,
                 provider_sandbox_id=cdi.provider_sandbox_id,
+                extra_env=runtime_env,
             )
             _apply_handle_to_rows(cdi, handle)
             cdi.last_started_at = _now()
@@ -826,6 +834,8 @@ class CloudAgentService:
                 http_status=409,
             )
 
+        runtime_env = await self._runtime_env_for_user(db, user_id=user_id)
+
         for cai, agent in agent_rows:
             if cai.status in {"ready", "provisioning", "failed", "paused"}:
                 _ensure_provisioning_metadata(db, cai, agent)
@@ -845,6 +855,7 @@ class CloudAgentService:
                 user_id=str(user_id),
                 runtime=cdi.runtime,
                 provider_sandbox_id=cdi.provider_sandbox_id,
+                extra_env=runtime_env,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception(
@@ -1514,6 +1525,22 @@ class CloudAgentService:
         if self._provider is not None:
             return self._provider
         return get_provider(self._provider_name)
+
+    async def _runtime_env_for_user(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+    ) -> dict[str, str]:
+        try:
+            credential = await self._new_api.ensure_credential(db, user_id=user_id)
+        except NewApiError as exc:
+            raise CloudAgentError(
+                exc.code,
+                exc.message,
+                http_status=502,
+            ) from exc
+        return self._new_api.runtime_env(credential)
 
     def _require_feature_enabled(self) -> None:
         if not self._feature_enabled:

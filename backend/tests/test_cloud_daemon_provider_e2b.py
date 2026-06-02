@@ -152,6 +152,28 @@ async def test_create_or_resume_skips_deepseek_env_when_no_key():
 
 
 @pytest.mark.asyncio
+async def test_create_or_resume_injects_extra_runtime_env():
+    """Per-user runtime env is forwarded to the sandbox and can override fallbacks."""
+    provider, client = _make_provider(deepseek_api_key="fallback-ds-key")
+    handle = await provider.create_or_resume(
+        cloud_daemon_instance_id="cloud_dm_newapi",
+        daemon_instance_id="dm_newapi",
+        user_id=str(uuid.uuid4()),
+        runtime="deepseek-tui",
+        extra_env={
+            "OPENAI_API_KEY": "sk-user",
+            "OPENAI_BASE_URL": "https://new-api.test/v1",
+            "DEEPSEEK_API_KEY": "sk-user",
+        },
+    )
+    sandbox = client.get(handle.provider_sandbox_id)
+    assert sandbox is not None
+    assert sandbox.env["OPENAI_API_KEY"] == "sk-user"
+    assert sandbox.env["OPENAI_BASE_URL"] == "https://new-api.test/v1"
+    assert sandbox.env["DEEPSEEK_API_KEY"] == "sk-user"
+
+
+@pytest.mark.asyncio
 async def test_resume_uses_existing_sandbox_when_provider_sandbox_id_supplied():
     """Same cloud_daemon_id + existing sandbox id triggers resume, not create."""
     provider, client = _make_provider()

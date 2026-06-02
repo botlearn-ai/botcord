@@ -55,6 +55,7 @@ class CloudDaemonProvider(Protocol):
         runtime: str,
         region: str | None = None,
         provider_sandbox_id: str | None = None,
+        extra_env: dict[str, str] | None = None,
     ) -> CloudDaemonHandle:
         ...
 
@@ -152,6 +153,7 @@ class FakeCloudDaemonProvider:
         runtime: str,
         region: str | None = None,
         provider_sandbox_id: str | None = None,
+        extra_env: dict[str, str] | None = None,
     ) -> CloudDaemonHandle:
         # ``provider_sandbox_id`` is accepted for protocol parity with the
         # E2B provider — the in-memory map already keys on cloud id.
