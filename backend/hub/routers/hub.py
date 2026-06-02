@@ -2107,8 +2107,8 @@ async def query_history(
     from sqlalchemy import or_, and_
 
     # Optional: room_id filter with access control
-    # For public rooms, members can see ALL room history (not just their own fan-out records).
-    is_public_room = False
+    # Room members can see ALL room history (not just their own fan-out records),
+    # regardless of room visibility — membership is the access boundary.
     if room_id is not None:
         # Load room + verify membership
         room_result = await db.execute(
@@ -2129,16 +2129,17 @@ async def query_history(
                 status_code=403,
                 message_key="not_a_member",
             )
-        is_public_room = room_obj.visibility == RoomVisibility.public
 
-    if is_public_room:
-        # Public room: show all messages in the room, not just the current agent's.
+    if room_id is not None:
+        # Room history: show all messages in the room, not just the current agent's.
         # De-duplicate fan-out by selecting only the lowest-id record per msg_id.
+        # Delivery state is intentionally not filtered: `failed` only means a
+        # fan-out copy expired before delivery; the message stays part of the
+        # room timeline (matches the dashboard view and room-context endpoints).
         min_id_subq = (
             select(func.min(MessageRecord.id).label("min_id"))
             .where(
                 MessageRecord.room_id == room_id,
-                MessageRecord.state != MessageState.failed,
                 MessageRecord.recalled_at.is_(None),
             )
             .group_by(MessageRecord.msg_id)
@@ -2148,7 +2149,8 @@ async def query_history(
             MessageRecord.id.in_(select(min_id_subq.c.min_id))
         )
     else:
-        # Private room or no room_id: only show messages where current agent is sender or receiver
+        # No room_id (DM / cross-room view): only show messages where the
+        # current agent is sender or receiver.
         stmt = select(MessageRecord).where(
             or_(
                 MessageRecord.sender_id == current_agent,
@@ -2157,8 +2159,6 @@ async def query_history(
             MessageRecord.state != MessageState.failed,
             MessageRecord.recalled_at.is_(None),
         )
-        if room_id is not None:
-            stmt = stmt.where(MessageRecord.room_id == room_id)
 
     # Optional: topic filter
     if topic is not None:
@@ -2168,8 +2168,11 @@ async def query_history(
     if topic_id is not None:
         stmt = stmt.where(MessageRecord.topic_id == topic_id)
 
-    # Optional: peer filter (only meaningful for non-public-room queries)
-    if peer is not None and not is_public_room:
+    # Optional: peer filter
+    if peer is not None and room_id is not None:
+        # In a room, filter by sender_id to find messages from a specific peer
+        stmt = stmt.where(MessageRecord.sender_id == peer)
+    elif peer is not None:
         stmt = stmt.where(
             or_(
                 and_(
@@ -2182,9 +2185,6 @@ async def query_history(
                 ),
             )
         )
-    elif peer is not None and is_public_room:
-        # In public room, filter by sender_id to find messages from a specific peer
-        stmt = stmt.where(MessageRecord.sender_id == peer)
 
     # Cursor pagination using auto-increment id for stable ordering
     if before is not None:
@@ -2220,6 +2220,19 @@ async def query_history(
         db, {rec.reply_to_msg_id for rec in rows if rec.reply_to_msg_id}
     )
 
+    # Room reads return representative fan-out rows (lowest id per msg_id),
+    # which may belong to another receiver. `mentioned` is per-receiver, so
+    # overlay it from the current agent's own fan-out copies.
+    own_mentioned: dict[str, bool] = {}
+    if room_id is not None and rows:
+        own_rows = await db.execute(
+            select(MessageRecord.msg_id, MessageRecord.mentioned).where(
+                MessageRecord.msg_id.in_({rec.msg_id for rec in rows}),
+                MessageRecord.receiver_id == current_agent,
+            )
+        )
+        own_mentioned = {m: bool(v) for m, v in own_rows.all()}
+
     messages: list[HistoryMessage] = []
     for rec in rows:
         envelope_data = json.loads(rec.envelope_json)
@@ -2236,7 +2249,11 @@ async def query_history(
                 goal=rec.goal,
                 state=rec.state.value,
                 created_at=ca,
-                mentioned=rec.mentioned,
+                mentioned=(
+                    own_mentioned.get(rec.msg_id, False)
+                    if room_id is not None
+                    else rec.mentioned
+                ),
                 reply_preview=(
                     reply_preview_map.get(rec.reply_to_msg_id)
                     if rec.reply_to_msg_id
