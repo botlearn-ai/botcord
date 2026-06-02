@@ -166,7 +166,9 @@ class NewApiService:
             "NEW_API_OPENAI_BASE_URL": v1_url,
             "OPENAI_BASE_URL": v1_url,
             "OPENAI_API_KEY": api_key,
-            "ANTHROPIC_BASE_URL": v1_url,
+            # Anthropic SDK / Claude Code expect the root URL and append
+            # /v1/messages themselves, so no /v1 suffix here.
+            "ANTHROPIC_BASE_URL": base_url,
             "ANTHROPIC_API_KEY": api_key,
             "DEEPSEEK_BASE_URL": v1_url,
             "DEEPSEEK_API_KEY": api_key,

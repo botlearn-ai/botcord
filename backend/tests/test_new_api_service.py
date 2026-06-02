@@ -103,6 +103,9 @@ async def test_ensure_credential_provisions_and_builds_runtime_env(db_session):
     assert env["OPENAI_API_KEY"] == "sk-user"
     assert env["OPENAI_BASE_URL"] == "https://new-api.test/v1"
     assert env["DEEPSEEK_API_KEY"] == "sk-user"
+    # Anthropic SDK appends /v1/messages itself, so its base URL has no /v1.
+    assert env["ANTHROPIC_BASE_URL"] == "https://new-api.test"
+    assert env["ANTHROPIC_API_KEY"] == "sk-user"
 
 
 @pytest.mark.asyncio
