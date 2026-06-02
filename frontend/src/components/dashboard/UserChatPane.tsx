@@ -14,6 +14,7 @@ import { ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSqu
 import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { formatMessageTimestamp } from "@/lib/message-time";
 import type { Attachment, OwnerChatMessage } from "@/lib/types";
 import type { WsAttachment } from "@/lib/owner-chat-ws";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -512,7 +513,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                   <div>
                     <MarkdownContent content={msg.text || ""} />
                     <div className="text-amber-500/60 mt-1 text-right">
-                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {formatMessageTimestamp(msg.createdAt)}
                     </div>
                   </div>
                 </div>
@@ -552,7 +553,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                     </button>
                     <div className="mt-1 flex items-center gap-1.5">
                       <span className="text-[10px] text-zinc-500">
-                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {formatMessageTimestamp(msg.createdAt)}
                       </span>
                       <span className="rounded bg-amber-400/10 px-1 font-mono text-[10px] text-amber-300/80">
                         error
@@ -746,7 +747,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                       </div>
                     )}
                     <div className="text-xs text-zinc-500 mt-1 text-right">
-                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {formatMessageTimestamp(msg.createdAt)}
                     </div>
                   </div>
                   {!isUser && renderMessageActions(msg, false)}

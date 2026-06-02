@@ -20,6 +20,7 @@ import MarkdownContent from "@/components/ui/MarkdownContent";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
 import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
 import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
+import { formatMessageTimestamp } from "@/lib/message-time";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -161,24 +162,6 @@ function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
       })}
     </span>
   );
-}
-
-function formatMessageTimestamp(isoTime: string): string {
-  const date = new Date(isoTime);
-  if (Number.isNaN(date.getTime())) return "";
-
-  const ageMs = Date.now() - date.getTime();
-  if (ageMs >= 0 && ageMs < 24 * 60 * 60 * 1000) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-
-  return date.toLocaleString([], {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function MentionChip({
