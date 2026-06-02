@@ -426,6 +426,8 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
   const factory = options.clientFactory ?? defaultClientFactory;
   let clientRef: BotCordChannelClient | null = options.client ?? null;
   const seenMessages = new Set<string>();
+  const pendingHandoffMessages = new Set<string>();
+  const handoffTails = new Map<string, Promise<void>>();
   let stopCallback: (() => void) | null = null;
 
   let statusSnapshot: ChannelStatusSnapshot = {
@@ -445,6 +447,29 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       if (first) seenMessages.delete(first);
     }
     return true;
+  }
+
+  function forgetSeen(hubMsgIds: string[]): void {
+    for (const hubMsgId of hubMsgIds) {
+      seenMessages.delete(hubMsgId);
+      pendingHandoffMessages.delete(hubMsgId);
+    }
+  }
+
+  function inboxGroupKey(msg: InboxMessage): string {
+    const topic = msg.topic_id ?? msg.topic ?? "";
+    return `${options.id}:${options.accountId}:${msg.room_id ?? ""}:${topic}`;
+  }
+
+  function queueGroupHandoff(groupKey: string, run: () => Promise<void>): void {
+    const previous = handoffTails.get(groupKey) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(run);
+    handoffTails.set(groupKey, current);
+    void current.finally(() => {
+      if (handoffTails.get(groupKey) === current) {
+        handoffTails.delete(groupKey);
+      }
+    });
   }
 
   function ensureClient(): BotCordChannelClient {
@@ -500,6 +525,10 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     // same conversation thread folds into one turn so the agent sees all
     // new messages at once instead of running N turns back-to-back.
     for (const msg of msgs) {
+      if (pendingHandoffMessages.has(msg.hub_msg_id)) {
+        duplicateCount += 1;
+        continue;
+      }
       if (!rememberSeen(msg.hub_msg_id)) {
         duplicateCount += 1;
         try {
@@ -534,8 +563,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     // iterating the map yields groups with the same external chronology.
     const groups = new Map<string, InboxMessage[]>();
     for (const msg of eligible) {
-      const topic = msg.topic_id ?? msg.topic ?? "";
-      const key = `${msg.room_id ?? ""}:${topic}`;
+      const key = inboxGroupKey(msg);
       const list = groups.get(key);
       if (list) list.push(msg);
       else groups.set(key, [msg]);
@@ -555,6 +583,13 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       if (!normalized) continue;
 
       const hubIds = group.map((m) => m.hub_msg_id);
+      for (const hubId of hubIds) pendingHandoffMessages.add(hubId);
+      let accepted = false;
+      const markAccepted = () => {
+        if (accepted) return;
+        accepted = true;
+        for (const hubId of hubIds) pendingHandoffMessages.delete(hubId);
+      };
       const envelope: GatewayInboundEnvelope = {
         message: normalized,
         ack: {
@@ -568,28 +603,29 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
                 hubMsgIds: hubIds,
                 err: String(err),
               });
+            } finally {
+              markAccepted();
             }
           },
         },
       };
       emittedGroups += 1;
-      // Fire and continue draining. The dispatcher acks after it accepts
-      // ownership, and the seen-cache suppresses any duplicate observations
-      // before that ack reaches Hub. Awaiting the runtime here would make one
-      // long room turn starve newer inbox messages from other rooms.
-      try {
-        void emit(envelope).catch((err) => {
+      // Fire and continue draining, but preserve ordering per room/topic.
+      // Different conversation threads can run independently; a newer message
+      // in the same thread must not overtake an older handoff before the
+      // dispatcher has processed it.
+      queueGroupHandoff(inboxGroupKey(group[0]!), async () => {
+        try {
+          await emit(envelope);
+          markAccepted();
+        } catch (err) {
+          if (!accepted) forgetSeen(hubIds);
           log.error("botcord emit threw", {
             hubMsgIds: hubIds,
             err: String(err),
           });
-        });
-      } catch (err) {
-        log.error("botcord emit threw", {
-          hubMsgIds: hubIds,
-          err: String(err),
-        });
-      }
+        }
+      });
     }
     logDrain();
     return { hasMore: Boolean(resp.has_more) };
