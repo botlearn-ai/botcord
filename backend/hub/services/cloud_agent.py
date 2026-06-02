@@ -22,6 +22,7 @@ import secrets
 import time
 import uuid
 from dataclasses import dataclass
+import copy
 from typing import Any
 
 from nacl.signing import SigningKey as NaClSigningKey
@@ -204,6 +205,19 @@ class CloudAgentUsageView:
 _RUN_PROMPT_MAX_CHARS = 64 * 1024
 _ACTIVE_CLOUD_DAEMON_STATUSES = ("creating", "starting", "ready", "paused")
 _RESUME_START_COALESCE_SECONDS = 30
+_CLOUD_DAEMON_PENDING_LAUNCH_TOKEN_KEY = "pending_launch_token"
+_CLOUD_DAEMON_CURRENT_LAUNCH_TOKEN_KEY = "current_launch_token"
+_PROVISIONING_LAUNCH_TOKEN_KEY = "cloud_daemon_launch_token"
+_VERIFIED_PENDING_LAUNCH_LIST_FAILURES = {
+    "cloud_daemon_ack_timeout",
+    "cloud_daemon_list_agents_rejected",
+}
+
+
+@dataclass(frozen=True)
+class _CloudDaemonAgentListProbe:
+    agent_ids: set[str] | None
+    failure_code: str | None = None
 
 
 def _now() -> datetime.datetime:
@@ -436,13 +450,98 @@ class CloudAgentService:
         runtime_env = await self._runtime_env_for_user(db, user_id=user_id)
 
         if is_cloud_daemon_online(cloud_daemon.id):
-            cloud_daemon.status = "ready"
+            existing_agent_states = await db.execute(
+                select(CloudAgentInstance).where(
+                    CloudAgentInstance.cloud_daemon_instance_id == cloud_daemon.id,
+                    CloudAgentInstance.id != cloud_agent.id,
+                    CloudAgentInstance.status.notin_(("deleted", "deleting")),
+                )
+            )
+            existing_agent_states = existing_agent_states.scalars().all()
+            existing_agent_state_by_id = {
+                cai.agent_id: _snapshot_cloud_agent_state(cai)
+                for cai in existing_agent_states
+            }
+            original_daemon_state = _snapshot_cloud_daemon_state(cloud_daemon)
+            launch_token = _begin_cloud_daemon_relaunch(
+                cloud_daemon,
+                provisioning_agents=[cloud_agent],
+            )
+            cloud_daemon.status = "starting"
             cloud_daemon.error_code = None
             cloud_daemon.error_message = None
-            cloud_daemon.last_seen_at = _now()
+            cloud_agent.status = "provisioning"
             await db.commit()
 
-            await self._provision_one(db, cloud_agent, agent, cloud_daemon)
+            try:
+                handle = await provider.create_or_resume(
+                    cloud_daemon_instance_id=cloud_daemon.id,
+                    daemon_instance_id=daemon_row.id,
+                    user_id=str(user_id),
+                    runtime=cloud_daemon.runtime,
+                    provider_sandbox_id=cloud_daemon.provider_sandbox_id,
+                    extra_env=runtime_env,
+                    launch_token=launch_token,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "cloud daemon provider failed for online relaunch: cloud=%s err=%s",
+                    cloud_daemon.id,
+                    exc,
+                )
+                _restore_cloud_daemon_state(cloud_daemon, original_daemon_state)
+                for cai in existing_agent_states:
+                    _restore_cloud_agent_state(
+                        cai,
+                        existing_agent_state_by_id[cai.agent_id],
+                    )
+                cloud_agent.status = "failed"
+                cloud_agent.error_code = "provider_create_failed"
+                cloud_agent.error_message = str(exc)
+                _scrub_provisioning_metadata(cloud_agent)
+                _clear_cloud_daemon_pending_launch(cloud_daemon)
+                await db.commit()
+                raise CloudAgentError(
+                    "provider_create_failed",
+                    f"cloud daemon provider failed: {exc}",
+                    http_status=502,
+                ) from exc
+
+            _apply_handle_to_rows(cloud_daemon, handle)
+            if handle.status == "starting":
+                cloud_daemon.last_started_at = _now()
+            elif handle.status == "failed":
+                _restore_cloud_daemon_state(cloud_daemon, original_daemon_state)
+                for cai in existing_agent_states:
+                    _restore_cloud_agent_state(
+                        cai,
+                        existing_agent_state_by_id[cai.agent_id],
+                    )
+                cloud_agent.status = "failed"
+                cloud_agent.error_code = handle.error_code
+                cloud_agent.error_message = handle.error_message
+                _scrub_provisioning_metadata(cloud_agent)
+                _clear_cloud_daemon_pending_launch(cloud_daemon)
+            elif handle.status == "ready":
+                cloud_daemon.status = "starting"
+            if handle.status in {"ready", "starting"}:
+                _promote_cloud_daemon_pending_launch(
+                    cloud_daemon,
+                    launch_token=launch_token,
+                )
+            await db.commit()
+
+            if handle.status == "failed":
+                raise CloudAgentError(
+                    handle.error_code or "provider_create_failed",
+                    handle.error_message
+                    or "cloud daemon provider reported failure",
+                    http_status=502,
+                )
+            # ``ready`` or ``starting`` both mean the provider accepted a
+            # relaunch. A stale websocket from the old process may still be
+            # registered, so leave provisioning open until a control WS with
+            # the matching launch token replays the pending agents.
             await db.refresh(cloud_agent)
             await db.refresh(cloud_daemon)
             await db.refresh(agent)
@@ -452,6 +551,7 @@ class CloudAgentService:
         # synchronously; the E2B provider will return ``starting`` and
         # transition to ``ready`` once the daemon's hello frame lands.
         try:
+            launch_token = _cloud_daemon_launch_token_for_start(cloud_daemon)
             handle = await provider.create_or_resume(
                 cloud_daemon_instance_id=cloud_daemon.id,
                 daemon_instance_id=daemon_row.id,
@@ -459,6 +559,7 @@ class CloudAgentService:
                 runtime=cloud_daemon.runtime,
                 provider_sandbox_id=cloud_daemon.provider_sandbox_id,
                 extra_env=runtime_env,
+                launch_token=launch_token,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception(
@@ -652,6 +753,8 @@ class CloudAgentService:
             )
         daemon_online = is_cloud_daemon_online(cdi.id)
         if cdi.status == "ready" and daemon_online:
+            if _cloud_daemon_pending_launch_token(cdi):
+                return _make_view(agent, cai, cdi)
             handled = await self._ensure_agent_loaded_in_online_daemon(
                 db, cai, agent, cdi
             )
@@ -689,6 +792,7 @@ class CloudAgentService:
                 cai.error_code = None
                 cai.error_message = None
                 await db.commit()
+            launch_token = _cloud_daemon_launch_token_for_start(cdi)
             handle = await provider.create_or_resume(
                 cloud_daemon_instance_id=cdi.id,
                 daemon_instance_id=cdi.daemon_instance_id,
@@ -696,6 +800,7 @@ class CloudAgentService:
                 runtime=cai.runtime,
                 provider_sandbox_id=cdi.provider_sandbox_id,
                 extra_env=runtime_env,
+                launch_token=launch_token,
             )
             _apply_handle_to_rows(cdi, handle)
             cdi.last_started_at = _now()
@@ -738,6 +843,9 @@ class CloudAgentService:
         callers keep the previous best-effort behavior instead of risking a
         duplicate install on a merely flaky control channel.
         """
+        if _cloud_daemon_pending_launch_token(cdi):
+            return True
+
         live_agent_ids = await self._list_cloud_daemon_agent_ids(cdi.id)
         if live_agent_ids is None:
             return False
@@ -836,9 +944,19 @@ class CloudAgentService:
 
         runtime_env = await self._runtime_env_for_user(db, user_id=user_id)
 
+        original_daemon_state = _snapshot_cloud_daemon_state(cdi)
+        original_agent_state_by_id = {
+            cai.agent_id: _snapshot_cloud_agent_state(cai)
+            for cai, _agent in agent_rows
+        }
+        launch_token = _begin_cloud_daemon_relaunch(
+            cdi,
+            provisioning_agents=[cai for cai, _agent in agent_rows],
+        )
         for cai, agent in agent_rows:
             if cai.status in {"ready", "provisioning", "failed", "paused"}:
                 _ensure_provisioning_metadata(db, cai, agent)
+                _tag_provisioning_for_cloud_daemon_launch(cai, launch_token)
                 cai.status = "provisioning"
                 cai.error_code = None
                 cai.error_message = None
@@ -856,6 +974,7 @@ class CloudAgentService:
                 runtime=cdi.runtime,
                 provider_sandbox_id=cdi.provider_sandbox_id,
                 extra_env=runtime_env,
+                launch_token=launch_token,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception(
@@ -863,34 +982,33 @@ class CloudAgentService:
                 cdi.id,
                 exc,
             )
-            cdi.status = "failed"
-            cdi.error_code = "provider_restart_failed"
-            cdi.error_message = str(exc)
+            _restore_cloud_daemon_state(cdi, original_daemon_state)
             for cai, _agent in agent_rows:
-                cai.status = "failed"
-                cai.error_code = "provider_restart_failed"
-                cai.error_message = str(exc)
+                _restore_cloud_agent_state(
+                    cai,
+                    original_agent_state_by_id[cai.agent_id],
+                )
+            _clear_cloud_daemon_pending_launch(cdi)
             await db.commit()
             raise CloudAgentError(
                 "provider_restart_failed",
                 f"cloud daemon provider failed: {exc}",
                 http_status=502,
             ) from exc
-
         _apply_handle_to_rows(cdi, handle)
         cdi.last_started_at = _now()
-        if handle.status == "failed":
+        if handle.status in {"ready", "starting"}:
+            if handle.status == "ready":
+                cdi.status = "starting"
+            _promote_cloud_daemon_pending_launch(cdi, launch_token=launch_token)
+        elif handle.status == "failed":
+            _restore_cloud_daemon_state(cdi, original_daemon_state)
             for cai, _agent in agent_rows:
-                cai.status = "failed"
-                cai.error_code = handle.error_code
-                cai.error_message = handle.error_message
-                _scrub_provisioning_metadata(cai)
-        elif handle.status == "ready":
-            for cai, _agent in agent_rows:
-                cai.status = "ready"
-                cai.error_code = None
-                cai.error_message = None
-                _scrub_provisioning_metadata(cai)
+                _restore_cloud_agent_state(
+                    cai,
+                    original_agent_state_by_id[cai.agent_id],
+                )
+            _clear_cloud_daemon_pending_launch(cdi)
         await db.commit()
 
         if handle.status == "failed":
@@ -1039,6 +1157,7 @@ class CloudAgentService:
         db: AsyncSession,
         *,
         cloud_daemon_instance_id: str,
+        cloud_daemon_launch_token: str | None = None,
     ) -> list[CloudAgentView]:
         """Dispatch ``provision_agent`` for agents missing from a connected daemon.
 
@@ -1049,13 +1168,56 @@ class CloudAgentService:
         control-WS reconnect, however, may still have live channels; we avoid
         duplicate installs by asking the daemon for ``list_agents`` first.
         """
-        live_agent_ids = await self._list_cloud_daemon_agent_ids(
-            cloud_daemon_instance_id
+        cdi_guard = await db.scalar(
+            select(CloudDaemonInstance).where(
+                CloudDaemonInstance.id == cloud_daemon_instance_id
+            )
+        )
+        if cdi_guard is None:
+            return []
+        pending_launch_token = _cloud_daemon_pending_launch_token(cdi_guard)
+        if (
+            pending_launch_token
+            and pending_launch_token != cloud_daemon_launch_token
+        ):
+            logger.info(
+                "cloud daemon provision drain skipped stale launch: cloud=%s",
+                cloud_daemon_instance_id,
+            )
+            return []
+
+        list_probe = await self._probe_cloud_daemon_agent_ids(
+            cloud_daemon_instance_id,
+            cloud_daemon_launch_token=cloud_daemon_launch_token,
+        )
+        live_agent_ids = list_probe.agent_ids
+        recover_verified_pending_launch = bool(
+            pending_launch_token
+            and pending_launch_token == cloud_daemon_launch_token
+            and list_probe.failure_code in _VERIFIED_PENDING_LAUNCH_LIST_FAILURES
+        )
+        if (
+            pending_launch_token
+            and live_agent_ids is None
+            and not recover_verified_pending_launch
+        ):
+            logger.info(
+                "cloud daemon provision drain skipped unverified launch target: cloud=%s",
+                cloud_daemon_instance_id,
+            )
+            return []
+        if recover_verified_pending_launch:
+            logger.warning(
+                "cloud daemon list_agents failed for verified pending launch; "
+                "continuing provision drain best-effort: cloud=%s code=%s",
+                cloud_daemon_instance_id,
+                list_probe.failure_code,
+            )
+        include_ready_rows = (
+            live_agent_ids is not None or recover_verified_pending_launch
         )
         statuses = (
-            ("provisioning", "ready")
-            if live_agent_ids is not None
-            else ("provisioning",)
+            ("provisioning", "ready") if include_ready_rows else ("provisioning",)
         )
         rows = (
             await db.execute(
@@ -1072,6 +1234,21 @@ class CloudAgentService:
             )
         ).all()
         if not rows:
+            if (
+                pending_launch_token
+                and pending_launch_token == cloud_daemon_launch_token
+                and not await _cloud_daemon_has_launch_tagged_provisioning(
+                    db,
+                    cloud_daemon_instance_id=cloud_daemon_instance_id,
+                    launch_token=pending_launch_token,
+                )
+            ):
+                _promote_cloud_daemon_pending_launch(
+                    cdi_guard,
+                    launch_token=pending_launch_token,
+                )
+                _clear_cloud_daemon_pending_launch(cdi_guard)
+                await db.commit()
             return []
 
         results: list[CloudAgentView] = []
@@ -1094,29 +1271,71 @@ class CloudAgentService:
 
             if cai.status == "ready":
                 _ensure_provisioning_metadata(db, cai, agent)
+                if (
+                    pending_launch_token
+                    and pending_launch_token == cloud_daemon_launch_token
+                ):
+                    _tag_provisioning_for_cloud_daemon_launch(
+                        cai, pending_launch_token
+                    )
                 cai.status = "provisioning"
                 cai.error_code = None
                 cai.error_message = None
                 await db.flush()
 
-            await self._provision_one(db, cai, agent, cdi)
+            await self._provision_one(
+                db,
+                cai,
+                agent,
+                cdi,
+                cloud_daemon_launch_token=cloud_daemon_launch_token,
+            )
             # Columns with ``onupdate=func.now()`` get marked as needing
             # a refresh after commit even with expire_on_commit=False.
             await db.refresh(cai)
             await db.refresh(cdi)
             await db.refresh(agent)
             results.append(_make_view(agent, cai, cdi))
+        if pending_launch_token and pending_launch_token == cloud_daemon_launch_token:
+            tagged_still_pending = await _cloud_daemon_has_launch_tagged_provisioning(
+                db,
+                cloud_daemon_instance_id=cloud_daemon_instance_id,
+                launch_token=pending_launch_token,
+            )
+            if not tagged_still_pending:
+                _promote_cloud_daemon_pending_launch(
+                    cdi_guard,
+                    launch_token=pending_launch_token,
+                )
+                _clear_cloud_daemon_pending_launch(cdi_guard)
+                await db.commit()
         return results
 
     async def _list_cloud_daemon_agent_ids(
         self,
         cloud_daemon_instance_id: str,
+        *,
+        cloud_daemon_launch_token: str | None = None,
     ) -> set[str] | None:
+        probe = await self._probe_cloud_daemon_agent_ids(
+            cloud_daemon_instance_id,
+            cloud_daemon_launch_token=cloud_daemon_launch_token,
+        )
+        return probe.agent_ids
+
+    async def _probe_cloud_daemon_agent_ids(
+        self,
+        cloud_daemon_instance_id: str,
+        *,
+        cloud_daemon_launch_token: str | None = None,
+    ) -> _CloudDaemonAgentListProbe:
         """Return agent ids currently loaded in the connected cloud daemon.
 
-        ``None`` means the probe failed; callers should avoid re-provisioning
-        already-ready agents in that case because a transient control-plane
-        failure is more likely than a clean process restart with no channels.
+        ``None`` means the probe failed. Most callers should avoid
+        re-provisioning ready agents in that case because a transient
+        control-plane failure is more likely than a clean process restart
+        with no channels; verified pending-launch drains may still recover
+        by provisioning the rows already tagged for that launch.
         """
         try:
             ack = await send_cloud_control_frame(
@@ -1124,6 +1343,7 @@ class CloudAgentService:
                 "list_agents",
                 {},
                 timeout_ms=10000,
+                required_launch_token=cloud_daemon_launch_token,
             )
         except CloudDaemonDispatchError as exc:
             logger.warning(
@@ -1132,7 +1352,7 @@ class CloudAgentService:
                 exc.code,
                 exc.message,
             )
-            return None
+            return _CloudDaemonAgentListProbe(None, exc.code)
 
         if not ack.get("ok"):
             err = ack.get("error") or {}
@@ -1142,12 +1362,14 @@ class CloudAgentService:
                 err.get("code"),
                 err.get("message"),
             )
-            return None
+            return _CloudDaemonAgentListProbe(
+                None, "cloud_daemon_list_agents_rejected"
+            )
 
         result = ack.get("result")
         agents = result.get("agents") if isinstance(result, dict) else None
         if not isinstance(agents, list):
-            return set()
+            return _CloudDaemonAgentListProbe(set())
 
         out: set[str] = set()
         for entry in agents:
@@ -1156,7 +1378,7 @@ class CloudAgentService:
             raw_id = entry.get("id") or entry.get("agentId")
             if isinstance(raw_id, str) and raw_id:
                 out.add(raw_id)
-        return out
+        return _CloudDaemonAgentListProbe(out)
 
     async def create_run(
         self,
@@ -1205,13 +1427,6 @@ class CloudAgentService:
                 http_status=409,
             )
 
-        # Auto-resume paused agents — runs imply intent to use the sandbox.
-        if cai.status == "paused":
-            await self.resume_cloud_agent(db, user_id=user_id, agent_id=agent_id)
-            cai, agent, cdi = await self._load_owned(
-                db, user_id=user_id, agent_id=agent_id
-            )
-
         budget = body.budget or RunBudget()
         # Defensive clamp — a malicious or buggy client shouldn't be able
         # to push wall-time to the moon. The 4-hour ceiling is well above
@@ -1229,8 +1444,17 @@ class CloudAgentService:
                 http_status=400,
             )
 
-        run_id = generate_cloud_agent_run_id()
         await self._ensure_new_api_balance_for_run(db, user_id=user_id)
+
+        # Auto-resume paused agents only after token balance preflight. A user
+        # with an exhausted new-api token must not wake a paused sandbox.
+        if cai.status == "paused":
+            await self.resume_cloud_agent(db, user_id=user_id, agent_id=agent_id)
+            cai, agent, cdi = await self._load_owned(
+                db, user_id=user_id, agent_id=agent_id
+            )
+
+        run_id = generate_cloud_agent_run_id()
 
         room_id = await self._resolve_run_room(
             db,
@@ -1375,8 +1599,29 @@ class CloudAgentService:
         cai: CloudAgentInstance,
         agent: Agent,
         cdi: CloudDaemonInstance,
+        *,
+        cloud_daemon_launch_token: str | None = None,
     ) -> None:
         """Dispatch a single ``provision_agent`` frame and persist the outcome."""
+        pending_launch_token = _cloud_daemon_pending_launch_token(cdi)
+        required_launch_token = cloud_daemon_launch_token
+        if pending_launch_token:
+            if pending_launch_token != cloud_daemon_launch_token:
+                logger.info(
+                    "provision_agent dispatch skipped until verified launch: "
+                    "agent=%s cloud=%s",
+                    cai.agent_id,
+                    cdi.id,
+                )
+                cai.error_code = "cloud_daemon_launch_token_required"
+                cai.error_message = (
+                    "cloud daemon has a pending launch token; provisioning must "
+                    "wait for the matching daemon session"
+                )
+                await db.commit()
+                return
+            required_launch_token = pending_launch_token
+
         provisioning = (cai.metadata_json or {}).get("provisioning") or {}
         private_key_b64 = provisioning.get("private_key_b64")
         key_id = provisioning.get("key_id")
@@ -1432,6 +1677,7 @@ class CloudAgentService:
                 "provision_agent",
                 params,
                 timeout_ms=30000,
+                required_launch_token=required_launch_token,
             )
         except CloudDaemonDispatchError as exc:
             logger.warning(
@@ -1487,7 +1733,26 @@ class CloudAgentService:
                 exc.message,
                 http_status=502,
             ) from exc
-        return self._new_api.runtime_env(credential)
+        try:
+            return self._new_api.runtime_env(credential)
+        except NewApiError as exc:
+            if exc.code == "new_api_api_key_decrypt_failed" and self._new_api.configured():
+                try:
+                    refreshed = await self._new_api.ensure_credential(
+                        db, user_id=user_id, force_refresh=True
+                    )
+                    return self._new_api.runtime_env(refreshed)
+                except NewApiError as refresh_exc:
+                    raise CloudAgentError(
+                        refresh_exc.code,
+                        refresh_exc.message,
+                        http_status=502,
+                    ) from refresh_exc
+            raise CloudAgentError(
+                exc.code,
+                exc.message,
+                http_status=502,
+            ) from exc
 
     async def _ensure_new_api_balance_for_run(
         self,
@@ -1852,6 +2117,58 @@ def _scrub_provisioning_metadata(cai: CloudAgentInstance) -> None:
     flag_modified(cai, "metadata_json")
 
 
+def _snapshot_cloud_daemon_state(cdi: CloudDaemonInstance) -> dict[str, Any]:
+    return {
+        "status": cdi.status,
+        "provider": cdi.provider,
+        "provider_sandbox_id": cdi.provider_sandbox_id,
+        "provider_template_id": cdi.provider_template_id,
+        "region": cdi.region,
+        "error_code": cdi.error_code,
+        "error_message": cdi.error_message,
+        "metadata_json": copy.deepcopy(cdi.metadata_json or {}),
+        "last_started_at": cdi.last_started_at,
+        "last_seen_at": cdi.last_seen_at,
+    }
+
+
+def _restore_cloud_daemon_state(
+    cdi: CloudDaemonInstance,
+    state: dict[str, Any],
+) -> None:
+    cdi.status = state.get("status")
+    cdi.provider = state["provider"]
+    cdi.provider_sandbox_id = state.get("provider_sandbox_id")
+    cdi.provider_template_id = state.get("provider_template_id")
+    cdi.region = state.get("region")
+    cdi.error_code = state.get("error_code")
+    cdi.error_message = state.get("error_message")
+    cdi.metadata_json = copy.deepcopy(state.get("metadata_json") or {})
+    cdi.last_started_at = state.get("last_started_at")
+    cdi.last_seen_at = state.get("last_seen_at")
+    flag_modified(cdi, "metadata_json")
+
+
+def _snapshot_cloud_agent_state(cai: CloudAgentInstance) -> dict[str, Any]:
+    return {
+        "status": cai.status,
+        "error_code": cai.error_code,
+        "error_message": cai.error_message,
+        "metadata_json": copy.deepcopy(cai.metadata_json or {}),
+    }
+
+
+def _restore_cloud_agent_state(
+    cai: CloudAgentInstance,
+    state: dict[str, Any],
+) -> None:
+    cai.status = state.get("status")
+    cai.error_code = state.get("error_code")
+    cai.error_message = state.get("error_message")
+    cai.metadata_json = copy.deepcopy(state.get("metadata_json") or {})
+    flag_modified(cai, "metadata_json")
+
+
 def _decode_attention_keywords(raw: str | None) -> list[str]:
     if not raw:
         return []
@@ -1907,6 +2224,111 @@ def _cloud_agent_runtime_options(cai: CloudAgentInstance) -> dict[str, Any]:
     if isinstance(raw.get("thinking"), bool):
         options["thinking"] = raw["thinking"]
     return options
+
+
+def _new_cloud_daemon_launch_token() -> str:
+    return secrets.token_urlsafe(24)
+
+
+def _cloud_daemon_pending_launch_token(cdi: CloudDaemonInstance) -> str | None:
+    raw = (cdi.metadata_json or {}).get(_CLOUD_DAEMON_PENDING_LAUNCH_TOKEN_KEY)
+    return raw if isinstance(raw, str) and raw else None
+
+
+def _cloud_daemon_current_launch_token(cdi: CloudDaemonInstance) -> str | None:
+    raw = (cdi.metadata_json or {}).get(_CLOUD_DAEMON_CURRENT_LAUNCH_TOKEN_KEY)
+    return raw if isinstance(raw, str) and raw else None
+
+
+def _cloud_daemon_launch_token_for_start(cdi: CloudDaemonInstance) -> str | None:
+    return _cloud_daemon_pending_launch_token(cdi) or _cloud_daemon_current_launch_token(
+        cdi
+    )
+
+
+def _provisioning_launch_token(cai: CloudAgentInstance) -> str | None:
+    provisioning = (cai.metadata_json or {}).get("provisioning")
+    if not isinstance(provisioning, dict):
+        return None
+    raw = provisioning.get(_PROVISIONING_LAUNCH_TOKEN_KEY)
+    return raw if isinstance(raw, str) and raw else None
+
+
+async def _cloud_daemon_has_launch_tagged_provisioning(
+    db: AsyncSession,
+    *,
+    cloud_daemon_instance_id: str,
+    launch_token: str,
+) -> bool:
+    rows = (
+        await db.execute(
+            select(CloudAgentInstance).where(
+                CloudAgentInstance.cloud_daemon_instance_id
+                == cloud_daemon_instance_id,
+                CloudAgentInstance.status == "provisioning",
+            )
+        )
+    ).scalars()
+    return any(_provisioning_launch_token(cai) == launch_token for cai in rows)
+
+
+def _tag_provisioning_for_cloud_daemon_launch(
+    cai: CloudAgentInstance,
+    launch_token: str,
+) -> None:
+    md = dict(cai.metadata_json or {})
+    provisioning = dict(md.get("provisioning") or {})
+    provisioning[_PROVISIONING_LAUNCH_TOKEN_KEY] = launch_token
+    md["provisioning"] = provisioning
+    cai.metadata_json = md
+    flag_modified(cai, "metadata_json")
+
+
+def _begin_cloud_daemon_relaunch(
+    cdi: CloudDaemonInstance,
+    *,
+    provisioning_agents: list[CloudAgentInstance],
+) -> str:
+    launch_token = _new_cloud_daemon_launch_token()
+    cdi.metadata_json = {
+        **(cdi.metadata_json or {}),
+        _CLOUD_DAEMON_PENDING_LAUNCH_TOKEN_KEY: launch_token,
+    }
+    flag_modified(cdi, "metadata_json")
+    for cai in provisioning_agents:
+        _tag_provisioning_for_cloud_daemon_launch(cai, launch_token)
+    return launch_token
+
+
+def _promote_cloud_daemon_pending_launch(
+    cdi: CloudDaemonInstance,
+    *,
+    launch_token: str | None = None,
+) -> None:
+    md = dict(cdi.metadata_json or {})
+    pending_launch_token = md.get(_CLOUD_DAEMON_PENDING_LAUNCH_TOKEN_KEY)
+    if launch_token is None:
+        launch_token = (
+            pending_launch_token
+            if isinstance(pending_launch_token, str) and pending_launch_token
+            else None
+        )
+    elif pending_launch_token != launch_token:
+        return
+    if not launch_token:
+        return
+    md[_CLOUD_DAEMON_CURRENT_LAUNCH_TOKEN_KEY] = launch_token
+    cdi.metadata_json = md
+    flag_modified(cdi, "metadata_json")
+
+
+def _clear_cloud_daemon_pending_launch(cdi: CloudDaemonInstance) -> None:
+    md = dict(cdi.metadata_json or {})
+    if _CLOUD_DAEMON_PENDING_LAUNCH_TOKEN_KEY not in md:
+        return
+    md.pop(_CLOUD_DAEMON_PENDING_LAUNCH_TOKEN_KEY, None)
+    cdi.metadata_json = md
+    flag_modified(cdi, "metadata_json")
 
 
 def _daemon_snapshot_accepts_runtime_options(

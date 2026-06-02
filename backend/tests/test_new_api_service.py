@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from pathlib import Path
 
 import httpx
 import pytest
@@ -10,8 +11,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hub.models import Base, NewApiCredential, User
-from hub.services.new_api import NewApiService
+from hub.services.new_api import NewApiError, NewApiService
 from tests.test_app.conftest import create_test_engine
+
+
+MIGRATION_025 = (
+    Path(__file__).resolve().parents[1]
+    / "migrations"
+    / "025_new_api_credentials_constraints.sql"
+)
 
 
 @pytest_asyncio.fixture
@@ -30,35 +38,57 @@ async def db_session():
 def _new_api_response(
     api_key: str | None = "sk-user",
     *,
+    external_user_id: str | None = "ignored",
+    user_id: int = 42,
+    token_id: int = 77,
     quota: int = 2_500_000,
     used_quota: int = 0,
     token_remain_quota: int = 2_500_000,
     token_used_quota: int = 0,
 ) -> dict:
     token = {
-        "id": 77,
+        "id": token_id,
         "name": "BotCord Cloud Agent",
         "remain_quota": token_remain_quota,
         "used_quota": token_used_quota,
         "unlimited_quota": False,
     }
+
     if api_key is not None:
         token["api_key"] = api_key
+    data = {
+        "user_id": user_id,
+        "username": "bc_test",
+        "quota": quota,
+        "used_quota": used_quota,
+        "quota_per_usd": 500_000.0,
+        "balance_usd": 5,
+        "used_usd": 0,
+        "token": token,
+    }
+    if external_user_id is not None:
+        data["external_user_id"] = external_user_id
     return {
         "success": True,
         "message": "",
-        "data": {
-            "external_user_id": "ignored",
-            "user_id": 42,
-            "username": "bc_test",
-            "quota": quota,
-            "used_quota": used_quota,
-            "quota_per_usd": 500_000.0,
-            "balance_usd": 5,
-            "used_usd": 0,
-            "token": token,
-        },
+        "data": data,
     }
+
+
+def test_constraints_migration_remediates_invalid_remote_ids_before_checks():
+    sql = MIGRATION_025.read_text()
+    delete_pos = sql.index("DELETE FROM new_api_credentials")
+    user_constraint_pos = sql.index(
+        "ADD CONSTRAINT ck_new_api_credentials_user_id_positive"
+    )
+    token_constraint_pos = sql.index(
+        "ADD CONSTRAINT ck_new_api_credentials_token_id_positive"
+    )
+
+    assert "RAISE EXCEPTION" not in sql
+    assert "new_api_user_id <= 0 OR token_id <= 0" in sql
+    assert delete_pos < user_constraint_pos
+    assert delete_pos < token_constraint_pos
 
 
 @pytest.mark.asyncio
@@ -82,7 +112,9 @@ async def test_ensure_credential_provisions_and_builds_runtime_env(db_session):
         assert request.headers["Authorization"] == "Bearer secret"
         payload = json.loads(request.content.decode("utf-8"))
         assert payload["initial_usd"] == 5.0
-        return httpx.Response(200, json=_new_api_response())
+        return httpx.Response(
+            200, json=_new_api_response(external_user_id=str(user_id))
+        )
 
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(handler)
@@ -142,7 +174,10 @@ async def test_balance_refresh_does_not_require_returning_api_key(db_session):
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/botcord/balance"
-        return httpx.Response(200, json=_new_api_response(api_key=None))
+        return httpx.Response(
+            200,
+            json=_new_api_response(api_key=None, external_user_id=str(user_id)),
+        )
 
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(handler)
@@ -164,7 +199,54 @@ async def test_balance_refresh_does_not_require_returning_api_key(db_session):
     assert credential is not None
     assert credential.api_key_ciphertext.startswith("fernet:")
     assert credential.api_key_ciphertext != "sk-existing"
+    assert credential.token_id == 77
     assert service.runtime_env(credential)["OPENAI_API_KEY"] == "sk-existing"
+
+
+@pytest.mark.asyncio
+async def test_balance_refresh_tolerates_missing_external_user_id(db_session):
+    user_id = uuid.uuid4()
+    db_session.add(
+        NewApiCredential(
+            user_id=user_id,
+            new_api_user_id=42,
+            new_api_username="bc_test",
+            token_id=77,
+            token_name="BotCord Cloud Agent",
+            api_base_url="https://new-api.test",
+            api_key_ciphertext="sk-existing",
+            quota=1,
+            used_quota=0,
+            token_remain_quota=1,
+            token_used_quota=0,
+            quota_per_usd=500_000.0,
+        )
+    )
+    await db_session.flush()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/botcord/balance"
+        return httpx.Response(
+            200,
+            json=_new_api_response(api_key=None, external_user_id=None),
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        service = NewApiService(
+            base_url="https://new-api.test",
+            internal_secret="secret",
+            credential_encryption_key="test-encryption-secret",
+            http_client=http_client,
+        )
+        balance = await service.get_balance(db_session, user_id=user_id)
+        await db_session.commit()
+
+    assert balance.provisioned is True
+    assert balance.new_api_user_id == 42
+    assert balance.token_id == 77
+    assert balance.balance_usd == 5
 
 
 @pytest.mark.asyncio
@@ -222,6 +304,7 @@ async def test_balance_uses_token_remaining_quota_when_user_quota_drifts(db_sess
             200,
             json=_new_api_response(
                 api_key=None,
+                external_user_id=str(user_id),
                 quota=9_000_000,
                 token_remain_quota=2_500_000,
             ),
@@ -243,3 +326,270 @@ async def test_balance_uses_token_remaining_quota_when_user_quota_drifts(db_sess
     assert balance.token_remain_quota == 2_500_000
     assert balance.balance_usd == 5
     assert balance.token_balance_usd == 5
+
+
+@pytest.mark.asyncio
+async def test_balance_refresh_rejects_remote_token_identity_change(db_session):
+    user_id = uuid.uuid4()
+    db_session.add(
+        NewApiCredential(
+            user_id=user_id,
+            new_api_user_id=42,
+            new_api_username="bc_test",
+            token_id=77,
+            token_name="BotCord Cloud Agent",
+            api_base_url="https://new-api.test",
+            api_key_ciphertext="sk-existing",
+            quota=1,
+            used_quota=0,
+            token_remain_quota=1,
+            token_used_quota=0,
+            quota_per_usd=500_000.0,
+        )
+    )
+    await db_session.flush()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/botcord/balance"
+        return httpx.Response(
+            200,
+            json=_new_api_response(
+                api_key="sk-should-not-rotate",
+                external_user_id=str(user_id),
+                token_id=88,
+            ),
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        service = NewApiService(
+            base_url="https://new-api.test",
+            internal_secret="secret",
+            credential_encryption_key="test-encryption-secret",
+            http_client=http_client,
+        )
+        with pytest.raises(NewApiError) as excinfo:
+            await service.get_balance(db_session, user_id=user_id)
+
+    assert excinfo.value.code == "new_api_identity_mismatch"
+    credential = await db_session.scalar(
+        select(NewApiCredential).where(NewApiCredential.user_id == user_id)
+    )
+    assert credential is not None
+    assert credential.token_id == 77
+    assert credential.api_key_ciphertext == "sk-existing"
+
+
+@pytest.mark.asyncio
+async def test_balance_refresh_rejects_remote_user_identity_change(db_session):
+    user_id = uuid.uuid4()
+    db_session.add(
+        NewApiCredential(
+            user_id=user_id,
+            new_api_user_id=42,
+            new_api_username="bc_test",
+            token_id=77,
+            token_name="BotCord Cloud Agent",
+            api_base_url="https://new-api.test",
+            api_key_ciphertext="sk-existing",
+            quota=1,
+            used_quota=0,
+            token_remain_quota=1,
+            token_used_quota=0,
+            quota_per_usd=500_000.0,
+        )
+    )
+    await db_session.flush()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/botcord/balance"
+        return httpx.Response(
+            200,
+            json=_new_api_response(external_user_id=str(user_id), user_id=43),
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        service = NewApiService(
+            base_url="https://new-api.test",
+            internal_secret="secret",
+            credential_encryption_key="test-encryption-secret",
+            http_client=http_client,
+        )
+        with pytest.raises(NewApiError) as excinfo:
+            await service.get_balance(db_session, user_id=user_id)
+
+    assert excinfo.value.code == "new_api_identity_mismatch"
+    credential = await db_session.scalar(
+        select(NewApiCredential).where(NewApiCredential.user_id == user_id)
+    )
+    assert credential is not None
+    assert credential.new_api_user_id == 42
+    assert credential.token_id == 77
+
+
+@pytest.mark.asyncio
+async def test_balance_refresh_rejects_present_external_user_id_mismatch(db_session):
+    user_id = uuid.uuid4()
+    db_session.add(
+        NewApiCredential(
+            user_id=user_id,
+            new_api_user_id=42,
+            new_api_username="bc_test",
+            token_id=77,
+            token_name="BotCord Cloud Agent",
+            api_base_url="https://new-api.test",
+            api_key_ciphertext="sk-existing",
+            quota=1,
+            used_quota=0,
+            token_remain_quota=1,
+            token_used_quota=0,
+            quota_per_usd=500_000.0,
+        )
+    )
+    await db_session.flush()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/botcord/balance"
+        return httpx.Response(
+            200,
+            json=_new_api_response(
+                api_key=None,
+                external_user_id=str(uuid.uuid4()),
+            ),
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        service = NewApiService(
+            base_url="https://new-api.test",
+            internal_secret="secret",
+            credential_encryption_key="test-encryption-secret",
+            http_client=http_client,
+        )
+        with pytest.raises(NewApiError) as excinfo:
+            await service.get_balance(db_session, user_id=user_id)
+
+    assert excinfo.value.code == "new_api_bad_response"
+    credential = await db_session.scalar(
+        select(NewApiCredential).where(NewApiCredential.user_id == user_id)
+    )
+    assert credential is not None
+    assert credential.token_id == 77
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_allows_token_rotation_with_fresh_api_key(db_session):
+    user_id = uuid.uuid4()
+    db_session.add(
+        NewApiCredential(
+            user_id=user_id,
+            new_api_user_id=42,
+            new_api_username="bc_test",
+            token_id=77,
+            token_name="BotCord Cloud Agent",
+            api_base_url="https://new-api.test",
+            api_key_ciphertext="sk-existing",
+            quota=1,
+            used_quota=0,
+            token_remain_quota=1,
+            token_used_quota=0,
+            quota_per_usd=500_000.0,
+        )
+    )
+    await db_session.flush()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/botcord/provision"
+        return httpx.Response(
+            200,
+            json=_new_api_response(
+                api_key="sk-rotated",
+                external_user_id=str(user_id),
+                token_id=88,
+            ),
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        service = NewApiService(
+            base_url="https://new-api.test",
+            internal_secret="secret",
+            credential_encryption_key="test-encryption-secret",
+            http_client=http_client,
+        )
+        credential = await service.ensure_credential(
+            db_session, user_id=user_id, force_refresh=True
+        )
+        await db_session.commit()
+
+    assert credential is not None
+    assert credential.new_api_user_id == 42
+    assert credential.token_id == 88
+    assert credential.api_key_ciphertext.startswith("fernet:")
+    assert service.runtime_env(credential)["OPENAI_API_KEY"] == "sk-rotated"
+
+
+@pytest.mark.asyncio
+async def test_rejects_mismatched_external_user_id(db_session):
+    user_id = uuid.uuid4()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json=_new_api_response(external_user_id=str(uuid.uuid4()))
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        service = NewApiService(
+            base_url="https://new-api.test",
+            internal_secret="secret",
+            credential_encryption_key="test-encryption-secret",
+            http_client=http_client,
+        )
+        with pytest.raises(NewApiError) as excinfo:
+            await service.ensure_credential(db_session, user_id=user_id)
+
+    assert excinfo.value.code == "new_api_bad_response"
+    credential = await db_session.scalar(
+        select(NewApiCredential).where(NewApiCredential.user_id == user_id)
+    )
+    assert credential is None
+
+
+@pytest.mark.asyncio
+async def test_rejects_missing_remote_ids(db_session):
+    user_id = uuid.uuid4()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_new_api_response(
+                external_user_id=str(user_id),
+                user_id=0,
+                token_id=0,
+            ),
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        service = NewApiService(
+            base_url="https://new-api.test",
+            internal_secret="secret",
+            credential_encryption_key="test-encryption-secret",
+            http_client=http_client,
+        )
+        with pytest.raises(NewApiError) as excinfo:
+            await service.ensure_credential(db_session, user_id=user_id)
+
+    assert excinfo.value.code == "new_api_bad_response"
+    credential = await db_session.scalar(
+        select(NewApiCredential).where(NewApiCredential.user_id == user_id)
+    )
+    assert credential is None

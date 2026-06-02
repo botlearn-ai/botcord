@@ -565,6 +565,7 @@ async def test_cloud_daemon_reconnect_reprovisions_missing_ready_agent(
         type_: str,
         params: dict | None = None,
         timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
     ) -> dict:
         calls.append((type_, params))
         if type_ == "list_agents":
@@ -620,6 +621,7 @@ async def test_cloud_daemon_reconnect_skips_agent_already_loaded(
         type_: str,
         params: dict | None = None,
         timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
     ) -> dict:
         calls.append(type_)
         if type_ == "list_agents":
@@ -671,6 +673,7 @@ async def test_resume_ready_online_agent_reprovisions_missing_daemon_channel(
         type_: str,
         params: dict | None = None,
         timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
     ) -> dict:
         calls.append((type_, params))
         if type_ == "list_agents":
@@ -743,6 +746,7 @@ async def test_resume_paused_online_agent_reprovisions_missing_daemon_channel(
         type_: str,
         params: dict | None = None,
         timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
     ) -> dict:
         calls.append((type_, params))
         if type_ == "list_agents":

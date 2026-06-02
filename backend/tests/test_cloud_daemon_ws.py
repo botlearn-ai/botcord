@@ -478,6 +478,62 @@ async def test_ws_accepts_valid_token_and_sends_hello(
 
 
 @pytest.mark.asyncio
+async def test_ws_rejects_stale_reconnect_after_pending_launch_cleared(
+    db_session, app_with_shared_session, monkeypatch
+):
+    import hub.routers.cloud_daemon_control as cdc
+
+    monkeypatch.setattr(cdc, "schedule_provision_drain", lambda *args, **kwargs: None)
+    daemon, cloud = await _seed_cloud_daemon(db_session)
+    launch_token = "fresh-launch-token"
+    cloud.metadata_json = {"current_launch_token": launch_token}
+    await db_session.commit()
+
+    fresh_jwt, _ = _create_cloud_daemon_access_token(
+        cloud_daemon_instance_id=cloud.id,
+        daemon_instance_id=daemon.id,
+        user_id=str(daemon.user_id),
+        launch_token=launch_token,
+    )
+    no_launch_jwt, _ = _create_cloud_daemon_access_token(
+        cloud_daemon_instance_id=cloud.id,
+        daemon_instance_id=daemon.id,
+        user_id=str(daemon.user_id),
+    )
+    old_launch_jwt, _ = _create_cloud_daemon_access_token(
+        cloud_daemon_instance_id=cloud.id,
+        daemon_instance_id=daemon.id,
+        user_id=str(daemon.user_id),
+        launch_token="old-launch-token",
+    )
+
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect as _WSD
+
+    with TestClient(app_with_shared_session) as tc:
+        with tc.websocket_connect(
+            "/cloud/daemon/ws",
+            headers={"Authorization": f"Bearer {fresh_jwt}"},
+        ) as ws:
+            assert ws.receive_json()["type"] == "hello"
+            current = _registry_for_tests().get_by_cloud(cloud.id)
+            assert current is not None
+            assert current.launch_token == launch_token
+
+            for stale_jwt in (no_launch_jwt, old_launch_jwt):
+                with pytest.raises(_WSD) as excinfo:
+                    with tc.websocket_connect(
+                        "/cloud/daemon/ws",
+                        headers={"Authorization": f"Bearer {stale_jwt}"},
+                    ):
+                        pass
+                assert excinfo.value.code == 4401
+                assert _registry_for_tests().get_by_cloud(cloud.id) is current
+
+    assert _registry_for_tests().is_online(cloud.id) is False
+
+
+@pytest.mark.asyncio
 async def test_ws_rejects_when_daemon_is_local_kind(
     db_session, app_with_shared_session
 ):

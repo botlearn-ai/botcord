@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from contextlib import asynccontextmanager
 
 import pytest
 import pytest_asyncio
@@ -29,7 +30,11 @@ from hub.services.cloud_agent import (
     CloudAgentService,
     CreateCloudAgentInput,
 )
-from hub.services.cloud_daemon_provider import FakeCloudDaemonProvider
+from hub.services.cloud_daemon_provider import (
+    CloudDaemonHandle,
+    FakeCloudDaemonProvider,
+)
+from hub.services.new_api import NewApiError
 from tests.test_app.conftest import create_test_engine
 
 
@@ -64,6 +69,9 @@ def _make_service(
 
 
 class _StaticNewApiService:
+    def configured(self):
+        return True
+
     async def ensure_credential(self, db, *, user_id, force_refresh=False):
         return object()
 
@@ -74,14 +82,138 @@ class _StaticNewApiService:
         }
 
 
-class _EnvCapturingProvider(FakeCloudDaemonProvider):
+class _RefreshableNewApiService:
     def __init__(self) -> None:
-        super().__init__()
+        self.force_refresh_calls: list[bool] = []
+
+    def configured(self):
+        return True
+
+    async def ensure_credential(self, db, *, user_id, force_refresh=False):
+        self.force_refresh_calls.append(force_refresh)
+        return "fresh" if force_refresh else "stale"
+
+    def runtime_env(self, credential):
+        if credential == "stale":
+            raise NewApiError(
+                "new_api_api_key_decrypt_failed",
+                "stored new-api credential cannot be decrypted",
+            )
+        return {
+            "OPENAI_API_KEY": "sk-refreshed",
+            "OPENAI_BASE_URL": "https://new-api.test/v1",
+        }
+
+
+class _EnvCapturingProvider(FakeCloudDaemonProvider):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
         self.extra_envs: list[dict[str, str]] = []
+        self.launch_tokens: list[str | None] = []
 
     async def create_or_resume(self, **kwargs):
         self.extra_envs.append(dict(kwargs.get("extra_env") or {}))
+        self.launch_tokens.append(kwargs.get("launch_token"))
         return await super().create_or_resume(**kwargs)
+
+
+class _StartingOnResumeProvider(_EnvCapturingProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.create_calls = 0
+
+    async def create_or_resume(self, **kwargs):
+        self.create_calls += 1
+        handle = await super().create_or_resume(**kwargs)
+        if self.create_calls >= 2:
+            handle.status = "starting"
+        return handle
+
+
+class _FailingCreateAttemptProvider(_EnvCapturingProvider):
+    def __init__(self, *, fail_on_call: int, failure_mode: str) -> None:
+        super().__init__()
+        self._attempts = 0
+        self._fail_on_call = fail_on_call
+        self._failure_mode = failure_mode
+
+    async def create_or_resume(self, **kwargs):
+        self._attempts += 1
+        if self._attempts != self._fail_on_call:
+            return await super().create_or_resume(**kwargs)
+
+        self.extra_envs.append(dict(kwargs.get("extra_env") or {}))
+        self.launch_tokens.append(kwargs.get("launch_token"))
+        if self._failure_mode == "exception":
+            raise RuntimeError("provider relaunch unavailable")
+        return CloudDaemonHandle(
+            cloud_daemon_instance_id=kwargs["cloud_daemon_instance_id"],
+            daemon_instance_id=kwargs["daemon_instance_id"],
+            provider=self.PROVIDER_NAME,
+            status="failed",
+            runtime=kwargs["runtime"],
+            region=kwargs.get("region"),
+            provider_sandbox_id=kwargs.get("provider_sandbox_id"),
+            error_code="fake_relaunch_failed",
+            error_message="fake relaunch failed",
+        )
+
+
+async def _assert_cloud_daemon_ws_accepts_only_launch_token(
+    db_session,
+    monkeypatch,
+    *,
+    cloud_daemon: CloudDaemonInstance,
+    accepted_launch_token: str,
+    rejected_launch_token: str,
+) -> None:
+    import hub.routers.cloud_daemon_control as cdc
+    from hub.database import get_db
+    from hub.main import app
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+
+    @asynccontextmanager
+    async def _shared_session():
+        yield db_session
+
+    monkeypatch.setattr(cdc, "async_session", _shared_session)
+    monkeypatch.setattr(cdc, "schedule_provision_drain", lambda *args, **kwargs: None)
+
+    async def _override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_get_db
+
+    accepted_jwt, _ = cdc._create_cloud_daemon_access_token(
+        cloud_daemon_instance_id=cloud_daemon.id,
+        daemon_instance_id=cloud_daemon.daemon_instance_id,
+        user_id=str(cloud_daemon.user_id),
+        launch_token=accepted_launch_token,
+    )
+    rejected_jwt, _ = cdc._create_cloud_daemon_access_token(
+        cloud_daemon_instance_id=cloud_daemon.id,
+        daemon_instance_id=cloud_daemon.daemon_instance_id,
+        user_id=str(cloud_daemon.user_id),
+        launch_token=rejected_launch_token,
+    )
+
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect(
+                "/cloud/daemon/ws",
+                headers={"Authorization": f"Bearer {accepted_jwt}"},
+            ) as ws:
+                assert ws.receive_json()["type"] == "hello"
+                with pytest.raises(WebSocketDisconnect) as excinfo:
+                    with tc.websocket_connect(
+                        "/cloud/daemon/ws",
+                        headers={"Authorization": f"Bearer {rejected_jwt}"},
+                    ):
+                        pass
+                assert excinfo.value.code == 4401
+    finally:
+        app.dependency_overrides.pop(get_db, None)
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +297,33 @@ async def test_create_cloud_agent_passes_new_api_env_to_provider(db_session):
 
 
 @pytest.mark.asyncio
+async def test_create_cloud_agent_refreshes_new_api_env_after_decrypt_failure(
+    db_session,
+):
+    provider = _EnvCapturingProvider()
+    new_api = _RefreshableNewApiService()
+    svc = CloudAgentService(
+        provider=provider,
+        feature_enabled=True,
+        new_api_service=new_api,
+    )
+
+    await svc.create_cloud_agent(
+        db_session,
+        user_id=uuid.uuid4(),
+        body=CreateCloudAgentInput(name="Cloud Bot"),
+    )
+
+    assert new_api.force_refresh_calls == [False, True]
+    assert provider.extra_envs == [
+        {
+            "OPENAI_API_KEY": "sk-refreshed",
+            "OPENAI_BASE_URL": "https://new-api.test/v1",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_create_rejected_when_feature_disabled(db_session):
     svc, _ = _make_service(feature_enabled=False)
     with pytest.raises(CloudAgentError) as excinfo:
@@ -219,24 +378,48 @@ async def test_two_agents_share_a_cloud_daemon(db_session):
 
 
 @pytest.mark.asyncio
-async def test_create_agent_on_online_cloud_daemon_provisions_without_restart(
+async def test_create_agent_on_online_cloud_daemon_relaunches_with_runtime_env(
     db_session, monkeypatch
 ):
     user_id = uuid.uuid4()
-    svc, fake = _make_service(max_per_user=4, max_agents_per_daemon=3)
+    provider = _EnvCapturingProvider()
+    svc = CloudAgentService(
+        provider=provider,
+        feature_enabled=True,
+        max_per_user=4,
+        max_agents_per_daemon=3,
+        new_api_service=_StaticNewApiService(),
+    )
     first = await svc.create_cloud_agent(
         db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
     )
+    old_launch_token = "old-relaunch-token"
+    cloud_row = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == first.cloud_daemon_instance_id
+        )
+    )
+    assert cloud_row is not None
+    cloud_row.metadata_json = {
+        **(cloud_row.metadata_json or {}),
+        "current_launch_token": old_launch_token,
+    }
+    await db_session.commit()
 
-    sent_frames: list[tuple[str, str, dict]] = []
+    sent_frames: list[tuple[str, str, dict, str | None]] = []
 
     async def fake_send_cloud_control_frame(
         cloud_daemon_instance_id: str,
         type_: str,
         params: dict | None = None,
         timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
     ) -> dict:
-        sent_frames.append((cloud_daemon_instance_id, type_, params or {}))
+        sent_frames.append(
+            (cloud_daemon_instance_id, type_, params or {}, required_launch_token)
+        )
+        if type_ == "list_agents":
+            return {"ok": True, "result": {"agents": []}}
         agent_id = (params or {}).get("credentials", {}).get("agentId")
         return {"ok": True, "result": {"agentId": agent_id}}
 
@@ -256,12 +439,281 @@ async def test_create_agent_on_online_cloud_daemon_provisions_without_restart(
         db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
     )
 
-    assert second.status == "ready"
+    assert second.status == "provisioning"
+    assert second.cloud_daemon_status == "starting"
     assert second.cloud_daemon_instance_id == first.cloud_daemon_instance_id
-    assert fake.calls(first.cloud_daemon_instance_id)["create"] == 1
-    assert [frame[1] for frame in sent_frames] == ["provision_agent"]
-    assert sent_frames[0][0] == first.cloud_daemon_instance_id
-    assert sent_frames[0][2]["credentials"]["agentId"] == second.agent_id
+    assert provider.calls(first.cloud_daemon_instance_id)["create"] == 2
+    assert provider.extra_envs == [
+        {
+            "OPENAI_API_KEY": "sk-user",
+            "OPENAI_BASE_URL": "https://new-api.test/v1",
+        },
+        {
+            "OPENAI_API_KEY": "sk-user",
+            "OPENAI_BASE_URL": "https://new-api.test/v1",
+        },
+    ]
+    assert sent_frames == []
+
+    cloud_row = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == second.cloud_daemon_instance_id
+        )
+    )
+    assert cloud_row is not None
+    launch_token = cloud_row.metadata_json.get("pending_launch_token")
+    assert isinstance(launch_token, str)
+    assert launch_token != old_launch_token
+    assert cloud_row.metadata_json.get("current_launch_token") == launch_token
+    assert provider.launch_tokens == [None, launch_token]
+
+    stale_replayed = await svc.provision_pending_for_cloud_daemon(
+        db_session,
+        cloud_daemon_instance_id=second.cloud_daemon_instance_id,
+    )
+    assert stale_replayed == []
+    assert sent_frames == []
+
+    replayed = await svc.provision_pending_for_cloud_daemon(
+        db_session,
+        cloud_daemon_instance_id=second.cloud_daemon_instance_id,
+        cloud_daemon_launch_token=launch_token,
+    )
+    assert {view.agent_id for view in replayed} == {first.agent_id, second.agent_id}
+    assert [frame[1] for frame in sent_frames] == [
+        "list_agents",
+        "provision_agent",
+        "provision_agent",
+    ]
+    assert {frame[3] for frame in sent_frames} == {launch_token}
+    provisioned_agent_ids = [
+        frame[2]["credentials"]["agentId"]
+        for frame in sent_frames
+        if frame[1] == "provision_agent"
+    ]
+    assert provisioned_agent_ids == [first.agent_id, second.agent_id]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_mode", ["exception", "failed"])
+async def test_create_agent_online_relaunch_failure_keeps_previous_launch_token(
+    db_session, monkeypatch, failure_mode
+):
+    user_id = uuid.uuid4()
+    old_launch_token = "old-relaunch-token"
+    provider = _FailingCreateAttemptProvider(
+        fail_on_call=2,
+        failure_mode=failure_mode,
+    )
+    svc = CloudAgentService(
+        provider=provider,
+        feature_enabled=True,
+        max_per_user=4,
+        max_agents_per_daemon=3,
+        new_api_service=_StaticNewApiService(),
+    )
+    first = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    cloud_row = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == first.cloud_daemon_instance_id
+        )
+    )
+    assert cloud_row is not None
+    first_row = await db_session.scalar(
+        select(CloudAgentInstance).where(CloudAgentInstance.agent_id == first.agent_id)
+    )
+    assert first_row is not None
+    first_row.status = "ready"
+    first_row.error_code = "legacy_ready_error"
+    first_row.error_message = "legacy error preserved until relaunch recovery"
+    first_row.metadata_json = {
+        **(first_row.metadata_json or {}),
+        "rollback_guard": {"scope": "existing-agent", "value": "preserve"},
+    }
+    cloud_row.status = "ready"
+    cloud_row.error_code = "legacy_daemon_error"
+    cloud_row.error_message = "legacy daemon error"
+    cloud_row.metadata_json = {
+        **(cloud_row.metadata_json or {}),
+        "current_launch_token": old_launch_token,
+        "rollback_marker": "legacy",
+    }
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        cloud_agent_service,
+        "is_cloud_daemon_online",
+        lambda cloud_daemon_instance_id: cloud_daemon_instance_id
+        == first.cloud_daemon_instance_id,
+    )
+
+    with pytest.raises(CloudAgentError) as excinfo:
+        await svc.create_cloud_agent(
+            db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
+        )
+
+    assert excinfo.value.code in {"provider_create_failed", "fake_relaunch_failed"}
+    new_launch_token = provider.launch_tokens[-1]
+    assert isinstance(new_launch_token, str)
+    assert new_launch_token != old_launch_token
+
+    await db_session.refresh(cloud_row)
+    await db_session.refresh(first_row)
+    assert "pending_launch_token" not in (cloud_row.metadata_json or {})
+    assert cloud_row.metadata_json.get("current_launch_token") == old_launch_token
+    assert cloud_row.status == "ready"
+    assert cloud_row.error_code == "legacy_daemon_error"
+    assert cloud_row.error_message == "legacy daemon error"
+    assert cloud_row.metadata_json.get("rollback_marker") == "legacy"
+    assert first_row.status == "ready"
+    assert first_row.error_code == "legacy_ready_error"
+    assert first_row.error_message == "legacy error preserved until relaunch recovery"
+    assert first_row.metadata_json.get("rollback_guard") == {
+        "scope": "existing-agent",
+        "value": "preserve",
+    }
+
+    await _assert_cloud_daemon_ws_accepts_only_launch_token(
+        db_session,
+        monkeypatch,
+        cloud_daemon=cloud_row,
+        accepted_launch_token=old_launch_token,
+        rejected_launch_token=new_launch_token,
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_agent_on_online_cloud_daemon_starting_waits_for_ready_replay(
+    db_session, monkeypatch
+):
+    user_id = uuid.uuid4()
+    provider = _StartingOnResumeProvider()
+    svc = CloudAgentService(
+        provider=provider,
+        feature_enabled=True,
+        max_per_user=4,
+        max_agents_per_daemon=3,
+        new_api_service=_StaticNewApiService(),
+    )
+    first = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    old_launch_token = "old-relaunch-token"
+    cloud_row = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == first.cloud_daemon_instance_id
+        )
+    )
+    assert cloud_row is not None
+    cloud_row.metadata_json = {
+        **(cloud_row.metadata_json or {}),
+        "current_launch_token": old_launch_token,
+    }
+    await db_session.commit()
+
+    sent_frames: list[tuple[str, str, dict, str | None]] = []
+
+    async def fake_send_cloud_control_frame(
+        cloud_daemon_instance_id: str,
+        type_: str,
+        params: dict | None = None,
+        timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
+    ) -> dict:
+        sent_frames.append(
+            (cloud_daemon_instance_id, type_, params or {}, required_launch_token)
+        )
+        if type_ == "list_agents":
+            return {"ok": True, "result": {"agents": []}}
+        agent_id = (params or {}).get("credentials", {}).get("agentId")
+        return {"ok": True, "result": {"agentId": agent_id}}
+
+    monkeypatch.setattr(
+        cloud_agent_service,
+        "is_cloud_daemon_online",
+        lambda cloud_daemon_instance_id: cloud_daemon_instance_id
+        == first.cloud_daemon_instance_id,
+    )
+    monkeypatch.setattr(
+        cloud_agent_service,
+        "send_cloud_control_frame",
+        fake_send_cloud_control_frame,
+    )
+
+    second = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
+    )
+
+    assert second.status == "provisioning"
+    assert second.cloud_daemon_status == "starting"
+    assert second.cloud_daemon_instance_id == first.cloud_daemon_instance_id
+    assert provider.calls(first.cloud_daemon_instance_id)["create"] == 2
+    assert sent_frames == []
+
+    row = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == second.agent_id
+        )
+    )
+    assert row is not None
+    assert row.status == "provisioning"
+    assert "provisioning" in (row.metadata_json or {})
+
+    cloud_row = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == second.cloud_daemon_instance_id
+        )
+    )
+    assert cloud_row is not None
+    launch_token = cloud_row.metadata_json.get("pending_launch_token")
+    assert isinstance(launch_token, str)
+    assert launch_token != old_launch_token
+    assert cloud_row.metadata_json.get("current_launch_token") == launch_token
+    assert provider.launch_tokens == [None, launch_token]
+
+    stale_replayed = await svc.provision_pending_for_cloud_daemon(
+        db_session,
+        cloud_daemon_instance_id=second.cloud_daemon_instance_id,
+    )
+
+    assert stale_replayed == []
+    assert sent_frames == []
+    await db_session.refresh(row)
+    await db_session.refresh(cloud_row)
+    assert row.status == "provisioning"
+    assert "provisioning" in (row.metadata_json or {})
+    assert cloud_row.metadata_json.get("pending_launch_token") == launch_token
+
+    replayed = await svc.provision_pending_for_cloud_daemon(
+        db_session,
+        cloud_daemon_instance_id=second.cloud_daemon_instance_id,
+        cloud_daemon_launch_token=launch_token,
+    )
+
+    assert {view.agent_id for view in replayed} == {first.agent_id, second.agent_id}
+    assert all(view.status == "ready" for view in replayed)
+    assert all(view.cloud_daemon_status == "ready" for view in replayed)
+    assert [frame[1] for frame in sent_frames] == [
+        "list_agents",
+        "provision_agent",
+        "provision_agent",
+    ]
+    assert {frame[3] for frame in sent_frames} == {launch_token}
+    provisioned_agent_ids = [
+        frame[2]["credentials"]["agentId"]
+        for frame in sent_frames
+        if frame[1] == "provision_agent"
+    ]
+    assert provisioned_agent_ids == [first.agent_id, second.agent_id]
+
+    await db_session.refresh(row)
+    await db_session.refresh(cloud_row)
+    assert row.status == "ready"
+    assert "provisioning" not in (row.metadata_json or {})
+    assert "pending_launch_token" not in (cloud_row.metadata_json or {})
+    assert cloud_row.metadata_json.get("current_launch_token") == launch_token
 
 
 @pytest.mark.asyncio
@@ -440,6 +892,135 @@ async def test_pause_then_resume_round_trip(db_session):
 
 
 @pytest.mark.asyncio
+async def test_resume_after_pending_launch_cleanup_reuses_current_launch_token(
+    db_session, monkeypatch
+):
+    user_id = uuid.uuid4()
+    provider = _EnvCapturingProvider(force_create_status="starting")
+    svc = CloudAgentService(
+        provider=provider,
+        feature_enabled=True,
+        new_api_service=_StaticNewApiService(),
+    )
+    view = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    launch_token = "retained-launch-token"
+
+    cloud_row = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == view.cloud_daemon_instance_id
+        )
+    )
+    agent_row = await db_session.scalar(
+        select(CloudAgentInstance).where(CloudAgentInstance.agent_id == view.agent_id)
+    )
+    assert cloud_row is not None
+    assert agent_row is not None
+    cloud_row.metadata_json = {
+        **(cloud_row.metadata_json or {}),
+        "current_launch_token": launch_token,
+        "pending_launch_token": launch_token,
+    }
+    provisioning = dict((agent_row.metadata_json or {}).get("provisioning") or {})
+    provisioning["cloud_daemon_launch_token"] = launch_token
+    agent_row.metadata_json = {
+        **(agent_row.metadata_json or {}),
+        "provisioning": provisioning,
+    }
+    await db_session.commit()
+
+    sent_frames: list[tuple[str, str | None]] = []
+
+    async def fake_send_cloud_control_frame(
+        cloud_daemon_instance_id: str,
+        type_: str,
+        params: dict | None = None,
+        timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
+    ) -> dict:
+        assert cloud_daemon_instance_id == view.cloud_daemon_instance_id
+        sent_frames.append((type_, required_launch_token))
+        if type_ == "list_agents":
+            return {"ok": True, "result": {"agents": []}}
+        if type_ == "provision_agent":
+            return {
+                "ok": True,
+                "result": {"agentId": (params or {})["credentials"]["agentId"]},
+            }
+        raise AssertionError(f"unexpected frame type {type_!r}")
+
+    monkeypatch.setattr(
+        cloud_agent_service,
+        "send_cloud_control_frame",
+        fake_send_cloud_control_frame,
+    )
+
+    replayed = await svc.provision_pending_for_cloud_daemon(
+        db_session,
+        cloud_daemon_instance_id=view.cloud_daemon_instance_id,
+        cloud_daemon_launch_token=launch_token,
+    )
+
+    assert [r.agent_id for r in replayed] == [view.agent_id]
+    assert sent_frames == [
+        ("list_agents", launch_token),
+        ("provision_agent", launch_token),
+    ]
+    await db_session.refresh(cloud_row)
+    assert "pending_launch_token" not in (cloud_row.metadata_json or {})
+    assert cloud_row.metadata_json.get("current_launch_token") == launch_token
+
+    paused = await svc.pause_cloud_agent(
+        db_session, user_id=user_id, agent_id=view.agent_id
+    )
+    assert paused.status == "paused"
+    resumed = await svc.resume_cloud_agent(
+        db_session, user_id=user_id, agent_id=view.agent_id
+    )
+
+    assert resumed.status == "ready"
+    assert provider.launch_tokens == [None, launch_token]
+
+
+@pytest.mark.asyncio
+async def test_create_agent_on_paused_daemon_reuses_current_launch_token(db_session):
+    user_id = uuid.uuid4()
+    provider = _EnvCapturingProvider()
+    svc = CloudAgentService(
+        provider=provider,
+        feature_enabled=True,
+        max_per_user=4,
+        max_agents_per_daemon=2,
+    )
+    first = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+
+    await svc.pause_cloud_agent(db_session, user_id=user_id, agent_id=first.agent_id)
+    launch_token = "retained-launch-token"
+    cloud_row = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == first.cloud_daemon_instance_id
+        )
+    )
+    assert cloud_row is not None
+    cloud_row.metadata_json = {
+        **(cloud_row.metadata_json or {}),
+        "current_launch_token": launch_token,
+    }
+    await db_session.commit()
+
+    second = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
+    )
+
+    assert second.cloud_daemon_instance_id == first.cloud_daemon_instance_id
+    assert second.status == "ready"
+    assert provider.launch_tokens == [None, launch_token]
+
+
+@pytest.mark.asyncio
 async def test_restart_cloud_daemon_restarts_shared_sandbox(db_session):
     user_id = uuid.uuid4()
     svc, fake = _make_service(max_per_user=4, max_agents_per_daemon=2)
@@ -457,6 +1038,18 @@ async def test_restart_cloud_daemon_restarts_shared_sandbox(db_session):
         )
     )
     assert daemon_instance_id is not None
+    cloud_row = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == a.cloud_daemon_instance_id
+        )
+    )
+    assert cloud_row is not None
+    old_launch_token = "old-restart-token"
+    cloud_row.metadata_json = {
+        **(cloud_row.metadata_json or {}),
+        "current_launch_token": old_launch_token,
+    }
+    await db_session.commit()
 
     await svc.restart_cloud_daemon(
         db_session,
@@ -472,8 +1065,124 @@ async def test_restart_cloud_daemon_restarts_shared_sandbox(db_session):
         )
     ).scalars().all()
     assert {row.agent_id for row in rows} == {a.agent_id, b.agent_id}
-    assert {row.status for row in rows} == {"ready"}
+    assert {row.status for row in rows} == {"provisioning"}
+    assert all("provisioning" in (row.metadata_json or {}) for row in rows)
+    cloud_row = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == a.cloud_daemon_instance_id
+        )
+    )
+    assert cloud_row is not None
+    assert cloud_row.status == "starting"
+    launch_token = cloud_row.metadata_json.get("pending_launch_token")
+    assert isinstance(launch_token, str)
+    assert launch_token != old_launch_token
+    assert cloud_row.metadata_json.get("current_launch_token") == launch_token
     assert fake.calls(a.cloud_daemon_instance_id)["create"] == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_mode", ["exception", "failed"])
+async def test_restart_cloud_daemon_failure_keeps_previous_launch_token(
+    db_session, monkeypatch, failure_mode
+):
+    user_id = uuid.uuid4()
+    old_launch_token = "old-restart-token"
+    provider = _FailingCreateAttemptProvider(
+        fail_on_call=3,
+        failure_mode=failure_mode,
+    )
+    svc, _ = _make_service(
+        max_per_user=4,
+        max_agents_per_daemon=2,
+        provider=provider,
+    )
+    a = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    b = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
+    )
+    cloud_row = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == a.cloud_daemon_instance_id
+        )
+    )
+    assert cloud_row is not None
+    a_row = await db_session.scalar(
+        select(CloudAgentInstance).where(CloudAgentInstance.agent_id == a.agent_id)
+    )
+    b_row = await db_session.scalar(
+        select(CloudAgentInstance).where(CloudAgentInstance.agent_id == b.agent_id)
+    )
+    assert a_row is not None and b_row is not None
+    a_row.status = "ready"
+    a_row.error_code = "legacy_a_error"
+    a_row.error_message = "a should be restored"
+    a_row.metadata_json = {
+        **(a_row.metadata_json or {}),
+        "rollback_guard": {"name": a_row.agent_id},
+    }
+    b_row.status = "paused"
+    b_row.error_code = "legacy_b_error"
+    b_row.error_message = "b should be restored"
+    b_row.metadata_json = {
+        **(b_row.metadata_json or {}),
+        "rollback_guard": {"name": b_row.agent_id},
+    }
+    cloud_row.metadata_json = {
+        **(cloud_row.metadata_json or {}),
+        "current_launch_token": old_launch_token,
+        "rollback_marker": "legacy",
+    }
+    cloud_row.status = "ready"
+    cloud_row.error_code = "legacy_daemon_error"
+    cloud_row.error_message = "legacy daemon error"
+    await db_session.commit()
+
+    with pytest.raises(CloudAgentError) as excinfo:
+        await svc.restart_cloud_daemon(
+            db_session,
+            user_id=user_id,
+            daemon_instance_id=cloud_row.daemon_instance_id,
+        )
+
+    assert excinfo.value.code in {"provider_restart_failed", "fake_relaunch_failed"}
+    new_launch_token = provider.launch_tokens[-1]
+    assert isinstance(new_launch_token, str)
+    assert new_launch_token != old_launch_token
+
+    await db_session.refresh(cloud_row)
+    await db_session.refresh(a_row)
+    await db_session.refresh(b_row)
+    assert "pending_launch_token" not in (cloud_row.metadata_json or {})
+    assert cloud_row.metadata_json.get("current_launch_token") == old_launch_token
+    assert cloud_row.status == "ready"
+    assert cloud_row.error_code == "legacy_daemon_error"
+    assert cloud_row.error_message == "legacy daemon error"
+    assert cloud_row.metadata_json.get("rollback_marker") == "legacy"
+    assert a_row.status == "ready"
+    assert a_row.error_code == "legacy_a_error"
+    assert a_row.error_message == "a should be restored"
+    assert a_row.metadata_json.get("rollback_guard") == {"name": a_row.agent_id}
+    assert "cloud_daemon_launch_token" not in (
+        a_row.metadata_json.get("provisioning") or {}
+    )
+    assert b_row.status == "paused"
+    assert b_row.error_code == "legacy_b_error"
+    assert b_row.error_message == "b should be restored"
+    assert b_row.metadata_json.get("rollback_guard") == {"name": b_row.agent_id}
+    assert "cloud_daemon_launch_token" not in (
+        b_row.metadata_json.get("provisioning") or {}
+    )
+
+    await _assert_cloud_daemon_ws_accepts_only_launch_token(
+        db_session,
+        monkeypatch,
+        cloud_daemon=cloud_row,
+        accepted_launch_token=old_launch_token,
+        rejected_launch_token=new_launch_token,
+    )
 
 
 @pytest.mark.asyncio

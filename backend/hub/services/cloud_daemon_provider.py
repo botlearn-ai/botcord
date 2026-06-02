@@ -42,8 +42,10 @@ class CloudDaemonProvider(Protocol):
 
     Implementations must be idempotent: calling ``create_or_resume`` twice
     for the same ``cloud_daemon_instance_id`` must yield the same sandbox,
-    not a new one. Same for ``pause`` / ``cleanup`` — re-entering an
-    already-terminal state is a no-op.
+    not a new one. When ``launch_token`` is provided, the implementation must
+    still relaunch the daemon process with a fresh access token so the next
+    control websocket can prove it belongs to that launch. Same for ``pause``
+    / ``cleanup`` — re-entering an already-terminal state is a no-op.
     """
 
     async def create_or_resume(
@@ -56,6 +58,7 @@ class CloudDaemonProvider(Protocol):
         region: str | None = None,
         provider_sandbox_id: str | None = None,
         extra_env: dict[str, str] | None = None,
+        launch_token: str | None = None,
     ) -> CloudDaemonHandle:
         ...
 
@@ -154,6 +157,7 @@ class FakeCloudDaemonProvider:
         region: str | None = None,
         provider_sandbox_id: str | None = None,
         extra_env: dict[str, str] | None = None,
+        launch_token: str | None = None,
     ) -> CloudDaemonHandle:
         # ``provider_sandbox_id`` is accepted for protocol parity with the
         # E2B provider — the in-memory map already keys on cloud id.

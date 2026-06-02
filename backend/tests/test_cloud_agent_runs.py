@@ -64,9 +64,10 @@ def _service(
     feature_enabled: bool = True,
     max_per_user: int = 3,
     new_api_service=None,
+    provider: FakeCloudDaemonProvider | None = None,
 ) -> CloudAgentService:
     return CloudAgentService(
-        provider=FakeCloudDaemonProvider(),
+        provider=provider or FakeCloudDaemonProvider(),
         feature_enabled=feature_enabled,
         max_per_user=max_per_user,
         max_agents_per_daemon=2,
@@ -241,6 +242,42 @@ async def test_create_run_rejects_exhausted_new_api_balance(db_session):
         )
     assert excinfo.value.code == "new_api_balance_exhausted"
     assert excinfo.value.http_status == 402
+    run_message = await db_session.scalar(
+        select(MessageRecord).where(MessageRecord.source_type == "cloud_agent_run")
+    )
+    assert run_message is None
+
+
+@pytest.mark.asyncio
+async def test_create_run_preflights_balance_before_resuming_paused_agent(db_session):
+    provider = FakeCloudDaemonProvider()
+    svc = _service(
+        provider=provider,
+        new_api_service=_RunNewApiService(configured=True, token_remain_quota=0),
+    )
+    user = await _seed_user(db_session)
+    cloud_agent = await _create_ready_agent(svc, db_session, user)
+    await svc.pause_cloud_agent(
+        db_session, user_id=user.id, agent_id=cloud_agent.agent_id
+    )
+    calls_before = provider.calls(cloud_agent.cloud_daemon_instance_id)
+
+    with pytest.raises(CloudAgentError) as excinfo:
+        await svc.create_run(
+            db_session,
+            user_id=user.id,
+            agent_id=cloud_agent.agent_id,
+            body=CreateRunInput(prompt="do not wake"),
+        )
+
+    assert excinfo.value.code == "new_api_balance_exhausted"
+    assert provider.calls(cloud_agent.cloud_daemon_instance_id) == calls_before
+    refreshed = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == cloud_agent.agent_id
+        )
+    )
+    assert refreshed.status == "paused"
     run_message = await db_session.scalar(
         select(MessageRecord).where(MessageRecord.source_type == "cloud_agent_run")
     )

@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS new_api_credentials (
     quota_per_usd DOUBLE PRECISION NOT NULL DEFAULT 500000.0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_new_api_credentials_user_id UNIQUE (user_id)
+    CONSTRAINT uq_new_api_credentials_user_id UNIQUE (user_id),
+    CONSTRAINT ck_new_api_credentials_user_id_positive CHECK (new_api_user_id > 0),
+    CONSTRAINT ck_new_api_credentials_token_id_positive CHECK (token_id > 0)
 );
 
 CREATE INDEX IF NOT EXISTS ix_new_api_credentials_new_api_user

@@ -49,6 +49,8 @@ router = APIRouter(tags=["cloud-daemon-control"])
 
 CLOUD_DAEMON_TOKEN_KIND = "cloud-daemon-access"
 CLOUD_DAEMON_TOKEN_ISSUER = "botcord-cloud-daemon"
+_CLOUD_DAEMON_PENDING_LAUNCH_TOKEN_KEY = "pending_launch_token"
+_CLOUD_DAEMON_CURRENT_LAUNCH_TOKEN_KEY = "current_launch_token"
 
 
 # ---------------------------------------------------------------------------
@@ -61,6 +63,7 @@ def _create_cloud_daemon_access_token(
     cloud_daemon_instance_id: str,
     daemon_instance_id: str,
     user_id: str,
+    launch_token: str | None = None,
 ) -> tuple[str, int]:
     """Issue a short-lived JWT for a cloud daemon's WS upgrade.
 
@@ -80,6 +83,8 @@ def _create_cloud_daemon_access_token(
         "exp": expires_at,
         "iss": CLOUD_DAEMON_TOKEN_ISSUER,
     }
+    if launch_token:
+        payload["cloud_daemon_launch_token"] = launch_token
     token = pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return token, DAEMON_ACCESS_TOKEN_EXPIRE_SECONDS
 
@@ -128,6 +133,7 @@ class _CloudDaemonConn:
     user_id: str
     cloud_daemon_instance_id: str
     daemon_instance_id: str
+    launch_token: str | None = None
     pending_acks: dict[str, asyncio.Future] = field(default_factory=dict)
 
 
@@ -219,6 +225,7 @@ async def send_cloud_control_frame(
     type_: str,
     params: dict[str, Any] | None = None,
     timeout_ms: int | None = None,
+    required_launch_token: str | None = None,
 ) -> dict[str, Any]:
     """Dispatch a signed frame and await the daemon's ack.
 
@@ -231,6 +238,14 @@ async def send_cloud_control_frame(
         raise CloudDaemonDispatchError(
             "cloud_daemon_offline",
             f"cloud daemon {cloud_daemon_instance_id!r} is not connected",
+        )
+    if required_launch_token and conn.launch_token != required_launch_token:
+        raise CloudDaemonDispatchError(
+            "cloud_daemon_launch_token_mismatch",
+            (
+                f"cloud daemon {cloud_daemon_instance_id!r} is not connected "
+                "with the required launch token"
+            ),
         )
 
     frame = _build_signed_frame(type_, params or {})
@@ -327,6 +342,22 @@ async def cloud_daemon_control_ws(ws: WebSocket) -> None:
         if cloud_row.status in {"deleting", "deleted"}:
             await ws.close(code=4403, reason="cloud daemon revoked")
             return
+        cloud_metadata = cloud_row.metadata_json or {}
+        pending_launch_token = cloud_metadata.get(
+            _CLOUD_DAEMON_PENDING_LAUNCH_TOKEN_KEY
+        )
+        current_launch_token = cloud_metadata.get(
+            _CLOUD_DAEMON_CURRENT_LAUNCH_TOKEN_KEY
+        )
+        claim_launch_token = claims.get("cloud_daemon_launch_token")
+        required_launch_token = None
+        if isinstance(pending_launch_token, str) and pending_launch_token:
+            required_launch_token = pending_launch_token
+        elif isinstance(current_launch_token, str) and current_launch_token:
+            required_launch_token = current_launch_token
+        if required_launch_token and claim_launch_token != required_launch_token:
+            await ws.close(code=4401, reason="stale cloud daemon launch token")
+            return
 
         daemon_row = await db.scalar(
             select(DaemonInstance).where(DaemonInstance.id == daemon_instance_id)
@@ -357,6 +388,7 @@ async def cloud_daemon_control_ws(ws: WebSocket) -> None:
         user_id=user_id,
         cloud_daemon_instance_id=cloud_daemon_instance_id,
         daemon_instance_id=daemon_instance_id,
+        launch_token=claims.get("cloud_daemon_launch_token"),
     )
     previous = await _REGISTRY.register(conn)
     if previous is not None:
@@ -383,7 +415,7 @@ async def cloud_daemon_control_ws(ws: WebSocket) -> None:
     # The drain runs as a background task so the WS receive loop below
     # starts pumping immediately — provision_agent dispatches will land
     # in this same conn once they go out.
-    schedule_provision_drain(cloud_daemon_instance_id)
+    schedule_provision_drain(cloud_daemon_instance_id, launch_token=conn.launch_token)
 
     try:
         while True:
@@ -430,7 +462,11 @@ async def cloud_daemon_control_ws(ws: WebSocket) -> None:
 _BACKGROUND_PROVISION_DRAINS: set[asyncio.Task] = set()
 
 
-def schedule_provision_drain(cloud_daemon_instance_id: str) -> None:
+def schedule_provision_drain(
+    cloud_daemon_instance_id: str,
+    *,
+    launch_token: str | None = None,
+) -> None:
     """Fire-and-forget: ask :class:`CloudAgentService` to provision pending agents.
 
     The import is deferred to side-step the
@@ -452,7 +488,9 @@ def schedule_provision_drain(cloud_daemon_instance_id: str) -> None:
             service = CloudAgentService()
             async with async_session() as db:
                 await service.provision_pending_for_cloud_daemon(
-                    db, cloud_daemon_instance_id=cloud_daemon_instance_id
+                    db,
+                    cloud_daemon_instance_id=cloud_daemon_instance_id,
+                    cloud_daemon_launch_token=launch_token,
                 )
         except Exception as exc:  # noqa: BLE001
             logger.warning(

@@ -1965,6 +1965,8 @@ class NewApiCredential(Base):
     __tablename__ = "new_api_credentials"
     __table_args__ = (
         UniqueConstraint("user_id", name="uq_new_api_credentials_user_id"),
+        CheckConstraint("new_api_user_id > 0", name="ck_new_api_credentials_user_id_positive"),
+        CheckConstraint("token_id > 0", name="ck_new_api_credentials_token_id_positive"),
         Index("ix_new_api_credentials_new_api_user", "new_api_user_id"),
     )
 

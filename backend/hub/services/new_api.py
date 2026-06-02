@@ -132,6 +132,8 @@ class NewApiService:
             user_id=user_id,
             data=data,
             require_api_key=True,
+            allow_token_rotation=True,
+            require_external_user_id=True,
         )
         await db.flush()
         return credential
@@ -164,6 +166,8 @@ class NewApiService:
             user_id=user_id,
             data=data,
             require_api_key=False,
+            allow_token_rotation=False,
+            require_external_user_id=False,
         )
         await db.flush()
         return _balance_from_credential(credential, configured=True)
@@ -247,10 +251,30 @@ class NewApiService:
         user_id: uuid.UUID,
         data: dict[str, Any],
         require_api_key: bool,
+        allow_token_rotation: bool,
+        require_external_user_id: bool,
     ) -> NewApiCredential:
         token = data.get("token")
         if not isinstance(token, dict):
             raise NewApiError("new_api_bad_response", "new-api response missing token")
+        external_user_id = _string(data.get("external_user_id"))
+        if external_user_id is None:
+            if require_external_user_id:
+                raise NewApiError(
+                    "new_api_bad_response",
+                    "new-api response external_user_id does not match requested user",
+                )
+        elif external_user_id != str(user_id):
+            raise NewApiError(
+                "new_api_bad_response",
+                "new-api response external_user_id does not match requested user",
+            )
+        new_api_user_id = _int(data.get("user_id"))
+        if new_api_user_id <= 0:
+            raise NewApiError("new_api_bad_response", "new-api response missing user_id")
+        token_id = _int(token.get("id"))
+        if token_id <= 0:
+            raise NewApiError("new_api_bad_response", "new-api response missing token id")
         api_key = _string(token.get("api_key"))
         if require_api_key and not api_key:
             raise NewApiError("new_api_bad_response", "new-api response missing api_key")
@@ -258,12 +282,24 @@ class NewApiService:
         existing = await db.scalar(
             select(NewApiCredential).where(NewApiCredential.user_id == user_id)
         )
+        created = existing is None
+        if existing is not None:
+            if existing.new_api_user_id != new_api_user_id:
+                raise NewApiError(
+                    "new_api_identity_mismatch",
+                    "new-api response user_id does not match stored credential",
+                )
+            if existing.token_id != token_id and not allow_token_rotation:
+                raise NewApiError(
+                    "new_api_identity_mismatch",
+                    "new-api response token_id does not match stored credential",
+                )
         if existing is None:
             existing = NewApiCredential(
                 user_id=user_id,
-                new_api_user_id=_int(data.get("user_id")),
+                new_api_user_id=new_api_user_id,
                 new_api_username=_string(data.get("username")) or "",
-                token_id=_int(token.get("id")),
+                token_id=token_id,
                 token_name=_string(token.get("name")) or "",
                 api_base_url=self._base_url or "",
                 api_key_ciphertext="",
@@ -275,14 +311,14 @@ class NewApiService:
             )
             db.add(existing)
 
-        existing.new_api_user_id = _int(data.get("user_id"))
+        existing.new_api_user_id = new_api_user_id
         existing.new_api_username = (
             _string(data.get("username")) or existing.new_api_username
         )
-        existing.token_id = _int(token.get("id"))
+        existing.token_id = token_id
         existing.token_name = _string(token.get("name")) or existing.token_name
         existing.api_base_url = self._base_url or existing.api_base_url
-        if api_key:
+        if api_key and (allow_token_rotation or created):
             existing.api_key_ciphertext = self._api_key_cipher.encrypt(api_key)
         elif existing.api_key_ciphertext and not self._api_key_cipher.is_encrypted(
             existing.api_key_ciphertext
