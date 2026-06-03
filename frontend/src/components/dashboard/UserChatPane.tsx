@@ -9,8 +9,8 @@
  *   - Rendering: status-driven (optimistic / streaming / delivered / failed)
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, PanelLeftOpen, Settings2, User, X } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from "react";
+import { ArrowDown, ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, PanelLeftOpen, Settings2, User, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -22,6 +22,7 @@ import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import { useOwnerChatWs } from "@/hooks/useOwnerChatWs";
+import { messageList } from "@/lib/i18n/translations/dashboard";
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import MarkdownContent, { normalizeMessageContent } from "@/components/ui/MarkdownContent";
 import AttachmentItem from "@/components/ui/AttachmentItem";
@@ -39,6 +40,11 @@ import {
   canShowOwnerChatMessageActions,
   ownerChatReplyTargetId,
 } from "@/lib/owner-chat-actions";
+import {
+  isNearScrollBottom,
+  scrollToLatestVisibleAfterScroll,
+  shouldShowScrollToLatestForNewContent,
+} from "./messageScroll";
 
 // ---------------------------------------------------------------------------
 // TypewriterText
@@ -114,24 +120,38 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const forwardLabel = locale === "zh" ? "转发" : "Forward";
   const copyLabel = locale === "zh" ? "复制" : "Copy";
   const copiedLabel = locale === "zh" ? "已复制" : "Copied";
+  const scrollToLatestLabel = messageList[locale].scrollToLatest;
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const animatedRef = useRef<Set<string>>(new Set());
   const initialLoadRef = useRef(true);
   const isLoadingMore = useRef(false);
   const prevLengthRef = useRef(0);
+  const prevMessageContentSignatureRef = useRef("");
   const wasNearBottomRef = useRef(true);
+  const showScrollToBottomButtonRef = useRef(false);
+  const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const [, forceRender] = useState(0);
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = scrollContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    wasNearBottomRef.current = true;
+    showScrollToBottomButtonRef.current = false;
+    setShowScrollToBottomButton(false);
+    el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
 
   const scrollToBottomAfterLayout = useCallback(() => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(scrollToBottom);
+      requestAnimationFrame(() => scrollToBottom());
     });
+  }, [scrollToBottom]);
+
+  const scrollToBottomIfFollowing = useCallback(() => {
+    if (wasNearBottomRef.current) {
+      scrollToBottom();
+    }
   }, [scrollToBottom]);
 
   // WS hook authenticates the selected owner-chat target explicitly.
@@ -152,6 +172,10 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
     setInitializingRoom(true);
     initialLoadRef.current = true;
     prevLengthRef.current = 0;
+    prevMessageContentSignatureRef.current = "";
+    wasNearBottomRef.current = true;
+    showScrollToBottomButtonRef.current = false;
+    setShowScrollToBottomButton(false);
     animatedRef.current.clear();
     setPreviewAttachment(null);
     useOwnerChatStore.getState().reset();
@@ -197,18 +221,66 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
 
   // ------ Scroll helpers ------
 
+  const messageContentSignature = useMemo(() => {
+    return messages.map((msg) => {
+      const blockSignature = msg.streamBlocks
+        .map((entry) => `${entry.trace_id}:${entry.seq}:${entry.block.kind}`)
+        .join(",");
+      return [
+        msg.clientId,
+        msg.status,
+        msg.text,
+        msg.attachments?.length ?? 0,
+        blockSignature,
+      ].join(":");
+    }).join("|");
+  }, [messages]);
+
   useEffect(() => {
     if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
       if (wasNearBottomRef.current) scrollToBottom();
+      else if (shouldShowScrollToLatestForNewContent({
+        wasNearBottom: wasNearBottomRef.current,
+        hadPreviousContent: prevLengthRef.current > 0,
+        isLoadingMore: isLoadingMore.current,
+      })) {
+        showScrollToBottomButtonRef.current = true;
+        setShowScrollToBottomButton(true);
+      }
     }
     prevLengthRef.current = messages.length;
     isLoadingMore.current = false;
   }, [messages.length, scrollToBottom]);
 
+  useLayoutEffect(() => {
+    const previousSignature = prevMessageContentSignatureRef.current;
+    prevMessageContentSignatureRef.current = messageContentSignature;
+    if (!previousSignature || previousSignature === messageContentSignature || isLoadingMore.current) return;
+
+    if (wasNearBottomRef.current) {
+      scrollToBottomAfterLayout();
+    } else if (shouldShowScrollToLatestForNewContent({
+      wasNearBottom: wasNearBottomRef.current,
+      hadPreviousContent: true,
+      isLoadingMore: isLoadingMore.current,
+    })) {
+      showScrollToBottomButtonRef.current = true;
+      setShowScrollToBottomButton(true);
+    }
+  }, [messageContentSignature, scrollToBottomAfterLayout]);
+
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    wasNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    wasNearBottomRef.current = isNearScrollBottom(el);
+    const shouldShow = scrollToLatestVisibleAfterScroll(
+      showScrollToBottomButtonRef.current,
+      wasNearBottomRef.current,
+    );
+    if (showScrollToBottomButtonRef.current !== shouldShow) {
+      showScrollToBottomButtonRef.current = shouldShow;
+      setShowScrollToBottomButton(shouldShow);
+    }
     if (hasMore && !isLoadingMore.current && el.scrollTop < 100) {
       isLoadingMore.current = true;
       useOwnerChatStore.getState().loadMore();
@@ -582,7 +654,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                   blocks={msg.streamBlocks}
                   defaultExpanded
                   showComposing
-                  onScrollRequest={wasNearBottomRef.current ? scrollToBottom : undefined}
+                  onScrollRequest={scrollToBottomIfFollowing}
                 />
               </div>
             );
@@ -660,6 +732,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                   key={`${msg.clientId}-delivered`}
                   blocks={msg.streamBlocks}
                   showComposing
+                  onScrollRequest={scrollToBottomIfFollowing}
                 />
               )}
               {hasVisibleBubble && (
@@ -726,7 +799,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                       return (
                         <TypewriterText
                           text={msg.text || ""}
-                          onTick={scrollToBottom}
+                          onTick={scrollToBottomIfFollowing}
                           onComplete={() => {
                             animatedRef.current.add(msg.clientId);
                             forceRender((n) => n + 1);
@@ -790,6 +863,17 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
           />
         </div>
       </div>
+      {showScrollToBottomButton && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom("auto")}
+          aria-label={scrollToLatestLabel}
+          title={scrollToLatestLabel}
+          className="absolute bottom-[5.25rem] left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-neon-cyan/40 bg-deep-black-light/95 text-neon-cyan shadow-lg shadow-black/30 backdrop-blur transition-colors hover:bg-neon-cyan/15 hover:text-neon-cyan max-md:bottom-[5.75rem]"
+        >
+          <ArrowDown className="h-4 w-4" />
+        </button>
+      )}
       </div>
       {previewAttachment && (
         <DocumentPreviewPane
