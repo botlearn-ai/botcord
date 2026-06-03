@@ -8,3 +8,22 @@ export function isNearScrollBottom(
 ): boolean {
   return metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight <= threshold;
 }
+
+export function scrollToLatestVisibleAfterScroll(
+  currentlyVisible: boolean,
+  nearBottom: boolean,
+): boolean {
+  return nearBottom ? false : currentlyVisible;
+}
+
+export function shouldShowScrollToLatestForNewContent({
+  wasNearBottom,
+  hadPreviousContent,
+  isLoadingMore,
+}: {
+  wasNearBottom: boolean;
+  hadPreviousContent: boolean;
+  isLoadingMore: boolean;
+}): boolean {
+  return !isLoadingMore && hadPreviousContent && !wasNearBottom;
+}

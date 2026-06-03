@@ -14,7 +14,11 @@ import { useShallow } from "zustand/react/shallow";
 import { ArrowDown, Bot, Settings, UserPlus } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import { JUMP_TO_MESSAGE_EVENT, type JumpToMessageDetail } from "./messageNavigation";
-import { isNearScrollBottom } from "./messageScroll";
+import {
+  isNearScrollBottom,
+  scrollToLatestVisibleAfterScroll,
+  shouldShowScrollToLatestForNewContent,
+} from "./messageScroll";
 import type { Attachment, DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
 import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
@@ -480,7 +484,11 @@ export default function MessageList({
         if (roomId) {
           commitRoomSeen(roomId);
         }
-      } else if (prevLengthRef.current > 0) {
+      } else if (shouldShowScrollToLatestForNewContent({
+        wasNearBottom: wasNearBottomRef.current,
+        hadPreviousContent: prevLengthRef.current > 0,
+        isLoadingMore: isLoadingMore.current,
+      })) {
         // User is reading history, so expose an explicit way to resume following.
         showScrollToBottomButtonRef.current = true;
         setShowScrollToBottomButton(true);
@@ -501,8 +509,11 @@ export default function MessageList({
 
     // Snapshot scroll position for use by the auto-scroll effect
     wasNearBottomRef.current = isNearScrollBottom(containerRef.current);
-    if (showScrollToBottomButtonRef.current === wasNearBottomRef.current) {
-      const shouldShow = !wasNearBottomRef.current;
+    const shouldShow = scrollToLatestVisibleAfterScroll(
+      showScrollToBottomButtonRef.current,
+      wasNearBottomRef.current,
+    );
+    if (showScrollToBottomButtonRef.current !== shouldShow) {
       showScrollToBottomButtonRef.current = shouldShow;
       setShowScrollToBottomButton(shouldShow);
     }

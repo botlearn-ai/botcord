@@ -9,7 +9,7 @@
  *   - Rendering: status-driven (optimistic / streaming / delivered / failed)
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from "react";
 import { ArrowDown, ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, PanelLeftOpen, Settings2, User, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
@@ -40,7 +40,11 @@ import {
   canShowOwnerChatMessageActions,
   ownerChatReplyTargetId,
 } from "@/lib/owner-chat-actions";
-import { isNearScrollBottom } from "./messageScroll";
+import {
+  isNearScrollBottom,
+  scrollToLatestVisibleAfterScroll,
+  shouldShowScrollToLatestForNewContent,
+} from "./messageScroll";
 
 // ---------------------------------------------------------------------------
 // TypewriterText
@@ -123,6 +127,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
   const initialLoadRef = useRef(true);
   const isLoadingMore = useRef(false);
   const prevLengthRef = useRef(0);
+  const prevMessageContentSignatureRef = useRef("");
   const wasNearBottomRef = useRef(true);
   const showScrollToBottomButtonRef = useRef(false);
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
@@ -167,6 +172,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
     setInitializingRoom(true);
     initialLoadRef.current = true;
     prevLengthRef.current = 0;
+    prevMessageContentSignatureRef.current = "";
     wasNearBottomRef.current = true;
     showScrollToBottomButtonRef.current = false;
     setShowScrollToBottomButton(false);
@@ -215,10 +221,29 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
 
   // ------ Scroll helpers ------
 
+  const messageContentSignature = useMemo(() => {
+    return messages.map((msg) => {
+      const blockSignature = msg.streamBlocks
+        .map((entry) => `${entry.trace_id}:${entry.seq}:${entry.block.kind}`)
+        .join(",");
+      return [
+        msg.clientId,
+        msg.status,
+        msg.text,
+        msg.attachments?.length ?? 0,
+        blockSignature,
+      ].join(":");
+    }).join("|");
+  }, [messages]);
+
   useEffect(() => {
     if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
       if (wasNearBottomRef.current) scrollToBottom();
-      else {
+      else if (shouldShowScrollToLatestForNewContent({
+        wasNearBottom: wasNearBottomRef.current,
+        hadPreviousContent: prevLengthRef.current > 0,
+        isLoadingMore: isLoadingMore.current,
+      })) {
         showScrollToBottomButtonRef.current = true;
         setShowScrollToBottomButton(true);
       }
@@ -227,12 +252,32 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
     isLoadingMore.current = false;
   }, [messages.length, scrollToBottom]);
 
+  useLayoutEffect(() => {
+    const previousSignature = prevMessageContentSignatureRef.current;
+    prevMessageContentSignatureRef.current = messageContentSignature;
+    if (!previousSignature || previousSignature === messageContentSignature || isLoadingMore.current) return;
+
+    if (wasNearBottomRef.current) {
+      scrollToBottomAfterLayout();
+    } else if (shouldShowScrollToLatestForNewContent({
+      wasNearBottom: wasNearBottomRef.current,
+      hadPreviousContent: true,
+      isLoadingMore: isLoadingMore.current,
+    })) {
+      showScrollToBottomButtonRef.current = true;
+      setShowScrollToBottomButton(true);
+    }
+  }, [messageContentSignature, scrollToBottomAfterLayout]);
+
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
     wasNearBottomRef.current = isNearScrollBottom(el);
-    if (showScrollToBottomButtonRef.current === wasNearBottomRef.current) {
-      const shouldShow = !wasNearBottomRef.current;
+    const shouldShow = scrollToLatestVisibleAfterScroll(
+      showScrollToBottomButtonRef.current,
+      wasNearBottomRef.current,
+    );
+    if (showScrollToBottomButtonRef.current !== shouldShow) {
       showScrollToBottomButtonRef.current = shouldShow;
       setShowScrollToBottomButton(shouldShow);
     }
@@ -687,6 +732,7 @@ export default function UserChatPane({ agentId }: { agentId?: string | null }) {
                   key={`${msg.clientId}-delivered`}
                   blocks={msg.streamBlocks}
                   showComposing
+                  onScrollRequest={scrollToBottomIfFollowing}
                 />
               )}
               {hasVisibleBubble && (
