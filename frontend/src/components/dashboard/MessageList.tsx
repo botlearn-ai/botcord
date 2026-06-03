@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 chat/ui/session/unread store 的消息状态与增量加载动作，依赖共享时间工具更新已读水位，依赖 MessageBubble 渲染单条消息，依赖滚动位置判定已读水位
- * [OUTPUT]: 对外提供 MessageList 组件，渲染消息流、话题分组、历史加载与“新消息”提示
+ * [OUTPUT]: 对外提供 MessageList 组件，渲染消息流、话题分组、历史加载与滚动追随控制
  * [POS]: dashboard 聊天正文区的消息阅读器，负责把实时追加消息转成可见阅读状态
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -11,9 +11,10 @@ import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { messageList } from '@/lib/i18n/translations/dashboard';
 import { useShallow } from "zustand/react/shallow";
-import { Bot, Settings, UserPlus } from "lucide-react";
+import { ArrowDown, Bot, Settings, UserPlus } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import { JUMP_TO_MESSAGE_EVENT, type JumpToMessageDetail } from "./messageNavigation";
+import { isNearScrollBottom } from "./messageScroll";
 import type { Attachment, DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
 import { getLatestSeenAtForRoom } from "@/store/dashboard-shared";
@@ -192,10 +193,6 @@ export function TopicCard({
   );
 }
 
-function isNearBottom(el: HTMLElement, threshold = 150): boolean {
-  return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-}
-
 function EmptyRoomGuide({
   room,
 }: {
@@ -315,8 +312,8 @@ export default function MessageList({
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
   const isLoadingMore = useRef(false);
-  const [showNewMessagesBanner, setShowNewMessagesBanner] = useState(false);
-  const showBannerRef = useRef(false);
+  const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
+  const showScrollToBottomButtonRef = useRef(false);
   const wasNearBottomRef = useRef(true);
   const initialScrollDoneRef = useRef(false);
 
@@ -415,7 +412,8 @@ export default function MessageList({
     prevLengthRef.current = 0;
     wasNearBottomRef.current = true;
     initialScrollDoneRef.current = false;
-    setShowNewMessagesBanner(false);
+    showScrollToBottomButtonRef.current = false;
+    setShowScrollToBottomButton(false);
   }, [roomId, setOpenedTopicId]);
 
   const topicsMap = useMemo(() => {
@@ -448,9 +446,11 @@ export default function MessageList({
 
   const timelineItems = useMemo(() => buildTimelineItems(messages, topicsMap), [messages, topicsMap]);
 
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "auto" });
-    setShowNewMessagesBanner(false);
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    wasNearBottomRef.current = true;
+    showScrollToBottomButtonRef.current = false;
+    setShowScrollToBottomButton(false);
+    bottomRef.current?.scrollIntoView({ behavior });
     if (roomId) {
       commitRoomSeen(roomId);
     }
@@ -458,7 +458,7 @@ export default function MessageList({
 
   const scrollToBottomAfterLayout = useCallback(() => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(scrollToBottom);
+      requestAnimationFrame(() => scrollToBottom());
     });
   }, [scrollToBottom]);
 
@@ -468,20 +468,22 @@ export default function MessageList({
     scrollToBottomAfterLayout();
   }, [roomId, isRoomMessagesLoading, messages.length, scrollToBottomAfterLayout]);
 
-  // Auto-scroll or show "new messages" banner when new messages arrive.
+  // Auto-scroll or show the follow button when new messages arrive.
   // Uses wasNearBottomRef (snapshotted on scroll events, before DOM changes)
-  // to decide whether to auto-scroll or show the banner.
+  // to decide whether to auto-scroll or let the user resume manually.
   useEffect(() => {
     if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
       if (wasNearBottomRef.current) {
         scrollToBottomAfterLayout();
-        setShowNewMessagesBanner(false);
+        showScrollToBottomButtonRef.current = false;
+        setShowScrollToBottomButton(false);
         if (roomId) {
           commitRoomSeen(roomId);
         }
       } else if (prevLengthRef.current > 0) {
-        // User is reading history — show banner instead of auto-scrolling
-        setShowNewMessagesBanner(true);
+        // User is reading history, so expose an explicit way to resume following.
+        showScrollToBottomButtonRef.current = true;
+        setShowScrollToBottomButton(true);
       }
     }
     prevLengthRef.current = messages.length;
@@ -490,15 +492,20 @@ export default function MessageList({
 
   // Keep ref in sync with state for use in scroll handler
   useEffect(() => {
-    showBannerRef.current = showNewMessagesBanner;
-  }, [showNewMessagesBanner]);
+    showScrollToBottomButtonRef.current = showScrollToBottomButton;
+  }, [showScrollToBottomButton]);
 
   // Track scroll position & handle infinite scroll up
   const handleScroll = useCallback(() => {
     if (!containerRef.current || !roomId) return;
 
     // Snapshot scroll position for use by the auto-scroll effect
-    wasNearBottomRef.current = isNearBottom(containerRef.current);
+    wasNearBottomRef.current = isNearScrollBottom(containerRef.current);
+    if (showScrollToBottomButtonRef.current === wasNearBottomRef.current) {
+      const shouldShow = !wasNearBottomRef.current;
+      showScrollToBottomButtonRef.current = shouldShow;
+      setShowScrollToBottomButton(shouldShow);
+    }
 
     // Infinite scroll up
     if (hasMore && !isLoadingMore.current && containerRef.current.scrollTop < 100) {
@@ -506,18 +513,15 @@ export default function MessageList({
       loadMoreMessages(roomId);
     }
 
-    // Dismiss banner when scrolled near bottom
-    if (showBannerRef.current && wasNearBottomRef.current) {
-      setShowNewMessagesBanner(false);
-    }
     if (wasNearBottomRef.current) {
       commitRoomSeen(roomId);
     }
   }, [roomId, hasMore, loadMoreMessages, commitRoomSeen]);
 
-  // Reset banner on room change
+  // Reset follow control on room change
   useEffect(() => {
-    setShowNewMessagesBanner(false);
+    showScrollToBottomButtonRef.current = false;
+    setShowScrollToBottomButton(false);
   }, [roomId]);
 
   if (!roomId) return null;
@@ -543,12 +547,15 @@ export default function MessageList({
     return <EmptyRoomGuide room={currentRoom} />;
   }
 
-  const newMessagesBanner = showNewMessagesBanner && (
+  const scrollToBottomButton = showScrollToBottomButton && (
     <button
-      onClick={scrollToBottom}
-      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 rounded-full bg-neon-cyan/90 px-4 py-1.5 text-xs font-medium text-deep-black shadow-lg shadow-neon-cyan/20 transition-all hover:bg-neon-cyan animate-bounce max-md:bottom-6"
+      type="button"
+      onClick={() => scrollToBottom("auto")}
+      aria-label={t.scrollToLatest}
+      title={t.scrollToLatest}
+      className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-neon-cyan/40 bg-deep-black-light/95 text-neon-cyan shadow-lg shadow-black/30 backdrop-blur transition-colors hover:bg-neon-cyan/15 hover:text-neon-cyan max-md:bottom-6"
     >
-      {t.newMessages}
+      <ArrowDown className="h-4 w-4" />
     </button>
   );
 
@@ -602,7 +609,7 @@ export default function MessageList({
         })}
         <div ref={bottomRef} />
       </div>
-      {newMessagesBanner}
+      {scrollToBottomButton}
     </div>
   );
 }

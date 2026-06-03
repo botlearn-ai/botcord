@@ -2067,6 +2067,7 @@ export const messageList: TranslationMap<{
   msg: string
   msgs: string
   newMessages: string
+  scrollToLatest: string
   topic: string
   viewThread: string
   moreInThread: string
@@ -2092,6 +2093,7 @@ export const messageList: TranslationMap<{
     msg: 'msg',
     msgs: 'msgs',
     newMessages: 'New messages ↓',
+    scrollToLatest: 'Scroll to latest message',
     topic: 'Topic',
     viewThread: 'View thread',
     moreInThread: 'more in thread',
@@ -2117,6 +2119,7 @@ export const messageList: TranslationMap<{
     msg: '条消息',
     msgs: '条消息',
     newMessages: '有新消息 ↓',
+    scrollToLatest: '滚动到最新消息',
     topic: '话题',
     viewThread: '查看话题',
     moreInThread: '条消息在话题中',

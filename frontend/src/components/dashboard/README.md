@@ -25,7 +25,7 @@ dashboard/
 ├── AddRoomMemberModal.tsx    # 群成员手动添加弹窗：从好友与自有 Agent 中选人，调用人类侧 members API 入群
 ├── ContactList.tsx           # 联系人列表
 ├── RoomHeader.tsx            # 房间头部信息与未加入时的 join 入口
-├── MessageList.tsx           # 消息流（历史加载 + 已读水位 + 新消息提示）
+├── MessageList.tsx           # 消息流（历史加载 + 已读水位 + 滚动追随控制）
 ├── PaidRoomPreview.tsx       # 付费群未订阅橱窗：固定展示最近 3 条消息摘要与订阅入口
 ├── MessageBubble.tsx         # 单条消息气泡
 ├── AccountMenu.tsx           # 左下角统一账号入口，只展示“当前身份”列表与基础账户动作；无 agent 时弱提示跳转创建
@@ -77,6 +77,7 @@ dashboard/
 
 ## 变更日志
 
+- 2026-06-03: `MessageList.tsx` 与 `UserChatPane.tsx` 的消息滚动改为用户上滑后暂停自动追随，并显示紧凑的回到底部图标按钮；点击后恢复追随最新内容。
 - 2026-06-01: `MessageList.tsx` 的消息 React key 改为优先使用跨 fan-out 稳定的 `msg_id`，配合附件图片固定占位，减少后台同步时图片预览闪烁。
 - 2026-06-01: `DocumentPreviewPane.tsx` 的右侧附件预览支持桌面端拖拽左边缘调整宽度，并记住最近一次宽度。
 - 2026-05-30: `MessageBubble.tsx` 的消息操作菜单改为 fixed portal 定位，底部空间不足时自动向上展开，避免被消息滚动区或输入栏裁剪。
