@@ -9,7 +9,10 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hub.models import Base, CloudDaemonInstance
-from hub.routers.cloud_daemon_control import _verify_cloud_daemon_access_token
+from hub.routers.cloud_daemon_control import (
+    _create_cloud_daemon_access_token,
+    _verify_cloud_daemon_access_token,
+)
 from hub.services.cloud_agent import (
     CloudAgentService,
     CreateCloudAgentInput,
@@ -103,6 +106,9 @@ async def test_create_or_resume_starts_sandbox_and_injects_env():
     assert sandbox.template_id == "tpl_test_default"
     assert sandbox.lifecycle == {"on_timeout": "pause", "auto_resume": False}
     assert sandbox.commands == [CLOUD_DAEMON_STARTUP_COMMAND]
+    assert len(sandbox.command_runs) == 1
+    assert sandbox.command_runs[0].command == CLOUD_DAEMON_STARTUP_COMMAND
+    assert sandbox.command_runs[0].background is True
 
     # Env vars carry the WS connection info + secrets.
     env = sandbox.env
@@ -116,6 +122,7 @@ async def test_create_or_resume_starts_sandbox_and_injects_env():
     claims = _verify_cloud_daemon_access_token(env["BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN"])
     assert claims["cloud_daemon_instance_id"] == "cloud_dm_aaa"
     assert claims["daemon_instance_id"] == "dm_bbb"
+    assert sandbox.command_runs[0].env == env
 
 
 @pytest.mark.asyncio
@@ -152,6 +159,47 @@ async def test_create_or_resume_skips_deepseek_env_when_no_key():
 
 
 @pytest.mark.asyncio
+async def test_create_or_resume_injects_extra_runtime_env():
+    """Per-user runtime env is forwarded to the sandbox and can override fallbacks."""
+    provider, client = _make_provider(deepseek_api_key="fallback-ds-key")
+    handle = await provider.create_or_resume(
+        cloud_daemon_instance_id="cloud_dm_newapi",
+        daemon_instance_id="dm_newapi",
+        user_id=str(uuid.uuid4()),
+        runtime="deepseek-tui",
+        extra_env={
+            "OPENAI_API_KEY": "sk-user",
+            "OPENAI_BASE_URL": "https://new-api.test/v1",
+            "DEEPSEEK_API_KEY": "sk-user",
+        },
+    )
+    sandbox = client.get(handle.provider_sandbox_id)
+    assert sandbox is not None
+    assert sandbox.env["OPENAI_API_KEY"] == "sk-user"
+    assert sandbox.env["OPENAI_BASE_URL"] == "https://new-api.test/v1"
+    assert sandbox.env["DEEPSEEK_API_KEY"] == "sk-user"
+
+
+@pytest.mark.asyncio
+async def test_create_or_resume_injects_launch_token_claim():
+    provider, client = _make_provider()
+    handle = await provider.create_or_resume(
+        cloud_daemon_instance_id="cloud_dm_launch",
+        daemon_instance_id="dm_launch",
+        user_id=str(uuid.uuid4()),
+        runtime="deepseek-tui",
+        launch_token="launch-token-1",
+    )
+
+    sandbox = client.get(handle.provider_sandbox_id)
+    assert sandbox is not None
+    claims = _verify_cloud_daemon_access_token(
+        sandbox.env["BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN"]
+    )
+    assert claims["cloud_daemon_launch_token"] == "launch-token-1"
+
+
+@pytest.mark.asyncio
 async def test_resume_uses_existing_sandbox_when_provider_sandbox_id_supplied():
     """Same cloud_daemon_id + existing sandbox id triggers resume, not create."""
     provider, client = _make_provider()
@@ -179,6 +227,54 @@ async def test_resume_uses_existing_sandbox_when_provider_sandbox_id_supplied():
         CLOUD_DAEMON_STARTUP_COMMAND,
         CLOUD_DAEMON_STARTUP_COMMAND,
     ]
+
+
+@pytest.mark.asyncio
+async def test_relaunch_token_restarts_existing_sandbox_with_fresh_jwt():
+    """A tokened relaunch reuses the sandbox but starts a fresh daemon process."""
+    provider, client = _make_provider()
+    first = await provider.create_or_resume(
+        cloud_daemon_instance_id="cloud_dm_relaunch",
+        daemon_instance_id="dm_relaunch",
+        user_id="u",
+        runtime="deepseek-tui",
+    )
+    second = await provider.create_or_resume(
+        cloud_daemon_instance_id="cloud_dm_relaunch",
+        daemon_instance_id="dm_relaunch",
+        user_id="u",
+        runtime="deepseek-tui",
+        provider_sandbox_id=first.provider_sandbox_id,
+        launch_token="launch-token-2",
+    )
+
+    assert second.status == "starting"
+    assert second.provider_sandbox_id == first.provider_sandbox_id
+    assert len(client.all()) == 1
+    sandbox = client.get(first.provider_sandbox_id)
+    assert sandbox is not None
+    assert sandbox.commands == [
+        CLOUD_DAEMON_STARTUP_COMMAND,
+        CLOUD_DAEMON_STARTUP_COMMAND,
+    ]
+    assert len(sandbox.command_runs) == 2
+
+    first_command_env = sandbox.command_runs[0].env
+    relaunch_command_env = sandbox.command_runs[1].env
+    assert relaunch_command_env != first_command_env
+    assert (
+        relaunch_command_env["BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN"]
+        != first_command_env["BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN"]
+    )
+    # The fake intentionally keeps the sandbox-level env from the original
+    # create call, matching existing E2B sandboxes that may preserve stale env.
+    # The restarted daemon must therefore receive the fresh token through the
+    # run_command envs, not by relying on mutating sandbox.env.
+    assert sandbox.env == first_command_env
+    claims = _verify_cloud_daemon_access_token(
+        relaunch_command_env["BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN"]
+    )
+    assert claims["cloud_daemon_launch_token"] == "launch-token-2"
 
 
 @pytest.mark.asyncio
@@ -490,26 +586,64 @@ async def test_sdk_client_create_sandbox_forwards_args(fake_e2b_sdk_client):
 
 @pytest.mark.asyncio
 async def test_sdk_client_run_command_forwards_envs(fake_e2b_sdk_client):
-    """run_command runs the background command with the supplied envs."""
+    """run_command forwards fresh per-command envs to the SDK command runner."""
+    token_1, _ = _create_cloud_daemon_access_token(
+        "cloud_dm_sdk", "dm_sdk", "user", launch_token="launch-token-1"
+    )
+    token_2, _ = _create_cloud_daemon_access_token(
+        "cloud_dm_sdk", "dm_sdk", "user", launch_token="launch-token-2"
+    )
+    env_1 = {
+        "BOTCORD_HUB_URL": "https://hub.test",
+        "BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN": token_1,
+    }
+    env_2 = {
+        "BOTCORD_HUB_URL": "https://hub.test",
+        "BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN": token_2,
+    }
+
     await fake_e2b_sdk_client.run_command(
         sandbox_id="sbx_alpha",
         command=CLOUD_DAEMON_STARTUP_COMMAND,
-        env={"BOTCORD_HUB_URL": "https://hub.test"},
+        env=env_1,
+        background=True,
+    )
+    await fake_e2b_sdk_client.run_command(
+        sandbox_id="sbx_alpha",
+        command=CLOUD_DAEMON_STARTUP_COMMAND,
+        env=env_2,
         background=True,
     )
 
-    assert len(_FakeAsyncSandboxClass.connect_calls) == 1
+    assert len(_FakeAsyncSandboxClass.connect_calls) == 2
     assert _FakeAsyncSandboxClass.connect_calls[0]["sandbox_id"] == "sbx_alpha"
+    assert _FakeAsyncSandboxClass.connect_calls[0]["timeout"] == 0
+    assert _FakeAsyncSandboxClass.connect_calls[1]["sandbox_id"] == "sbx_alpha"
+    assert _FakeAsyncSandboxClass.connect_calls[1]["timeout"] == 0
 
-    assert len(_FakeAsyncSandboxClass.command_calls) == 1
-    cmd = _FakeAsyncSandboxClass.command_calls[0]
-    assert cmd["cmd"] == CLOUD_DAEMON_STARTUP_COMMAND
-    assert cmd["background"] is True
-    assert cmd["envs"] == {"BOTCORD_HUB_URL": "https://hub.test"}
+    assert len(_FakeAsyncSandboxClass.command_calls) == 2
+    first_cmd = _FakeAsyncSandboxClass.command_calls[0]
+    second_cmd = _FakeAsyncSandboxClass.command_calls[1]
+    assert first_cmd["cmd"] == CLOUD_DAEMON_STARTUP_COMMAND
+    assert second_cmd["cmd"] == CLOUD_DAEMON_STARTUP_COMMAND
+    assert first_cmd["background"] is True
+    assert second_cmd["background"] is True
+    assert first_cmd["envs"] == env_1
+    assert second_cmd["envs"] == env_2
+    assert first_cmd["envs"] != second_cmd["envs"]
+    first_claims = _verify_cloud_daemon_access_token(
+        first_cmd["envs"]["BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN"]
+    )
+    second_claims = _verify_cloud_daemon_access_token(
+        second_cmd["envs"]["BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN"]
+    )
+    assert first_claims["cloud_daemon_launch_token"] == "launch-token-1"
+    assert second_claims["cloud_daemon_launch_token"] == "launch-token-2"
     # Background daemons must outlive the SDK-side connection; the e2b SDK's
     # default 60s connection timeout would otherwise have envd terminate the
     # orphaned process exactly one minute after boot.
-    assert cmd["timeout"] == 0
+    assert first_cmd["timeout"] == 0
+    assert second_cmd["timeout"] == 0
 
 
 @pytest.mark.asyncio

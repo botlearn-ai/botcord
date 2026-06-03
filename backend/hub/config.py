@@ -448,6 +448,23 @@ CLOUD_DAEMON_STARTUP_COMMAND: str = os.getenv(
 # integration is part of production hardening, not the MVP.
 DEEPSEEK_API_KEY: str | None = os.getenv("DEEPSEEK_API_KEY")
 
+# Optional new-api integration for cloud agents. When both base URL and
+# internal secret are configured, Hub provisions a per-user new-api account and
+# token, then injects that token into cloud daemon sandboxes as provider env.
+NEW_API_BASE_URL: str | None = (
+    os.getenv("NEW_API_BASE_URL", "").strip().rstrip("/") or None
+)
+NEW_API_INTERNAL_SECRET: str | None = os.getenv("NEW_API_INTERNAL_SECRET")
+NEW_API_CREDENTIAL_ENCRYPTION_KEY: str | None = os.getenv(
+    "NEW_API_CREDENTIAL_ENCRYPTION_KEY"
+)
+NEW_API_REQUEST_TIMEOUT_SECONDS: float = float(
+    os.getenv("NEW_API_REQUEST_TIMEOUT_SECONDS", "10")
+)
+NEW_API_INITIAL_CREDIT_USD: float = float(
+    os.getenv("NEW_API_INITIAL_CREDIT_USD", "5")
+)
+
 
 # ---------------------------------------------------------------------------
 # Cloud Agent usage ledger / quota (PR 7).

@@ -33,6 +33,7 @@ from hub.services.cloud_agent import (
     CreateRunInput,
     RunBudget,
 )
+from hub.services.new_api import NewApiError, NewApiService
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +43,17 @@ router = APIRouter(prefix="/api/cloud-agents", tags=["app-cloud-agents"])
 # Module-level service instance. Tests override via
 # ``app.dependency_overrides[get_cloud_agent_service]``.
 _DEFAULT_SERVICE = CloudAgentService()
+_DEFAULT_NEW_API_SERVICE = NewApiService()
 
 
 def get_cloud_agent_service() -> CloudAgentService:
     """FastAPI dependency: hook for tests to inject a configured service."""
     return _DEFAULT_SERVICE
+
+
+def get_new_api_service() -> NewApiService:
+    """FastAPI dependency: hook for tests to inject a configured new-api client."""
+    return _DEFAULT_NEW_API_SERVICE
 
 
 def _set_default_service_for_tests(service: CloudAgentService) -> None:
@@ -216,6 +223,23 @@ class CloudAgentUsageOut(BaseModel):
         )
 
 
+class CloudAgentApiTokenBalanceOut(BaseModel):
+    configured: bool
+    provisioned: bool
+    api_base_url: str | None
+    new_api_user_id: int | None
+    new_api_username: str | None
+    token_id: int | None
+    token_name: str | None
+    quota: int
+    used_quota: int
+    token_remain_quota: int
+    token_used_quota: int
+    quota_per_usd: float
+    balance_usd: float
+    token_balance_usd: float
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -272,6 +296,42 @@ async def list_cloud_agents(
     return CloudAgentListOut(
         cloud_agents=[CloudAgentOut.from_view(v) for v in views]
     )
+
+
+def _api_token_balance_out(balance) -> CloudAgentApiTokenBalanceOut:
+    return CloudAgentApiTokenBalanceOut(
+        configured=balance.configured,
+        provisioned=balance.provisioned,
+        api_base_url=balance.api_base_url,
+        new_api_user_id=balance.new_api_user_id,
+        new_api_username=balance.new_api_username,
+        token_id=balance.token_id,
+        token_name=balance.token_name,
+        quota=balance.quota,
+        used_quota=balance.used_quota,
+        token_remain_quota=balance.token_remain_quota,
+        token_used_quota=balance.token_used_quota,
+        quota_per_usd=balance.quota_per_usd,
+        balance_usd=balance.balance_usd,
+        token_balance_usd=balance.token_balance_usd,
+    )
+
+
+@router.get("/api-token/balance", response_model=CloudAgentApiTokenBalanceOut)
+async def get_cloud_agent_api_token_balance(
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+    service: NewApiService = Depends(get_new_api_service),
+) -> CloudAgentApiTokenBalanceOut:
+    try:
+        balance = await service.get_balance(db, user_id=ctx.user_id)
+        await db.commit()
+    except NewApiError as exc:
+        raise HTTPException(
+            status_code=503 if exc.code == "new_api_not_configured" else 502,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+    return _api_token_balance_out(balance)
 
 
 @router.get("/{agent_id}", response_model=CloudAgentOut)

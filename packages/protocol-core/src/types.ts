@@ -37,13 +37,13 @@ export interface CloudRunBudget {
 
 /**
  * Payload shape carried inside the `cloud_run` envelope. The daemon reads
- * `text` as the runtime prompt and `cloud_run` as routing metadata for the
- * settle endpoint.
+ * `text` as the runtime prompt and `cloud_run` as routing metadata.
  */
 export interface CloudRunPayload {
   text: string;
   cloud_run: {
     run_id: string;
+    settle_usage?: boolean;
     budget: CloudRunBudget;
   };
 }

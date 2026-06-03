@@ -193,6 +193,17 @@ async def test_create_requires_auth(client_factory):
 
 
 @pytest.mark.asyncio
+async def test_api_token_recharge_route_is_not_exposed(client_factory, seed_user):
+    client, _ = await client_factory()
+    r = await client.post(
+        "/api/cloud-agents/api-token/recharge",
+        json={"amount_usd": 10000},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_create_with_agent_token_requires_management_grant(
     client_factory,
     seed_manager_agent,
@@ -554,6 +565,7 @@ async def test_cloud_daemon_reconnect_reprovisions_missing_ready_agent(
         type_: str,
         params: dict | None = None,
         timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
     ) -> dict:
         calls.append((type_, params))
         if type_ == "list_agents":
@@ -609,6 +621,7 @@ async def test_cloud_daemon_reconnect_skips_agent_already_loaded(
         type_: str,
         params: dict | None = None,
         timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
     ) -> dict:
         calls.append(type_)
         if type_ == "list_agents":
@@ -660,6 +673,7 @@ async def test_resume_ready_online_agent_reprovisions_missing_daemon_channel(
         type_: str,
         params: dict | None = None,
         timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
     ) -> dict:
         calls.append((type_, params))
         if type_ == "list_agents":
@@ -732,6 +746,7 @@ async def test_resume_paused_online_agent_reprovisions_missing_daemon_channel(
         type_: str,
         params: dict | None = None,
         timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
     ) -> dict:
         calls.append((type_, params))
         if type_ == "list_agents":
@@ -898,7 +913,7 @@ async def test_run_with_custom_budget(client_factory, seed_user):
 
 
 @pytest.mark.asyncio
-async def test_usage_endpoint_returns_balance_and_events(client_factory, seed_user):
+async def test_run_does_not_reserve_botcord_usage(client_factory, seed_user):
     client, _ = await client_factory()
     headers = {"Authorization": f"Bearer {seed_user['token']}"}
     create = await client.post(
@@ -917,7 +932,8 @@ async def test_usage_endpoint_returns_balance_and_events(client_factory, seed_us
     body = usage.json()
     assert body["agent_id"] == agent_id
     assert body["included_credits"] >= body["reserved_credits"]
-    assert body["reserved_sandbox_seconds"] == 600
+    assert body["reserved_credits"] == 0
+    assert body["reserved_sandbox_seconds"] == 0
     assert body["events"] == []
 
 

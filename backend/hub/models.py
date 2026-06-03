@@ -16,6 +16,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -1947,6 +1948,45 @@ class CloudAgentInstance(Base):
         default=dict,
         server_default="{}",
     )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class NewApiCredential(Base):
+    """Per-BotCord-user new-api account/token mapping for Cloud Agent runtime use."""
+
+    __tablename__ = "new_api_credentials"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_new_api_credentials_user_id"),
+        CheckConstraint("new_api_user_id > 0", name="ck_new_api_credentials_user_id_positive"),
+        CheckConstraint("token_id > 0", name="ck_new_api_credentials_token_id_positive"),
+        Index("ix_new_api_credentials_new_api_user", "new_api_user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False)
+    new_api_user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    new_api_username: Mapped[str] = mapped_column(String(64), nullable=False)
+    token_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    token_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    api_base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    api_key_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    quota: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    used_quota: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    token_remain_quota: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    token_used_quota: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    quota_per_usd: Mapped[float] = mapped_column(Float, nullable=False, default=500000.0)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

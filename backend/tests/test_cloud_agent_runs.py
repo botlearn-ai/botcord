@@ -18,6 +18,7 @@ from hub.models import (
     MessageRecord,
     Room,
     RoomMember,
+    UsageReservation,
     User,
 )
 from hub.services.cloud_agent import (
@@ -62,13 +63,46 @@ def _service(
     *,
     feature_enabled: bool = True,
     max_per_user: int = 3,
+    new_api_service=None,
+    provider: FakeCloudDaemonProvider | None = None,
 ) -> CloudAgentService:
     return CloudAgentService(
-        provider=FakeCloudDaemonProvider(),
+        provider=provider or FakeCloudDaemonProvider(),
         feature_enabled=feature_enabled,
         max_per_user=max_per_user,
         max_agents_per_daemon=2,
+        new_api_service=new_api_service,
     )
+
+
+class _RunNewApiService:
+    def __init__(
+        self,
+        *,
+        configured: bool = True,
+        provisioned: bool = True,
+        token_remain_quota: int = 500_000,
+    ) -> None:
+        self.configured = configured
+        self.provisioned = provisioned
+        self.token_remain_quota = token_remain_quota
+
+    async def ensure_credential(self, db, *, user_id, force_refresh=False):
+        return object()
+
+    def runtime_env(self, credential):
+        return {"OPENAI_API_KEY": "sk-user"}
+
+    async def get_balance(self, db, *, user_id):
+        return type(
+            "Balance",
+            (),
+            {
+                "configured": self.configured,
+                "provisioned": self.provisioned,
+                "token_remain_quota": self.token_remain_quota,
+            },
+        )()
 
 
 async def _create_ready_agent(svc: CloudAgentService, db, user) -> "CloudAgentView":
@@ -116,7 +150,12 @@ async def test_create_run_inserts_message_record_and_returns_run_id(db_session):
     assert MessageEnvelope(**envelope).type.value == "cloud_run"
     assert envelope["payload"]["text"] == "Summarise the workspace"
     assert envelope["payload"]["cloud_run"]["run_id"] == run.run_id
+    assert envelope["payload"]["cloud_run"]["settle_usage"] is False
     assert envelope["payload"]["cloud_run"]["budget"]["max_wall_time_seconds"] == 600
+    reservation = await db_session.scalar(
+        select(UsageReservation).where(UsageReservation.run_id == run.run_id)
+    )
+    assert reservation is None
 
 
 @pytest.mark.asyncio
@@ -184,6 +223,65 @@ async def test_create_run_respects_custom_budget(db_session):
     assert rec.ttl_sec == 1800
     envelope = json.loads(rec.envelope_json)
     assert envelope["payload"]["cloud_run"]["budget"]["max_tool_calls"] == 100
+
+
+@pytest.mark.asyncio
+async def test_create_run_rejects_exhausted_new_api_balance(db_session):
+    svc = _service(
+        new_api_service=_RunNewApiService(configured=True, token_remain_quota=0)
+    )
+    user = await _seed_user(db_session)
+    cloud_agent = await _create_ready_agent(svc, db_session, user)
+
+    with pytest.raises(CloudAgentError) as excinfo:
+        await svc.create_run(
+            db_session,
+            user_id=user.id,
+            agent_id=cloud_agent.agent_id,
+            body=CreateRunInput(prompt="blocked"),
+        )
+    assert excinfo.value.code == "new_api_balance_exhausted"
+    assert excinfo.value.http_status == 402
+    run_message = await db_session.scalar(
+        select(MessageRecord).where(MessageRecord.source_type == "cloud_agent_run")
+    )
+    assert run_message is None
+
+
+@pytest.mark.asyncio
+async def test_create_run_preflights_balance_before_resuming_paused_agent(db_session):
+    provider = FakeCloudDaemonProvider()
+    svc = _service(
+        provider=provider,
+        new_api_service=_RunNewApiService(configured=True, token_remain_quota=0),
+    )
+    user = await _seed_user(db_session)
+    cloud_agent = await _create_ready_agent(svc, db_session, user)
+    await svc.pause_cloud_agent(
+        db_session, user_id=user.id, agent_id=cloud_agent.agent_id
+    )
+    calls_before = provider.calls(cloud_agent.cloud_daemon_instance_id)
+
+    with pytest.raises(CloudAgentError) as excinfo:
+        await svc.create_run(
+            db_session,
+            user_id=user.id,
+            agent_id=cloud_agent.agent_id,
+            body=CreateRunInput(prompt="do not wake"),
+        )
+
+    assert excinfo.value.code == "new_api_balance_exhausted"
+    assert provider.calls(cloud_agent.cloud_daemon_instance_id) == calls_before
+    refreshed = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == cloud_agent.agent_id
+        )
+    )
+    assert refreshed.status == "paused"
+    run_message = await db_session.scalar(
+        select(MessageRecord).where(MessageRecord.source_type == "cloud_agent_run")
+    )
+    assert run_message is None
 
 
 # ---------------------------------------------------------------------------

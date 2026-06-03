@@ -266,6 +266,13 @@ class _E2BSdkClient:
 
 
 @dataclass
+class _FakeSandboxCommand:
+    command: str
+    env: dict[str, str]
+    background: bool
+
+
+@dataclass
 class _FakeSandboxRecord:
     sandbox_id: str
     template_id: str
@@ -274,6 +281,7 @@ class _FakeSandboxRecord:
     lifecycle: dict[str, Any]
     status: str  # running | paused | killed
     commands: list[str] = field(default_factory=list)
+    command_runs: list[_FakeSandboxCommand] = field(default_factory=list)
 
 
 class FakeE2BSandboxClient:
@@ -348,8 +356,6 @@ class FakeE2BSandboxClient:
             if sb is None:
                 raise LookupError(f"unknown sandbox {sandbox_id!r}")
             sb.status = "running"
-            # New env vars overwrite (e.g. fresh access token on resume).
-            sb.env.update(env)
             return SandboxRunResult(
                 sandbox_id=sb.sandbox_id,
                 template_id=sb.template_id,
@@ -372,6 +378,13 @@ class FakeE2BSandboxClient:
             if sb is None:
                 raise LookupError(f"unknown sandbox {sandbox_id!r}")
             sb.commands.append(command)
+            sb.command_runs.append(
+                _FakeSandboxCommand(
+                    command=command,
+                    env=dict(env),
+                    background=background,
+                )
+            )
 
     async def pause_sandbox(self, *, sandbox_id: str) -> None:
         if self._fail_on == "pause":
@@ -446,6 +459,8 @@ class E2BCloudDaemonProvider:
         runtime: str,
         region: str | None = None,
         provider_sandbox_id: str | None = None,
+        extra_env: dict[str, str] | None = None,
+        launch_token: str | None = None,
     ) -> CloudDaemonHandle:
         # A fresh cloud-daemon-access token on every start/resume so a
         # leaked token expires quickly; the daemon picks it up from the
@@ -454,11 +469,13 @@ class E2BCloudDaemonProvider:
             cloud_daemon_instance_id=cloud_daemon_instance_id,
             daemon_instance_id=daemon_instance_id,
             user_id=user_id,
+            launch_token=launch_token,
         )
         env = self._build_env(
             cloud_daemon_instance_id=cloud_daemon_instance_id,
             daemon_instance_id=daemon_instance_id,
             access_token=token,
+            extra_env=extra_env,
         )
 
         chosen_region = region or self._default_region
@@ -493,7 +510,10 @@ class E2BCloudDaemonProvider:
                     lifecycle=self._sandbox_lifecycle,
                 )
 
-            # Launch (or relaunch) the daemon as a background process.
+            # Launch (or relaunch) the daemon as a background process. This
+            # is required even when E2B resumes an already-running sandbox:
+            # the daemon's singleton startup path stops the old process and
+            # the new process reconnects with the fresh JWT/launch token.
             await self._client.run_command(
                 sandbox_id=run.sandbox_id,
                 command=self._startup_command,
@@ -643,6 +663,7 @@ class E2BCloudDaemonProvider:
         cloud_daemon_instance_id: str,
         daemon_instance_id: str,
         access_token: str,
+        extra_env: dict[str, str] | None = None,
     ) -> dict[str, str]:
         env: dict[str, str] = {
             "BOTCORD_HUB_URL": self._hub_public_base_url,
@@ -653,6 +674,8 @@ class E2BCloudDaemonProvider:
         }
         if self._deepseek_api_key:
             env["DEEPSEEK_API_KEY"] = self._deepseek_api_key
+        if extra_env:
+            env.update({key: value for key, value in extra_env.items() if value})
         return env
 
 

@@ -17,6 +17,7 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import hub.services.cloud_agent as cloud_agent_module
 from hub.enums import AttentionMode
 from hub.models import (
     Agent,
@@ -76,6 +77,8 @@ class _FakeWS:
 async def _register_fake_conn(
     cloud_daemon_instance_id: str,
     daemon_instance_id: str,
+    *,
+    launch_token: str | None = None,
 ) -> tuple[_CloudDaemonConn, _FakeWS]:
     ws = _FakeWS()
     conn = _CloudDaemonConn(
@@ -83,6 +86,7 @@ async def _register_fake_conn(
         user_id="u",
         cloud_daemon_instance_id=cloud_daemon_instance_id,
         daemon_instance_id=daemon_instance_id,
+        launch_token=launch_token,
     )
     await _registry_for_tests().register(conn)
     return conn, ws
@@ -229,6 +233,30 @@ async def test_send_cloud_control_frame_send_failure_unregisters_stale_conn():
     assert excinfo.value.code == "cloud_daemon_send_failed"
     assert not conn.pending_acks
     assert _registry_for_tests().get_by_cloud("cloud_dm_send_fail") is None
+
+
+@pytest.mark.asyncio
+async def test_send_cloud_control_frame_requires_matching_launch_token():
+    conn, ws = await _register_fake_conn(
+        "cloud_dm_launch_guard",
+        "dm_launch_guard",
+        launch_token="fresh-token",
+    )
+    try:
+        with pytest.raises(CloudDaemonDispatchError) as excinfo:
+            await send_cloud_control_frame(
+                "cloud_dm_launch_guard",
+                "ping",
+                {},
+                timeout_ms=100,
+                required_launch_token="other-token",
+            )
+
+        assert excinfo.value.code == "cloud_daemon_launch_token_mismatch"
+        assert ws.sent == []
+        assert not conn.pending_acks
+    finally:
+        await _registry_for_tests().unregister(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -502,6 +530,534 @@ async def test_provision_dispatch_offline_records_error(db_session):
     )
     assert refreshed.status == "provisioning"
     assert refreshed.error_code == "cloud_daemon_offline"
+
+
+@pytest.mark.asyncio
+async def test_pending_launch_replay_does_not_send_to_stale_replacement(
+    db_session,
+):
+    service = _make_e2b_service()
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    launch_token = "fresh-launch-token"
+
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == view.cloud_daemon_instance_id
+        )
+    )
+    cai = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == view.agent_id
+        )
+    )
+    assert cdi is not None
+    assert cai is not None
+    cdi.metadata_json = {
+        **(cdi.metadata_json or {}),
+        "pending_launch_token": launch_token,
+    }
+    cai.metadata_json = {
+        **(cai.metadata_json or {}),
+        "provisioning": {
+            **((cai.metadata_json or {}).get("provisioning") or {}),
+            "cloud_daemon_launch_token": launch_token,
+        },
+    }
+    await db_session.commit()
+
+    fresh_conn, _fresh_ws = await _register_fake_conn(
+        view.cloud_daemon_instance_id,
+        "dm_fresh_replaced",
+        launch_token=launch_token,
+    )
+    stale_conn, stale_ws = await _register_fake_conn(
+        view.cloud_daemon_instance_id,
+        "dm_stale_replacement",
+    )
+    try:
+        replayed = await service.provision_pending_for_cloud_daemon(
+            db_session,
+            cloud_daemon_instance_id=view.cloud_daemon_instance_id,
+            cloud_daemon_launch_token=launch_token,
+        )
+
+        assert replayed == []
+        assert stale_ws.sent == []
+        assert not stale_conn.pending_acks
+        await db_session.refresh(cdi)
+        await db_session.refresh(cai)
+        assert cdi.metadata_json.get("pending_launch_token") == launch_token
+        assert "provisioning" in (cai.metadata_json or {})
+    finally:
+        await _registry_for_tests().unregister(stale_conn)
+        await _registry_for_tests().unregister(fresh_conn)
+
+
+@pytest.mark.asyncio
+async def test_direct_provision_one_requires_pending_launch_token(
+    db_session,
+):
+    service = _make_e2b_service()
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    launch_token = "fresh-launch-token"
+
+    row = (
+        await db_session.execute(
+            select(CloudAgentInstance, Agent, CloudDaemonInstance)
+            .join(Agent, Agent.agent_id == CloudAgentInstance.agent_id)
+            .join(
+                CloudDaemonInstance,
+                CloudDaemonInstance.id == CloudAgentInstance.cloud_daemon_instance_id,
+            )
+            .where(CloudAgentInstance.agent_id == view.agent_id)
+        )
+    ).one()
+    cai, agent, cdi = row
+    cdi.metadata_json = {
+        **(cdi.metadata_json or {}),
+        "current_launch_token": launch_token,
+        "pending_launch_token": launch_token,
+    }
+    cai.metadata_json = {
+        **(cai.metadata_json or {}),
+        "provisioning": {
+            **((cai.metadata_json or {}).get("provisioning") or {}),
+            "cloud_daemon_launch_token": launch_token,
+        },
+    }
+    await db_session.commit()
+
+    stale_conn, stale_ws = await _register_fake_conn(
+        view.cloud_daemon_instance_id,
+        "dm_stale_direct",
+    )
+    try:
+        await service._provision_one(db_session, cai, agent, cdi)
+
+        assert stale_ws.sent == []
+        await db_session.refresh(cdi)
+        await db_session.refresh(cai)
+        assert cdi.metadata_json.get("pending_launch_token") == launch_token
+        assert cai.status == "provisioning"
+        assert cai.error_code == "cloud_daemon_launch_token_required"
+        assert "provisioning" in (cai.metadata_json or {})
+    finally:
+        await _registry_for_tests().unregister(stale_conn)
+
+
+@pytest.mark.asyncio
+async def test_resume_during_pending_launch_does_not_probe_stale_session(
+    db_session,
+):
+    service = _make_e2b_service()
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    launch_token = "fresh-launch-token"
+
+    row = (
+        await db_session.execute(
+            select(CloudAgentInstance, CloudDaemonInstance)
+            .join(
+                CloudDaemonInstance,
+                CloudDaemonInstance.id == CloudAgentInstance.cloud_daemon_instance_id,
+            )
+            .where(CloudAgentInstance.agent_id == view.agent_id)
+        )
+    ).one()
+    cai, cdi = row
+    cdi.status = "ready"
+    cdi.metadata_json = {
+        **(cdi.metadata_json or {}),
+        "pending_launch_token": launch_token,
+    }
+    cai.status = "provisioning"
+    cai.metadata_json = {
+        **(cai.metadata_json or {}),
+        "provisioning": {
+            **((cai.metadata_json or {}).get("provisioning") or {}),
+            "cloud_daemon_launch_token": launch_token,
+        },
+    }
+    await db_session.commit()
+
+    stale_conn, stale_ws = await _register_fake_conn(
+        view.cloud_daemon_instance_id,
+        "dm_stale_resume",
+    )
+    try:
+        resumed = await service.resume_cloud_agent(
+            db_session,
+            user_id=user_id,
+            agent_id=view.agent_id,
+        )
+
+        assert resumed.status == "provisioning"
+        assert stale_ws.sent == []
+        await db_session.refresh(cdi)
+        await db_session.refresh(cai)
+        assert cdi.metadata_json.get("pending_launch_token") == launch_token
+        assert cai.status == "provisioning"
+        assert "provisioning" in (cai.metadata_json or {})
+    finally:
+        await _registry_for_tests().unregister(stale_conn)
+
+
+@pytest.mark.asyncio
+async def test_pending_launch_replay_succeeds_on_matching_token_session(
+    db_session,
+):
+    service = _make_e2b_service()
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    launch_token = "fresh-launch-token"
+
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == view.cloud_daemon_instance_id
+        )
+    )
+    cai = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == view.agent_id
+        )
+    )
+    assert cdi is not None
+    assert cai is not None
+    cdi.metadata_json = {
+        **(cdi.metadata_json or {}),
+        "pending_launch_token": launch_token,
+    }
+    cai.metadata_json = {
+        **(cai.metadata_json or {}),
+        "provisioning": {
+            **((cai.metadata_json or {}).get("provisioning") or {}),
+            "cloud_daemon_launch_token": launch_token,
+        },
+    }
+    await db_session.commit()
+
+    conn, ws = await _register_fake_conn(
+        view.cloud_daemon_instance_id,
+        "dm_fresh_launch",
+        launch_token=launch_token,
+    )
+    try:
+        task = asyncio.create_task(
+            _ack_frame_when_sent(conn, ws, expected_type="provision_agent")
+        )
+        replayed = await service.provision_pending_for_cloud_daemon(
+            db_session,
+            cloud_daemon_instance_id=view.cloud_daemon_instance_id,
+            cloud_daemon_launch_token=launch_token,
+        )
+        await task
+
+        assert [r.agent_id for r in replayed] == [view.agent_id]
+        assert replayed[0].status == "ready"
+        assert [json.loads(raw)["type"] for raw in ws.sent] == [
+            "list_agents",
+            "provision_agent",
+        ]
+        await db_session.refresh(cdi)
+        await db_session.refresh(cai)
+        assert "pending_launch_token" not in (cdi.metadata_json or {})
+        assert cdi.metadata_json.get("current_launch_token") == launch_token
+        assert "provisioning" not in (cai.metadata_json or {})
+    finally:
+        await _registry_for_tests().unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_pending_launch_list_success_marks_loaded_provisioning_ready(
+    db_session,
+    monkeypatch,
+):
+    service = _make_e2b_service()
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    launch_token = "fresh-launch-token"
+
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == view.cloud_daemon_instance_id
+        )
+    )
+    cai = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == view.agent_id
+        )
+    )
+    assert cdi is not None
+    assert cai is not None
+    cdi.metadata_json = {
+        **(cdi.metadata_json or {}),
+        "current_launch_token": launch_token,
+        "pending_launch_token": launch_token,
+    }
+    cai.metadata_json = {
+        **(cai.metadata_json or {}),
+        "provisioning": {
+            **((cai.metadata_json or {}).get("provisioning") or {}),
+            "cloud_daemon_launch_token": launch_token,
+        },
+    }
+    await db_session.commit()
+
+    calls: list[str] = []
+
+    async def _fake_send_cloud_control_frame(
+        cloud_daemon_instance_id: str,
+        type_: str,
+        params: dict | None = None,
+        timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
+    ) -> dict:
+        assert cloud_daemon_instance_id == view.cloud_daemon_instance_id
+        assert required_launch_token == launch_token
+        calls.append(type_)
+        if type_ == "list_agents":
+            return {"ok": True, "result": {"agents": [{"id": view.agent_id}]}}
+        if type_ == "provision_agent":
+            raise AssertionError("loaded launch-tagged agent must not be reprovisioned")
+        raise AssertionError(f"unexpected frame type {type_!r}")
+
+    monkeypatch.setattr(
+        cloud_agent_module,
+        "send_cloud_control_frame",
+        _fake_send_cloud_control_frame,
+    )
+
+    replayed = await service.provision_pending_for_cloud_daemon(
+        db_session,
+        cloud_daemon_instance_id=view.cloud_daemon_instance_id,
+        cloud_daemon_launch_token=launch_token,
+    )
+
+    assert calls == ["list_agents"]
+    assert [r.agent_id for r in replayed] == [view.agent_id]
+    assert replayed[0].status == "ready"
+    await db_session.refresh(cdi)
+    await db_session.refresh(cai)
+    assert "pending_launch_token" not in (cdi.metadata_json or {})
+    assert cdi.metadata_json.get("current_launch_token") == launch_token
+    assert cai.status == "ready"
+    assert "provisioning" not in (cai.metadata_json or {})
+
+
+@pytest.mark.asyncio
+async def test_pending_launch_replay_provisions_after_verified_list_timeout(
+    db_session,
+    monkeypatch,
+):
+    service = _make_e2b_service()
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    launch_token = "fresh-launch-token"
+
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == view.cloud_daemon_instance_id
+        )
+    )
+    cai = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == view.agent_id
+        )
+    )
+    assert cdi is not None
+    assert cai is not None
+    cdi.metadata_json = {
+        **(cdi.metadata_json or {}),
+        "current_launch_token": launch_token,
+        "pending_launch_token": launch_token,
+    }
+    cai.metadata_json = {
+        **(cai.metadata_json or {}),
+        "provisioning": {
+            **((cai.metadata_json or {}).get("provisioning") or {}),
+            "cloud_daemon_launch_token": launch_token,
+        },
+    }
+    await db_session.commit()
+
+    calls: list[str] = []
+
+    async def _fake_send_cloud_control_frame(
+        cloud_daemon_instance_id: str,
+        type_: str,
+        params: dict | None = None,
+        timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
+    ) -> dict:
+        assert cloud_daemon_instance_id == view.cloud_daemon_instance_id
+        assert required_launch_token == launch_token
+        calls.append(type_)
+        if type_ == "list_agents":
+            raise CloudDaemonDispatchError(
+                "cloud_daemon_ack_timeout", "list_agents timed out"
+            )
+        if type_ == "provision_agent":
+            assert (params or {}).get("credentials", {}).get("agentId") == view.agent_id
+            return {"ok": True}
+        raise AssertionError(f"unexpected frame type {type_!r}")
+
+    monkeypatch.setattr(
+        cloud_agent_module,
+        "send_cloud_control_frame",
+        _fake_send_cloud_control_frame,
+    )
+
+    replayed = await service.provision_pending_for_cloud_daemon(
+        db_session,
+        cloud_daemon_instance_id=view.cloud_daemon_instance_id,
+        cloud_daemon_launch_token=launch_token,
+    )
+
+    assert calls == ["list_agents", "provision_agent"]
+    assert [r.agent_id for r in replayed] == [view.agent_id]
+    assert replayed[0].status == "ready"
+    await db_session.refresh(cdi)
+    await db_session.refresh(cai)
+    assert "pending_launch_token" not in (cdi.metadata_json or {})
+    assert cdi.metadata_json.get("current_launch_token") == launch_token
+    assert "provisioning" not in (cai.metadata_json or {})
+
+
+@pytest.mark.asyncio
+async def test_pending_launch_timeout_replays_ready_and_provisioning_agents(
+    db_session,
+    monkeypatch,
+):
+    service = _make_e2b_service(max_agents_per_daemon=3)
+    user_id = uuid.uuid4()
+    ready_view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+
+    conn, ws = await _register_fake_conn(
+        ready_view.cloud_daemon_instance_id,
+        "dm_ready_before_relaunch",
+    )
+    try:
+        task = asyncio.create_task(
+            _ack_frame_when_sent(conn, ws, expected_type="provision_agent")
+        )
+        await service.provision_pending_for_cloud_daemon(
+            db_session,
+            cloud_daemon_instance_id=ready_view.cloud_daemon_instance_id,
+        )
+        await task
+    finally:
+        await _registry_for_tests().unregister(conn)
+
+    pending_view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="B")
+    )
+    assert pending_view.cloud_daemon_instance_id == ready_view.cloud_daemon_instance_id
+    launch_token = "fresh-shared-launch-token"
+
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == ready_view.cloud_daemon_instance_id
+        )
+    )
+    ready_cai = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == ready_view.agent_id
+        )
+    )
+    pending_cai = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == pending_view.agent_id
+        )
+    )
+    assert cdi is not None
+    assert ready_cai is not None
+    assert pending_cai is not None
+    assert ready_cai.status == "ready"
+    assert "provisioning" not in (ready_cai.metadata_json or {})
+    assert pending_cai.status == "provisioning"
+    cdi.metadata_json = {
+        **(cdi.metadata_json or {}),
+        "current_launch_token": launch_token,
+        "pending_launch_token": launch_token,
+    }
+    pending_cai.metadata_json = {
+        **(pending_cai.metadata_json or {}),
+        "provisioning": {
+            **((pending_cai.metadata_json or {}).get("provisioning") or {}),
+            "cloud_daemon_launch_token": launch_token,
+        },
+    }
+    await db_session.commit()
+
+    provisioned_agent_ids: list[str] = []
+
+    async def _fake_send_cloud_control_frame(
+        cloud_daemon_instance_id: str,
+        type_: str,
+        params: dict | None = None,
+        timeout_ms: int | None = None,
+        required_launch_token: str | None = None,
+    ) -> dict:
+        assert cloud_daemon_instance_id == ready_view.cloud_daemon_instance_id
+        assert required_launch_token == launch_token
+        if type_ == "list_agents":
+            raise CloudDaemonDispatchError(
+                "cloud_daemon_ack_timeout", "list_agents timed out"
+            )
+        if type_ == "provision_agent":
+            assert cdi.metadata_json.get("pending_launch_token") == launch_token
+            agent_id = (params or {}).get("credentials", {}).get("agentId")
+            assert isinstance(agent_id, str)
+            provisioned_agent_ids.append(agent_id)
+            return {"ok": True}
+        raise AssertionError(f"unexpected frame type {type_!r}")
+
+    monkeypatch.setattr(
+        cloud_agent_module,
+        "send_cloud_control_frame",
+        _fake_send_cloud_control_frame,
+    )
+
+    replayed = await service.provision_pending_for_cloud_daemon(
+        db_session,
+        cloud_daemon_instance_id=ready_view.cloud_daemon_instance_id,
+        cloud_daemon_launch_token=launch_token,
+    )
+
+    assert set(provisioned_agent_ids) == {
+        ready_view.agent_id,
+        pending_view.agent_id,
+    }
+    assert {r.agent_id for r in replayed} == {
+        ready_view.agent_id,
+        pending_view.agent_id,
+    }
+    assert all(r.status == "ready" for r in replayed)
+    await db_session.refresh(cdi)
+    await db_session.refresh(ready_cai)
+    await db_session.refresh(pending_cai)
+    assert "pending_launch_token" not in (cdi.metadata_json or {})
+    assert cdi.metadata_json.get("current_launch_token") == launch_token
+    assert ready_cai.status == "ready"
+    assert pending_cai.status == "ready"
+    assert "provisioning" not in (ready_cai.metadata_json or {})
+    assert "provisioning" not in (pending_cai.metadata_json or {})
 
 
 @pytest.mark.asyncio
