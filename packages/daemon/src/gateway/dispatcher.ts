@@ -2438,11 +2438,20 @@ export class Dispatcher {
   }): { errorRef: string; summary: RuntimeFailureSummary; safeMessage: string } {
     const info = errorInfo(args.error);
     const resultFailure = args.result?.runtimeFailure ?? {};
-    const safeMessage =
+    const baseMessage =
       sanitizeRuntimeFailureText(
         info.error_message || String(args.result?.error ?? "runtime error"),
         2048,
       ) || "runtime error";
+    // Surface the process exit code alongside the adapter message so opaque
+    // errors (e.g. a bare "codex error") still say *how* the runtime died
+    // without needing a separate `debug runtime-error` lookup.
+    const failureExitCode =
+      typeof resultFailure.exit_code === "number" ? resultFailure.exit_code : null;
+    const safeMessage =
+      failureExitCode !== null && !baseMessage.includes(`code ${failureExitCode}`)
+        ? `${baseMessage} (exit code ${failureExitCode})`
+        : baseMessage;
     const summary: RuntimeFailureSummary = {
       agent_id: args.msg.accountId,
       room_id: args.msg.conversation.id,

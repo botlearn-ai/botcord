@@ -321,17 +321,37 @@ export class CodexAdapter extends NdjsonStreamAdapter {
     }
 
     if (obj.type === "turn.completed" && obj.turn?.status === "failed") {
-      const msg = obj.turn.error?.message;
-      if (typeof msg === "string" && msg) ctx.state.errorText = msg;
+      ctx.state.errorText =
+        obj.turn.error?.message?.trim() ||
+        summarizeCodexErrorEvent(raw) ||
+        "codex turn failed";
       return;
     }
 
     if (obj.type === "error") {
+      const err = obj.error;
+      const fromMessage =
+        typeof err === "string" ? err.trim() : err?.message?.trim() ?? "";
       ctx.state.errorText =
-        typeof obj.error === "string"
-          ? obj.error
-          : obj.error?.message ?? "codex error";
+        fromMessage || summarizeCodexErrorEvent(raw) || "codex error";
     }
+  }
+}
+
+/**
+ * Best-effort summary of a codex `error` / failed-`turn.completed` event for
+ * the surfaced runtime error. Codex doesn't always populate `error.message`;
+ * when it doesn't, fall back to a compact JSON of the raw event so the error is
+ * diagnosable instead of an opaque "codex error". Capped to keep the chat reply
+ * and transcript bounded.
+ */
+function summarizeCodexErrorEvent(raw: unknown): string {
+  try {
+    const json = JSON.stringify(raw);
+    if (!json || json === "{}" || json === "null") return "";
+    return json.length > 800 ? `${json.slice(0, 800)}…` : json;
+  } catch {
+    return "";
   }
 }
 

@@ -295,6 +295,26 @@ for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
     expect(res.error).toMatch(/rate limited/);
   });
 
+  it("surfaces the raw error event payload when it lacks a message", async () => {
+    const script = makeScript(
+      "errnomsg.js",
+      `
+const lines = [
+  {type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcde6"},
+  {type:"error", error:{type:"usage_limit_reached", code:"insufficient_quota"}},
+];
+for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
+process.exit(1);
+`,
+    );
+    const res = await runAdapter(script);
+    expect(res.error).toBeDefined();
+    // Must not collapse to the opaque "codex error" — the type/code survive.
+    expect(res.error).not.toBe("codex error");
+    expect(res.error).toMatch(/usage_limit_reached/);
+    expect(res.error).toMatch(/insufficient_quota/);
+  });
+
   it("surfaces non-zero exit + stderr as error", async () => {
     const script = makeScript(
       "boom.js",
