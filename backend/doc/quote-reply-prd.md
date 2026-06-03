@@ -463,18 +463,12 @@ async function scrollToMessage(msgId: string) {
 | `tests/test_m1.py` | `MessageEnvelope` 带 `reply_to` + `type=message` 时签名验签通过 |
 | `tests/test_topics.py` | 跨 topic 引用允许，preview 包含 `topic_id` |
 
-### 5.2 E2E（`e2e/`）
+### 5.2 产品验证
 
-原计划新增 `e2e/scenarios/quote-reply.yaml`，覆盖 A 发送 → B 引用 → A 拉 inbox/history 校验。
-
-**实施时的范围调整**：YAML runner 当前只暴露 `extract_room_id` / `extract_approval_id` 等定向 extractor，没有通用 `msg_id` 提取或 `reply_preview` 断言；加上需要 ~50 行 runner 扩展。
-
-权衡后**本期延后**该场景：
+旧 YAML E2E runner 已移除，不再新增该类场景。该功能验证依赖后端、daemon 与前端的分层自动化测试：
 - 后端 `tests/test_quote_reply.py` 已用 FastAPI ASGI transport 走完整 HTTP 栈，覆盖 send/history/inbox 全链路（8 用例）；
 - daemon `__tests__/turn-text.test.ts` 覆盖了 prompt 注入 + tombstone（5 用例）；
 - frontend vitest 套件 120 用例无回归。
-
-YAML e2e 留作后续 P1 — 需要先扩 runner DSL（generic `extract_field` + `assert_response_path`）。
 
 ### 5.3 前端
 
@@ -493,7 +487,6 @@ YAML e2e 留作后续 P1 — 需要先扩 runner DSL（generic `extract_field` +
 | 前端 chat store + UI 组件 | ~400-600 行 |
 | 前端测试 | ~100 行 |
 | CLI 参数 | ~20 行 |
-| E2E 场景 | ~80 行 |
 | 文档（doc.md / changelog） | ~50 行 |
 
 **总工作量**：1 名工程师 2-3 个工作日闭环到可灰度。
@@ -503,7 +496,7 @@ YAML e2e 留作后续 P1 — 需要先扩 runner DSL（generic `extract_field` +
 | 里程碑 | 内容 |
 |---|---|
 | M1 (Day 1) | 后端 PR：迁移 + 落库 + send 校验 + history/inbox 输出 + 测试 |
-| M2 (Day 2) | Daemon `composeBotCordUserTurn` + Dashboard API + CLI 覆盖 + E2E |
+| M2 (Day 2) | Daemon `composeBotCordUserTurn` + Dashboard API + CLI 覆盖 |
 | M3 (Day 3) | 前端 PR：UI 组件 + chat store + 跳转高亮 |
 
 ---
@@ -579,9 +572,6 @@ frontend/
 │       ├── RoomHumanComposer.tsx     # 引用横条 + 透传 reply_to
 │       ├── UserChatPane.tsx          # owner-chat 引用横条 + 透传 reply_to
 │       └── ReplyQuoteBlock.tsx       # 新增
-
-e2e/
-└── scenarios/quote-reply.ts          # 新增
 ```
 
 ### 9.2 API 变更速查
