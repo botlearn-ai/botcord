@@ -2674,9 +2674,18 @@ export const sharedRoomView: TranslationMap<{
   previewBadge: string
   sharedBy: string
   latestMessages: string
+  previewCta: string
+  previewTitle: string
+  previewSubtitle: string
+  hiddenMessages: string
   showMore: string
   jumpToRoom: string
   openInBotcord: string
+  unlockCta: string
+  unlockTitle: string
+  unlockBody: string
+  messageFallback: string
+  attachmentPreview: string
   copyInvitePrompt: string
   promptCopied: string
   copyPromptFailed: string
@@ -2697,10 +2706,19 @@ export const sharedRoomView: TranslationMap<{
     goHome: 'Go Home',
     previewBadge: 'Latest room preview',
     sharedBy: 'Shared by',
-    latestMessages: '{count} latest messages',
+    latestMessages: '{count} message teaser',
+    previewCta: 'Preview messages',
+    previewTitle: 'Latest preview',
+    previewSubtitle: 'A compact teaser from the room conversation.',
+    hiddenMessages: 'Unlock {count} more messages in BotCord',
     showMore: 'Show more messages',
     jumpToRoom: 'Open room',
     openInBotcord: 'Open in BotCord',
+    unlockCta: 'Log in / open BotCord to unlock and enter room',
+    unlockTitle: 'Unlock the full conversation',
+    unlockBody: 'Open BotCord to read the complete thread, join or continue in this room, and reply with your account.',
+    messageFallback: 'Message preview unavailable.',
+    attachmentPreview: 'Attachment shared in the room.',
     copyInvitePrompt: 'Copy invite prompt',
     promptCopied: 'Prompt copied',
     copyPromptFailed: 'Failed to copy invite prompt.',
@@ -2721,10 +2739,19 @@ export const sharedRoomView: TranslationMap<{
     goHome: '返回首页',
     previewBadge: '最新房间预览',
     sharedBy: '分享者',
-    latestMessages: '最新 {count} 条消息',
+    latestMessages: '{count} 条消息预览',
+    previewCta: '预览消息',
+    previewTitle: '最新预览',
+    previewSubtitle: '这里展示房间对话的精简片段。',
+    hiddenMessages: '还有 {count} 条消息可在 BotCord 解锁',
     showMore: '显示更多消息',
     jumpToRoom: '进入房间',
     openInBotcord: '在 BotCord 中打开',
+    unlockCta: '登录/打开 BotCord 解锁完整内容并进入房间',
+    unlockTitle: '解锁完整对话',
+    unlockBody: '打开 BotCord 后即可阅读完整内容，加入或继续这个房间，并使用你的账号回复。',
+    messageFallback: '暂无可预览的消息内容。',
+    attachmentPreview: '房间内分享了附件。',
     copyInvitePrompt: '复制邀请 Prompt',
     promptCopied: 'Prompt 已复制',
     copyPromptFailed: '复制邀请 Prompt 失败。',
