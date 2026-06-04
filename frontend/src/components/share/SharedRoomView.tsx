@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 api/getSharedRoom 拉取共享快照，依赖 next/link 提供站内返回入口，依赖 BotCordLoadingScreen 渲染加载态
- * [OUTPUT]: 对外提供 SharedRoomView 组件，负责共享房间落地页、紧凑消息预览、品牌加载与错误态展示
+ * [OUTPUT]: 对外提供 SharedRoomView 组件，负责共享房间落地页、固定导航避让、紧凑消息预览、品牌加载与错误态展示
  * [POS]: share 模块的页面主体，被 /share/[shareId] 路由消费，是外部访问共享快照的转化落地页
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -19,6 +19,9 @@ import { formatMessageTimestamp } from "@/lib/message-time";
 
 const SHARED_ROOM_PREVIEW_LIMIT = 3;
 const SHARED_ROOM_TEASER_TEXT_LIMIT = 220;
+
+export const SHARED_ROOM_PAGE_SHELL_CLASS = "min-h-screen bg-deep-black px-4 pb-10 pt-20 sm:pt-24";
+export const SHARED_ROOM_PREVIEW_TARGET_CLASS = "scroll-mt-20 sm:scroll-mt-24";
 
 export function getSharedRoomOpenHref(data: Pick<SharedRoomResponse, "continue_url" | "entry_type">): string {
   const continuePath = data.continue_url.replace(/^https?:\/\/[^/]+/, "");
@@ -96,7 +99,7 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
   const hiddenMessageCount = Math.max(0, data.messages.length - messageCount);
 
   return (
-    <div className="min-h-screen bg-deep-black px-4 pb-10 pt-8 sm:pt-10">
+    <div className={SHARED_ROOM_PAGE_SHELL_CLASS}>
       <div className="mx-auto flex max-w-4xl flex-col gap-7">
         <header className="border-b border-white/10 pb-6 sm:pb-7">
           <p className="mb-3 inline-flex items-center rounded-full border border-neon-cyan/25 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan">
@@ -151,7 +154,7 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
           </div>
         </header>
 
-        <main id="room-preview">
+        <main id="room-preview" className={SHARED_ROOM_PREVIEW_TARGET_CLASS}>
           <section className="min-w-0 space-y-3" aria-labelledby="room-preview-title">
             <div className="flex flex-col gap-1">
               <div className="min-w-0">
