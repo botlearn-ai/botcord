@@ -13,6 +13,8 @@ import pytest_asyncio
 import httpx
 from httpx import ASGITransport, AsyncClient
 from nacl.signing import SigningKey
+from sqlalchemy import text as sa_text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from unittest.mock import AsyncMock, patch
 
@@ -640,61 +642,342 @@ async def test_cleanup_skips_record_on_delete_failure(client: AsyncClient, db_se
 
 
 @pytest.mark.asyncio
-async def test_cleanup_skips_disk_record_with_only_object_key(db_session: AsyncSession):
-    """A mismatched disk record with only Supabase coordinates should remain untouched."""
-    from sqlalchemy import select as sa_select
-    from hub import cleanup as hub_cleanup
+async def test_file_records_storage_location_migration_normalizes_dirty_legacy_rows(
+    db_session: AsyncSession,
+):
+    await db_session.execute(
+        sa_text(
+            """
+            CREATE TEMPORARY TABLE file_records_migration_probe (
+              file_id TEXT PRIMARY KEY,
+              storage_backend TEXT NULL,
+              disk_path TEXT NULL,
+              storage_bucket TEXT NULL,
+              storage_object_key TEXT NULL
+            )
+            """
+        )
+    )
+    rows = [
+        {
+            "file_id": "null_leftover_coordinates",
+            "storage_backend": None,
+            "disk_path": "/tmp/cleaned-file",
+            "storage_bucket": "legacy-bucket",
+            "storage_object_key": "legacy/object.txt",
+        },
+        {
+            "file_id": "disk_with_stale_object_key",
+            "storage_backend": "disk",
+            "disk_path": "/tmp/live-disk-file",
+            "storage_bucket": "stale-bucket",
+            "storage_object_key": "stale/object.txt",
+        },
+        {
+            "file_id": "supabase_with_stale_disk_path",
+            "storage_backend": "supabase",
+            "disk_path": "/tmp/stale-local-file",
+            "storage_bucket": "botcord-files",
+            "storage_object_key": "live/object.txt",
+        },
+        {
+            "file_id": "disk_missing_disk_path",
+            "storage_backend": "disk",
+            "disk_path": None,
+            "storage_bucket": "stale-bucket",
+            "storage_object_key": "stale/object.txt",
+        },
+        {
+            "file_id": "supabase_missing_bucket",
+            "storage_backend": "supabase",
+            "disk_path": None,
+            "storage_bucket": None,
+            "storage_object_key": "missing/bucket.txt",
+        },
+        {
+            "file_id": "supabase_missing_object_key",
+            "storage_backend": "supabase",
+            "disk_path": "/tmp/stale-local-file",
+            "storage_bucket": "botcord-files",
+            "storage_object_key": None,
+        },
+        {
+            "file_id": "expired_backend",
+            "storage_backend": "expired",
+            "disk_path": "/tmp/expired-file",
+            "storage_bucket": "legacy-bucket",
+            "storage_object_key": "legacy/expired.txt",
+        },
+    ]
+    for row in rows:
+        await db_session.execute(
+            sa_text(
+                """
+                INSERT INTO file_records_migration_probe (
+                  file_id,
+                  storage_backend,
+                  disk_path,
+                  storage_bucket,
+                  storage_object_key
+                )
+                VALUES (
+                  :file_id,
+                  :storage_backend,
+                  :disk_path,
+                  :storage_bucket,
+                  :storage_object_key
+                )
+                """
+            ),
+            row,
+        )
 
+    for statement in [
+        """
+        UPDATE file_records_migration_probe
+        SET
+          storage_backend = NULL,
+          disk_path = NULL,
+          storage_object_key = NULL
+        WHERE storage_backend IS NULL
+          OR storage_backend NOT IN ('disk', 'supabase')
+        """,
+        """
+        UPDATE file_records_migration_probe
+        SET
+          storage_bucket = NULL,
+          storage_object_key = NULL
+        WHERE storage_backend = 'disk'
+          AND disk_path IS NOT NULL
+        """,
+        """
+        UPDATE file_records_migration_probe
+        SET
+          storage_backend = NULL,
+          disk_path = NULL,
+          storage_bucket = NULL,
+          storage_object_key = NULL
+        WHERE storage_backend = 'disk'
+          AND disk_path IS NULL
+        """,
+        """
+        UPDATE file_records_migration_probe
+        SET disk_path = NULL
+        WHERE storage_backend = 'supabase'
+          AND storage_bucket IS NOT NULL
+          AND storage_object_key IS NOT NULL
+        """,
+        """
+        UPDATE file_records_migration_probe
+        SET
+          storage_backend = NULL,
+          disk_path = NULL,
+          storage_bucket = NULL,
+          storage_object_key = NULL
+        WHERE storage_backend = 'supabase'
+          AND (
+            storage_bucket IS NULL
+            OR storage_object_key IS NULL
+          )
+        """,
+    ]:
+        await db_session.execute(sa_text(statement))
+
+    result = await db_session.execute(
+        sa_text(
+            """
+            SELECT
+              file_id,
+              storage_backend,
+              disk_path,
+              storage_bucket,
+              storage_object_key
+            FROM file_records_migration_probe
+            """
+        )
+    )
+    normalized = {row.file_id: dict(row._mapping) for row in result}
+
+    assert normalized["null_leftover_coordinates"] == {
+        "file_id": "null_leftover_coordinates",
+        "storage_backend": None,
+        "disk_path": None,
+        "storage_bucket": "legacy-bucket",
+        "storage_object_key": None,
+    }
+    assert normalized["disk_with_stale_object_key"] == {
+        "file_id": "disk_with_stale_object_key",
+        "storage_backend": "disk",
+        "disk_path": "/tmp/live-disk-file",
+        "storage_bucket": None,
+        "storage_object_key": None,
+    }
+    assert normalized["supabase_with_stale_disk_path"] == {
+        "file_id": "supabase_with_stale_disk_path",
+        "storage_backend": "supabase",
+        "disk_path": None,
+        "storage_bucket": "botcord-files",
+        "storage_object_key": "live/object.txt",
+    }
+    for cleaned_file_id in [
+        "disk_missing_disk_path",
+        "supabase_missing_bucket",
+        "supabase_missing_object_key",
+    ]:
+        assert normalized[cleaned_file_id] == {
+            "file_id": cleaned_file_id,
+            "storage_backend": None,
+            "disk_path": None,
+            "storage_bucket": None,
+            "storage_object_key": None,
+        }
+    assert normalized["expired_backend"] == {
+        "file_id": "expired_backend",
+        "storage_backend": None,
+        "disk_path": None,
+        "storage_bucket": "legacy-bucket",
+        "storage_object_key": None,
+    }
+
+    for row in normalized.values():
+        storage_backend = row["storage_backend"]
+        disk_path = row["disk_path"]
+        storage_bucket = row["storage_bucket"]
+        storage_object_key = row["storage_object_key"]
+        assert (
+            storage_backend is None
+            and disk_path is None
+            and storage_object_key is None
+        ) or (
+            storage_backend == "disk"
+            and disk_path is not None
+            and storage_object_key is None
+        ) or (
+            storage_backend == "supabase"
+            and disk_path is None
+            and storage_bucket is not None
+            and storage_object_key is not None
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "storage_backend,disk_path,storage_bucket,storage_object_key",
+    [
+        ("disk", None, "botcord-files", "orphan/mismatch.txt"),
+        ("supabase", "/tmp/orphan-local-file", "botcord-files", None),
+        ("supabase", None, None, "orphan/missing-bucket.txt"),
+        ("expired", None, None, None),
+    ],
+)
+async def test_file_record_storage_constraints_reject_invalid_locations(
+    db_session: AsyncSession,
+    storage_backend,
+    disk_path,
+    storage_bucket,
+    storage_object_key,
+):
     record = FileRecord(
         file_id=f"file_{uuid.uuid4().hex}",
         uploader_id="ag_test",
         original_filename="mismatch.txt",
         content_type="text/plain",
         size_bytes=8,
-        storage_backend="disk",
+        storage_backend=storage_backend,
+        disk_path=disk_path,
+        storage_bucket=storage_bucket,
+        storage_object_key=storage_object_key,
+        expires_at=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+    db_session.add(record)
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "storage_backend,disk_path,storage_bucket,storage_object_key",
+    [
+        ("disk", "/tmp/uploaded-file", None, None),
+        ("supabase", None, "botcord-files", "file/report.txt"),
+    ],
+)
+async def test_file_record_storage_constraints_allow_valid_locations(
+    db_session: AsyncSession,
+    storage_backend,
+    disk_path,
+    storage_bucket,
+    storage_object_key,
+):
+    record = FileRecord(
+        file_id=f"file_{uuid.uuid4().hex}",
+        uploader_id="ag_test",
+        original_filename="valid.txt",
+        content_type="text/plain",
+        size_bytes=5,
+        storage_backend=storage_backend,
+        disk_path=disk_path,
+        storage_bucket=storage_bucket,
+        storage_object_key=storage_object_key,
+        expires_at=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+    db_session.add(record)
+    await db_session.commit()
+    assert record.id is not None
+
+
+@pytest.mark.asyncio
+async def test_file_record_storage_constraints_allow_cleaned_null_backend_update(
+    db_session: AsyncSession,
+):
+    record = FileRecord(
+        file_id=f"file_{uuid.uuid4().hex}",
+        uploader_id="ag_test",
+        original_filename="cleaned.txt",
+        content_type="text/plain",
+        size_bytes=5,
+        storage_backend="supabase",
         disk_path=None,
         storage_bucket="botcord-files",
-        storage_object_key="orphan/mismatch.txt",
+        storage_object_key="file/cleaned.txt",
         expires_at=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
     )
     db_session.add(record)
     await db_session.commit()
 
-    @asynccontextmanager
-    async def _test_async_session():
-        yield db_session
+    record.storage_backend = None
+    record.disk_path = None
+    record.storage_object_key = None
+    await db_session.commit()
 
-    with patch.object(hub_cleanup, "async_session", _test_async_session):
-        cleaned = await hub_cleanup._cleanup_expired_files()
-
-    assert cleaned == 0
-    result = await db_session.execute(
-        sa_select(FileRecord).where(FileRecord.file_id == record.file_id)
-    )
-    kept_record = result.scalar_one()
-    assert kept_record.storage_backend == "disk"
-    assert kept_record.disk_path is None
-    assert kept_record.storage_object_key == "orphan/mismatch.txt"
+    assert record.storage_backend is None
+    assert record.disk_path is None
+    assert record.storage_bucket == "botcord-files"
+    assert record.storage_object_key is None
 
 
 @pytest.mark.asyncio
-async def test_cleanup_skips_supabase_record_with_only_disk_path(
-    db_session: AsyncSession, tmp_path
+@pytest.mark.parametrize(
+    "disk_path,storage_object_key",
+    [
+        ("/tmp/cleaned-local-file", None),
+        (None, "cleaned/object.txt"),
+    ],
+)
+async def test_file_record_storage_constraints_reject_null_backend_with_coordinates(
+    db_session: AsyncSession,
+    disk_path,
+    storage_object_key,
 ):
-    """A mismatched Supabase record with only disk coordinates should remain untouched."""
-    from sqlalchemy import select as sa_select
-    from hub import cleanup as hub_cleanup
-
-    disk_path = tmp_path / "orphan-local-file"
-    disk_path.write_bytes(b"local")
     record = FileRecord(
         file_id=f"file_{uuid.uuid4().hex}",
         uploader_id="ag_test",
-        original_filename="mismatch.txt",
+        original_filename="cleaned.txt",
         content_type="text/plain",
         size_bytes=5,
-        storage_backend="supabase",
-        disk_path=str(disk_path),
+        storage_backend="disk",
+        disk_path="/tmp/uploaded-file",
         storage_bucket="botcord-files",
         storage_object_key=None,
         expires_at=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
@@ -702,32 +985,18 @@ async def test_cleanup_skips_supabase_record_with_only_disk_path(
     db_session.add(record)
     await db_session.commit()
 
-    @asynccontextmanager
-    async def _test_async_session():
-        yield db_session
-
-    with patch.object(hub_cleanup, "async_session", _test_async_session):
-        cleaned = await hub_cleanup._cleanup_expired_files()
-
-    assert cleaned == 0
-    assert disk_path.is_file()
-    result = await db_session.execute(
-        sa_select(FileRecord).where(FileRecord.file_id == record.file_id)
-    )
-    kept_record = result.scalar_one()
-    assert kept_record.storage_backend == "supabase"
-    assert kept_record.disk_path == str(disk_path)
-    assert kept_record.storage_object_key is None
+    record.storage_backend = None
+    record.disk_path = disk_path
+    record.storage_object_key = storage_object_key
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
 
 
 @pytest.mark.asyncio
-async def test_cleanup_preserves_mismatched_object_key_after_disk_delete(
+async def test_cleanup_rejects_mismatched_object_key_after_disk_delete(
     db_session: AsyncSession, tmp_path
 ):
-    """Cleanup should clear only the coordinate deleted by the selected backend."""
-    from sqlalchemy import select as sa_select
-    from hub import cleanup as hub_cleanup
-
     disk_path = tmp_path / "expired-disk-file"
     disk_path.write_bytes(b"disk")
     record = FileRecord(
@@ -743,28 +1012,9 @@ async def test_cleanup_preserves_mismatched_object_key_after_disk_delete(
         expires_at=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
     )
     db_session.add(record)
-    await db_session.commit()
-
-    @asynccontextmanager
-    async def _test_async_session():
-        yield db_session
-
-    with patch.object(hub_cleanup, "async_session", _test_async_session):
-        cleaned = await hub_cleanup._cleanup_expired_files()
-
-    assert cleaned == 1
-    assert not disk_path.exists()
-    result = await db_session.execute(
-        sa_select(FileRecord).where(FileRecord.file_id == record.file_id)
-    )
-    kept_record = result.scalar_one()
-    assert kept_record.storage_backend is None
-    assert kept_record.disk_path is None
-    assert kept_record.storage_object_key == "orphan/both.txt"
-
-    with patch.object(hub_cleanup, "async_session", _test_async_session):
-        cleaned_again = await hub_cleanup._cleanup_expired_files()
-    assert cleaned_again == 0
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
 
 
 # to_text() with attachments
