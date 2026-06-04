@@ -9,7 +9,8 @@
  *   1. `[BotCord Identity]` (read fresh from workspace/identity.md each turn)
  *   2. `[BotCord Scene: Owner Chat]` (owner-trust turns only)
  *   3. `[BotCord Working Memory]`
- *   4. `[BotCord Room Context]` (group rooms, via optional async fetcher)
+ *   4. `[BotCord Room Context]` (group rooms, via optional async fetcher;
+ *      room rules are carried separately as `RuntimeRunOptions.systemRules`)
  *   5. `[BotCord Cross-Room Awareness]` (optional activity tracker)
  *   6. `[BotCord Daemon Skill Index]` (soft skill hot-reload index)
  *
@@ -83,7 +84,7 @@ export interface SystemContextDeps {
   /**
    * Optional per-turn room-context fetcher. When wired, group-room turns
    * receive the `[BotCord Room Context]` block (room name, description,
-   * rule, members). Omitting keeps the builder synchronous and the block
+   * members). Omitting keeps the builder synchronous and the block
    * is skipped.
    */
   roomContextBuilder?: RoomStaticContextBuilder;

@@ -5,6 +5,7 @@ import path from "node:path";
 import net from "node:net";
 import { buildCliEnv } from "../cli-resolver.js";
 import { consoleLogger } from "../log.js";
+import { prependSystemRules } from "../../system-rules.js";
 import {
   readCommandVersion,
   resolveCommandOnPath,
@@ -125,12 +126,12 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
 
       if (!threadId) {
         threadId = await this.createThread(handle.baseUrl, headers, opts, turnAbort.signal);
-      } else if (opts.systemContext !== undefined) {
+      } else if (opts.systemContext !== undefined || opts.systemRules?.length) {
         await this.patchThreadSystemContext(
           handle.baseUrl,
           headers,
           threadId,
-          opts.systemContext,
+          prependSystemRules(opts.systemContext, opts.systemRules),
           turnAbort.signal,
         );
       }
@@ -267,7 +268,8 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
     const selection = parseDeepseekRuntimeSelection(opts.extraArgs);
     if (selection.model) body.model = selection.model;
     if (selection.reasoningEffort) body.reasoning_effort = selection.reasoningEffort;
-    if (opts.systemContext) body.system_prompt = opts.systemContext;
+    const systemPrompt = prependSystemRules(opts.systemContext, opts.systemRules);
+    if (systemPrompt) body.system_prompt = systemPrompt;
     const res = await this.requestJson<any>(`${baseUrl}/v1/threads`, {
       method: "POST",
       headers,

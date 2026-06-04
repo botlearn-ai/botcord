@@ -1,6 +1,8 @@
 /**
- * Room static context builder — injects room name, description, rule, and
- * member list into the system prompt for group conversations. Mirrors
+ * Room static context builder — injects room name, description, and member
+ * list into the system prompt for group conversations. Room rules are carried
+ * separately as versioned runtime system rules so they do not repeat in user
+ * messages. Mirrors
  * `plugin/src/room-context.ts#buildRoomStaticContext` so Claude Code in
  * daemon-mode carries the same awareness as when hosted by OpenClaw.
  *
@@ -20,7 +22,6 @@ export interface RoomInfoSnapshot {
   room_id: string;
   name?: string;
   description?: string;
-  rule?: string | null;
   visibility?: string;
   join_policy?: string;
   member_count?: number;
@@ -83,9 +84,6 @@ export function renderRoomContextBlock(
   ];
   if (room.description) {
     lines.push(`Description: ${sanitizeUntrustedContent(room.description)}`);
-  }
-  if (room.rule) {
-    lines.push(`Rule: ${sanitizeUntrustedContent(room.rule)}`);
   }
   if (room.visibility || room.join_policy) {
     const visibility = room.visibility ?? "unknown";

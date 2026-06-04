@@ -134,7 +134,6 @@ interface ReplyPreviewRaw {
 interface RoomContextRaw {
   room_id?: unknown;
   room_name?: unknown;
-  room_rule?: unknown;
   room_member_count?: unknown;
   room_member_names?: unknown;
   my_role?: unknown;
@@ -270,11 +269,7 @@ function formatRoomContext(raw: unknown, fallback: { id: string; title?: string 
   if (role) parts.push(`role: ${sanitizeSenderName(role)}`);
   if (canSend !== undefined) parts.push(`can_send: ${canSend ? "true" : "false"}`);
 
-  const lines = [`[BotCord Room] | ${parts.join(" | ")}`];
-  if (typeof r.room_rule === "string" && r.room_rule.trim()) {
-    lines.push(`[Room Rule] ${sanitizeUntrustedContent(r.room_rule.trim())}`);
-  }
-  return lines;
+  return [`[BotCord Room] | ${parts.join(" | ")}`];
 }
 
 /**

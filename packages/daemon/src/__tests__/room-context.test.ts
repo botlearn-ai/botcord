@@ -72,7 +72,7 @@ describe("renderRoomContextBlock", () => {
     expect(out).toContain("[BotCord Room Context]");
     expect(out).toContain("Room: Ouraca Team (rm_team)");
     expect(out).toContain("Description: Internal chat");
-    expect(out).toContain("Rule: Be kind");
+    expect(out).not.toContain("Rule: Be kind");
     expect(out).toContain("Visibility: private, Join: invite_only");
     expect(out).toContain("Members (2): Alice, Bob (owner)");
   });

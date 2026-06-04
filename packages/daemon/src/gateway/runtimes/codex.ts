@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { agentCodexHomeDir, ensureAgentCodexHome } from "../../agent-workspace.js";
+import { prependSystemRules } from "../../system-rules.js";
 import { buildCliEnv } from "../cli-resolver.js";
 import { NdjsonStreamAdapter, type NdjsonEventCtx } from "./ndjson-stream.js";
 import {
@@ -194,7 +195,7 @@ export class CodexAdapter extends NdjsonStreamAdapter {
     if (opts.accountId) {
       try {
         ensureAgentCodexHome(opts.accountId);
-        writeCodexAgentsMd(opts.accountId, opts.systemContext);
+        writeCodexAgentsMd(opts.accountId, prependSystemRules(opts.systemContext, opts.systemRules));
       } catch (err) {
         // Writing AGENTS.md should never abort the turn — log and fall
         // through. The child will spawn without the dynamic systemContext,

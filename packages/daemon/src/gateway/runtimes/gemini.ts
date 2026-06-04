@@ -1,3 +1,5 @@
+import path from "node:path";
+import { writeManagedSystemRulesFile } from "../../system-rules.js";
 import { NdjsonStreamAdapter, type NdjsonEventCtx } from "./ndjson-stream.js";
 import {
   readCommandVersion,
@@ -128,12 +130,12 @@ export function probeGemini(deps: ProbeDeps = {}): RuntimeProbeResult {
  * Gemini's headless mode has no `--append-system-prompt` equivalent and
  * `GEMINI_SYSTEM_MD` replaces the entire core system prompt (which would
  * brick the agent — that core prompt scaffolds tool use). For v1 the
- * adapter prepends `systemContext` directly to the positional prompt. Each
- * turn re-injects the dynamic context so memory / digest updates take
+ * adapter prepends dynamic `systemContext` directly to the positional prompt.
+ * Each turn re-injects the dynamic context so memory / digest updates take
  * effect immediately; the trade-off is the resumed session transcript
- * accumulates one prompt prefix per turn. Acceptable while we ship the
- * connectivity layer — a follow-up can move systemContext into a
- * daemon-managed `GEMINI.md` once we decide where to isolate it.
+ * accumulates one prompt prefix per turn. Stable BotCord `systemRules` (room
+ * rules) are different: they are written into a daemon-managed section of
+ * `<cwd>/GEMINI.md` before spawn so they do not repeat in user messages.
  *
  * ## Session continuity
  *
@@ -167,6 +169,7 @@ export class GeminiAdapter extends NdjsonStreamAdapter {
     if (opts.sessionId && !isValidGeminiSessionId(opts.sessionId)) {
       throw new Error(invalidGeminiSessionIdError(opts.sessionId));
     }
+    writeGeminiSystemRules(opts);
     return super.run(opts);
   }
 
@@ -291,6 +294,18 @@ export class GeminiAdapter extends NdjsonStreamAdapter {
 function composePrompt(text: string, systemContext: string | undefined): string {
   if (!systemContext || !systemContext.trim()) return text;
   return `${systemContext.trim()}\n\n---\n\n${text}`;
+}
+
+function writeGeminiSystemRules(opts: RuntimeRunOptions): void {
+  if (!opts.systemRules?.length) return;
+  try {
+    writeManagedSystemRulesFile(path.join(opts.cwd, "GEMINI.md"), opts.systemRules, {
+      mergeWithExisting: true,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("gemini: failed to write BotCord system rules to GEMINI.md", err);
+  }
 }
 
 /**

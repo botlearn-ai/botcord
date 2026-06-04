@@ -1,9 +1,10 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { KimiAdapter } from "../runtimes/kimi.js";
 import { createRuntime, envVarForRuntime, listRuntimeIds } from "../runtimes/registry.js";
+import type { RuntimeRunOptions } from "../types.js";
 
 const tmpRoot = mkdtempSync(path.join(os.tmpdir(), "gateway-kimi-"));
 
@@ -18,7 +19,12 @@ afterAll(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-function runAdapter(script: string, sessionId: string | null = null, extraArgs?: string[]) {
+function runAdapter(
+  script: string,
+  sessionId: string | null = null,
+  extraArgs?: string[],
+  systemRules?: RuntimeRunOptions["systemRules"],
+) {
   const adapter = new KimiAdapter({ binary: script });
   const ctrl = new AbortController();
   return adapter.run({
@@ -29,6 +35,7 @@ function runAdapter(script: string, sessionId: string | null = null, extraArgs?:
     signal: ctrl.signal,
     trustLevel: "owner",
     extraArgs,
+    systemRules,
   });
 }
 
@@ -189,6 +196,33 @@ process.stdout.write(JSON.stringify({role:"assistant", content:prompt}) + "\\n")
     expect(res.text).toContain("<system-reminder>");
     expect(res.text).toContain("MEMORY: remember X");
     expect(res.text).toContain("do the thing");
+  });
+
+  it("writes systemRules to .kimi/AGENTS.md without adding them to --prompt", async () => {
+    const script = makeScript(
+      "echo-rule-prompt.js",
+      `
+const argv = process.argv.slice(2);
+const prompt = argv[argv.indexOf("--prompt") + 1];
+process.stdout.write(JSON.stringify({role:"assistant", content:prompt}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, null, undefined, [
+      {
+        kind: "room_rule",
+        scope: "room",
+        id: "room:rm_team",
+        version: "sha256:abc",
+        roomId: "rm_team",
+        roomName: "Team",
+        text: "Only reply when useful.",
+      },
+    ]);
+    expect(res.text).toBe("hi");
+    const body = readFileSync(path.join(tmpRoot, ".kimi", "AGENTS.md"), "utf8");
+    expect(body).toContain("[BotCord Room Rule]");
+    expect(body).toContain("version: sha256:abc");
+    expect(body).toContain("Only reply when useful.");
   });
 
   it("recognizes tool_use and tool_result blocks", async () => {

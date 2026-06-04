@@ -20,6 +20,7 @@ import {
 import { resolveRoute } from "./router.js";
 import { sessionKey, type SessionStore } from "./session-store.js";
 import { clearWaitMarker, consumeWaitMarker, resolveWaitMarkerPath, MAX_WAIT_MS } from "./wait-marker.js";
+import { buildRoomSystemRules } from "../system-rules.js";
 import {
   truncateTextField,
   type DeliveryStatus,
@@ -1712,6 +1713,7 @@ export class Dispatcher {
         });
       }
     }
+    const systemRules = buildRoomSystemRules(msg);
 
     if (this.buildMemoryContext) {
       try {
@@ -1767,6 +1769,7 @@ export class Dispatcher {
             signal: controller.signal,
             trustLevel,
             systemContext,
+            ...(systemRules.length > 0 ? { systemRules } : {}),
             onBlock,
             onStatus,
             context: {

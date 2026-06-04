@@ -91,9 +91,6 @@ export function createRoomContextFetcher(
           ...(typeof room.description === "string"
             ? { description: room.description }
             : {}),
-          ...(typeof room.rule === "string" || room.rule === null
-            ? { rule: (room.rule as string | null) ?? null }
-            : {}),
           ...(typeof room.visibility === "string"
             ? { visibility: room.visibility }
             : {}),

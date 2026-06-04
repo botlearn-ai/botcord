@@ -223,12 +223,25 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
       signal: ctrl.signal,
       trustLevel: "owner",
       systemContext: "MEMORY: remember X\nDIGEST: room Y was active",
+      systemRules: [
+        {
+          kind: "room_rule",
+          scope: "room",
+          id: "room:rm_team",
+          version: "sha256:abc",
+          roomId: "rm_team",
+          roomName: "Team",
+          text: "Only reply when useful.",
+        },
+      ],
     });
     const expectedHome = agentCodexHomeDir("ag_codex_test");
     expect(res.text).toBe(expectedHome);
     const agentsMd = path.join(expectedHome, "AGENTS.md");
     expect(existsSync(agentsMd)).toBe(true);
     const body = readFileSync(agentsMd, "utf8");
+    expect(body).toContain("[BotCord Room Rule]");
+    expect(body).toContain("Only reply when useful.");
     expect(body).toContain("MEMORY: remember X");
     expect(body).toContain("DIGEST: room Y was active");
     // No tmp leftovers from the atomic rename.
