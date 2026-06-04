@@ -93,6 +93,9 @@ interface FakeRuntimeOptions {
   >;
   hang?: boolean;
   observeRun?: (opts: RuntimeRunOptions) => void;
+  inputCacheHitTokens?: number;
+  inputCacheMissTokens?: number;
+  outputTokens?: number;
 }
 
 class FakeRuntime implements RuntimeAdapter {
@@ -156,6 +159,15 @@ class FakeRuntime implements RuntimeAdapter {
       text: this.opts.reply ?? "hello back",
       newSessionId,
       ...(this.opts.errorText ? { error: this.opts.errorText } : {}),
+      ...(this.opts.inputCacheHitTokens !== undefined
+        ? { inputCacheHitTokens: this.opts.inputCacheHitTokens }
+        : {}),
+      ...(this.opts.inputCacheMissTokens !== undefined
+        ? { inputCacheMissTokens: this.opts.inputCacheMissTokens }
+        : {}),
+      ...(this.opts.outputTokens !== undefined
+        ? { outputTokens: this.opts.outputTokens }
+        : {}),
     };
   }
 }
@@ -256,6 +268,8 @@ describe("Dispatcher", () => {
     runtimeAuthFailureCooldownMs?: number;
     buildRuntimeRecoveryContext?: (message: GatewayInboundMessage) => Promise<string | null> | string | null;
     transcript?: TranscriptWriter;
+    maxResumeInputTokens?: number;
+    maxResumeTurns?: number;
   }) {
     const { store, dir } = await makeStore();
     tempDirs.push(dir);
@@ -272,6 +286,12 @@ describe("Dispatcher", () => {
       runtimeAuthFailureCooldownMs: args.runtimeAuthFailureCooldownMs,
       buildRuntimeRecoveryContext: args.buildRuntimeRecoveryContext,
       transcript: args.transcript,
+      ...(args.maxResumeInputTokens !== undefined
+        ? { maxResumeInputTokens: args.maxResumeInputTokens }
+        : {}),
+      ...(args.maxResumeTurns !== undefined
+        ? { maxResumeTurns: args.maxResumeTurns }
+        : {}),
     });
     return { dispatcher, channel, store };
   }
@@ -326,6 +346,98 @@ describe("Dispatcher", () => {
     expect(store.all().length).toBe(1);
     expect(store.all()[0].runtimeSessionId).toBe("new-sid");
     expect(store.all()[0].threadId).toBe("t_1");
+  });
+
+  it("persists turnCount and reported input tokens on the session entry", async () => {
+    const runtime = new FakeRuntime({
+      reply: "ok",
+      newSessionId: "sid-x",
+      inputCacheHitTokens: 9000,
+      inputCacheMissTokens: 1000,
+    });
+    const { dispatcher, store } = await scaffold({ runtimeFactory: () => runtime });
+
+    await dispatcher.handle(makeEnvelope({ id: "m1" }));
+
+    const entry = store.all()[0];
+    expect(entry.turnCount).toBe(1);
+    expect(entry.lastInputTokens).toBe(10000);
+  });
+
+  it("increments turnCount across resumes below the thresholds", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+    const { dispatcher, store } = await scaffold({
+      runtimeFactory: () => runtime,
+      maxResumeTurns: 10,
+      maxResumeInputTokens: 0,
+    });
+
+    await dispatcher.handle(makeEnvelope({ id: "m1" }));
+    await dispatcher.handle(makeEnvelope({ id: "m2" }));
+
+    // Second turn resumed the existing session rather than rotating.
+    const secondCall = runtime.calls[runtime.calls.length - 1];
+    expect(secondCall.sessionId).toBe("sid-1");
+    expect(store.all()[0].turnCount).toBe(2);
+  });
+
+  it("rotates to a fresh session when turnCount reaches the threshold", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+    const { dispatcher, store } = await scaffold({
+      runtimeFactory: () => runtime,
+      maxResumeTurns: 3,
+      maxResumeInputTokens: 0,
+      buildRuntimeRecoveryContext: () => "[Recent Room Messages]\n- peer: hi",
+    });
+
+    await dispatcher.handle(makeEnvelope({ id: "m1" }));
+    // Force the stored session over the turn threshold.
+    await store.set({ ...store.all()[0], turnCount: 3 });
+
+    await dispatcher.handle(makeEnvelope({ id: "m2" }));
+
+    const lastCall = runtime.calls[runtime.calls.length - 1];
+    expect(lastCall.sessionId).toBeNull();
+    expect(lastCall.text).toContain("[BotCord Runtime Recovery Notice]");
+    expect(lastCall.text).toContain("[Recent Room Messages]");
+    // Fresh session resets the counter.
+    expect(store.all()[0].turnCount).toBe(1);
+  });
+
+  it("rotates when the last turn's input tokens reach the threshold", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+    const { dispatcher, store } = await scaffold({
+      runtimeFactory: () => runtime,
+      maxResumeInputTokens: 1000,
+      maxResumeTurns: 0,
+      buildRuntimeRecoveryContext: () => "[Recent Room Messages]\n- x",
+    });
+
+    await dispatcher.handle(makeEnvelope({ id: "m1" }));
+    await store.set({ ...store.all()[0], lastInputTokens: 2000 });
+
+    await dispatcher.handle(makeEnvelope({ id: "m2" }));
+
+    const lastCall = runtime.calls[runtime.calls.length - 1];
+    expect(lastCall.sessionId).toBeNull();
+    expect(lastCall.text).toContain("[BotCord Runtime Recovery Notice]");
+  });
+
+  it("never rotates when both thresholds are disabled", async () => {
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+    const { dispatcher, store } = await scaffold({
+      runtimeFactory: () => runtime,
+      maxResumeTurns: 0,
+      maxResumeInputTokens: 0,
+    });
+
+    await dispatcher.handle(makeEnvelope({ id: "m1" }));
+    await store.set({ ...store.all()[0], turnCount: 9999, lastInputTokens: 9_000_000 });
+
+    await dispatcher.handle(makeEnvelope({ id: "m2" }));
+
+    const lastCall = runtime.calls[runtime.calls.length - 1];
+    expect(lastCall.sessionId).toBe("sid-1");
   });
 
   it("cloud_run: forwards budget caps to the runtime", async () => {

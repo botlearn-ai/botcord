@@ -55,6 +55,34 @@ const DEFAULT_RUNTIME_AUTH_FAILURE_THRESHOLD = 3;
 const DEFAULT_RUNTIME_AUTH_FAILURE_COOLDOWN_MS = 10 * 60 * 1000;
 
 /**
+ * Proactive session-rotation thresholds. A resumed runtime session replays its
+ * full transcript every turn (notably Codex `exec resume`), so input tokens —
+ * and cost — climb without bound the longer a room reuses one session. When a
+ * session crosses either threshold we drop it and start a fresh one, seeded
+ * with recent-room-message recovery context so the agent keeps continuity.
+ *
+ * - input-token threshold: fires once the previous turn's reported input
+ *   (cache hit + miss) got large enough that the transcript is clearly heavy.
+ *   Only effective for runtimes that report usage (Codex today).
+ * - turn-count threshold: a runtime-agnostic backstop for sessions whose
+ *   runtime doesn't report usage. Self-compacting runtimes (Claude Code)
+ *   rarely trip the token threshold, so this bounds them too.
+ *
+ * Either threshold set to 0 disables that judge. Tunable per deployment via
+ * the BOTCORD_GATEWAY_MAX_RESUME_* env vars.
+ */
+const DEFAULT_MAX_RESUME_INPUT_TOKENS = 160_000;
+const DEFAULT_MAX_RESUME_TURNS = 25;
+
+/** Parse a non-negative integer env var, falling back to `fallback` when unset/invalid. */
+function envNonNegativeInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+}
+
+/**
  * Owner-chat room prefix. Reply-text gating: only rooms with this prefix get
  * `result.text` forwarded to the channel; in every other room the runtime's
  * plain text output is discarded — agents must use the `botcord_send` tool
@@ -237,14 +265,22 @@ function looksLikeRecoverableSessionFailure(error: string): boolean {
 
 function buildRuntimeRecoveryPrompt(args: {
   userTurn: string;
-  error: string;
+  runtimeLabel: string;
+  /** Human sentence describing why the prior session ended (failure or rotation). */
+  reason: string;
+  /** Prior runtime error, when the fresh start was triggered by a failure. */
+  error?: string | null;
   recoveryContext?: string | null;
 }): string {
-  return [
+  const lines = [
     "[BotCord Runtime Recovery Notice]",
-    "The previous Codex runtime session for this room became unrecoverable while resuming or compacting context.",
-    `Previous runtime error: ${truncate(args.error, 1000)}`,
-    "You are now running in a fresh Codex session.",
+    `The previous ${args.runtimeLabel} runtime session for this room ${args.reason}.`,
+  ];
+  if (args.error) {
+    lines.push(`Previous runtime error: ${truncate(args.error, 1000)}`);
+  }
+  lines.push(
+    `You are now running in a fresh ${args.runtimeLabel} session.`,
     "Use the recent room messages below, current filesystem state, and available BotCord memory/context tools to reconstruct the active task.",
     "Continue the original user request without asking the user to repeat information unless it is missing from those sources.",
     "",
@@ -252,7 +288,21 @@ function buildRuntimeRecoveryPrompt(args: {
     "",
     "[Current User Turn]",
     args.userTurn,
-  ].join("\n");
+  );
+  return lines.join("\n");
+}
+
+/** Phrase the recovery-notice reason for a failure-triggered fresh start. */
+const RECOVERY_REASON_FAILURE =
+  "became unrecoverable while resuming or compacting context";
+
+/** Phrase the recovery-notice reason for a proactive rotation. */
+function rotationReason(args: { turns: number; inputTokens?: number }): string {
+  const detail =
+    args.inputTokens !== undefined
+      ? `prev turn input ≈ ${args.inputTokens} tokens across ${args.turns} turn(s)`
+      : `${args.turns} turn(s)`;
+  return `was rotated to a fresh session to control context growth (${detail})`;
 }
 
 /**
@@ -296,6 +346,18 @@ export interface DispatcherOptions {
   turnTimeoutMs?: number;
   runtimeAuthFailureThreshold?: number;
   runtimeAuthFailureCooldownMs?: number;
+  /**
+   * Rotate to a fresh runtime session once the previous turn's reported input
+   * tokens reach this value. 0 disables. Defaults to
+   * {@link DEFAULT_MAX_RESUME_INPUT_TOKENS} / `BOTCORD_GATEWAY_MAX_RESUME_INPUT_TOKENS`.
+   */
+  maxResumeInputTokens?: number;
+  /**
+   * Rotate to a fresh runtime session once it has served this many turns.
+   * 0 disables. Defaults to {@link DEFAULT_MAX_RESUME_TURNS} /
+   * `BOTCORD_GATEWAY_MAX_RESUME_TURNS`.
+   */
+  maxResumeTurns?: number;
   /**
    * Live reference to the Gateway's managed-route map. Dispatcher reads
    * `values()` on every `resolveRoute` call so hot-add/remove take effect
@@ -500,6 +562,8 @@ export class Dispatcher {
   private readonly turnTimeoutMs: number;
   private readonly runtimeAuthFailureThreshold: number;
   private readonly runtimeAuthFailureCooldownMs: number;
+  private readonly maxResumeInputTokens: number;
+  private readonly maxResumeTurns: number;
   private readonly buildSystemContext?: SystemContextBuilder;
   private readonly buildMemoryContext?: MemoryContextBuilder;
   private readonly buildRuntimeRecoveryContext?: RuntimeRecoveryContextBuilder;
@@ -536,6 +600,15 @@ export class Dispatcher {
       opts.runtimeAuthFailureThreshold ?? DEFAULT_RUNTIME_AUTH_FAILURE_THRESHOLD;
     this.runtimeAuthFailureCooldownMs =
       opts.runtimeAuthFailureCooldownMs ?? DEFAULT_RUNTIME_AUTH_FAILURE_COOLDOWN_MS;
+    this.maxResumeInputTokens =
+      opts.maxResumeInputTokens ??
+      envNonNegativeInt(
+        "BOTCORD_GATEWAY_MAX_RESUME_INPUT_TOKENS",
+        DEFAULT_MAX_RESUME_INPUT_TOKENS,
+      );
+    this.maxResumeTurns =
+      opts.maxResumeTurns ??
+      envNonNegativeInt("BOTCORD_GATEWAY_MAX_RESUME_TURNS", DEFAULT_MAX_RESUME_TURNS);
     this.buildSystemContext = opts.buildSystemContext;
     this.buildMemoryContext = opts.buildMemoryContext;
     this.buildRuntimeRecoveryContext = opts.buildRuntimeRecoveryContext;
@@ -549,6 +622,63 @@ export class Dispatcher {
     this.attentionGate = opts.attentionGate;
     this.resolveHubUrl = opts.resolveHubUrl;
     this.transcript = opts.transcript ?? NOOP_TRANSCRIPT;
+  }
+
+  /**
+   * Decide whether a resumable session has grown large enough to rotate to a
+   * fresh one. Returns a short reason string when rotation should happen, or
+   * null to keep resuming. Either threshold being 0 disables that judge.
+   */
+  private rotationDecision(entry: GatewaySessionEntry | undefined): {
+    reason: string;
+  } | null {
+    if (!entry) return null;
+    const tokens = entry.lastInputTokens;
+    if (
+      this.maxResumeInputTokens > 0 &&
+      typeof tokens === "number" &&
+      tokens >= this.maxResumeInputTokens
+    ) {
+      return {
+        reason: rotationReason({
+          turns: entry.turnCount ?? 0,
+          inputTokens: tokens,
+        }),
+      };
+    }
+    const turns = entry.turnCount;
+    if (
+      this.maxResumeTurns > 0 &&
+      typeof turns === "number" &&
+      turns >= this.maxResumeTurns
+    ) {
+      return { reason: rotationReason({ turns }) };
+    }
+    return null;
+  }
+
+  /**
+   * Best-effort fetch of recent-room-message recovery context for a fresh
+   * session start. Never throws — failures degrade to no context.
+   */
+  private async fetchRecoveryContext(
+    msg: GatewayInboundMessage,
+  ): Promise<string | null | undefined> {
+    if (!this.buildRuntimeRecoveryContext) return undefined;
+    try {
+      return await this.buildRuntimeRecoveryContext(msg);
+    } catch (err) {
+      this.log.warn(
+        "dispatcher: buildRuntimeRecoveryContext threw — fresh start without recent room context",
+        {
+          agentId: msg.accountId,
+          roomId: msg.conversation.id,
+          topicId: msg.conversation.threadId ?? null,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+      return undefined;
+    }
   }
 
   /** Consume one inbound envelope, ack it once ownership is decided, then run its turn. */
@@ -1785,12 +1915,53 @@ export class Dispatcher {
             ...(route.hermesProfile ? { hermesProfile: route.hermesProfile } : {}),
           });
 
-        result = await runRuntime(runtimeText, sessionId);
+        // Proactive session rotation: a resumed session replays its whole
+        // transcript every turn, so once it crosses the size/age thresholds we
+        // drop it and start fresh with recovery context instead of resuming an
+        // ever-growing (and ever-more-expensive) history. Only when there is an
+        // existing session to rotate away from.
+        if (activeSessionId) {
+          const rotation = this.rotationDecision(entry);
+          if (rotation) {
+            try {
+              await this.sessionStore.delete(key);
+            } catch (err) {
+              this.log.warn("dispatcher: session-store.delete failed before rotation", {
+                key,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+            const recoveryContext = await this.fetchRecoveryContext(msg);
+            runtimeText = buildRuntimeRecoveryPrompt({
+              userTurn: text,
+              runtimeLabel: route.runtime,
+              reason: rotation.reason,
+              recoveryContext,
+            });
+            this.log.info("dispatcher: rotated runtime session to control context growth", {
+              key,
+              prevRuntimeSessionId: activeSessionId,
+              runtime: route.runtime,
+              prevTurnCount: entry?.turnCount ?? null,
+              prevInputTokens: entry?.lastInputTokens ?? null,
+              maxResumeInputTokens: this.maxResumeInputTokens,
+              maxResumeTurns: this.maxResumeTurns,
+              agentId: msg.accountId,
+              roomId: msg.conversation.id,
+              topicId: msg.conversation.threadId ?? null,
+              turnId,
+              queueKey,
+            });
+            activeSessionId = null;
+          }
+        }
+
+        result = await runRuntime(runtimeText, activeSessionId);
         const firstError = result.error ?? "";
         const firstReply = (result.text || "").trim();
         const shouldRetryFresh =
           route.runtime === "codex" &&
-          !!sessionId &&
+          !!activeSessionId &&
           !!firstError &&
           !firstReply &&
           !looksLikeRuntimeAuthFailure(firstError) &&
@@ -1804,7 +1975,7 @@ export class Dispatcher {
             await this.sessionStore.delete(key);
             this.log.info("dispatcher: dropped unrecoverable runtime session before fresh retry", {
               key,
-              prevRuntimeSessionId: sessionId,
+              prevRuntimeSessionId: activeSessionId,
               runtime: route.runtime,
               error: firstError,
             });
@@ -1815,24 +1986,13 @@ export class Dispatcher {
             });
           }
 
-          let recoveryContext: string | null | undefined;
-          if (this.buildRuntimeRecoveryContext) {
-            try {
-              recoveryContext = await this.buildRuntimeRecoveryContext(msg);
-            } catch (err) {
-              this.log.warn("dispatcher: buildRuntimeRecoveryContext threw — retrying without recent room context", {
-                agentId: msg.accountId,
-                roomId: msg.conversation.id,
-                topicId: msg.conversation.threadId ?? null,
-                turnId,
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
-          }
+          const recoveryContext = await this.fetchRecoveryContext(msg);
 
           activeSessionId = null;
           runtimeText = buildRuntimeRecoveryPrompt({
             userTurn: text,
+            runtimeLabel: route.runtime,
+            reason: RECOVERY_REASON_FAILURE,
             error: firstError,
             recoveryContext,
           });
@@ -2034,6 +2194,18 @@ export class Dispatcher {
           });
         }
       } else if (result.newSessionId && !authFailureError) {
+        // Carry the turn counter forward only when we actually resumed the same
+        // stored session this turn; a fresh start (no prior id, rotation, or
+        // failure-retry) resets it to 1 so rotation windows are measured from
+        // the new session's birth.
+        const resumedSameSession =
+          !!activeSessionId && entry?.runtimeSessionId === activeSessionId;
+        const nextTurnCount = resumedSameSession ? (entry?.turnCount ?? 0) + 1 : 1;
+        const reportedInputTokens =
+          result.inputCacheHitTokens !== undefined ||
+          result.inputCacheMissTokens !== undefined
+            ? (result.inputCacheHitTokens ?? 0) + (result.inputCacheMissTokens ?? 0)
+            : undefined;
         const session: GatewaySessionEntry = {
           key,
           runtime: route.runtime,
@@ -2046,6 +2218,10 @@ export class Dispatcher {
           threadId: msg.conversation.threadId ?? null,
           cwd: route.cwd,
           updatedAt: Date.now(),
+          turnCount: nextTurnCount,
+          ...(reportedInputTokens !== undefined
+            ? { lastInputTokens: reportedInputTokens }
+            : {}),
         };
         try {
           const prevRuntimeSessionId = activeSessionId;
