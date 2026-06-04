@@ -98,6 +98,14 @@ def _extract_text_from_envelope(envelope_data: dict) -> tuple[str, str, dict]:
     return sender_id, text, payload
 
 
+def _extract_mentions_from_envelope(envelope_data: dict) -> list[str] | None:
+    mentions = envelope_data.get("mentions")
+    if not isinstance(mentions, list):
+        return None
+    values = [mention for mention in mentions if isinstance(mention, str) and mention]
+    return values or None
+
+
 _RECALLED_MESSAGE_PREVIEW = "Message recalled"
 
 
@@ -562,6 +570,7 @@ async def get_room_messages(
                 goal=rec.goal,
                 state=rec.state.value,
                 state_counts=counts,
+                mentions=_extract_mentions_from_envelope(envelope_data),
                 created_at=ca,
                 source_type=rec.source_type,
                 **_recalled_message_fields(rec),

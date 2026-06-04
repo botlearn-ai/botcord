@@ -796,6 +796,27 @@ async def test_mentions_set_mentioned_flag_per_receiver(
 
 
 @pytest.mark.asyncio
+async def test_messages_response_includes_mentions(client: AsyncClient, seed: dict):
+    r = await client.post(
+        "/api/dashboard/rooms/rm_humanroom/send",
+        headers=_h(seed["token1"], seed["agent1"]),
+        json={"text": "帮我看一下这个方案", "mentions": ["ag_user3___"]},
+    )
+    assert r.status_code == 202, r.text
+
+    r2 = await client.get(
+        "/api/dashboard/rooms/rm_humanroom/messages",
+        headers=_h(seed["token1"], seed["agent1"]),
+    )
+    assert r2.status_code == 200, r2.text
+    messages = r2.json()["messages"]
+    human_msgs = [m for m in messages if m.get("source_type") == "dashboard_human_room"]
+    assert human_msgs, f"no human message found; got={messages}"
+    assert human_msgs[0]["text"] == "帮我看一下这个方案"
+    assert human_msgs[0]["mentions"] == ["ag_user3___"]
+
+
+@pytest.mark.asyncio
 async def test_room_send_does_not_resume_cloud_when_attention_filters(
     client: AsyncClient, seed: dict, monkeypatch
 ):

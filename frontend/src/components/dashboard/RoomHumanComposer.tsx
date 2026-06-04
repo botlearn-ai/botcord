@@ -361,6 +361,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
       goal: null,
       state: "queued",
       state_counts: null,
+      mentions: mentions ?? null,
       created_at: now,
       source_type: "dashboard_human_room",
       sender_kind: "human",
