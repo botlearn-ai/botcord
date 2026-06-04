@@ -820,6 +820,33 @@ class Topic(Base):
 
 class FileRecord(Base):
     __tablename__ = "file_records"
+    __table_args__ = (
+        CheckConstraint(
+            "storage_backend IS NULL OR storage_backend IN ('disk', 'supabase')",
+            name="ck_file_records_storage_backend",
+        ),
+        CheckConstraint(
+            "("
+            "storage_backend IS NULL "
+            "AND disk_path IS NULL "
+            "AND storage_object_key IS NULL"
+            ") OR ("
+            "storage_backend IS NOT NULL "
+            "AND "
+            "storage_backend = 'disk' "
+            "AND disk_path IS NOT NULL "
+            "AND storage_object_key IS NULL"
+            ") OR ("
+            "storage_backend IS NOT NULL "
+            "AND "
+            "storage_backend = 'supabase' "
+            "AND disk_path IS NULL "
+            "AND storage_bucket IS NOT NULL "
+            "AND storage_object_key IS NOT NULL"
+            ")",
+            name="ck_file_records_storage_location",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     file_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
