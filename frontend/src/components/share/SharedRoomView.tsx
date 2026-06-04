@@ -96,74 +96,73 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
   const hiddenMessageCount = Math.max(0, data.messages.length - messageCount);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_15%_10%,rgba(0,240,255,0.10),transparent_28%),linear-gradient(180deg,#07070b_0%,#101018_54%,#07070b_100%)] px-4 pb-10 pt-8 sm:pt-12">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6">
-        <header className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.055] shadow-2xl shadow-black/30">
-          <div className="grid gap-6 px-5 py-6 sm:px-7 sm:py-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
+    <div className="min-h-screen bg-deep-black px-4 pb-10 pt-8 sm:pt-10">
+      <div className="mx-auto flex max-w-4xl flex-col gap-7">
+        <header className="border-b border-white/10 pb-6 sm:pb-7">
+          <p className="mb-3 inline-flex items-center rounded-full border border-neon-cyan/25 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan">
+            {t.previewBadge}
+          </p>
+          <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
-              <p className="mb-3 inline-flex items-center rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan">
-                {t.previewBadge}
-              </p>
               <h1 className="break-words text-3xl font-semibold leading-tight text-text-primary sm:text-4xl">
                 {data.room.name}
               </h1>
               {data.room.description && (
-                <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-text-secondary sm:text-base">
+                <p className="mt-3 max-w-3xl break-words text-sm leading-6 text-text-secondary sm:text-base">
                   {data.room.description}
                 </p>
               )}
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                <Link
-                  href={openHref}
-                  className="inline-flex min-h-11 max-w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan px-4 py-2.5 text-sm font-semibold leading-5 text-deep-black transition hover:bg-text-primary"
-                >
-                  <LockKeyhole className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span className="min-w-0 text-center">{t.unlockCta}</span>
-                  <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
-                </Link>
-                <a
-                  href="#room-preview"
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-text-primary transition hover:border-white/25 hover:bg-white/[0.08]"
-                >
-                  <ArrowDown className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {t.previewCta}
-                </a>
-              </div>
             </div>
 
-            <div className="grid gap-3 border-t border-white/10 pt-4 text-sm text-text-secondary lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <Users className="h-4 w-4 shrink-0 text-neon-green" aria-hidden="true" />
-                <span className="min-w-0 truncate">
-                  {data.room.member_count} {data.room.member_count === 1 ? t.member : t.members}
-                </span>
-              </div>
-              <div className="flex min-w-0 items-center gap-2">
-                <MessageSquareText className="h-4 w-4 shrink-0 text-neon-purple" aria-hidden="true" />
-                <span className="min-w-0 truncate">{t.latestMessages.replace("{count}", String(messageCount))}</span>
-              </div>
-              <div className="flex min-w-0 items-center gap-2">
-                <Clock className="h-4 w-4 shrink-0 text-neon-cyan" aria-hidden="true" />
-                <span className="min-w-0 truncate">{t.sharedBy} {data.shared_by} · {sharedDate}</span>
-              </div>
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col lg:items-stretch">
+              <Link
+                href={openHref}
+                className="inline-flex min-h-11 max-w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan px-4 py-2.5 text-sm font-semibold leading-5 text-deep-black transition hover:bg-text-primary"
+              >
+                <LockKeyhole className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 text-center">{t.unlockCta}</span>
+                <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+              </Link>
+              <a
+                href="#room-preview"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/[0.035] px-4 py-2.5 text-sm font-medium text-text-secondary transition hover:border-white/25 hover:text-text-primary"
+              >
+                <ArrowDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+                {t.previewCta}
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2 text-sm text-text-secondary">
+            <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
+              <Users className="h-4 w-4 shrink-0 text-neon-green" aria-hidden="true" />
+              <span className="min-w-0 truncate">
+                {data.room.member_count} {data.room.member_count === 1 ? t.member : t.members}
+              </span>
+            </div>
+            <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
+              <MessageSquareText className="h-4 w-4 shrink-0 text-neon-purple" aria-hidden="true" />
+              <span className="min-w-0 truncate">{t.latestMessages.replace("{count}", String(messageCount))}</span>
+            </div>
+            <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
+              <Clock className="h-4 w-4 shrink-0 text-neon-cyan" aria-hidden="true" />
+              <span className="min-w-0 truncate">{t.sharedBy} {data.shared_by} · {sharedDate}</span>
             </div>
           </div>
         </header>
 
-        <main id="room-preview" className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <main id="room-preview">
           <section className="min-w-0 space-y-3" aria-labelledby="room-preview-title">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-1">
               <div className="min-w-0">
                 <h2 id="room-preview-title" className="text-lg font-semibold text-text-primary">
                   {t.previewTitle}
                 </h2>
-                <p className="mt-1 text-sm text-text-secondary">{t.previewSubtitle}</p>
-              </div>
-              {hiddenMessageCount > 0 && (
-                <p className="text-xs font-medium text-neon-cyan">
-                  {t.hiddenMessages.replace("{count}", String(hiddenMessageCount))}
+                <p className="mt-1 text-sm text-text-secondary">
+                  {t.previewSubtitle}
+                  {hiddenMessageCount > 0 ? ` ${t.hiddenMessages.replace("{count}", String(hiddenMessageCount))}` : ""}
                 </p>
-              )}
+              </div>
             </div>
 
             {previewMessages.length === 0 ? (
@@ -171,7 +170,7 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
                 {t.noMessages}
               </p>
             ) : (
-              <div className="space-y-3">
+              <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] shadow-xl shadow-black/20">
                 {previewMessages.map((msg) => {
                   const text = truncateSharedRoomMessageText(getSharedRoomMessageText(msg));
                   const senderInitial = (msg.sender_name || msg.sender_id || "?").trim().slice(0, 1).toUpperCase();
@@ -180,7 +179,7 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
                   return (
                     <article
                       key={msg.hub_msg_id}
-                      className="flex min-w-0 gap-3 rounded-lg border border-white/10 bg-white/[0.045] px-3.5 py-3.5 shadow-lg shadow-black/10"
+                      className="flex min-w-0 gap-3 border-b border-white/10 px-3.5 py-3.5 last:border-b-0"
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[linear-gradient(135deg,rgba(0,240,255,0.20),rgba(139,92,246,0.20))] text-xs font-semibold text-text-primary">
                         {senderInitial}
@@ -201,27 +200,21 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
                     </article>
                   );
                 })}
+                <div className="flex flex-col gap-3 border-t border-neon-cyan/20 bg-neon-cyan/[0.045] px-3.5 py-3.5 text-sm text-text-secondary sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-neon-cyan" aria-hidden="true" />
+                    <p className="min-w-0 leading-6">{t.unlockBody}</p>
+                  </div>
+                  <Link
+                    href={openHref}
+                    className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-neon-cyan hover:underline"
+                  >
+                    {t.jumpToRoom}
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Link>
+                </div>
               </div>
             )}
-          </section>
-
-          <section className="rounded-lg border border-neon-cyan/25 bg-neon-cyan/[0.08] px-4 py-4 shadow-2xl shadow-black/20">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neon-cyan/30 bg-neon-cyan/15 text-neon-cyan">
-                <LockKeyhole className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold text-text-primary">{t.unlockTitle}</h2>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">{t.unlockBody}</p>
-                <Link
-                  href={openHref}
-                  className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan px-3 py-2 text-sm font-semibold text-deep-black transition hover:bg-text-primary"
-                >
-                  {t.unlockCta}
-                  <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
-                </Link>
-              </div>
-            </div>
           </section>
         </main>
 
