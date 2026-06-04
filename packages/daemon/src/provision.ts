@@ -1178,7 +1178,7 @@ async function installLocalAgent(
   }
 
   try {
-    const updated = addAgentToConfig(cfg, credentials.agentId);
+    const updated = addAgentToConfig(cfg, credentials.agentId, loadedBotcordAgentIds(ctx.gateway));
     if (updated) saveConfig(updated);
   } catch (err) {
     // Rollback the credentials file if we can't persist config — the
@@ -1335,7 +1335,7 @@ async function installExistingOpenclawBinding(
   const credentialsFile = defaultCredentialsFile(agentId);
   const credentials = loadStoredCredentials(credentialsFile);
   const cfg = loadConfig();
-  const updated = addAgentToConfig(cfg, credentials.agentId);
+  const updated = addAgentToConfig(cfg, credentials.agentId, loadedBotcordAgentIds(ctx.gateway));
   if (updated) saveConfig(updated);
   const snap = ctx.gateway.snapshot();
   if (!snap.channels[credentials.agentId]) {
@@ -1937,13 +1937,41 @@ function assertSafeCwd(cwd: string | undefined): void {
 }
 
 /**
+ * BotCord agent ids currently live in the gateway. Used as a baseline for
+ * {@link addAgentToConfig} so that persisting one provisioned agent never
+ * drops the others. Gateway channels for third-party gateways (`gw_*`) are
+ * excluded — only `ag_*` agent channels belong in the daemon `agents` list.
+ */
+export function loadedBotcordAgentIds(gateway: {
+  snapshot(): { channels: Record<string, unknown> };
+}): string[] {
+  return Object.keys(gateway.snapshot().channels).filter((id) => id.startsWith("ag_"));
+}
+
+/**
  * Append `agentId` to the daemon config if not already present. Returns a
  * new config object or `null` if nothing changed (so callers can skip the
  * disk write).
+ *
+ * `loadedAgents` carries the ids already live in the gateway — typically the
+ * agents discovered from the credentials dir at boot, which never made it
+ * into `cfg.agents` because discovery keeps the on-disk list empty. Folding
+ * them in before writing prevents the footgun where provisioning a single
+ * agent in discovery mode persists `agents: [newId]` and silently drops
+ * every discovered agent on the next restart (agent_not_loaded).
  */
-export function addAgentToConfig(cfg: DaemonConfig, agentId: string): DaemonConfig | null {
-  const list = Array.isArray(cfg.agents) ? cfg.agents.slice() : [];
-  if (cfg.agentId && !list.includes(cfg.agentId)) list.push(cfg.agentId);
+export function addAgentToConfig(
+  cfg: DaemonConfig,
+  agentId: string,
+  loadedAgents: string[] = [],
+): DaemonConfig | null {
+  const list: string[] = [];
+  const add = (id: string | undefined | null): void => {
+    if (typeof id === "string" && id.length > 0 && !list.includes(id)) list.push(id);
+  };
+  if (Array.isArray(cfg.agents)) for (const id of cfg.agents) add(id);
+  add(cfg.agentId);
+  for (const id of loadedAgents) add(id);
   if (list.includes(agentId)) return null;
   list.push(agentId);
   const next: DaemonConfig = { ...cfg, agents: list };
