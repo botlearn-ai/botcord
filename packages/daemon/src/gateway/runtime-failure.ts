@@ -8,9 +8,24 @@ export const RUNTIME_FAILURE_TAIL_LIMIT = 8 * 1024;
 
 const SECRET_VALUE_PATTERNS: Array<[RegExp, string]> = [
   [/(Authorization:\s*Bearer\s+)[^\s"']+/gi, "$1[REDACTED]"],
-  [/\b(token|access_token|refresh_token|api_key|apikey|password|secret)=([^\s"']+)/gi, "$1=[REDACTED]"],
+  [/(^|[\s])(--(?:api-key|api_key|apikey|token|access-token|access_token|refresh-token|refresh_token|password|secret))=([^\s"']+)/gi, "$1$2=[REDACTED]"],
+  [/(^|[\s])(--(?:api-key|api_key|apikey|token|access-token|access_token|refresh-token|refresh_token|password|secret))(\s+)([^\s"']+)/gi, "$1$2$3[REDACTED]"],
+  [/\b((?:openai|anthropic)[_-]?api[_-]?key|x-api-key|access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|password|secret|token)(\s*[:=]\s*)[^\s"']+/gi, "$1$2[REDACTED]"],
   [/\b(drt_|dit_|gho_|ghp_|sk-)[A-Za-z0-9_-]+/g, "$1[REDACTED]"],
 ];
+
+const SECRET_VALUE_FLAGS = new Set([
+  "--api-key",
+  "--api_key",
+  "--apikey",
+  "--token",
+  "--access-token",
+  "--access_token",
+  "--refresh-token",
+  "--refresh_token",
+  "--password",
+  "--secret",
+]);
 
 export interface RuntimeFailureSummary {
   agent_id: string;
@@ -68,7 +83,16 @@ export function tailText(value: string | undefined | null, limit = RUNTIME_FAILU
 
 export function safeCommand(command: string[] | undefined | null): string[] | null {
   if (!command || command.length === 0) return null;
-  return command.map((part) => sanitizeRuntimeFailureText(part, 512));
+  const out: string[] = [];
+  for (let i = 0; i < command.length; i++) {
+    const part = command[i]!;
+    out.push(sanitizeRuntimeFailureText(part, 512));
+    if (SECRET_VALUE_FLAGS.has(part.toLowerCase()) && i + 1 < command.length) {
+      out.push("[REDACTED]");
+      i++;
+    }
+  }
+  return out;
 }
 
 export function errorInfo(err: unknown): { error_name: string | null; error_message: string | null } {

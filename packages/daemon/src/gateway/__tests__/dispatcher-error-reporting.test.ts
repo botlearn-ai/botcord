@@ -68,16 +68,16 @@ class ErrorRuntime implements RuntimeAdapter {
     return {
       text: "",
       newSessionId: "sid_1",
-      error: "codex failed token=secret123",
+      error: "codex failed OPENAI_API_KEY=secret-openai",
       runtimeFailure: {
         cwd: "/repo",
-        command: ["codex", "--token=secret123", "run"],
+        command: ["codex", "--api-key", "secret-api-value", "--token", "secret-token-value", "run"],
         exit_code: 2,
         duration_ms: 1234,
-        stderr_tail: "stderr Authorization: Bearer secret\nsk-live-secret",
-        stdout_tail: "stdout token=secret123",
+        stderr_tail: "stderr Authorization: Bearer secret\nx-api-key: secret-header\n--api-key secret-cli\nsk-live-secret",
+        stdout_tail: "stdout ANTHROPIC_API_KEY=secret-anthropic password: secret-password",
         error_name: "RuntimeExitError",
-        error_message: "runtime failed token=secret123",
+        error_message: "runtime failed OPENAI_API_KEY=secret-openai",
       },
     };
   }
@@ -193,12 +193,21 @@ describe("dispatcher error reporting", () => {
     ]);
 
     const failure = (report.context?.runtime_failure ?? {}) as Record<string, unknown>;
-    expect(failure.command).toEqual(["codex", "--token=[REDACTED]", "run"]);
+    expect(failure.command).toEqual(["codex", "--api-key", "[REDACTED]", "--token", "[REDACTED]", "run"]);
     expect(failure.stderr_tail).toContain("Authorization: Bearer [REDACTED]");
+    expect(failure.stderr_tail).toContain("x-api-key: [REDACTED]");
+    expect(failure.stderr_tail).toContain("--api-key [REDACTED]");
     expect(failure.stderr_tail).toContain("sk-[REDACTED]");
-    expect(failure.stdout_tail).toContain("token=[REDACTED]");
-    expect(failure.error_message).toBe("runtime failed token=[REDACTED]");
-    expect(JSON.stringify(report)).not.toContain("secret123");
+    expect(failure.stdout_tail).toContain("ANTHROPIC_API_KEY=[REDACTED]");
+    expect(failure.stdout_tail).toContain("password: [REDACTED]");
+    expect(failure.error_message).toBe("runtime failed OPENAI_API_KEY=[REDACTED]");
+    expect(JSON.stringify(report)).not.toContain("secret-openai");
+    expect(JSON.stringify(report)).not.toContain("secret-api-value");
+    expect(JSON.stringify(report)).not.toContain("secret-token-value");
+    expect(JSON.stringify(report)).not.toContain("secret-header");
+    expect(JSON.stringify(report)).not.toContain("secret-cli");
+    expect(JSON.stringify(report)).not.toContain("secret-anthropic");
+    expect(JSON.stringify(report)).not.toContain("secret-password");
     expect(JSON.stringify(report)).not.toContain("Bearer secret");
 
     const turnError = transcript.records.find((rec) => rec.kind === "turn_error");

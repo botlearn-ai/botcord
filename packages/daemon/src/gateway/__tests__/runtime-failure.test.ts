@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { lookupRuntimeFailureTranscript, sanitizeRuntimeFailureText } from "../runtime-failure.js";
+import { lookupRuntimeFailureTranscript, safeCommand, sanitizeRuntimeFailureText } from "../runtime-failure.js";
 import { transcriptFilePath } from "../transcript-paths.js";
 
 describe("runtime failure observability", () => {
@@ -62,5 +62,55 @@ describe("runtime failure observability", () => {
     expect(sanitizeRuntimeFailureText("Authorization: Bearer secret-token token=abc123 drt_live")).toBe(
       "Authorization: Bearer [REDACTED] token=[REDACTED] drt_[REDACTED]",
     );
+  });
+
+  it("redacts common API key and password forms from captured tails", () => {
+    const sanitized = sanitizeRuntimeFailureText(
+      [
+        "OPENAI_API_KEY=openai-secret",
+        "ANTHROPIC_API_KEY=anthropic-secret",
+        "x-api-key: header-secret",
+        "password: pw-secret",
+        "--api-key cli-secret",
+        "--token token-secret",
+      ].join(" "),
+    );
+
+    for (const secret of [
+      "openai-secret",
+      "anthropic-secret",
+      "header-secret",
+      "pw-secret",
+      "cli-secret",
+      "token-secret",
+    ]) {
+      expect(sanitized).not.toContain(secret);
+    }
+    expect(sanitized).toContain("OPENAI_API_KEY=[REDACTED]");
+    expect(sanitized).toContain("ANTHROPIC_API_KEY=[REDACTED]");
+    expect(sanitized).toContain("x-api-key: [REDACTED]");
+    expect(sanitized).toContain("password: [REDACTED]");
+    expect(sanitized).toContain("--api-key [REDACTED]");
+    expect(sanitized).toContain("--token [REDACTED]");
+  });
+
+  it("redacts command arguments that pass secret values in the following argv token", () => {
+    expect(safeCommand([
+      "codex",
+      "--api-key",
+      "cli-secret",
+      "--token",
+      "token-secret",
+      "--password=pass-secret",
+      "run",
+    ])).toEqual([
+      "codex",
+      "--api-key",
+      "[REDACTED]",
+      "--token",
+      "[REDACTED]",
+      "--password=[REDACTED]",
+      "run",
+    ]);
   });
 });

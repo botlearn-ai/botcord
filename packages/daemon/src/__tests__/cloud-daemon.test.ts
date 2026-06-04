@@ -148,6 +148,23 @@ describe("startCloudDaemon", () => {
     }
   });
 
+  it("removes the process fatal hook when startup fails after hook install", async () => {
+    const beforeMonitor = process.listenerCount("uncaughtExceptionMonitor");
+
+    await expect(startCloudDaemon({
+      cloudConfig: makeCfg(),
+      config: makeDaemonCfg(),
+      configPath: "(cloud-mode)",
+      disableControlChannel: true,
+      sessionStorePath: path.join(tmpDir, "sessions.json"),
+      snapshotPath: path.join(tmpDir, "snapshot.json"),
+      snapshotIntervalMs: 60_000,
+      failAfterProcessErrorHooks: new Error("forced cloud startup failure"),
+    })).rejects.toThrow("forced cloud startup failure");
+
+    expect(process.listenerCount("uncaughtExceptionMonitor")).toBe(beforeMonitor);
+  });
+
   it("uses the provided provisioner factory", async () => {
     const provisionerSpy = vi.fn();
     const factorySpy = vi.fn(() => provisionerSpy);

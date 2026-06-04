@@ -124,7 +124,7 @@ export class SentryErrorReporter implements ErrorReporter {
   private async loadSentry(): Promise<SentryModule> {
     if (!this.sentry) {
       this.sentry = import("@sentry/node").then((Sentry) => {
-        Sentry.init({
+        Sentry.initWithoutDefaultIntegrations({
           dsn: this.config.dsn,
           environment: this.config.environment,
           release: this.config.release,

@@ -9,6 +9,7 @@ import {
   noopErrorReporter,
   reportErrorSafely,
   resolveErrorReporterConfig,
+  SentryErrorReporter,
   type DaemonErrorReport,
   type ErrorReporter,
 } from "../error-reporting.js";
@@ -49,6 +50,24 @@ describe("daemon error reporting", () => {
       },
       log: silentLogger(),
     })).toBeInstanceOf(BoundedDedupeErrorReporter);
+  });
+
+  it("initializes Sentry without adding process exception or rejection handlers", async () => {
+    const beforeUnhandled = process.listenerCount("unhandledRejection");
+    const beforeUncaught = process.listenerCount("uncaughtException");
+    const reporter = new SentryErrorReporter({
+      enabled: true,
+      dsn: "https://public@example.com/1",
+    }, silentLogger());
+
+    try {
+      await reporter.init();
+      expect(process.listenerCount("unhandledRejection")).toBe(beforeUnhandled);
+      expect(process.listenerCount("uncaughtException")).toBe(beforeUncaught);
+    } finally {
+      const Sentry = await import("@sentry/node");
+      await Sentry.close(0);
+    }
   });
 
   it("dedupes repeated events by bounded key", () => {

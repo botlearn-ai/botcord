@@ -89,6 +89,8 @@ export interface CloudDaemonRuntimeOptions {
   provisionerFactory?: typeof createProvisioner;
   /** Test hook: inject daemon error reporter instead of resolving from env. */
   errorReporter?: ErrorReporter;
+  /** Test hook: force a post-process-hook startup failure. */
+  failAfterProcessErrorHooks?: Error;
 }
 
 /** Handle returned by {@link startCloudDaemon}. */
@@ -127,6 +129,8 @@ export async function startCloudDaemon(
     hubUrl: cloudCfg.hubUrl,
     daemonInstanceId: cloudCfg.daemonInstanceId,
   });
+  try {
+  if (opts.failAfterProcessErrorHooks) throw opts.failAfterProcessErrorHooks;
 
   logger.info("cloud daemon starting", {
     cloudDaemonInstanceId: cloudCfg.cloudDaemonInstanceId,
@@ -425,4 +429,8 @@ export async function startCloudDaemon(
     stop,
     snapshot: () => gateway.snapshot(),
   };
+  } catch (err) {
+    uninstallProcessErrorHooks();
+    throw err;
+  }
 }

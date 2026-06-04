@@ -305,6 +305,8 @@ export interface DaemonRuntimeOptions {
   disableControlChannel?: boolean;
   /** Test hook: inject daemon error reporter instead of resolving from env. */
   errorReporter?: ErrorReporter;
+  /** Test hook: force a post-process-hook startup failure. */
+  failAfterProcessErrorHooks?: Error;
 }
 
 /** Handle returned by {@link startDaemon}. */
@@ -349,6 +351,8 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     hubUrl: opts.hubBaseUrl ?? null,
     daemonInstanceId: process.env.BOTCORD_DAEMON_INSTANCE_ID ?? null,
   });
+  try {
+  if (opts.failAfterProcessErrorHooks) throw opts.failAfterProcessErrorHooks;
   const userAuth =
     opts.userAuth === undefined
       ? tryLoadUserAuth(logger)
@@ -763,6 +767,10 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     stop,
     snapshot: () => gateway.snapshot(),
   };
+  } catch (err) {
+    uninstallProcessErrorHooks();
+    throw err;
+  }
 }
 
 /**
