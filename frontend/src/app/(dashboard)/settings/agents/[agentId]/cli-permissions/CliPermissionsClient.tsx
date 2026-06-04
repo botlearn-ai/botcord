@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: CLI-requested agent management scopes and optional daemon_instance_id
- * [OUTPUT]: Owner approval UI that creates management grants through the BFF
+ * [OUTPUT]: Owner approval UI that creates management grants through the Hub API
  * [POS]: dashboard settings client for CLI agent credential authorization
  * [PROTOCOL]: update header on changes
  */
@@ -19,6 +19,7 @@ import {
   Terminal,
   XCircle,
 } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 const DAEMON_PROVISION_SCOPE = "daemon_agents:provision";
 
@@ -163,7 +164,7 @@ async function apiErrorMessage(res: Response): Promise<string> {
 
 async function fetchGrants(agentId: string): Promise<AgentManagementGrant[]> {
   const params = new URLSearchParams({ agent_id: agentId });
-  const res = await fetch(`/api/agent-management/grants?${params.toString()}`, {
+  const res = await apiFetch(`/api/agent-management/grants?${params.toString()}`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(await apiErrorMessage(res));
@@ -178,7 +179,7 @@ async function createGrants(body: {
   daemon_instance_id?: string;
   limits?: Record<string, unknown>;
 }): Promise<AgentManagementGrant[]> {
-  const res = await fetch("/api/agent-management/grants", {
+  const res = await apiFetch("/api/agent-management/grants", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
