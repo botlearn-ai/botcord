@@ -9,7 +9,7 @@
  *   - Rendering: status-driven (optimistic / streaming / delivered / failed)
  */
 
-import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo, memo } from "react";
 import { ArrowDown, ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, PanelLeftOpen, Settings2, User, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
@@ -82,7 +82,9 @@ function TypewriterText({
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function UserChatPane({ agentId }: { agentId?: string | null }) {
+export default memo(UserChatPane);
+
+function UserChatPane({ agentId }: { agentId?: string | null }) {
   const locale = useLanguage();
   const router = useRouter();
   const { activeAgentId } = useDashboardSessionStore();

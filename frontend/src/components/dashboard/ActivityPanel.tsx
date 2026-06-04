@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { api } from "@/lib/api";
 import type { ActivityStats, ActivityFeedItem } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
@@ -174,7 +174,9 @@ function FeedItem({ item, zh }: { item: ActivityFeedItem; zh: boolean }) {
 // Main panel
 // ---------------------------------------------------------------------------
 
-export default function ActivityPanel() {
+export default memo(ActivityPanel);
+
+function ActivityPanel() {
   const locale = useLanguage();
   const zh = locale === "zh";
   const t = sidebar[locale];

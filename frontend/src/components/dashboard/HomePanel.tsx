@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { forwardRef, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "nextjs-toploader/app";
 import {
@@ -703,7 +703,9 @@ function PersonCard({
   );
 }
 
-export default function HomePanel() {
+export default memo(HomePanel);
+
+function HomePanel() {
   const router = useRouter();
   const locale = useLanguage();
   const t = homePanelI18n[locale];

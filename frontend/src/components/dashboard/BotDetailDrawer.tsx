@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import {
   Bot,
@@ -86,7 +86,9 @@ interface BotFriendRoom {
  * Right-side drawer for a single owned bot.
  * Top-level tabs keep the drawer compact: 概览 / 钱包 / 设置 / 文件.
  */
-export default function BotDetailDrawer() {
+export default memo(BotDetailDrawer);
+
+function BotDetailDrawer() {
   const router = useRouter();
   const locale = useLanguage();
   const t = botDetailDrawer[locale];

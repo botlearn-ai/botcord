@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { api } from "@/lib/api";
@@ -16,7 +16,9 @@ import { useDaemonStore } from "@/store/useDaemonStore";
 import { useLanguage } from "@/lib/i18n";
 import { myBotsPanel as myBotsPanelI18n } from "@/lib/i18n/translations/dashboard";
 
-export default function MyBotsPanel() {
+export default memo(MyBotsPanel);
+
+function MyBotsPanel() {
   const t = myBotsPanelI18n[useLanguage()];
   const SUB_TABS = [
     { key: "bots" as const, label: t.botsTabLabel },

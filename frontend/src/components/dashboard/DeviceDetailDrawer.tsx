@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -30,7 +30,9 @@ import BotAvatar from "./BotAvatar";
  * Right-edge slide-out drawer for one device's details + settings.
  * Driven by `selectedDeviceId` in the UI store; close = set it to null.
  */
-export default function DeviceDetailDrawer() {
+export default memo(DeviceDetailDrawer);
+
+function DeviceDetailDrawer() {
   const {
     daemons,
     diagnosticResults,

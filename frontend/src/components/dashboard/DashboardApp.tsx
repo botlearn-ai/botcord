@@ -25,6 +25,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
+import { useShallow } from "zustand/react/shallow";
 import AgentBrowser from "./AgentBrowser";
 import AgentCardModal from "./AgentCardModal";
 import AgentGateModal from "./AgentGateModal";
@@ -98,11 +99,30 @@ export default function DashboardApp() {
   const sessionStore = useDashboardSessionStore();
   const uiStore = useDashboardUIStore();
   const chatStore = useDashboardChatStore();
-  const realtimeStore = useDashboardRealtimeStore();
-  const unreadStore = useDashboardUnreadStore();
+  // realtime/unread/subscription: the root only ever calls their actions (stable
+  // refs), never reads churning data — so select just the actions via useShallow.
+  // Subscribing to the whole store here re-rendered DashboardApp (and its entire
+  // subtree) on every inbound message / realtime event / unread tick.
+  const realtimeStore = useDashboardRealtimeStore(
+    useShallow((s) => ({
+      resetRealtimeState: s.resetRealtimeState,
+      setRealtimeStatus: s.setRealtimeStatus,
+      syncRealtimeEvent: s.syncRealtimeEvent,
+    })),
+  );
+  const unreadStore = useDashboardUnreadStore(
+    useShallow((s) => ({
+      applyRealtimeEvent: s.applyRealtimeEvent,
+      resetUnreadState: s.resetUnreadState,
+    })),
+  );
   const walletStore = useDashboardWalletStore();
   const contactStore = useDashboardContactStore();
-  const subscriptionStore = useDashboardSubscriptionStore();
+  const subscriptionStore = useDashboardSubscriptionStore(
+    useShallow((s) => ({
+      resetSubscriptionState: s.resetSubscriptionState,
+    })),
+  );
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

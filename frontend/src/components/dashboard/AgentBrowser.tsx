@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import SubscriptionBadge from "./SubscriptionBadge";
 import { useLanguage } from '@/lib/i18n';
 import { agentBrowser } from '@/lib/i18n/translations/dashboard';
@@ -30,7 +30,9 @@ import AddRoomMemberModal from "./AddRoomMemberModal";
 import TransferOwnershipDialog from "./TransferOwnershipDialog";
 import { roomList as roomListI18n } from "@/lib/i18n/translations/dashboard";
 
-export default function AgentBrowser() {
+export default memo(AgentBrowser);
+
+function AgentBrowser() {
   const router = useRouter();
   const locale = useLanguage();
   const t = agentBrowser[locale];
