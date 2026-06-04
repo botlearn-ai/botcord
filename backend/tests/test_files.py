@@ -524,14 +524,14 @@ async def test_cleanup_removes_expired_files(client: AsyncClient, db_session: As
         cleaned = await hub_cleanup._cleanup_expired_files()
     assert cleaned == 1
 
-    # Verify disk file is gone but DB record is kept with storage coordinates cleared
+    # Verify disk file is gone but DB record is kept with storage marked cleaned
     assert not os.path.isfile(disk_path)
     result = await db_session.execute(
         sa_select(FileRecord).where(FileRecord.file_id == file_id)
     )
     kept_record = result.scalar_one_or_none()
     assert kept_record is not None
-    assert kept_record.storage_backend == "disk"
+    assert kept_record.storage_backend is None
     assert kept_record.disk_path is None
     assert kept_record.storage_object_key is None
 
@@ -585,7 +585,7 @@ async def test_cleanup_removes_expired_supabase_files(client: AsyncClient, db_se
     )
     kept_record = result.scalar_one_or_none()
     assert kept_record is not None
-    assert kept_record.storage_backend == "supabase"
+    assert kept_record.storage_backend is None
     assert kept_record.disk_path is None
     assert kept_record.storage_object_key is None
 
@@ -758,7 +758,7 @@ async def test_cleanup_preserves_mismatched_object_key_after_disk_delete(
         sa_select(FileRecord).where(FileRecord.file_id == record.file_id)
     )
     kept_record = result.scalar_one()
-    assert kept_record.storage_backend == "disk"
+    assert kept_record.storage_backend is None
     assert kept_record.disk_path is None
     assert kept_record.storage_object_key == "orphan/both.txt"
 

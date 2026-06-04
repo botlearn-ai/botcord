@@ -829,7 +829,7 @@ class FileRecord(Base):
     original_filename: Mapped[str] = mapped_column(String(256), nullable=False)
     content_type: Mapped[str] = mapped_column(String(128), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
-    storage_backend: Mapped[str] = mapped_column(String(32), nullable=False, default="disk", index=True)
+    storage_backend: Mapped[str | None] = mapped_column(String(32), nullable=True, default="disk", index=True)
     disk_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     storage_bucket: Mapped[str | None] = mapped_column(String(128), nullable=True)
     storage_object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
