@@ -71,13 +71,33 @@ class ErrorRuntime implements RuntimeAdapter {
       error: "codex failed OPENAI_API_KEY=secret-openai",
       runtimeFailure: {
         cwd: "/repo",
-        command: ["codex", "--api-key", "secret-api-value", "--token", "secret-token-value", "run"],
+        command: [
+          "codex",
+          "--api-key",
+          "secret-api-value",
+          "--token",
+          "secret-token-value",
+          '{"args":["--api-key","secret-json-command"]}',
+          "run",
+        ],
         exit_code: 2,
         duration_ms: 1234,
-        stderr_tail: "stderr Authorization: Bearer secret\nx-api-key: secret-header\n--api-key secret-cli\nsk-live-secret",
-        stdout_tail: "stdout ANTHROPIC_API_KEY=secret-anthropic password: secret-password",
+        stderr_tail: [
+          "stderr Authorization: Bearer secret",
+          "x-api-key: secret-header",
+          '{"x-api-key":"secret-json-header"}',
+          "{'password': 'secret-json-password'}",
+          "--api-key secret-cli",
+          "sk-live-secret",
+        ].join("\n"),
+        stdout_tail: [
+          "stdout ANTHROPIC_API_KEY=secret-anthropic password: secret-password",
+          '{"OPENAI_API_KEY":"secret-json-openai"}',
+          '{"ANTHROPIC_API_KEY" : "secret-json-anthropic"}',
+          '{"args":["--token", "secret-json-token"]}',
+        ].join("\n"),
         error_name: "RuntimeExitError",
-        error_message: "runtime failed OPENAI_API_KEY=secret-openai",
+        error_message: 'runtime failed OPENAI_API_KEY=secret-openai {"OPENAI_API_KEY":"secret-json-message"}',
       },
     };
   }
@@ -193,20 +213,40 @@ describe("dispatcher error reporting", () => {
     ]);
 
     const failure = (report.context?.runtime_failure ?? {}) as Record<string, unknown>;
-    expect(failure.command).toEqual(["codex", "--api-key", "[REDACTED]", "--token", "[REDACTED]", "run"]);
+    expect(failure.command).toEqual([
+      "codex",
+      "--api-key",
+      "[REDACTED]",
+      "--token",
+      "[REDACTED]",
+      '{"args":["--api-key","[REDACTED]"]}',
+      "run",
+    ]);
     expect(failure.stderr_tail).toContain("Authorization: Bearer [REDACTED]");
     expect(failure.stderr_tail).toContain("x-api-key: [REDACTED]");
+    expect(failure.stderr_tail).toContain('"x-api-key":"[REDACTED]"');
+    expect(failure.stderr_tail).toContain("'password': '[REDACTED]'");
     expect(failure.stderr_tail).toContain("--api-key [REDACTED]");
     expect(failure.stderr_tail).toContain("sk-[REDACTED]");
     expect(failure.stdout_tail).toContain("ANTHROPIC_API_KEY=[REDACTED]");
     expect(failure.stdout_tail).toContain("password: [REDACTED]");
-    expect(failure.error_message).toBe("runtime failed OPENAI_API_KEY=[REDACTED]");
+    expect(failure.stdout_tail).toContain('"OPENAI_API_KEY":"[REDACTED]"');
+    expect(failure.stdout_tail).toContain('"ANTHROPIC_API_KEY" : "[REDACTED]"');
+    expect(failure.stdout_tail).toContain('"args":["--token", "[REDACTED]"]');
+    expect(failure.error_message).toBe('runtime failed OPENAI_API_KEY=[REDACTED] {"OPENAI_API_KEY":"[REDACTED]"}');
     expect(JSON.stringify(report)).not.toContain("secret-openai");
     expect(JSON.stringify(report)).not.toContain("secret-api-value");
     expect(JSON.stringify(report)).not.toContain("secret-token-value");
+    expect(JSON.stringify(report)).not.toContain("secret-json-command");
     expect(JSON.stringify(report)).not.toContain("secret-header");
+    expect(JSON.stringify(report)).not.toContain("secret-json-header");
+    expect(JSON.stringify(report)).not.toContain("secret-json-password");
     expect(JSON.stringify(report)).not.toContain("secret-cli");
     expect(JSON.stringify(report)).not.toContain("secret-anthropic");
+    expect(JSON.stringify(report)).not.toContain("secret-json-openai");
+    expect(JSON.stringify(report)).not.toContain("secret-json-anthropic");
+    expect(JSON.stringify(report)).not.toContain("secret-json-token");
+    expect(JSON.stringify(report)).not.toContain("secret-json-message");
     expect(JSON.stringify(report)).not.toContain("secret-password");
     expect(JSON.stringify(report)).not.toContain("Bearer secret");
 

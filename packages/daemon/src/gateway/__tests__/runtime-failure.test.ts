@@ -94,6 +94,36 @@ describe("runtime failure observability", () => {
     expect(sanitized).toContain("--token [REDACTED]");
   });
 
+  it("redacts quoted JSON secret values and serialized argv secrets from captured tails", () => {
+    const sanitized = sanitizeRuntimeFailureText(
+      [
+        '{"OPENAI_API_KEY":"openai-json-secret"}',
+        '{"ANTHROPIC_API_KEY" : "anthropic-json-secret"}',
+        '{"x-api-key":"header-json-secret"}',
+        "{'password': 'password-json-secret'}",
+        '{"args":["--api-key","cli-json-secret"]}',
+        '{"args":["--token", "token-json-secret"]}',
+      ].join(" "),
+    );
+
+    for (const secret of [
+      "openai-json-secret",
+      "anthropic-json-secret",
+      "header-json-secret",
+      "password-json-secret",
+      "cli-json-secret",
+      "token-json-secret",
+    ]) {
+      expect(sanitized).not.toContain(secret);
+    }
+    expect(sanitized).toContain('"OPENAI_API_KEY":"[REDACTED]"');
+    expect(sanitized).toContain('"ANTHROPIC_API_KEY" : "[REDACTED]"');
+    expect(sanitized).toContain('"x-api-key":"[REDACTED]"');
+    expect(sanitized).toContain("'password': '[REDACTED]'");
+    expect(sanitized).toContain('"args":["--api-key","[REDACTED]"]');
+    expect(sanitized).toContain('"args":["--token", "[REDACTED]"]');
+  });
+
   it("redacts command arguments that pass secret values in the following argv token", () => {
     expect(safeCommand([
       "codex",
@@ -102,6 +132,7 @@ describe("runtime failure observability", () => {
       "--token",
       "token-secret",
       "--password=pass-secret",
+      '{"args":["--api-key","json-cli-secret"]}',
       "run",
     ])).toEqual([
       "codex",
@@ -110,6 +141,7 @@ describe("runtime failure observability", () => {
       "--token",
       "[REDACTED]",
       "--password=[REDACTED]",
+      '{"args":["--api-key","[REDACTED]"]}',
       "run",
     ]);
   });
