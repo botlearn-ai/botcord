@@ -63,6 +63,7 @@ async def _cleanup_expired_files() -> int:
                 record.disk_path = None
             elif record.storage_backend == "supabase":
                 record.storage_object_key = None
+            record.storage_backend = None
             cleaned += 1
         if records:
             await session.commit()
