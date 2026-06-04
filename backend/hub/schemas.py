@@ -653,6 +653,7 @@ class DashboardMessage(BaseModel):
     topic_id: str | None = None
     state: str
     state_counts: dict[str, int] | None = None
+    mentions: list[str] | None = None
     created_at: datetime.datetime
     is_recalled: bool = False
     recalled_at: datetime.datetime | None = None

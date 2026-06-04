@@ -14,6 +14,7 @@ import { canReplyToDashboardMessage } from "@/lib/dashboard-message-actions";
 import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
 import { getActionMenuPosition } from "@/lib/message-action-menu";
+import { resolveMessageMentionTargets } from "@/lib/message-mentions";
 import { canRecallDashboardMessage, isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
@@ -413,6 +414,7 @@ function MessageBubble({
   const errorCode = typeof errorPayload?.code === "string" ? errorPayload.code : null;
   const textContent = message.payload?.text || message.payload?.body || message.payload?.message;
   const displayText = typeof textContent === "string" ? textContent : message.text || errorMessage;
+  const metadataMentions = resolveMessageMentionTargets(message.mentions, mentionCandidates ?? [], displayText);
   const isRecalled = isDashboardMessageRecalled(message);
   const isErrorMessage = message.type === "error";
   const errorTitle = locale === "zh" ? "运行错误" : "Runtime error";
@@ -772,6 +774,20 @@ function MessageBubble({
           <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-neon-purple/20 bg-neon-purple/5 px-2 py-1.5">
             <span className="mt-px text-xs text-neon-purple/70">🎯</span>
             <span className="text-xs leading-relaxed text-neon-purple/90">{message.goal}</span>
+          </div>
+        )}
+
+        {!isRecalled && metadataMentions.length > 0 && (
+          <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            {metadataMentions.map((mention) => (
+              <MentionChip
+                key={mention.id}
+                id={mention.id}
+                label={mention.label}
+                onSelectAgent={selectAgent}
+                onSelectHuman={requestOpenHuman}
+              />
+            ))}
           </div>
         )}
 

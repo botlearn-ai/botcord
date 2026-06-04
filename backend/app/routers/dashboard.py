@@ -170,6 +170,18 @@ def _display_content_for_record(rec: MessageRecord, parsed: dict) -> tuple[str |
     )
 
 
+def _extract_mentions_from_envelope(envelope_json: str | None) -> list[str] | None:
+    try:
+        data = json.loads(envelope_json or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return None
+    mentions = data.get("mentions")
+    if not isinstance(mentions, list):
+        return None
+    values = [mention for mention in mentions if isinstance(mention, str) and mention]
+    return values or None
+
+
 def _preview_for_record(rec: MessageRecord) -> tuple[str, str | None, str]:
     sender_id, preview, msg_type = _extract_text_preview(rec.envelope_json)
     if rec.recalled_at is not None:
@@ -2472,6 +2484,7 @@ async def get_room_messages(
             "topic": rec.topic,
             "topic_id": rec.topic_id,
             "topic_title": topic_info.get(rec.topic_id, {}).get("title") if rec.topic_id else None,
+            "mentions": _extract_mentions_from_envelope(rec.envelope_json),
             "created_at": rec.created_at.isoformat() if rec.created_at else None,
             "source_type": rec.source_type,
             "reply_preview": rp.model_dump(mode="json") if rp else None,

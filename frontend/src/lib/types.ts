@@ -172,6 +172,7 @@ export interface DashboardMessage {
   topic_closed_at?: string | null;
   state: string;
   state_counts: Record<string, number> | null;
+  mentions?: string[] | null;
   created_at: string;
   source_type?: string;
   sender_kind?: "agent" | "human";
