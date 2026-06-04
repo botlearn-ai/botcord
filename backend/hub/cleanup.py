@@ -6,7 +6,7 @@ import asyncio
 import datetime
 import logging
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from hub import config as hub_config
 from hub.database import async_session
@@ -39,8 +39,14 @@ async def _cleanup_expired_files() -> int:
             select(FileRecord).where(
                 FileRecord.expires_at <= now,
                 or_(
-                    FileRecord.disk_path.is_not(None),
-                    FileRecord.storage_object_key.is_not(None),
+                    and_(
+                        FileRecord.storage_backend == "disk",
+                        FileRecord.disk_path.is_not(None),
+                    ),
+                    and_(
+                        FileRecord.storage_backend == "supabase",
+                        FileRecord.storage_object_key.is_not(None),
+                    ),
                 ),
             ).limit(100)
         )
@@ -53,8 +59,10 @@ async def _cleanup_expired_files() -> int:
             except Exception as exc:
                 logger.warning("Failed to delete file for %s: %s", record.file_id, exc)
                 continue
-            record.disk_path = None
-            record.storage_object_key = None
+            if record.storage_backend == "disk":
+                record.disk_path = None
+            elif record.storage_backend == "supabase":
+                record.storage_object_key = None
             cleaned += 1
         if records:
             await session.commit()
