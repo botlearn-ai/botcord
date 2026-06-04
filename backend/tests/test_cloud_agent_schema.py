@@ -2,6 +2,7 @@
 
 import datetime
 import uuid
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -25,6 +26,11 @@ from hub.models import (
 )
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+MIGRATION_011 = (
+    Path(__file__).resolve().parents[1]
+    / "migrations"
+    / "011_agent_hosting_kind_openclaw.sql"
+)
 
 
 @pytest_asyncio.fixture
@@ -111,6 +117,16 @@ async def _make_cloud_agent(
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+
+def test_hosting_kind_openclaw_migration_normalizes_legacy_values_before_check():
+    sql = MIGRATION_011.read_text()
+    normalize_pos = sql.index("UPDATE agents")
+    constraint_pos = sql.index("ADD CONSTRAINT ck_agents_hosting_kind")
+
+    assert normalize_pos < constraint_pos
+    assert "hosting_kind NOT IN ('daemon', 'openclaw', 'cli', 'cloud')" in sql
+    assert "hosting_kind IN ('daemon', 'openclaw', 'cli', 'cloud')" in sql
 
 
 @pytest.mark.asyncio

@@ -913,7 +913,7 @@ async def test_run_with_custom_budget(client_factory, seed_user):
 
 
 @pytest.mark.asyncio
-async def test_run_does_not_reserve_botcord_usage(client_factory, seed_user):
+async def test_run_reserves_botcord_usage(client_factory, seed_user):
     client, _ = await client_factory()
     headers = {"Authorization": f"Bearer {seed_user['token']}"}
     create = await client.post(
@@ -932,8 +932,8 @@ async def test_run_does_not_reserve_botcord_usage(client_factory, seed_user):
     body = usage.json()
     assert body["agent_id"] == agent_id
     assert body["included_credits"] >= body["reserved_credits"]
-    assert body["reserved_credits"] == 0
-    assert body["reserved_sandbox_seconds"] == 0
+    assert body["reserved_credits"] > 0
+    assert body["reserved_sandbox_seconds"] == 600
     assert body["events"] == []
 
 
