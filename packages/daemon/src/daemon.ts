@@ -53,6 +53,12 @@ import { scanMention } from "./mention-scan.js";
 import { createDiagnosticBundle, uploadDiagnosticBundle } from "./diagnostics.js";
 import { createAttentionPolicyFetcher } from "./attention-policy-fetcher.js";
 import { collectAgentSkillSnapshot, type SkillIndexOptions } from "./skill-index.js";
+import {
+  createDaemonErrorReporter,
+  initializeErrorReporterSafely,
+  installProcessErrorReportingHooks,
+  type ErrorReporter,
+} from "./error-reporting.js";
 
 /**
  * Default hard cap for a single runtime turn. Long-running coding/research
@@ -297,6 +303,8 @@ export interface DaemonRuntimeOptions {
   userAuth?: UserAuthManager | null;
   /** Skip the control channel even when user-auth is available. Test hook. */
   disableControlChannel?: boolean;
+  /** Test hook: inject daemon error reporter instead of resolving from env. */
+  errorReporter?: ErrorReporter;
 }
 
 /** Handle returned by {@link startDaemon}. */
@@ -333,6 +341,14 @@ function buildDaemonLogger(): GatewayLogger {
  */
 export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHandle> {
   const logger = opts.log ?? buildDaemonLogger();
+  const errorReporter = opts.errorReporter ?? createDaemonErrorReporter({ log: logger });
+  await initializeErrorReporterSafely(errorReporter, logger);
+  const uninstallProcessErrorHooks = installProcessErrorReportingHooks({
+    reporter: errorReporter,
+    log: logger,
+    hubUrl: opts.hubBaseUrl ?? null,
+    daemonInstanceId: process.env.BOTCORD_DAEMON_INSTANCE_ID ?? null,
+  });
   const userAuth =
     opts.userAuth === undefined
       ? tryLoadUserAuth(logger)
@@ -590,6 +606,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     onInbound,
     onOutbound,
     onRuntimeCircuitBreakerChange: pushLiveRuntimeSnapshot,
+    errorReporter,
     composeUserTurn: composeBotCordUserTurn,
     attentionGate,
     resolveHubUrl,
@@ -729,6 +746,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     // Write one final snapshot so `status` doesn't briefly see stale data,
     // then delete the file on the way out.
     snapshotWriter.writeFinal();
+    uninstallProcessErrorHooks();
     const controlStopP = controlChannel
       ? controlChannel.stop().catch(() => undefined)
       : Promise.resolve();

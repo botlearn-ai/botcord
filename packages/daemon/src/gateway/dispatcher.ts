@@ -3,6 +3,7 @@ import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
 import type { GatewayLogger } from "./log.js";
+import { reportErrorSafely, type ErrorReporter } from "../error-reporting.js";
 import {
   errorInfo,
   makeRuntimeErrorRef,
@@ -335,6 +336,11 @@ export interface DispatcherOptions {
   onOutbound?: OutboundObserver;
   onRuntimeCircuitBreakerChange?: () => void;
   /**
+   * Optional daemon error reporter. Used for runtime_failure events only in
+   * gateway core; process-level fatal hooks are installed by daemon startup.
+   */
+  errorReporter?: ErrorReporter;
+  /**
    * Optional observer fired exactly once per turn after ``runtime.run``
    * resolves (or throws / times out). Receives the inbound message, the
    * raw runtime result (may be undefined on throw), the elapsed wall
@@ -496,6 +502,7 @@ export class Dispatcher {
   private readonly onOutbound?: OutboundObserver;
   private readonly onTurnComplete?: DispatcherOptions["onTurnComplete"];
   private readonly onRuntimeCircuitBreakerChange?: () => void;
+  private readonly errorReporter?: ErrorReporter;
   private readonly composeUserTurn?: UserTurnBuilder;
   private readonly managedRoutes?: Map<string, GatewayRoute>;
   private readonly attentionGate?: (
@@ -531,6 +538,7 @@ export class Dispatcher {
     this.onOutbound = opts.onOutbound;
     this.onTurnComplete = opts.onTurnComplete;
     this.onRuntimeCircuitBreakerChange = opts.onRuntimeCircuitBreakerChange;
+    this.errorReporter = opts.errorReporter;
     this.composeUserTurn = opts.composeUserTurn;
     this.managedRoutes = opts.managedRoutes;
     this.attentionGate = opts.attentionGate;
@@ -1738,6 +1746,7 @@ export class Dispatcher {
     let threw: unknown;
     let activeSessionId: string | null = sessionId;
     const turnStartedAt = Date.now();
+    const hubUrl = this.resolveHubUrl?.(msg.accountId);
     try {
       try {
         const runRuntime = (textForRun: string, sessionIdForRun: string | null) =>
@@ -1746,7 +1755,7 @@ export class Dispatcher {
             sessionId: sessionIdForRun,
             cwd: route.cwd,
             accountId: msg.accountId,
-            hubUrl: this.resolveHubUrl?.(msg.accountId),
+            hubUrl,
             ...(waitMarkerFile ? { waitMarkerFile } : {}),
             extraArgs: route.extraArgs,
             signal: controller.signal,
@@ -1938,6 +1947,7 @@ export class Dispatcher {
           turnId,
           startedAt: slot.dispatchedAt,
           error: threw,
+          hubUrl,
         });
         if (canDeliverRuntimeDiagnostics) {
           await this.sendReply(channel, {
@@ -2065,6 +2075,7 @@ export class Dispatcher {
             startedAt: slot.dispatchedAt,
             error: effectiveError,
             result,
+            hubUrl,
           });
           if (canDeliverRuntimeDiagnostics) {
             const sendResult = await this.sendReply(channel, {
@@ -2435,6 +2446,7 @@ export class Dispatcher {
     startedAt: number;
     error: unknown;
     result?: RuntimeRunResult;
+    hubUrl?: string;
   }): { errorRef: string; summary: RuntimeFailureSummary; safeMessage: string } {
     const info = errorInfo(args.error);
     const resultFailure = args.result?.runtimeFailure ?? {};
@@ -2512,8 +2524,79 @@ export class Dispatcher {
       runtime: args.route.runtime,
       runtimeFailure: summary,
     });
+    reportErrorSafely(
+      this.errorReporter,
+      buildRuntimeFailureReport({
+        summary,
+        errorRef,
+        safeMessage,
+        msg: args.msg,
+        hubUrl: args.hubUrl,
+      }),
+      this.log,
+    );
     return { errorRef, summary, safeMessage };
   }
+}
+
+function buildRuntimeFailureReport(args: {
+  summary: RuntimeFailureSummary;
+  errorRef: string;
+  safeMessage: string;
+  msg: GatewayInboundMessage;
+  hubUrl?: string;
+}): import("../error-reporting.js").DaemonErrorReport {
+  const raw = args.msg.raw as {
+    envelope?: {
+      type?: unknown;
+      msg_id?: unknown;
+      message_id?: unknown;
+    };
+  } | null | undefined;
+  const controlFrameType =
+    typeof raw?.envelope?.type === "string" ? raw.envelope.type : undefined;
+  const controlMessageId =
+    typeof raw?.envelope?.msg_id === "string"
+      ? raw.envelope.msg_id
+      : typeof raw?.envelope?.message_id === "string"
+        ? raw.envelope.message_id
+        : undefined;
+
+  return {
+    type: "runtime_failure",
+    message: args.safeMessage,
+    tags: {
+      agent_id: args.summary.agent_id,
+      room_id: args.summary.room_id,
+      topic_id: args.summary.topic_id ?? null,
+      turn_id: args.summary.turn_id,
+      runtime: args.summary.runtime,
+      error_ref: args.errorRef,
+      hub_url: args.hubUrl ?? null,
+      message_id: args.msg.id,
+      control_frame_type: controlFrameType,
+      control_message_id: controlMessageId,
+      exit_code: args.summary.exit_code ?? null,
+      signal: args.summary.signal ?? null,
+      error_name: args.summary.error_name ?? null,
+    },
+    context: {
+      runtime_failure: args.summary,
+      error_ref: args.errorRef,
+      hub_url: args.hubUrl ?? null,
+      runtime_cwd: args.summary.cwd ?? null,
+      message_id: args.msg.id,
+      control_frame_type: controlFrameType ?? null,
+      control_message_id: controlMessageId ?? null,
+    },
+    fingerprint: [
+      "botcord-daemon",
+      "runtime_failure",
+      args.summary.runtime,
+      args.errorRef,
+    ],
+    dedupeKey: `${args.errorRef}:${args.summary.turn_id}`,
+  };
 }
 
 function nowIso(): string {
