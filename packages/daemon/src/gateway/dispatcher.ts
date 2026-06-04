@@ -12,7 +12,11 @@ import {
   tailText,
   type RuntimeFailureSummary,
 } from "./runtime-failure.js";
-import { looksLikeRuntimeAuthFailure } from "./runtime-errors.js";
+import {
+  formatUsageLimitMessage,
+  looksLikeRuntimeAuthFailure,
+  looksLikeUsageLimit,
+} from "./runtime-errors.js";
 import { resolveRoute } from "./router.js";
 import { sessionKey, type SessionStore } from "./session-store.js";
 import { clearWaitMarker, consumeWaitMarker, resolveWaitMarkerPath, MAX_WAIT_MS } from "./wait-marker.js";
@@ -1018,7 +1022,9 @@ export class Dispatcher {
         conversationId: msg.conversation.id,
         threadId: msg.conversation.threadId ?? null,
         type: "error",
-        text: `⚠️ Runtime error: ${truncate(error, 500)}`,
+        text: looksLikeUsageLimit(error)
+          ? formatUsageLimitMessage(error, route.runtime)
+          : `⚠️ Runtime error: ${truncate(error, 500)}`,
         replyTo: this.providerReplyTo(msg),
         traceId: msg.trace?.id ?? null,
       }, turnId);
@@ -1956,7 +1962,9 @@ export class Dispatcher {
             conversationId: msg.conversation.id,
             threadId: msg.conversation.threadId ?? null,
             type: "error",
-            text: `⚠️ Runtime error: ${truncate(failure.safeMessage, 500)} [error_ref: ${failure.errorRef}]`,
+            text:
+              failure.usageLimitText ??
+              `⚠️ Runtime error: ${truncate(failure.safeMessage, 500)} [error_ref: ${failure.errorRef}]`,
             errorRef: failure.errorRef,
             replyTo: this.providerReplyTo(msg),
             traceId: msg.trace?.id ?? null,
@@ -2084,7 +2092,9 @@ export class Dispatcher {
               conversationId: msg.conversation.id,
               threadId: msg.conversation.threadId ?? null,
               type: "error",
-              text: `⚠️ Runtime error: ${truncate(failure.safeMessage, 500)} [error_ref: ${failure.errorRef}]`,
+              text:
+                failure.usageLimitText ??
+                `⚠️ Runtime error: ${truncate(failure.safeMessage, 500)} [error_ref: ${failure.errorRef}]`,
               errorRef: failure.errorRef,
               replyTo: this.providerReplyTo(msg),
               traceId: msg.trace?.id ?? null,
@@ -2447,7 +2457,12 @@ export class Dispatcher {
     error: unknown;
     result?: RuntimeRunResult;
     hubUrl?: string;
-  }): { errorRef: string; summary: RuntimeFailureSummary; safeMessage: string } {
+  }): {
+    errorRef: string;
+    summary: RuntimeFailureSummary;
+    safeMessage: string;
+    usageLimitText: string | null;
+  } {
     const info = errorInfo(args.error);
     const resultFailure = args.result?.runtimeFailure ?? {};
     const baseMessage =
@@ -2464,6 +2479,11 @@ export class Dispatcher {
       failureExitCode !== null && !baseMessage.includes(`code ${failureExitCode}`)
         ? `${baseMessage} (exit code ${failureExitCode})`
         : baseMessage;
+    // Quota exhaustion is not a crash to debug — surface a calm line with the
+    // runtime's own reset time instead of the exit-code/error_ref envelope.
+    const usageLimitText = looksLikeUsageLimit(baseMessage)
+      ? formatUsageLimitMessage(baseMessage, args.route.runtime)
+      : null;
     const summary: RuntimeFailureSummary = {
       agent_id: args.msg.accountId,
       room_id: args.msg.conversation.id,
@@ -2535,7 +2555,7 @@ export class Dispatcher {
       }),
       this.log,
     );
-    return { errorRef, summary, safeMessage };
+    return { errorRef, summary, safeMessage, usageLimitText };
   }
 }
 
