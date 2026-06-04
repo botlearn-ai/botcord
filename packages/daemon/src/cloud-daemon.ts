@@ -43,6 +43,12 @@ import type { CloudModeConfig } from "./cloud-mode.js";
 import { buildCloudRunSettleHook } from "./cloud-settle.js";
 import type { InstalledAgentInfo, OnAgentInstalledHook } from "./provision.js";
 import type { SkillIndexOptions } from "./skill-index.js";
+import {
+  createDaemonErrorReporter,
+  initializeErrorReporterSafely,
+  installProcessErrorReportingHooks,
+  type ErrorReporter,
+} from "./error-reporting.js";
 
 // Cloud daemons follow the same cadence as local — keeps dashboard
 // "runtimes last detected" behavior identical across both kinds.
@@ -81,6 +87,10 @@ export interface CloudDaemonRuntimeOptions {
    * `createProvisioner({ gateway, policyResolver, onAgentInstalled })`.
    */
   provisionerFactory?: typeof createProvisioner;
+  /** Test hook: inject daemon error reporter instead of resolving from env. */
+  errorReporter?: ErrorReporter;
+  /** Test hook: force a post-process-hook startup failure. */
+  failAfterProcessErrorHooks?: Error;
 }
 
 /** Handle returned by {@link startCloudDaemon}. */
@@ -111,6 +121,16 @@ export async function startCloudDaemon(
 ): Promise<CloudDaemonHandle> {
   const logger = buildLogger(opts.log);
   const cloudCfg = opts.cloudConfig;
+  const errorReporter = opts.errorReporter ?? createDaemonErrorReporter({ log: logger });
+  await initializeErrorReporterSafely(errorReporter, logger);
+  const uninstallProcessErrorHooks = installProcessErrorReportingHooks({
+    reporter: errorReporter,
+    log: logger,
+    hubUrl: cloudCfg.hubUrl,
+    daemonInstanceId: cloudCfg.daemonInstanceId,
+  });
+  try {
+  if (opts.failAfterProcessErrorHooks) throw opts.failAfterProcessErrorHooks;
 
   logger.info("cloud daemon starting", {
     cloudDaemonInstanceId: cloudCfg.cloudDaemonInstanceId,
@@ -307,6 +327,7 @@ export async function startCloudDaemon(
     buildRuntimeRecoveryContext,
     onInbound,
     onTurnComplete,
+    errorReporter,
     composeUserTurn: composeBotCordUserTurn,
     attentionGate,
     resolveHubUrl,
@@ -391,6 +412,7 @@ export async function startCloudDaemon(
     logger.info("cloud daemon stopping", { reason: reason ?? null });
     snapshotWriter.stop();
     snapshotWriter.writeFinal();
+    uninstallProcessErrorHooks();
     const controlStopP = controlChannel
       ? controlChannel.stop().catch(() => undefined)
       : Promise.resolve();
@@ -407,4 +429,8 @@ export async function startCloudDaemon(
     stop,
     snapshot: () => gateway.snapshot(),
   };
+  } catch (err) {
+    uninstallProcessErrorHooks();
+    throw err;
+  }
 }

@@ -27,6 +27,7 @@ import type {
   SystemContextBuilder,
   UserTurnBuilder,
 } from "./types.js";
+import type { ErrorReporter } from "../error-reporting.js";
 
 /** Constructor options for `Gateway`. */
 export interface GatewayBootOptions {
@@ -72,6 +73,11 @@ export interface GatewayBootOptions {
    */
   onOutbound?: OutboundObserver;
   onRuntimeCircuitBreakerChange?: () => void;
+  /**
+   * Optional daemon error reporter. Forwarded to dispatcher for runtime
+   * failure reporting; reporter errors are logged and suppressed.
+   */
+  errorReporter?: ErrorReporter;
   /**
    * Optional observer fired after each runtime turn resolves. Forwarded
    * to the dispatcher verbatim — see {@link Dispatcher} for semantics.
@@ -190,6 +196,7 @@ export class Gateway {
       onOutbound: opts.onOutbound,
       onTurnComplete: opts.onTurnComplete,
       onRuntimeCircuitBreakerChange: opts.onRuntimeCircuitBreakerChange,
+      errorReporter: opts.errorReporter,
       managedRoutes: this.managedRoutes,
       attentionGate: opts.attentionGate,
       resolveHubUrl: opts.resolveHubUrl,

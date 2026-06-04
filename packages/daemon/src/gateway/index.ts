@@ -41,6 +41,20 @@ export {
   type RuntimeFailureLookupResult,
 } from "./runtime-failure.js";
 export {
+  BoundedDedupeErrorReporter,
+  SentryErrorReporter,
+  buildProcessFatalErrorReport,
+  createDaemonErrorReporter,
+  initializeErrorReporterSafely,
+  installProcessErrorReportingHooks,
+  noopErrorReporter,
+  reportErrorSafely,
+  resolveErrorReporterConfig,
+  type DaemonErrorReport,
+  type ErrorReporter,
+  type ErrorReporterConfig,
+} from "../error-reporting.js";
+export {
   ClaudeCodeAdapter,
   probeClaude,
   resolveClaudeCommand,

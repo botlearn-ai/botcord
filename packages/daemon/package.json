@@ -30,6 +30,7 @@
     "@botcord/cli": "workspace:^",
     "@botcord/protocol-core": "workspace:^",
     "@larksuiteoapi/node-sdk": "^1.63.1",
+    "@sentry/node": "^10.56.0",
     "ws": "^8.20.1"
   },
   "overrides": {

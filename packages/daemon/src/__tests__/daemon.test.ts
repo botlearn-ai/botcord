@@ -13,6 +13,7 @@ import {
   backfillBootAgents,
   classifyActivitySender,
   createActivityRecorder,
+  startDaemon,
 } from "../daemon.js";
 import type { DiscoveredAgentCredential } from "../agent-discovery.js";
 import { agentWorkspaceDir } from "../agent-workspace.js";
@@ -295,5 +296,44 @@ describe("backfillBootAgents", () => {
       backfillBootAgents([bootAgent("ag_one")], { logger: silentLogger() }),
     ).not.toThrow();
     expect(existsSync("/fake/ag_one.json")).toBe(false);
+  });
+});
+
+describe("startDaemon process error hooks", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "botcord-daemon-hooks-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("removes the process fatal hook when startup fails after hook install", async () => {
+    const beforeMonitor = process.listenerCount("uncaughtExceptionMonitor");
+    await expect(startDaemon({
+      config: {
+        defaultRoute: { adapter: "codex", cwd: tmpDir },
+        routes: [],
+        streamBlocks: true,
+      },
+      configPath: "(test)",
+      bootAgents: {
+        agents: [],
+        source: "config",
+        credentialsDir: tmpDir,
+        warnings: [],
+      },
+      userAuth: null,
+      disableControlChannel: true,
+      sessionStorePath: path.join(tmpDir, "sessions.json"),
+      snapshotPath: path.join(tmpDir, "snapshot.json"),
+      snapshotIntervalMs: 60_000,
+      log: silentLogger(),
+      failAfterProcessErrorHooks: new Error("forced startup failure"),
+    })).rejects.toThrow("forced startup failure");
+
+    expect(process.listenerCount("uncaughtExceptionMonitor")).toBe(beforeMonitor);
   });
 });

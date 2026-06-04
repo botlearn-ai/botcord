@@ -6,11 +6,42 @@ import { transcriptFilePath, transcriptRoomDir } from "./transcript-paths.js";
 
 export const RUNTIME_FAILURE_TAIL_LIMIT = 8 * 1024;
 
+const SECRET_KEY_NAME_SOURCE =
+  "(?:openai[_-]?api[_-]?key|anthropic[_-]?api[_-]?key|x-api-key|access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|password|secret|token)";
+
+const SECRET_FLAG_SOURCE =
+  "--(?:api-key|api_key|apikey|token|access-token|access_token|refresh-token|refresh_token|password|secret)";
+
+const QUOTED_JSON_SECRET_PATTERN = new RegExp(
+  `(["'])(${SECRET_KEY_NAME_SOURCE})\\1(\\s*:\\s*)(["'])([^"'\\\\]*(?:\\\\.[^"'\\\\]*)*)\\4`,
+  "gi",
+);
+
+const QUOTED_ARGV_SECRET_PATTERN = new RegExp(
+  `(["'])(${SECRET_FLAG_SOURCE})\\1(\\s*,\\s*)(["'])([^"'\\\\]*(?:\\\\.[^"'\\\\]*)*)\\4`,
+  "gi",
+);
+
 const SECRET_VALUE_PATTERNS: Array<[RegExp, string]> = [
   [/(Authorization:\s*Bearer\s+)[^\s"']+/gi, "$1[REDACTED]"],
-  [/\b(token|access_token|refresh_token|api_key|apikey|password|secret)=([^\s"']+)/gi, "$1=[REDACTED]"],
+  [/(^|[\s])(--(?:api-key|api_key|apikey|token|access-token|access_token|refresh-token|refresh_token|password|secret))=([^\s"']+)/gi, "$1$2=[REDACTED]"],
+  [/(^|[\s])(--(?:api-key|api_key|apikey|token|access-token|access_token|refresh-token|refresh_token|password|secret))(\s+)([^\s"']+)/gi, "$1$2$3[REDACTED]"],
+  [/\b((?:openai|anthropic)[_-]?api[_-]?key|x-api-key|access[_-]?token|refresh[_-]?token|api[_-]?key|apikey|password|secret|token)(\s*[:=]\s*)[^\s"']+/gi, "$1$2[REDACTED]"],
   [/\b(drt_|dit_|gho_|ghp_|sk-)[A-Za-z0-9_-]+/g, "$1[REDACTED]"],
 ];
+
+const SECRET_VALUE_FLAGS = new Set([
+  "--api-key",
+  "--api_key",
+  "--apikey",
+  "--token",
+  "--access-token",
+  "--access_token",
+  "--refresh-token",
+  "--refresh_token",
+  "--password",
+  "--secret",
+]);
 
 export interface RuntimeFailureSummary {
   agent_id: string;
@@ -55,6 +86,16 @@ export function makeRuntimeErrorRef(summary: Partial<RuntimeFailureSummary>): st
 
 export function sanitizeRuntimeFailureText(value: string, limit = RUNTIME_FAILURE_TAIL_LIMIT): string {
   let out = value;
+  out = out.replace(
+    QUOTED_JSON_SECRET_PATTERN,
+    (_match, keyQuote: string, key: string, colon: string, valueQuote: string) =>
+      `${keyQuote}${key}${keyQuote}${colon}${valueQuote}[REDACTED]${valueQuote}`,
+  );
+  out = out.replace(
+    QUOTED_ARGV_SECRET_PATTERN,
+    (_match, flagQuote: string, flag: string, comma: string, valueQuote: string) =>
+      `${flagQuote}${flag}${flagQuote}${comma}${valueQuote}[REDACTED]${valueQuote}`,
+  );
   for (const [pattern, replacement] of SECRET_VALUE_PATTERNS) {
     out = out.replace(pattern, replacement);
   }
@@ -68,7 +109,16 @@ export function tailText(value: string | undefined | null, limit = RUNTIME_FAILU
 
 export function safeCommand(command: string[] | undefined | null): string[] | null {
   if (!command || command.length === 0) return null;
-  return command.map((part) => sanitizeRuntimeFailureText(part, 512));
+  const out: string[] = [];
+  for (let i = 0; i < command.length; i++) {
+    const part = command[i]!;
+    out.push(sanitizeRuntimeFailureText(part, 512));
+    if (SECRET_VALUE_FLAGS.has(part.toLowerCase()) && i + 1 < command.length) {
+      out.push("[REDACTED]");
+      i++;
+    }
+  }
+  return out;
 }
 
 export function errorInfo(err: unknown): { error_name: string | null; error_message: string | null } {
