@@ -4,6 +4,8 @@ import {
   getSharedRoomMessageText,
   getSharedRoomOpenHref,
   getSharedRoomPreviewMessages,
+  SHARED_ROOM_PAGE_SHELL_CLASS,
+  SHARED_ROOM_PREVIEW_TARGET_CLASS,
   truncateSharedRoomMessageText,
 } from "./SharedRoomView";
 
@@ -72,5 +74,14 @@ describe("truncateSharedRoomMessageText", () => {
 
   it("leaves short preview text untouched after whitespace compaction", () => {
     expect(truncateSharedRoomMessageText("  compact\nmessage  ", 80)).toBe("compact message");
+  });
+});
+
+describe("shared room fixed header spacing", () => {
+  it("keeps the landing content and preview anchor clear of the marketing navbar", () => {
+    expect(SHARED_ROOM_PAGE_SHELL_CLASS).toContain("pt-20");
+    expect(SHARED_ROOM_PAGE_SHELL_CLASS).toContain("sm:pt-24");
+    expect(SHARED_ROOM_PREVIEW_TARGET_CLASS).toContain("scroll-mt-20");
+    expect(SHARED_ROOM_PREVIEW_TARGET_CLASS).toContain("sm:scroll-mt-24");
   });
 });
