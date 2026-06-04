@@ -111,6 +111,7 @@ function runAdapter(
   authToken: string,
   sessionId: string | null = null,
   extraArgs?: string[],
+  systemRules?: Parameters<DeepseekTuiAdapter["run"]>[0]["systemRules"],
 ) {
   const adapter = new DeepseekTuiAdapter({ serverUrl, authToken });
   const ctrl = new AbortController();
@@ -125,6 +126,7 @@ function runAdapter(
     trustLevel: "owner",
     extraArgs,
     systemContext: "runtime memory",
+    systemRules,
     onBlock: (b) => blocks.push(b.kind),
     onStatus: (e) => {
       if (e.kind === "thinking") status.push({ phase: e.phase, label: e.label });
@@ -151,6 +153,31 @@ describe("DeepseekTuiAdapter", () => {
         system_prompt: "runtime memory",
         auto_approve: true,
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("sends systemRules in the thread system_prompt", async () => {
+    const server = await startMockDeepseekServer();
+    try {
+      await runAdapter(server.baseUrl, server.token, null, undefined, [
+        {
+          kind: "room_rule",
+          scope: "room",
+          id: "room:rm_team",
+          version: "sha256:abc",
+          roomId: "rm_team",
+          roomName: "Team",
+          text: "Only reply when useful.",
+        },
+      ]).result;
+      const createCall = server.calls.find(
+        (c) => c.method === "POST" && c.url === "/v1/threads",
+      );
+      expect(createCall?.body.system_prompt).toContain("[BotCord Room Rule]");
+      expect(createCall?.body.system_prompt).toContain("Only reply when useful.");
+      expect(createCall?.body.system_prompt).toContain("runtime memory");
     } finally {
       await server.close();
     }

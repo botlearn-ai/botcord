@@ -3,6 +3,7 @@ import path from "node:path";
 import { NdjsonStreamAdapter, type NdjsonEventCtx } from "./ndjson-stream.js";
 import { consoleLogger } from "../log.js";
 import { looksLikeRuntimeAuthFailure } from "../runtime-errors.js";
+import { prependSystemRules } from "../../system-rules.js";
 import {
   firstExistingPath,
   readCommandVersion,
@@ -268,8 +269,9 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
     // Claude Code's `--append-system-prompt` is applied per invocation and NOT
     // persisted in the resumed session transcript — ideal for memory / digest
     // content that should re-evaluate every turn.
-    if (opts.systemContext && !extraArgs.includes("--append-system-prompt")) {
-      args.push("--append-system-prompt", opts.systemContext);
+    const systemPrompt = prependSystemRules(opts.systemContext, opts.systemRules);
+    if (systemPrompt && !extraArgs.includes("--append-system-prompt")) {
+      args.push("--append-system-prompt", systemPrompt);
     }
     if (extraArgs.length) args.push(...extraArgs);
     return args;

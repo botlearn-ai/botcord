@@ -83,7 +83,8 @@ describe("composeBotCordUserTurn", () => {
     const closeIdx = out.indexOf("</human-message>");
     expect(roomIdx).toBeGreaterThan(-1);
     expect(roomIdx).toBeLessThan(tagIdx);
-    expect(out).toContain("[Room Rule] Post concise daily summaries.");
+    expect(out).not.toContain("[Room Rule]");
+    expect(out).not.toContain("Post concise daily summaries.");
     expect(out.slice(tagIdx, closeIdx)).not.toContain("[BotCord Room]");
     expect(out.slice(tagIdx, closeIdx)).toContain("@Harry(ag_973dfb9193eb)");
   });

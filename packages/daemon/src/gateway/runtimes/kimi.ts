@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { writeManagedSystemRulesFile } from "../../system-rules.js";
 import { buildCliEnv } from "../cli-resolver.js";
 import { NdjsonStreamAdapter, type NdjsonEventCtx } from "./ndjson-stream.js";
 import {
@@ -154,7 +156,9 @@ export function probeKimi(deps: ProbeDeps = {}): RuntimeProbeResult {
  * that id, so the adapter generates a UUID on first turn and persists it for
  * later turns. Kimi does not expose a Codex-style per-invocation AGENTS.md
  * carrier, so dynamic `systemContext` is sent as a system-reminder prefix on
- * the user prompt.
+ * the user prompt. Stable BotCord `systemRules` (room rules) are written to
+ * `<cwd>/.kimi/AGENTS.md` before spawn; Kimi freezes the system prompt per
+ * session, so rule updates may require a fresh session to take effect.
  */
 export class KimiAdapter extends NdjsonStreamAdapter {
   readonly id = "kimi-cli" as const;
@@ -175,6 +179,7 @@ export class KimiAdapter extends NdjsonStreamAdapter {
     if (opts.sessionId && !isValidKimiSessionId(opts.sessionId)) {
       return { text: "", newSessionId: "", error: invalidKimiSessionIdError() };
     }
+    writeKimiSystemRules(opts);
     const sessionId = opts.sessionId || randomUUID();
     return super.run({ ...opts, sessionId });
   }
@@ -277,6 +282,16 @@ type KimiStreamJsonEvent = {
 function promptWithSystemContext(text: string, systemContext: string | undefined): string {
   if (!systemContext) return text;
   return `<system-reminder>\n${systemContext}\n</system-reminder>\n\n${text}`;
+}
+
+function writeKimiSystemRules(opts: RuntimeRunOptions): void {
+  if (!opts.systemRules?.length) return;
+  try {
+    writeManagedSystemRulesFile(path.join(opts.cwd, ".kimi", "AGENTS.md"), opts.systemRules);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("kimi-cli: failed to write BotCord system rules to .kimi/AGENTS.md", err);
+  }
 }
 
 function extractText(content: KimiStreamJsonEvent["content"]): string {

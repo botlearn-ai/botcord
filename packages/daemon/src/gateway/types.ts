@@ -344,6 +344,16 @@ export type RuntimeStatusEvent =
       raw?: unknown;
     };
 
+export interface RuntimeSystemRule {
+  kind: "room_rule";
+  scope: "room";
+  id: string;
+  version: string;
+  roomId: string;
+  roomName?: string;
+  text: string;
+}
+
 /** Options passed to a runtime adapter for a single turn. */
 export interface RuntimeRunOptions {
   text: string;
@@ -378,6 +388,12 @@ export interface RuntimeRunOptions {
   trustLevel: TrustLevel;
   /** System-level context injected alongside the user turn (memory, digest, room info). */
   systemContext?: string;
+  /**
+   * Stable system rules that must not be persisted as user messages. Runtimes
+   * choose the least-polluting carrier they support: per-turn system prompt,
+   * thread system prompt, or daemon-managed instruction files.
+   */
+  systemRules?: RuntimeSystemRule[];
   /** Channel-agnostic bag for dispatch-time data (traceId, channel, conversation, etc.). */
   context?: Record<string, unknown>;
   /**

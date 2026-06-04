@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { GeminiAdapter } from "../runtimes/gemini.js";
 import { geminiModule } from "../runtimes/registry.js";
+import type { RuntimeRunOptions } from "../types.js";
 
 // The adapter spawns whatever binary we point it at; we point it at a small
 // Node script so we control stdout/stderr/exit precisely without needing the
@@ -36,6 +37,7 @@ function runAdapter(
   opts: {
     sessionId?: string | null;
     systemContext?: string;
+    systemRules?: RuntimeRunOptions["systemRules"];
     extraArgs?: string[];
     onBlock?: (kind: string) => void;
     onStatus?: (e: { phase: string; label?: string }) => void;
@@ -51,6 +53,7 @@ function runAdapter(
     signal: ctrl.signal,
     trustLevel: "owner",
     systemContext: opts.systemContext,
+    systemRules: opts.systemRules,
     extraArgs: opts.extraArgs,
     onBlock: opts.onBlock ? (b) => opts.onBlock!(b.kind) : undefined,
     onStatus: opts.onStatus
@@ -219,6 +222,40 @@ process.stdout.write(JSON.stringify({type:"result", status:"success", stats:{}})
     );
     const res = await runAdapter(script, { systemContext: "   \n\n  " });
     expect(res.text).toBe("hi");
+  });
+
+  it("writes systemRules to a managed GEMINI.md section without adding them to -p", async () => {
+    const script = makeScript(
+      "echo-rule-prompt.js",
+      `
+const argv = process.argv.slice(2);
+const pIdx = argv.indexOf("-p");
+const prompt = pIdx >= 0 ? argv[pIdx + 1] : "";
+process.stdout.write(JSON.stringify({type:"init", session_id:"s-rule"}) + "\\n");
+process.stdout.write(JSON.stringify({type:"message", role:"assistant", content:prompt, delta:true}) + "\\n");
+process.stdout.write(JSON.stringify({type:"result", status:"success", stats:{}}) + "\\n");
+`,
+    );
+    writeFileSync(path.join(tmpRoot, "GEMINI.md"), "existing instructions\n", "utf8");
+    const res = await runAdapter(script, {
+      systemRules: [
+        {
+          kind: "room_rule",
+          scope: "room",
+          id: "room:rm_team",
+          version: "sha256:abc",
+          roomId: "rm_team",
+          roomName: "Team",
+          text: "Only reply when useful.",
+        },
+      ],
+    });
+    expect(res.text).toBe("hi");
+    const geminiMd = readFileSync(path.join(tmpRoot, "GEMINI.md"), "utf8");
+    expect(geminiMd).toContain("existing instructions");
+    expect(geminiMd).toContain("BOTCORD_SYSTEM_RULES_START");
+    expect(geminiMd).toContain("[BotCord Room Rule]");
+    expect(geminiMd).toContain("Only reply when useful.");
   });
 
   it("does not double-add --yolo when extraArgs already supplies --approval-mode", async () => {

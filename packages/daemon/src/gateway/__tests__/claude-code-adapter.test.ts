@@ -415,6 +415,38 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       expect(argv[idx + 1]).toBe("MEMORY=remember_this");
     });
 
+    it("systemRules are prepended into --append-system-prompt", async () => {
+      const adapter = new ClaudeCodeAdapter({ binary: echoScript() });
+      const ctrl = new AbortController();
+      const res = await adapter.run({
+        text: "x",
+        sessionId: null,
+        accountId: "ag_test",
+        cwd: tmpRoot,
+        signal: ctrl.signal,
+        trustLevel: "owner",
+        systemContext: "MEMORY=remember_this",
+        systemRules: [
+          {
+            kind: "room_rule",
+            scope: "room",
+            id: "room:rm_team",
+            version: "sha256:abc",
+            roomId: "rm_team",
+            roomName: "Team",
+            text: "Only reply when useful.",
+          },
+        ],
+      });
+      const argv = JSON.parse(res.text) as string[];
+      const idx = argv.indexOf("--append-system-prompt");
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(argv[idx + 1]).toContain("[BotCord Room Rule]");
+      expect(argv[idx + 1]).toContain("version: sha256:abc");
+      expect(argv[idx + 1]).toContain("Only reply when useful.");
+      expect(argv[idx + 1]).toContain("MEMORY=remember_this");
+    });
+
     it("omits --append-system-prompt when systemContext is undefined", async () => {
       const adapter = new ClaudeCodeAdapter({ binary: echoScript() });
       const ctrl = new AbortController();

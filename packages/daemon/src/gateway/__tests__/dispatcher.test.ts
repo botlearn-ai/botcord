@@ -1722,6 +1722,50 @@ describe("Dispatcher", () => {
     expect(observed).toEqual(["hello-context"]);
   });
 
+  it("passes room_rule as versioned systemRules instead of user prompt text", async () => {
+    let observed: RuntimeRunOptions | null = null;
+    const runtime = new FakeRuntime({
+      newSessionId: "sid",
+      observeRun: (opts) => {
+        observed = opts;
+      },
+    });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel();
+    const dispatcher = new Dispatcher({
+      config: baseConfig(),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: () => runtime,
+      sessionStore: store,
+      log: silentLogger(),
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "msg_rule",
+        conversation: { id: "rm_team", kind: "group", title: "Team" },
+        raw: {
+          room_id: "rm_team",
+          room_name: "Team",
+          room_rule: "Only reply when useful.",
+        },
+      }),
+    );
+
+    expect(observed?.systemRules).toHaveLength(1);
+    expect(observed?.systemRules?.[0]).toMatchObject({
+      kind: "room_rule",
+      id: "room:rm_team",
+      roomId: "rm_team",
+      roomName: "Team",
+      text: "Only reply when useful.",
+    });
+    expect(observed?.systemRules?.[0]?.version).toMatch(/^sha256:/);
+    expect(observed?.text).not.toContain("[Room Rule]");
+    expect(observed?.text).not.toContain("Only reply when useful.");
+  });
+
   it("buildSystemContext: hook is awaited before runtime.run runs", async () => {
     const order: string[] = [];
     const runtime = new FakeRuntime({
