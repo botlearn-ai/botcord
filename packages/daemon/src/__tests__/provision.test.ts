@@ -72,6 +72,26 @@ describe("addAgentToConfig / removeAgentFromConfig", () => {
     expect(addAgentToConfig(cfg, "ag_a")).toBeNull();
   });
 
+  it("preserves gateway-loaded agents when provisioning in discovery mode", () => {
+    // config.agents is empty (daemon booted via credential discovery); the
+    // already-running agents arrive only via the gateway-snapshot baseline.
+    const cfg = baseConfig();
+    const next = addAgentToConfig(cfg, "ag_new", ["ag_disc1", "ag_disc2"]);
+    expect(next?.agents).toEqual(["ag_disc1", "ag_disc2", "ag_new"]);
+  });
+
+  it("no-ops when a loaded agent is re-provisioned in discovery mode", () => {
+    const cfg = baseConfig();
+    expect(addAgentToConfig(cfg, "ag_disc1", ["ag_disc1", "ag_disc2"])).toBeNull();
+  });
+
+  it("merges explicit agents, legacy scalar, and loaded baseline without dupes", () => {
+    const cfg = baseConfig({ agents: ["ag_a"], agentId: "ag_a" });
+    const next = addAgentToConfig(cfg, "ag_new", ["ag_a", "ag_b"]);
+    expect(next?.agents).toEqual(["ag_a", "ag_b", "ag_new"]);
+    expect(next?.agentId).toBeUndefined();
+  });
+
   it("absorbs a legacy scalar agentId into the new agents array", () => {
     const cfg = baseConfig({ agentId: "ag_legacy" });
     const next = addAgentToConfig(cfg, "ag_new");
