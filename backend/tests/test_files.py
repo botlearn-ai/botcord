@@ -524,14 +524,20 @@ async def test_cleanup_removes_expired_files(client: AsyncClient, db_session: As
         cleaned = await hub_cleanup._cleanup_expired_files()
     assert cleaned == 1
 
-    # Verify disk file is gone but DB record is kept (marked as expired)
+    # Verify disk file is gone but DB record is kept with storage coordinates cleared
     assert not os.path.isfile(disk_path)
     result = await db_session.execute(
         sa_select(FileRecord).where(FileRecord.file_id == file_id)
     )
     kept_record = result.scalar_one_or_none()
     assert kept_record is not None
-    assert kept_record.storage_backend == "expired"
+    assert kept_record.storage_backend == "disk"
+    assert kept_record.disk_path is None
+    assert kept_record.storage_object_key is None
+
+    with patch.object(hub_cleanup, "async_session", _test_async_session):
+        cleaned_again = await hub_cleanup._cleanup_expired_files()
+    assert cleaned_again == 0
 
     # Verify download still returns 404 with file_expired error
     dl_resp2 = await client.get(f"/hub/files/{file_id}")
@@ -579,14 +585,20 @@ async def test_cleanup_removes_expired_supabase_files(client: AsyncClient, db_se
     )
     kept_record = result.scalar_one_or_none()
     assert kept_record is not None
-    assert kept_record.storage_backend == "expired"
+    assert kept_record.storage_backend == "supabase"
+    assert kept_record.disk_path is None
     assert kept_record.storage_object_key is None
+
+    with patch.object(hub_cleanup, "async_session", _test_async_session):
+        deleted_again = await hub_cleanup._cleanup_expired_files()
+    assert deleted_again == 0
+    assert mock_request.await_count == 2
 
 
 # ===========================================================================
 @pytest.mark.asyncio
 async def test_cleanup_skips_record_on_delete_failure(client: AsyncClient, db_session: AsyncSession):
-    """When storage deletion fails, the record should NOT be marked as expired."""
+    """When storage deletion fails, the record should keep its storage coordinates."""
     from sqlalchemy import select as sa_select
     from sqlalchemy import update
     from hub import cleanup as hub_cleanup
@@ -624,6 +636,135 @@ async def test_cleanup_skips_record_on_delete_failure(client: AsyncClient, db_se
     record = result.scalar_one()
     assert record.storage_backend == "disk"
     assert record.disk_path is not None
+    assert record.storage_object_key is None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_skips_disk_record_with_only_object_key(db_session: AsyncSession):
+    """A mismatched disk record with only Supabase coordinates should remain untouched."""
+    from sqlalchemy import select as sa_select
+    from hub import cleanup as hub_cleanup
+
+    record = FileRecord(
+        file_id=f"file_{uuid.uuid4().hex}",
+        uploader_id="ag_test",
+        original_filename="mismatch.txt",
+        content_type="text/plain",
+        size_bytes=8,
+        storage_backend="disk",
+        disk_path=None,
+        storage_bucket="botcord-files",
+        storage_object_key="orphan/mismatch.txt",
+        expires_at=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+    db_session.add(record)
+    await db_session.commit()
+
+    @asynccontextmanager
+    async def _test_async_session():
+        yield db_session
+
+    with patch.object(hub_cleanup, "async_session", _test_async_session):
+        cleaned = await hub_cleanup._cleanup_expired_files()
+
+    assert cleaned == 0
+    result = await db_session.execute(
+        sa_select(FileRecord).where(FileRecord.file_id == record.file_id)
+    )
+    kept_record = result.scalar_one()
+    assert kept_record.storage_backend == "disk"
+    assert kept_record.disk_path is None
+    assert kept_record.storage_object_key == "orphan/mismatch.txt"
+
+
+@pytest.mark.asyncio
+async def test_cleanup_skips_supabase_record_with_only_disk_path(
+    db_session: AsyncSession, tmp_path
+):
+    """A mismatched Supabase record with only disk coordinates should remain untouched."""
+    from sqlalchemy import select as sa_select
+    from hub import cleanup as hub_cleanup
+
+    disk_path = tmp_path / "orphan-local-file"
+    disk_path.write_bytes(b"local")
+    record = FileRecord(
+        file_id=f"file_{uuid.uuid4().hex}",
+        uploader_id="ag_test",
+        original_filename="mismatch.txt",
+        content_type="text/plain",
+        size_bytes=5,
+        storage_backend="supabase",
+        disk_path=str(disk_path),
+        storage_bucket="botcord-files",
+        storage_object_key=None,
+        expires_at=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+    db_session.add(record)
+    await db_session.commit()
+
+    @asynccontextmanager
+    async def _test_async_session():
+        yield db_session
+
+    with patch.object(hub_cleanup, "async_session", _test_async_session):
+        cleaned = await hub_cleanup._cleanup_expired_files()
+
+    assert cleaned == 0
+    assert disk_path.is_file()
+    result = await db_session.execute(
+        sa_select(FileRecord).where(FileRecord.file_id == record.file_id)
+    )
+    kept_record = result.scalar_one()
+    assert kept_record.storage_backend == "supabase"
+    assert kept_record.disk_path == str(disk_path)
+    assert kept_record.storage_object_key is None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_preserves_mismatched_object_key_after_disk_delete(
+    db_session: AsyncSession, tmp_path
+):
+    """Cleanup should clear only the coordinate deleted by the selected backend."""
+    from sqlalchemy import select as sa_select
+    from hub import cleanup as hub_cleanup
+
+    disk_path = tmp_path / "expired-disk-file"
+    disk_path.write_bytes(b"disk")
+    record = FileRecord(
+        file_id=f"file_{uuid.uuid4().hex}",
+        uploader_id="ag_test",
+        original_filename="both.txt",
+        content_type="text/plain",
+        size_bytes=4,
+        storage_backend="disk",
+        disk_path=str(disk_path),
+        storage_bucket="botcord-files",
+        storage_object_key="orphan/both.txt",
+        expires_at=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+    db_session.add(record)
+    await db_session.commit()
+
+    @asynccontextmanager
+    async def _test_async_session():
+        yield db_session
+
+    with patch.object(hub_cleanup, "async_session", _test_async_session):
+        cleaned = await hub_cleanup._cleanup_expired_files()
+
+    assert cleaned == 1
+    assert not disk_path.exists()
+    result = await db_session.execute(
+        sa_select(FileRecord).where(FileRecord.file_id == record.file_id)
+    )
+    kept_record = result.scalar_one()
+    assert kept_record.storage_backend == "disk"
+    assert kept_record.disk_path is None
+    assert kept_record.storage_object_key == "orphan/both.txt"
+
+    with patch.object(hub_cleanup, "async_session", _test_async_session):
+        cleaned_again = await hub_cleanup._cleanup_expired_files()
+    assert cleaned_again == 0
 
 
 # to_text() with attachments
