@@ -41,6 +41,28 @@ describe("splitPlainMentionText", () => {
 
     expect(mentionProps(nodes[0])?.["data-mention-id"]).toBe("ag_long");
   });
+
+  it("highlights bare agent-id mentions even without candidates", () => {
+    const nodes = splitPlainMentionText("@ag_17b5d5e1b071 Ops hourly triage");
+
+    expect(mentionProps(nodes[0])?.["data-mention-id"]).toBe("ag_17b5d5e1b071");
+    expect(mentionProps(nodes[0])?.["data-mention-label"]).toBe("ag_17b5d5e1b071");
+    expect(nodes[1]).toEqual({ type: "text", value: " Ops hourly triage" });
+  });
+
+  it("highlights bare human-id mentions and respects end boundaries", () => {
+    const nodes = splitPlainMentionText("cc @hu_0123456789ab, thanks");
+
+    expect(nodes[0]).toEqual({ type: "text", value: "cc " });
+    expect(mentionProps(nodes[1])?.["data-mention-id"]).toBe("hu_0123456789ab");
+    expect(nodes[2]).toEqual({ type: "text", value: ", thanks" });
+  });
+
+  it("does not treat malformed ids (wrong length) as mentions", () => {
+    const nodes = splitPlainMentionText("see @ag_17b5d5e1b071beef next");
+
+    expect(nodes).toEqual([{ type: "text", value: "see @ag_17b5d5e1b071beef next" }]);
+  });
 });
 
 describe("normalizeMessageContent", () => {

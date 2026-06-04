@@ -40,6 +40,11 @@ interface HastRootNode {
 type HastNode = HastTextNode | HastElementNode | HastRootNode | { type?: string; [key: string]: unknown };
 
 const MENTION_WITH_ID_RE = /@([^\n@]*?)\(((?:ag|hu)_[^)]+)\)/g;
+// Bare agent/human id mention, e.g. "@ag_17b5d5e1b071" — the form agents/bots
+// emit when addressing by id instead of the composer's "@Name(ag_id)". Anchored
+// (non-global) so exec() always matches at the start of the slice. Ids are a
+// fixed prefix + 12 lowercase hex chars (see hub/id_generators.py).
+const BARE_MENTION_ID_RE = /^(?:ag|hu)_[0-9a-f]{12}/;
 const failedMarkdownImageSrcs = new Set<string>();
 
 export function normalizeMessageContent(content: string): string {
@@ -92,13 +97,29 @@ export function splitPlainMentionText(value: string, candidates: MentionTextCand
     .filter((candidate) => candidate.id && candidate.label)
     .sort((a, b) => b.label.length - a.label.length);
 
-  if (sortedCandidates.length === 0) {
-    return [{ type: "text", value }];
-  }
-
   const nodes: HastNode[] = [];
   let cursor = 0;
   let textStart = 0;
+
+  // Emit the pending plain text (if any) then a mention span, advancing the cursor
+  // past the matched `@...` run. label is rendered as `@${label}`; MentionChip
+  // resolves the display name from the id, so a bare id falls back to itself.
+  const pushMention = (id: string, label: string, runLength: number) => {
+    if (cursor > textStart) {
+      nodes.push({ type: "text", value: value.slice(textStart, cursor) });
+    }
+    nodes.push({
+      type: "element",
+      tagName: "span",
+      properties: {
+        "data-mention-id": id,
+        "data-mention-label": label,
+      },
+      children: [{ type: "text", value: `@${label}` }],
+    });
+    cursor += runLength;
+    textStart = cursor;
+  };
 
   while (cursor < value.length) {
     if (value[cursor] !== "@" || !isMentionStartBoundary(value, cursor)) {
@@ -106,7 +127,17 @@ export function splitPlainMentionText(value: string, candidates: MentionTextCand
       continue;
     }
 
-    const restLower = value.slice(cursor + 1).toLowerCase();
+    const rest = value.slice(cursor + 1);
+
+    // Prefer a bare id mention (`@ag_xxx` / `@hu_xxx`). Ids never collide with
+    // display-name candidates, and this works even with no candidates loaded.
+    const idMatch = BARE_MENTION_ID_RE.exec(rest);
+    if (idMatch && isMentionEndBoundary(value, cursor + 1 + idMatch[0].length)) {
+      pushMention(idMatch[0], idMatch[0], 1 + idMatch[0].length);
+      continue;
+    }
+
+    const restLower = rest.toLowerCase();
     const match = sortedCandidates.find((candidate) => {
       if (!restLower.startsWith(candidate.label.toLowerCase())) return false;
       return isMentionEndBoundary(value, cursor + 1 + candidate.label.length);
@@ -117,20 +148,7 @@ export function splitPlainMentionText(value: string, candidates: MentionTextCand
       continue;
     }
 
-    if (cursor > textStart) {
-      nodes.push({ type: "text", value: value.slice(textStart, cursor) });
-    }
-    nodes.push({
-      type: "element",
-      tagName: "span",
-      properties: {
-        "data-mention-id": match.id,
-        "data-mention-label": match.label,
-      },
-      children: [{ type: "text", value: `@${match.label}` }],
-    });
-    cursor = cursor + 1 + match.label.length;
-    textStart = cursor;
+    pushMention(match.id, match.label, 1 + match.label.length);
   }
 
   if (textStart < value.length) {
