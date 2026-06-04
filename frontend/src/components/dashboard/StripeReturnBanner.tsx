@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { api } from "@/lib/api";
 import type { StripeSessionStatusResponse } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
@@ -13,7 +13,9 @@ import {
 
 type BannerMode = "success_polling" | "cancelled";
 
-export default function StripeReturnBanner() {
+export default memo(StripeReturnBanner);
+
+function StripeReturnBanner() {
   // Relaxed from `authed-ready` to any authenticated session: human-only
   // (`authed-no-agent`) sessions can also start a topup and need the same
   // post-redirect polling.

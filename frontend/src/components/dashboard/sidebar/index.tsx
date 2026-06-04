@@ -7,7 +7,7 @@
  * [PROTOCOL]: update header on changes
  */
 
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
@@ -114,7 +114,9 @@ interface SidebarProps {
   sidebarTabOverride?: DashboardUIState["sidebarTab"];
 }
 
-export default function Sidebar({
+export default memo(Sidebar);
+
+function Sidebar({
   mobileHideSecondary = false,
   mobileSecondaryOpen = false,
   onMobileSecondaryClose,

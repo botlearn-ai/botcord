@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { walletPanel } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
@@ -52,7 +52,9 @@ function sumMinor(values: Array<string | null | undefined>): string {
   return String(total);
 }
 
-export default function WalletPanel() {
+export default memo(WalletPanel);
+
+function WalletPanel() {
   const locale = useLanguage();
   const t = walletPanel[locale];
   const tc = common[locale];

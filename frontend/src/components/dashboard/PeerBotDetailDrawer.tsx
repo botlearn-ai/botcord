@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { MessageCircle, UserCheck, UserPlus, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
@@ -28,7 +28,9 @@ function formatDate(iso?: string): string {
  * Right-side drawer for a peer (non-owned) bot. Shows public info only.
  * No tabs — flat sections.
  */
-export default function PeerBotDetailDrawer() {
+export default memo(PeerBotDetailDrawer);
+
+function PeerBotDetailDrawer() {
   const router = useRouter();
   const {
     peerBotAgentId,

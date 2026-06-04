@@ -38,6 +38,20 @@ let publicRoomsRequestSeq = 0;
 let publicAgentsRequestSeq = 0;
 let publicHumansRequestSeq = 0;
 const emptyRoomMessageSnapshot = new Map<string, string | null>();
+
+/**
+ * Structural equality for overview snapshots. `DashboardOverview` is plain JSON
+ * (no functions/Dates), so a stringify compare is correct. Used to keep the
+ * stored reference stable across background polls that return identical data —
+ * otherwise every 5s poll hands subscribers a fresh object and re-renders them.
+ */
+function overviewEqual(a: DashboardOverview, b: DashboardOverview): boolean {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
 const roomMembersInFlight = new Map<string, Promise<PublicRoomMember[]>>();
 const recalledPreviewText = "Message recalled";
 
@@ -622,6 +636,15 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         })),
 
       replaceOverview: (overview) => {
+        const current = get().overview;
+        if (current && overviewEqual(current, overview)) {
+          // Identical to what we already hold — keep the existing reference so no
+          // subscriber re-renders. Only touch state if a loading/error flag is set.
+          if (get().overviewRefreshing || get().overviewErrored) {
+            set({ overviewRefreshing: false, overviewErrored: false });
+          }
+          return;
+        }
         set({ overview, overviewRefreshing: false, overviewErrored: false });
         useDashboardUnreadStore.getState().reconcileUnreadRooms(overview.rooms);
       },
@@ -912,8 +935,14 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         }
         // Human-first: /overview resolves the viewer from the Supabase JWT.
 
+        const hasOverview = Boolean(get().overview);
         const request = (async () => {
-          set({ overviewRefreshing: true, overviewErrored: false });
+          // Only flip the loading flag on first load (nothing to show yet).
+          // Background polls keep the existing overview on screen, so toggling
+          // overviewRefreshing every 5s just churns re-renders for no UI change.
+          if (!hasOverview) {
+            set({ overviewRefreshing: true, overviewErrored: false });
+          }
           try {
             const overview = await api.getOverview();
             get().replaceOverview(overview);
