@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useShallow } from "zustand/react/shallow";
 import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Forward, MoreHorizontal, RotateCcw, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
 import ReplyQuoteBlock from "./ReplyQuoteBlock";
@@ -182,14 +183,26 @@ function MentionChip({
   const isHuman = id.startsWith("hu_");
   const isAgent = id.startsWith("ag_");
   const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
-  const overview = useDashboardChatStore((state) => state.overview);
-  const publicAgents = useDashboardChatStore((state) => state.publicAgents);
+  // Narrow subscription: derive only the primitive name/bio fields for this id,
+  // so the chip re-renders only when *those* change — not on every overview /
+  // publicAgents churn (which fires on every inbound message).
+  const { contactAlias, contactDisplayName, publicAgentDisplayName, publicAgentBio } =
+    useDashboardChatStore(
+      useShallow((state) => {
+        const contact = state.overview?.contacts.find((item) => item.contact_agent_id === id);
+        const publicAgent = state.publicAgents.find((agent) => agent.agent_id === id);
+        return {
+          contactAlias: contact?.alias ?? null,
+          contactDisplayName: contact?.display_name ?? null,
+          publicAgentDisplayName: publicAgent?.display_name ?? null,
+          publicAgentBio: publicAgent?.bio ?? null,
+        };
+      }),
+    );
 
   const ownAgent = ownedAgents.find((agent) => agent.agent_id === id);
-  const contact = overview?.contacts.find((item) => item.contact_agent_id === id);
-  const publicAgent = publicAgents.find((agent) => agent.agent_id === id);
-  const displayName = contact?.alias || ownAgent?.display_name || contact?.display_name || publicAgent?.display_name || label;
-  const bio = ownAgent?.bio ?? publicAgent?.bio ?? null;
+  const displayName = contactAlias || ownAgent?.display_name || contactDisplayName || publicAgentDisplayName || label;
+  const bio = ownAgent?.bio ?? publicAgentBio ?? null;
   const role = isHuman ? "Human" : isAgent ? "Agent" : "Mention";
   const canOpen = isHuman || isAgent;
 
@@ -339,7 +352,9 @@ function SenderAvatar({
   );
 }
 
-export default function MessageBubble({
+export default memo(MessageBubble);
+
+function MessageBubble({
   message,
   isOwn: isOwnProp,
   fullWidth = false,
@@ -362,9 +377,23 @@ export default function MessageBubble({
   const getRoomSummary = useDashboardChatStore((state) => state.getRoomSummary);
   const recallMessage = useDashboardChatStore((state) => state.recallMessage);
   const confirm = useConfirm();
-  const overview = useDashboardChatStore((state) => state.overview);
-  const publicAgents = useDashboardChatStore((state) => state.publicAgents);
-  const publicHumans = useDashboardChatStore((state) => state.publicHumans);
+  // Narrow subscription: resolve only this sender's avatar from the chat stores
+  // and return plain strings, so the bubble re-renders only when *its* sender's
+  // avatar changes — not on every overview / publicAgents / publicHumans churn
+  // (which fires on every inbound message). Split agent/human to preserve the
+  // exact avatar precedence below.
+  const { storeAgentAvatar, storeHumanAvatar } = useDashboardChatStore(
+    useShallow((state) => {
+      const currentAgent = state.overview?.agent?.agent_id === message.sender_id ? state.overview.agent : null;
+      const contactAgent = state.overview?.contacts.find((item) => item.contact_agent_id === message.sender_id);
+      const publicAgent = state.publicAgents.find((item) => item.agent_id === message.sender_id);
+      const publicHuman = state.publicHumans.find((item) => item.human_id === message.sender_id);
+      return {
+        storeAgentAvatar: currentAgent?.avatar_url || contactAgent?.avatar_url || publicAgent?.avatar_url || null,
+        storeHumanAvatar: publicHuman?.avatar_url ?? null,
+      };
+    }),
+  );
   const setReplyingTo = useDashboardChatStore((state) => state.setReplyingTo);
   const human = useDashboardSessionStore((state) => state.human);
   const user = useDashboardSessionStore((state) => state.user);
@@ -393,20 +422,14 @@ export default function MessageBubble({
   const isHuman = message.sender_kind === "human" || message.sender_id.startsWith("hu_");
   const senderDisplayName = message.display_sender_name || message.sender_name || message.sender_id;
   const ownedAgent = ownedAgents.find((item) => item.agent_id === message.sender_id);
-  const currentAgent = overview?.agent?.agent_id === message.sender_id ? overview.agent : null;
-  const contactAgent = overview?.contacts.find((item) => item.contact_agent_id === message.sender_id);
-  const publicAgent = publicAgents.find((item) => item.agent_id === message.sender_id);
-  const publicHuman = isHuman ? publicHumans.find((item) => item.human_id === message.sender_id) : null;
   const isCurrentHumanSender = isHuman && (
     message.sender_id === human?.human_id
     || (message.source_user_id && message.source_user_id === user?.id)
   );
   const senderAvatarUrl = ownedAgent?.avatar_url
-    || currentAgent?.avatar_url
-    || contactAgent?.avatar_url
-    || publicAgent?.avatar_url
+    || storeAgentAvatar
     || (isCurrentHumanSender ? human?.avatar_url || user?.avatar_url : null)
-    || publicHuman?.avatar_url
+    || storeHumanAvatar
     || message.sender_avatar_url
     || null;
   const effectiveRoomId = message.room_id || (sourceId?.startsWith("rm_") ? sourceId : null);
