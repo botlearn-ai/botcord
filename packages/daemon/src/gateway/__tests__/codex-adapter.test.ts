@@ -77,6 +77,45 @@ process.exit(0);
     expect(res.error).toBeUndefined();
   });
 
+  it("maps turn.completed.usage onto cache hit/miss + output tokens", async () => {
+    const script = makeScript(
+      "usage.js",
+      `
+const lines = [
+  {type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcdef"},
+  {type:"item.completed", item:{id:"i0", type:"agent_message", text:"ok"}},
+  {type:"turn.completed", usage:{input_tokens:100000, cached_input_tokens:90000, output_tokens:500}},
+];
+for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
+process.exit(0);
+`,
+    );
+    const res = await runAdapter(script);
+    expect(res.inputCacheHitTokens).toBe(90000);
+    // miss = input_tokens - cached_input_tokens
+    expect(res.inputCacheMissTokens).toBe(10000);
+    expect(res.outputTokens).toBe(500);
+  });
+
+  it("leaves usage fields undefined when the turn reports none", async () => {
+    const script = makeScript(
+      "no-usage.js",
+      `
+const lines = [
+  {type:"thread.started", thread_id:"01234567-89ab-7def-8123-456789abcdef"},
+  {type:"item.completed", item:{id:"i0", type:"agent_message", text:"ok"}},
+  {type:"turn.completed"},
+];
+for (const l of lines) process.stdout.write(JSON.stringify(l) + "\\n");
+process.exit(0);
+`,
+    );
+    const res = await runAdapter(script);
+    expect(res.inputCacheHitTokens).toBeUndefined();
+    expect(res.inputCacheMissTokens).toBeUndefined();
+    expect(res.outputTokens).toBeUndefined();
+  });
+
   it("emits tool_use/tool_result StreamBlocks for command_execution items", async () => {
     const script = makeScript(
       "toolblock.js",

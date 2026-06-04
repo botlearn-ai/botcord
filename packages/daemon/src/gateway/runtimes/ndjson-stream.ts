@@ -28,6 +28,17 @@ export interface NdjsonRunState {
   assistantTextCapped: boolean;
   costUsd?: number;
   errorText?: string;
+  /**
+   * Per-turn token usage, populated by adapters whose CLI reports it (e.g.
+   * Codex `turn.completed.usage`). Surfaced on the RuntimeRunResult so the
+   * cloud-settle hook can charge usage and the dispatcher can size sessions
+   * for rotation. Adapters that don't report usage leave this undefined.
+   */
+  usage?: {
+    inputCacheHitTokens?: number;
+    inputCacheMissTokens?: number;
+    outputTokens?: number;
+  };
 }
 
 /** Per-event context handed to subclasses from the ndjson dispatch loop. */
@@ -253,6 +264,15 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
       text,
       newSessionId: state.newSessionId,
       ...(state.costUsd !== undefined ? { costUsd: state.costUsd } : {}),
+      ...(state.usage?.inputCacheHitTokens !== undefined
+        ? { inputCacheHitTokens: state.usage.inputCacheHitTokens }
+        : {}),
+      ...(state.usage?.inputCacheMissTokens !== undefined
+        ? { inputCacheMissTokens: state.usage.inputCacheMissTokens }
+        : {}),
+      ...(state.usage?.outputTokens !== undefined
+        ? { outputTokens: state.usage.outputTokens }
+        : {}),
       ...(state.errorText ? { error: state.errorText } : {}),
       ...(state.errorText
         ? {

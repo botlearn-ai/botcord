@@ -498,4 +498,16 @@ export interface GatewaySessionEntry {
   threadId?: string | null;
   cwd: string;
   updatedAt: number;
+  /**
+   * Number of turns served on this runtime session since it was (re)started.
+   * Used by the dispatcher to proactively rotate to a fresh session before the
+   * resumed transcript grows unboundedly. Reset to 1 on a fresh/rotated start.
+   */
+  turnCount?: number;
+  /**
+   * Total input tokens (cache hit + miss) the runtime reported for the most
+   * recent turn on this session, when available. The rotation judge uses this
+   * as a direct proxy for how large the replayed transcript has become.
+   */
+  lastInputTokens?: number;
 }

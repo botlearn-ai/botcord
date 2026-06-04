@@ -28,6 +28,13 @@ function extraFlagName(arg: string): string {
   return eq === -1 ? arg : arg.slice(0, eq);
 }
 
+/** Coerce an untrusted JSON value to a finite non-negative number, else undefined. */
+function numOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
 function nextExtraValue(args: string[], index: number): string | undefined {
   const next = args[index + 1];
   if (typeof next !== "string") return undefined;
@@ -292,6 +299,11 @@ export class CodexAdapter extends NdjsonStreamAdapter {
       item?: { type?: string; text?: string };
       error?: { message?: string } | string;
       turn?: { status?: string; error?: { message?: string } };
+      usage?: {
+        input_tokens?: number;
+        cached_input_tokens?: number;
+        output_tokens?: number;
+      };
     };
 
     // Emit a thinking lifecycle hint BEFORE the block so the dispatcher's
@@ -321,11 +333,34 @@ export class CodexAdapter extends NdjsonStreamAdapter {
       return;
     }
 
-    if (obj.type === "turn.completed" && obj.turn?.status === "failed") {
-      ctx.state.errorText =
-        obj.turn.error?.message?.trim() ||
-        summarizeCodexErrorEvent(raw) ||
-        "codex turn failed";
+    if (obj.type === "turn.completed") {
+      // `usage` is reported on both successful and failed turns. Map Codex's
+      // {input_tokens, cached_input_tokens, output_tokens} onto the cache
+      // hit/miss split the cloud-settle hook and session-rotation judge expect:
+      // input_tokens is the full prompt size (cached + uncached), so the miss
+      // portion is input_tokens - cached_input_tokens.
+      const usage = obj.usage;
+      if (usage && typeof usage === "object") {
+        const input = numOrUndefined(usage.input_tokens);
+        const cached = numOrUndefined(usage.cached_input_tokens);
+        const output = numOrUndefined(usage.output_tokens);
+        const hit = cached;
+        const miss =
+          input !== undefined ? Math.max(0, input - (cached ?? 0)) : undefined;
+        if (hit !== undefined || miss !== undefined || output !== undefined) {
+          ctx.state.usage = {
+            ...(hit !== undefined ? { inputCacheHitTokens: hit } : {}),
+            ...(miss !== undefined ? { inputCacheMissTokens: miss } : {}),
+            ...(output !== undefined ? { outputTokens: output } : {}),
+          };
+        }
+      }
+      if (obj.turn?.status === "failed") {
+        ctx.state.errorText =
+          obj.turn.error?.message?.trim() ||
+          summarizeCodexErrorEvent(raw) ||
+          "codex turn failed";
+      }
       return;
     }
 
