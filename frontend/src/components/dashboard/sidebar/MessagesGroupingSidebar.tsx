@@ -18,7 +18,17 @@ interface FilterRow {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-export default function MessagesGroupingSidebar() {
+interface MessagesGroupingSidebarProps {
+  fullWidth?: boolean;
+  onCollapse?: () => void;
+  onFilterSelect?: () => void;
+}
+
+export default function MessagesGroupingSidebar({
+  fullWidth = false,
+  onCollapse,
+  onFilterSelect,
+}: MessagesGroupingSidebarProps = {}) {
   const router = useRouter();
   const t = messagesGroupingI18n[useLanguage()];
   const SELF_ROWS: FilterRow[] = [
@@ -83,21 +93,24 @@ export default function MessagesGroupingSidebar() {
   const [botsOpen, setBotsOpen] = useState(true);
   const selectFilter = (filter: MessagesFilterKey) => {
     setMessagesShowRequests(false);
-    if (messagesFilter === filter) return;
-    setMessagesFilter(filter);
-    setMessagesPane("room");
-    setFocusedRoomId(null);
-    setOpenedRoomId(null);
-    setOpenedTopicId(null);
-    router.push("/chats/messages");
+    if (messagesFilter !== filter) {
+      setMessagesFilter(filter);
+      setMessagesPane("room");
+      setFocusedRoomId(null);
+      setOpenedRoomId(null);
+      setOpenedTopicId(null);
+      router.push("/chats/messages");
+    }
+    onFilterSelect?.();
   };
 
   return (
-    <div className="flex h-full w-[200px] shrink-0 flex-col border-r border-glass-border bg-deep-black/50">
+    <div className={`flex h-full ${fullWidth ? "w-full" : "w-[200px]"} shrink-0 flex-col border-r border-glass-border bg-deep-black/50`}>
       <div className="flex h-14 items-center justify-between border-b border-glass-border px-3">
         <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">{t.header}</span>
         <button
-          onClick={() => setMessagesGroupingOpen(false)}
+          type="button"
+          onClick={() => (onCollapse ? onCollapse() : setMessagesGroupingOpen(false))}
           title={t.collapse}
           aria-label={t.collapse}
           className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary"
@@ -175,7 +188,9 @@ function GroupHeader({
 }) {
   return (
     <button
+      type="button"
       onClick={onToggle}
+      aria-expanded={open}
       className="flex w-full items-center gap-1.5 px-3 py-2 text-left transition-colors hover:bg-glass-bg/40"
     >
       {open ? (
@@ -209,6 +224,7 @@ function FilterButton({
   const Icon = row.icon;
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`flex w-full items-center justify-between gap-2 py-1.5 pl-[28px] pr-3 text-[12px] transition-colors ${
         active
