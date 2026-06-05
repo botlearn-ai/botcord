@@ -1057,7 +1057,11 @@ async def test_runtime_snapshot_event_persists_to_db(
         {
             "id": "frm_rs_1",
             "type": "runtime_snapshot",
-            "params": {"runtimes": runtimes, "probedAt": probed_at},
+            "params": {
+                "runtimes": runtimes,
+                "probedAt": probed_at,
+                "daemonVersion": "0.2.96",
+            },
         },
     )
 
@@ -1078,6 +1082,7 @@ async def test_runtime_snapshot_event_persists_to_db(
         stored = json.loads(stored)
     assert stored == runtimes
     assert inst.runtimes_probed_at is not None
+    assert inst.daemon_version == "0.2.96"
 
     # list_instances surfaces it.
     r = await client.get(
@@ -1089,6 +1094,7 @@ async def test_runtime_snapshot_event_persists_to_db(
     entry = next(it for it in payload["instances"] if it["id"] == instance_id)
     assert entry["runtimes"] == runtimes
     assert entry["runtimes_probed_at"] is not None
+    assert entry["daemon_version"] == "0.2.96"
 
 
 @pytest.mark.asyncio
@@ -1427,7 +1433,11 @@ async def test_refresh_runtimes_success_persists_and_returns(
             ack = {
                 "id": sent["id"],
                 "ok": True,
-                "result": {"runtimes": runtimes, "probedAt": probed_at},
+                "result": {
+                    "runtimes": runtimes,
+                    "probedAt": probed_at,
+                    "daemonVersion": "0.2.97",
+                },
             }
             fut = conn.pending_acks.get(sent["id"])
             assert fut is not None
@@ -1443,6 +1453,7 @@ async def test_refresh_runtimes_success_persists_and_returns(
         body = r.json()
         assert body["runtimes"] == runtimes
         assert body["runtimes_probed_at"]
+        assert body["daemon_version"] == "0.2.97"
 
         # DB is updated.
         await db_session.commit()
@@ -1455,6 +1466,7 @@ async def test_refresh_runtimes_success_persists_and_returns(
             stored = json.loads(stored)
         assert stored == runtimes
         assert inst.runtimes_probed_at is not None
+        assert inst.daemon_version == "0.2.97"
     finally:
         await registry.unregister(conn)
 

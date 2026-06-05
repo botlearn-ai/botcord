@@ -278,6 +278,7 @@ export default function BotsPanel({
           label={settingsDaemon?.label ?? ""}
           status={settingsDaemon?.status ?? "offline"}
           lastSeen={settingsDaemon?.last_seen_at ?? null}
+          daemonVersion={settingsDaemon?.daemon_version ?? null}
           hostedAgentCount={(byDaemon.get(deviceSettingsId) ?? []).length}
           isRenaming={renamingId === deviceSettingsId}
           isRefreshing={refreshingBots}

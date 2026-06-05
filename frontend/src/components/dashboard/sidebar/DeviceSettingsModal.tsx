@@ -12,6 +12,7 @@ interface DeviceSettingsModalProps {
   label: string;
   status: "online" | "offline" | "revoked" | "removal_pending";
   lastSeen: string | null;
+  daemonVersion?: string | null;
   hostedAgentCount: number;
   isRenaming: boolean;
   isRefreshing: boolean;
@@ -32,6 +33,7 @@ export default function DeviceSettingsModal({
   label,
   status,
   lastSeen,
+  daemonVersion,
   hostedAgentCount,
   isRenaming,
   isRefreshing,
@@ -133,6 +135,15 @@ export default function DeviceSettingsModal({
               </span>
             </div>
           )}
+
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-text-secondary/60">
+              {locale === "zh" ? "Daemon 版本" : "Daemon version"}
+            </span>
+            <span className="font-mono text-[11px] text-text-secondary/70">
+              {daemonVersion || "--"}
+            </span>
+          </div>
 
           {/* Rename */}
           <div className="space-y-1.5">

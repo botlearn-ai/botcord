@@ -6,6 +6,7 @@
  */
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
+import { createRequire } from "node:module";
 import path from "node:path";
 import {
   BotCordClient,
@@ -92,6 +93,8 @@ import {
   type CloudGatewayTypingEmitter,
 } from "./cloud-gateway-runtime.js";
 import { scheduleDaemonSelfRestart } from "./self-restart.js";
+
+const require = createRequire(import.meta.url);
 
 function skillIndexOptionsForLoadedAgent(gateway: Gateway, agentId: string): SkillIndexOptions {
   const route = gateway.listManagedRoutes()
@@ -2011,6 +2014,27 @@ export function removeAgentFromConfig(
 const RUNTIME_PROBE_CACHE_TTL_MS = 30_000;
 
 let _runtimeProbeCache: { at: number; value: ListRuntimesResult } | null = null;
+let _daemonPackageVersionCache: string | null | undefined;
+
+function daemonPackageVersion(): string | undefined {
+  if (_daemonPackageVersionCache !== undefined) {
+    return _daemonPackageVersionCache ?? undefined;
+  }
+  try {
+    const pkgPath = require.resolve("@botcord/daemon/package.json");
+    const parsed = JSON.parse(readFileSync(pkgPath, "utf8")) as unknown;
+    _daemonPackageVersionCache =
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as { version?: unknown }).version === "string"
+        ? (parsed as { version: string }).version
+        : null;
+  } catch {
+    _daemonPackageVersionCache = null;
+  }
+  return _daemonPackageVersionCache ?? undefined;
+}
 
 /** Drop the cache (e.g. before a `doctor`-style interactive re-probe). */
 export function clearRuntimeProbeCache(): void {
@@ -2083,6 +2107,8 @@ export function collectRuntimeSnapshot(opts: { force?: boolean } = {}): ListRunt
     return record;
   });
   const value: ListRuntimesResult = { runtimes, probedAt: Date.now() };
+  const version = daemonPackageVersion();
+  if (version) value.daemonVersion = version;
   _runtimeProbeCache = { at: Date.now(), value };
   return value;
 }

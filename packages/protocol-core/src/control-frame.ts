@@ -757,6 +757,7 @@ export interface RuntimeEndpointProbe {
 export interface RuntimeSnapshotParams {
   runtimes: RuntimeProbeResult[];
   probedAt: number;
+  daemonVersion?: string;
 }
 
 /**
@@ -768,6 +769,7 @@ export interface RuntimeSnapshotParams {
 export interface ListRuntimesResult {
   runtimes: RuntimeProbeResult[];
   probedAt: number;
+  daemonVersion?: string;
 }
 
 // ---------------------------------------------------------------------------

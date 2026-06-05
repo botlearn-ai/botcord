@@ -1377,6 +1377,7 @@ class DaemonInstance(Base):
     runtimes_probed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    daemon_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class DaemonAgentCleanup(Base):
