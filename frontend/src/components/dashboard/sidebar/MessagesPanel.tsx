@@ -4,7 +4,7 @@ import { startTransition, useEffect, useMemo, useState } from "react";
 // messagesFilter is in useDashboardUIStore so ChatPane can also read it.
 import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
-import { sidebar } from "@/lib/i18n/translations/dashboard";
+import { messagesGrouping, sidebar } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
 import { buildVisibleMessageRooms, isOwnerChatRoom } from "@/store/dashboard-shared";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -12,8 +12,9 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
-import { Bot, ChevronsRight, MessageSquarePlus, Plus, Search, UserPlus, UserPlus2 } from "lucide-react";
+import { Bot, ChevronsRight, ListFilter, MessageSquarePlus, Plus, Search, UserPlus, UserPlus2 } from "lucide-react";
 import MessagesBotScopeDropdown from "./MessagesBotScopeDropdown";
+import MessagesGroupingSidebar from "./MessagesGroupingSidebar";
 import { applyMessagesFilter, mergeOwnerVisibleRooms } from "@/lib/messages-merge";
 import type { DashboardRoom } from "@/lib/types";
 import RoomList from "../RoomList";
@@ -40,6 +41,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
   const router = useRouter();
   const locale = useLanguage();
   const t = sidebar[locale];
+  const tGrouping = messagesGrouping[locale];
 
   const { sessionMode, token, humanRooms, ownedAgents } = useDashboardSessionStore(useShallow((s) => ({
     sessionMode: s.sessionMode,
@@ -82,6 +84,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
   })));
 
   const [messageQuery, setMessageQuery] = useState("");
+  const [mobileGroupingOpen, setMobileGroupingOpen] = useState(false);
 
   // Owner-unified Messages list: my own conversations + tagged bot conversations.
   const visibleMessageRooms = useMemo<DashboardRoom[]>(() => {
@@ -156,12 +159,40 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     sidebarTab,
   ]);
 
+  useEffect(() => {
+    if (isGuest || sidebarTab !== "messages") {
+      setMobileGroupingOpen(false);
+    }
+  }, [isGuest, sidebarTab]);
+
+  useEffect(() => {
+    if (!messagesSearchOpen && messageQuery) {
+      setMessageQuery("");
+    }
+  }, [messageQuery, messagesSearchOpen]);
+
+  useEffect(() => {
+    if (!mobileGroupingOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileGroupingOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileGroupingOpen]);
+
   // (filter chips moved into MessagesGroupingSidebar as expandable children)
 
-  // When the search toggles off, clear the query so the room list isn't accidentally
-  // left filtered behind the scenes.
-  // (Keep behavior minimal — only reset on close, not on every keystroke.)
-  // The setMessageQuery call lives in the onClick path below.
+  const toggleMessagesSearch = () => {
+    const nextOpen = !messagesSearchOpen;
+    setMessagesSearchOpen(nextOpen);
+    if (!nextOpen) {
+      setMessageQuery("");
+    }
+  };
 
   return (
     <div className="flex min-h-full flex-col">
@@ -173,9 +204,24 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
               onClick={() => setMessagesGroupingOpen(true)}
               title="展开分组"
               aria-label="展开分组"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-glass-border text-text-secondary/70 transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-glass-border text-text-secondary/70 transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan max-md:hidden"
             >
               <ChevronsRight className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+          {!isGuest ? (
+            <button
+              type="button"
+              onClick={() => setMobileGroupingOpen((open) => !open)}
+              title={tGrouping.header}
+              aria-label={tGrouping.header}
+              className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors max-md:flex ${
+                mobileGroupingOpen
+                  ? "bg-neon-cyan/10 text-neon-cyan"
+                  : "text-text-secondary hover:bg-neon-cyan/10 hover:text-neon-cyan"
+              }`}
+            >
+              <ListFilter className="h-4 w-4" />
             </button>
           ) : null}
           <h2 className="truncate text-sm font-semibold text-text-primary">Messages</h2>
@@ -184,7 +230,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           <div className="flex items-center gap-1">
             <TooltipIconButton
               label={locale === "zh" ? "搜索消息" : "Search messages"}
-              onClick={() => setMessagesSearchOpen(!messagesSearchOpen)}
+              onClick={toggleMessagesSearch}
               active={messagesSearchOpen}
             >
               <Search className="h-4 w-4" />
@@ -204,6 +250,28 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           </div>
         )}
       </div>
+      {!isGuest && mobileGroupingOpen ? (
+        <div
+          className="fixed inset-0 z-50 hidden max-md:block"
+          role="dialog"
+          aria-modal="true"
+          aria-label={tGrouping.header}
+        >
+          <button
+            type="button"
+            aria-label={tGrouping.collapse}
+            className="absolute inset-0 bg-black/45 backdrop-blur-sm"
+            onClick={() => setMobileGroupingOpen(false)}
+          />
+          <div className="absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 top-0 w-[min(84vw,280px)] overflow-hidden border-r border-glass-border bg-deep-black-light shadow-2xl shadow-black/60">
+            <MessagesGroupingSidebar
+              fullWidth
+              onCollapse={() => setMobileGroupingOpen(false)}
+              onFilterSelect={() => setMobileGroupingOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
       {pendingRequestCount > 0 ? (
         <button
           onClick={() => {
@@ -329,6 +397,7 @@ function TooltipIconButton({
   return (
     <div className="group relative">
       <button
+        type="button"
         onClick={onClick}
         aria-label={label}
         className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
