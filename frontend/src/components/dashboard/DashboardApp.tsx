@@ -37,6 +37,12 @@ import DashboardShellSkeleton from "./DashboardShellSkeleton";
 import DashboardTabSkeleton from "./DashboardTabSkeleton";
 import HomePanel from "./HomePanel";
 import MyBotsPanel from "./MyBotsPanel";
+import CentaurHomePanel from "./centaur/CentaurHomePanel";
+import CentaurTeamPanel from "./centaur/CentaurTeamPanel";
+import CommunityPanel from "./centaur/CommunityPanel";
+import MarketPanel from "./centaur/MarketPanel";
+import SearchPanel from "./centaur/SearchPanel";
+import UniversityPanel from "./centaur/UniversityPanel";
 import HumanCardModal from "./HumanCardModal";
 import Sidebar from "./sidebar";
 import StripeReturnBanner from "./StripeReturnBanner";
@@ -45,7 +51,7 @@ import WalletPanel from "./WalletPanel";
 import ActivityPanel from "./ActivityPanel";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
-type DashboardSidebarTab = "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
+type DashboardSidebarTab = "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots" | "centaur-team" | "discover" | "community" | "market" | "university";
 
 type BotcordDebugRealtimeSnapshot = {
   supabaseUrl: string | undefined;
@@ -87,8 +93,13 @@ function getSidebarTabFromPathParts(parts: string[]): DashboardSidebarTab {
     || tab === "wallet"
     || tab === "activity"
     || tab === "bots"
+    || tab === "centaur-team"
+    || tab === "discover"
+    || tab === "community"
+    || tab === "market"
+    || tab === "university"
   ) {
-    return tab;
+    return tab as DashboardSidebarTab;
   }
   return "home";
 }
@@ -1043,9 +1054,27 @@ export default function DashboardApp() {
       />
       <div className={mainPaneClass}>
         {primaryNavigationPending ? (
-          <DashboardTabSkeleton variant={visibleSidebarTab} />
+          <DashboardTabSkeleton variant={
+            visibleSidebarTab === "centaur-team"
+              || visibleSidebarTab === "discover"
+              || visibleSidebarTab === "community"
+              || visibleSidebarTab === "market"
+              || visibleSidebarTab === "university"
+              ? "home"
+              : visibleSidebarTab
+          } />
+        ) : pathnameParts[1] === "search" ? (
+          <SearchPanel />
         ) : visibleSidebarTab === "home" ? (
-          <HomePanel />
+          <CentaurHomePanel />
+        ) : visibleSidebarTab === "centaur-team" ? (
+          <CentaurTeamPanel />
+        ) : visibleSidebarTab === "community" ? (
+          <CommunityPanel />
+        ) : visibleSidebarTab === "market" ? (
+          <MarketPanel />
+        ) : visibleSidebarTab === "university" ? (
+          <UniversityPanel />
         ) : visibleSidebarTab === "activity" ? (
           <ActivityPanel />
         ) : visibleSidebarTab === "wallet" ? (

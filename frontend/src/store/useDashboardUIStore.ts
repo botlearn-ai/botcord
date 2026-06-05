@@ -22,7 +22,7 @@ export interface DashboardUIState {
   openedTopicId: string | null;
   /** Mobile-only temporary drawer for the secondary sidebar/list panel. */
   mobileSidebarOpen: boolean;
-  sidebarTab: "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
+  sidebarTab: "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots" | "centaur-team" | "discover" | "community" | "market" | "university";
   pendingPrimaryNavigation: { tab: DashboardUIState["sidebarTab"]; path: string } | null;
   /** Currently selected owned bot (agent_id) in the My Bots tab. Null = list view. */
   selectedBotAgentId: string | null;
