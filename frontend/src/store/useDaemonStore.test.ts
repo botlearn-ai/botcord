@@ -14,6 +14,56 @@ describe("useDaemonStore", () => {
     });
   });
 
+  it("normalizes daemon package version from the instance list", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          instances: [
+            {
+              id: "dm_1",
+              label: "workstation",
+              kind: "local",
+              status: "active",
+              online: true,
+              created_at: "2026-06-05T00:00:00Z",
+              last_seen_at: "2026-06-05T00:01:00Z",
+              revoked_at: null,
+              removal_requested_at: null,
+              cleanup_completed_at: null,
+              runtimes: null,
+              runtimes_probed_at: null,
+              daemon_version: "0.2.96",
+            },
+            {
+              id: "dm_2",
+              label: null,
+              kind: "local",
+              status: "active",
+              online: false,
+              created_at: "2026-06-05T00:00:00Z",
+              last_seen_at: null,
+              revoked_at: null,
+              removal_requested_at: null,
+              cleanup_completed_at: null,
+              runtimes: null,
+              runtimes_probed_at: null,
+              daemon_version: "",
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    await useDaemonStore.getState().refresh();
+
+    expect(useDaemonStore.getState().daemons[0]?.daemon_version).toBe("0.2.96");
+    expect(useDaemonStore.getState().daemons[1]?.daemon_version).toBeNull();
+  });
+
   it("surfaces daemon diagnostics failure details from Hub", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

@@ -123,6 +123,7 @@ export interface DaemonInstance {
   cleanup_completed_at: string | null;
   runtimes?: DaemonRuntime[] | null;
   runtimes_probed_at?: string | null;
+  daemon_version?: string | null;
 }
 
 export interface RemoveDeviceResult {
@@ -545,6 +546,10 @@ function normalizeDaemon(raw: Record<string, unknown>): DaemonInstance {
     cleanup_completed_at: cleanupCompletedAt,
     runtimes: normalizeRuntimes(raw.runtimes),
     runtimes_probed_at: (raw.runtimes_probed_at as string | null) ?? null,
+    daemon_version:
+      typeof raw.daemon_version === "string" && raw.daemon_version.trim()
+        ? raw.daemon_version
+        : null,
   };
 }
 
@@ -872,10 +877,14 @@ export const useDaemonStore = create<DaemonState>()((set, get) => ({
         typeof data?.runtimes_probed_at === "string"
           ? data.runtimes_probed_at
           : new Date().toISOString();
+      const daemonVersion =
+        typeof data?.daemon_version === "string" && data.daemon_version.trim()
+          ? data.daemon_version
+          : null;
       set({
         daemons: get().daemons.map((d) =>
           d.id === id
-            ? { ...d, runtimes, runtimes_probed_at: probedAt }
+            ? { ...d, runtimes, runtimes_probed_at: probedAt, daemon_version: daemonVersion }
             : d,
         ),
         ...(quiet ? {} : { refreshingRuntimesId: null }),

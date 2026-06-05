@@ -138,6 +138,17 @@ function RuntimeChip({ runtime }: { runtime: DaemonRuntime }) {
   );
 }
 
+function DaemonVersionChip({ version }: { version?: string | null }) {
+  return (
+    <span
+      title="Running botcord-daemon version"
+      className="inline-flex items-center rounded-full border border-glass-border bg-glass-bg px-2 py-0.5 font-mono text-[10px] text-text-secondary"
+    >
+      daemon {version || "--"}
+    </span>
+  );
+}
+
 function RuntimesBlock({
   daemon,
   refreshing,
@@ -189,6 +200,7 @@ function RuntimesBlock({
             </span>
           ) : null}
         </div>
+        <DaemonVersionChip version={daemon.daemon_version} />
         <button
           type="button"
           onClick={onRefresh}

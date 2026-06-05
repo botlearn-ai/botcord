@@ -587,6 +587,7 @@ class _InstanceView(BaseModel):
     online: bool
     runtimes: list[dict[str, Any]] | None = None
     runtimes_probed_at: datetime.datetime | None = None
+    daemon_version: str | None = None
 
 
 def _instance_status(instance: DaemonInstance) -> str:
@@ -630,6 +631,7 @@ def _instance_to_view(instance: DaemonInstance) -> _InstanceView:
         online=_instance_online(instance),
         runtimes=instance.runtimes_json if instance.runtimes_json else None,
         runtimes_probed_at=instance.runtimes_probed_at,
+        daemon_version=instance.daemon_version,
     )
 
 
@@ -1160,6 +1162,7 @@ async def dispatch_to_instance(
 class _RefreshRuntimesResponse(BaseModel):
     runtimes: list[dict[str, Any]]
     runtimes_probed_at: datetime.datetime
+    daemon_version: str | None = None
 
 
 _REFRESH_RUNTIMES_TIMEOUT_MS = 10000
@@ -1296,6 +1299,7 @@ async def refresh_instance_runtimes(
         return _RefreshRuntimesResponse(
             runtimes=runtimes,
             runtimes_probed_at=probed_dt,
+            daemon_version=instance.daemon_version,
         )
 
     conn = _REGISTRY.get(daemon_instance_id)
@@ -1357,6 +1361,7 @@ async def refresh_instance_runtimes(
     return _RefreshRuntimesResponse(
         runtimes=runtimes,
         runtimes_probed_at=probed_dt,
+        daemon_version=instance.daemon_version,
     )
 
 
@@ -1669,11 +1674,11 @@ _DAEMON_INITIATED_TYPES = {
 
 def _parse_runtime_snapshot_params(
     params: Any,
-) -> tuple[list[dict[str, Any]], datetime.datetime] | None:
+) -> tuple[list[dict[str, Any]], datetime.datetime, str | None] | None:
     """Validate a ``runtime_snapshot`` / ``list_runtimes`` ack payload.
 
-    Returns ``(runtimes, probed_at_utc)`` on success, ``None`` on malformed
-    input (caller should respond with ``bad_params``).
+    Returns ``(runtimes, probed_at_utc, daemon_version)`` on success, ``None``
+    on malformed input (caller should respond with ``bad_params``).
     """
     if not isinstance(params, dict):
         return None
@@ -1732,7 +1737,12 @@ def _parse_runtime_snapshot_params(
     upper_bound = _now() + datetime.timedelta(minutes=5)
     if probed_dt > upper_bound:
         return None
-    return runtimes, probed_dt
+    daemon_version = params.get("daemonVersion")
+    if daemon_version is not None:
+        if not isinstance(daemon_version, str) or len(daemon_version) > 64:
+            return None
+        daemon_version = daemon_version.strip() or None
+    return runtimes, probed_dt, daemon_version
 
 
 async def _persist_runtime_snapshot(
@@ -1749,9 +1759,11 @@ async def _persist_runtime_snapshot(
     parsed = _parse_runtime_snapshot_params(params)
     if parsed is None:
         return None
-    runtimes, probed_dt = parsed
+    runtimes, probed_dt, daemon_version = parsed
     instance.runtimes_json = runtimes
     instance.runtimes_probed_at = probed_dt
+    if daemon_version is not None:
+        instance.daemon_version = daemon_version
     return runtimes, probed_dt
 
 
