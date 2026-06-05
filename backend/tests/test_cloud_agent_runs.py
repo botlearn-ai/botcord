@@ -18,6 +18,7 @@ from hub.models import (
     MessageRecord,
     Room,
     RoomMember,
+    UsageBalance,
     UsageReservation,
     User,
 )
@@ -28,6 +29,7 @@ from hub.services.cloud_agent import (
     CreateRunInput,
     RunBudget,
 )
+from hub.services.cloud_agent_usage import UsageService
 from hub.services.cloud_daemon_provider import FakeCloudDaemonProvider
 from tests.test_app.conftest import create_test_engine
 
@@ -105,12 +107,39 @@ class _RunNewApiService:
         )()
 
 
+class _FailingResumeProvider(FakeCloudDaemonProvider):
+    async def create_or_resume(self, **kwargs):
+        cloud_daemon_instance_id = kwargs["cloud_daemon_instance_id"]
+        if cloud_daemon_instance_id in self.all_sandboxes():
+            raise RuntimeError("resume failed after provisioning commit")
+        return await super().create_or_resume(**kwargs)
+
+
 async def _create_ready_agent(svc: CloudAgentService, db, user) -> "CloudAgentView":
     return await svc.create_cloud_agent(
         db,
         user_id=user.id,
         body=CreateCloudAgentInput(name=f"Cloud-{uuid.uuid4().hex[:4]}"),
     )
+
+
+async def _fresh_run_usage_state(db: AsyncSession, *, user_id: uuid.UUID):
+    factory = async_sessionmaker(
+        db.bind, class_=AsyncSession, expire_on_commit=False
+    )
+    async with factory() as fresh:
+        active_reservations = (
+            await fresh.execute(
+                select(UsageReservation).where(UsageReservation.state == "active")
+            )
+        ).scalars().all()
+        balance = await fresh.scalar(
+            select(UsageBalance).where(UsageBalance.user_id == user_id)
+        )
+        run_message = await fresh.scalar(
+            select(MessageRecord).where(MessageRecord.source_type == "cloud_agent_run")
+        )
+        return active_reservations, balance, run_message
 
 
 # ---------------------------------------------------------------------------
@@ -150,12 +179,15 @@ async def test_create_run_inserts_message_record_and_returns_run_id(db_session):
     assert MessageEnvelope(**envelope).type.value == "cloud_run"
     assert envelope["payload"]["text"] == "Summarise the workspace"
     assert envelope["payload"]["cloud_run"]["run_id"] == run.run_id
-    assert envelope["payload"]["cloud_run"]["settle_usage"] is False
+    assert envelope["payload"]["cloud_run"]["settle_usage"] is True
     assert envelope["payload"]["cloud_run"]["budget"]["max_wall_time_seconds"] == 600
     reservation = await db_session.scalar(
         select(UsageReservation).where(UsageReservation.run_id == run.run_id)
     )
-    assert reservation is None
+    assert reservation is not None
+    assert reservation.state == "active"
+    assert reservation.reserved_credits > 0
+    assert reservation.reserved_sandbox_seconds == 600
 
 
 @pytest.mark.asyncio
@@ -284,6 +316,51 @@ async def test_create_run_preflights_balance_before_resuming_paused_agent(db_ses
     assert run_message is None
 
 
+@pytest.mark.asyncio
+async def test_create_run_reserves_usage_before_resuming_paused_agent(db_session):
+    provider = FakeCloudDaemonProvider()
+    svc = CloudAgentService(
+        provider=provider,
+        feature_enabled=True,
+        max_per_user=3,
+        max_agents_per_daemon=2,
+        usage_service=UsageService(
+            free_credits_per_period=1,
+            free_sandbox_seconds_per_period=3600,
+        ),
+    )
+    user = await _seed_user(db_session)
+    cloud_agent = await _create_ready_agent(svc, db_session, user)
+    await svc.pause_cloud_agent(
+        db_session, user_id=user.id, agent_id=cloud_agent.agent_id
+    )
+    calls_before = provider.calls(cloud_agent.cloud_daemon_instance_id)
+
+    with pytest.raises(CloudAgentError) as excinfo:
+        await svc.create_run(
+            db_session,
+            user_id=user.id,
+            agent_id=cloud_agent.agent_id,
+            body=CreateRunInput(prompt="quota blocked"),
+        )
+
+    assert excinfo.value.code == "quota_credits_exceeded"
+    assert excinfo.value.http_status == 402
+    assert provider.calls(cloud_agent.cloud_daemon_instance_id) == calls_before
+    refreshed = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == cloud_agent.agent_id
+        )
+    )
+    assert refreshed.status == "paused"
+    run_message = await db_session.scalar(
+        select(MessageRecord).where(MessageRecord.source_type == "cloud_agent_run")
+    )
+    assert run_message is None
+    reservations = (await db_session.execute(select(UsageReservation))).scalars().all()
+    assert reservations == []
+
+
 # ---------------------------------------------------------------------------
 # Auto-resume + state machine
 # ---------------------------------------------------------------------------
@@ -311,6 +388,69 @@ async def test_create_run_auto_resumes_paused_agent(db_session):
         )
     )
     assert refreshed.status == "ready"
+
+
+@pytest.mark.asyncio
+async def test_create_run_releases_usage_when_paused_resume_provider_fails(
+    db_session,
+):
+    provider = _FailingResumeProvider()
+    svc = _service(provider=provider)
+    user = await _seed_user(db_session)
+    user_id = user.id
+    cloud_agent = await _create_ready_agent(svc, db_session, user)
+    await svc.pause_cloud_agent(
+        db_session, user_id=user.id, agent_id=cloud_agent.agent_id
+    )
+
+    with pytest.raises(RuntimeError, match="resume failed"):
+        await svc.create_run(
+            db_session,
+            user_id=user.id,
+            agent_id=cloud_agent.agent_id,
+            body=CreateRunInput(prompt="wake then fail"),
+        )
+
+    active_reservations, balance, run_message = await _fresh_run_usage_state(
+        db_session, user_id=user_id
+    )
+    assert active_reservations == []
+    assert balance is not None
+    assert balance.reserved_credits == 0
+    assert balance.reserved_sandbox_seconds == 0
+    assert run_message is None
+
+
+@pytest.mark.asyncio
+async def test_create_run_releases_usage_when_room_resolution_fails_after_resume(
+    db_session,
+):
+    provider = FakeCloudDaemonProvider()
+    svc = _service(provider=provider)
+    user = await _seed_user(db_session)
+    user_id = user.id
+    cloud_agent = await _create_ready_agent(svc, db_session, user)
+    await svc.pause_cloud_agent(
+        db_session, user_id=user.id, agent_id=cloud_agent.agent_id
+    )
+
+    with pytest.raises(CloudAgentError) as excinfo:
+        await svc.create_run(
+            db_session,
+            user_id=user.id,
+            agent_id=cloud_agent.agent_id,
+            body=CreateRunInput(prompt="wake then bad room", room_id="rm_missing"),
+        )
+
+    assert excinfo.value.code == "room_not_found"
+    active_reservations, balance, run_message = await _fresh_run_usage_state(
+        db_session, user_id=user_id
+    )
+    assert active_reservations == []
+    assert balance is not None
+    assert balance.reserved_credits == 0
+    assert balance.reserved_sandbox_seconds == 0
+    assert run_message is None
 
 
 @pytest.mark.asyncio

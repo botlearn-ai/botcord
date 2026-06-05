@@ -67,7 +67,7 @@ from hub.routers.cloud_daemon_control import (
     is_cloud_daemon_online,
     send_cloud_control_frame,
 )
-from hub.services.cloud_agent_usage import UsageService
+from hub.services.cloud_agent_usage import UsageError, UsageService
 from hub.services.cloud_daemon_provider import (
     CloudDaemonHandle,
     CloudDaemonProvider,
@@ -1446,77 +1446,108 @@ class CloudAgentService:
 
         await self._ensure_new_api_balance_for_run(db, user_id=user_id)
 
-        # Auto-resume paused agents only after token balance preflight. A user
-        # with an exhausted new-api token must not wake a paused sandbox.
-        if cai.status == "paused":
-            await self.resume_cloud_agent(db, user_id=user_id, agent_id=agent_id)
-            cai, agent, cdi = await self._load_owned(
-                db, user_id=user_id, agent_id=agent_id
-            )
-
         run_id = generate_cloud_agent_run_id()
-
-        room_id = await self._resolve_run_room(
-            db,
-            user_id=user_id,
-            agent_id=agent_id,
-            agent_display_name=agent.display_name,
-            preferred_room_id=body.room_id,
+        reserved_credits = self._usage.estimate_run_credits(
+            max_wall_time_seconds=budget.max_wall_time_seconds,
+            max_tool_calls=budget.max_tool_calls,
         )
-
-        hub_msg_id = generate_hub_msg_id()
-        msg_id = str(uuid.uuid4())
-        ts = int(time.time())
-
-        payload = {
-            "text": prompt,
-            "cloud_run": {
-                "run_id": run_id,
-                "settle_usage": False,
-                "budget": {
+        reserved_sandbox_seconds = self._usage.estimate_run_sandbox_seconds(
+            max_wall_time_seconds=budget.max_wall_time_seconds
+        )
+        try:
+            await self._usage.reserve(
+                db,
+                user_id=user_id,
+                agent_id=agent_id,
+                run_id=run_id,
+                credits=reserved_credits,
+                sandbox_seconds=reserved_sandbox_seconds,
+                metadata={
+                    "source": "cloud_agent_run",
                     "max_wall_time_seconds": budget.max_wall_time_seconds,
                     "max_tool_calls": budget.max_tool_calls,
                 },
-            },
-        }
-        envelope = {
-            "v": "a2a/0.1",
-            "msg_id": msg_id,
-            "ts": ts,
-            "from": agent_id,
-            "to": agent_id,
-            # ``cloud_run`` is a custom envelope type the daemon recognises
-            # alongside the standard ``message`` flow. Keeping it distinct
-            # from ``message`` lets the daemon route runs differently from
-            # plain owner-chat without sniffing payload internals.
-            "type": "cloud_run",
-            "reply_to": None,
-            "ttl_sec": budget.max_wall_time_seconds,
-            "payload": payload,
-            "payload_hash": "",
-            "sig": {"alg": "ed25519", "key_id": "cloud-run", "value": ""},
-            "topic": body.topic,
-        }
+            )
+        except UsageError as exc:
+            raise CloudAgentError(
+                exc.code,
+                exc.message,
+                http_status=402,
+            ) from exc
 
-        record = MessageRecord(
-            hub_msg_id=hub_msg_id,
-            msg_id=msg_id,
-            sender_id=agent_id,
-            receiver_id=agent_id,
-            room_id=room_id,
-            topic=body.topic,
-            state=MessageState.queued,
-            envelope_json=json.dumps(envelope),
-            ttl_sec=budget.max_wall_time_seconds,
-            mentioned=True,
-            source_type="cloud_agent_run",
-            source_user_id=str(user_id),
-            source_session_kind="cloud_run",
-        )
-        db.add(record)
-        cai.last_run_at = _now()
+        try:
+            # Auto-resume paused agents only after all quota preflights. A user
+            # with exhausted quota must not wake a paused sandbox/provider.
+            if cai.status == "paused":
+                await self.resume_cloud_agent(db, user_id=user_id, agent_id=agent_id)
+                cai, agent, cdi = await self._load_owned(
+                    db, user_id=user_id, agent_id=agent_id
+                )
 
-        await db.commit()
+            room_id = await self._resolve_run_room(
+                db,
+                user_id=user_id,
+                agent_id=agent_id,
+                agent_display_name=agent.display_name,
+                preferred_room_id=body.room_id,
+            )
+
+            hub_msg_id = generate_hub_msg_id()
+            msg_id = str(uuid.uuid4())
+            ts = int(time.time())
+
+            payload = {
+                "text": prompt,
+                "cloud_run": {
+                    "run_id": run_id,
+                    "settle_usage": True,
+                    "budget": {
+                        "max_wall_time_seconds": budget.max_wall_time_seconds,
+                        "max_tool_calls": budget.max_tool_calls,
+                    },
+                },
+            }
+            envelope = {
+                "v": "a2a/0.1",
+                "msg_id": msg_id,
+                "ts": ts,
+                "from": agent_id,
+                "to": agent_id,
+                # ``cloud_run`` is a custom envelope type the daemon recognises
+                # alongside the standard ``message`` flow. Keeping it distinct
+                # from ``message`` lets the daemon route runs differently from
+                # plain owner-chat without sniffing payload internals.
+                "type": "cloud_run",
+                "reply_to": None,
+                "ttl_sec": budget.max_wall_time_seconds,
+                "payload": payload,
+                "payload_hash": "",
+                "sig": {"alg": "ed25519", "key_id": "cloud-run", "value": ""},
+                "topic": body.topic,
+            }
+
+            record = MessageRecord(
+                hub_msg_id=hub_msg_id,
+                msg_id=msg_id,
+                sender_id=agent_id,
+                receiver_id=agent_id,
+                room_id=room_id,
+                topic=body.topic,
+                state=MessageState.queued,
+                envelope_json=json.dumps(envelope),
+                ttl_sec=budget.max_wall_time_seconds,
+                mentioned=True,
+                source_type="cloud_agent_run",
+                source_user_id=str(user_id),
+                source_session_kind="cloud_run",
+            )
+            db.add(record)
+            cai.last_run_at = _now()
+
+            await db.commit()
+        except Exception:
+            await self._release_run_usage_reservation_durably(db, run_id=run_id)
+            raise
 
         # Wake the agent's inbox; cloud daemon's per-agent inbox session
         # picks the run up on the same channel as any other message.
@@ -1542,6 +1573,24 @@ class CloudAgentService:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    async def _release_run_usage_reservation_durably(
+        self,
+        db: AsyncSession,
+        *,
+        run_id: str,
+    ) -> None:
+        try:
+            await db.rollback()
+            await self._usage.release(db, run_id=run_id)
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001
+            await db.rollback()
+            logger.warning(
+                "cloud agent run usage reservation release failed: run=%s err=%s",
+                run_id,
+                exc,
+            )
 
     async def _resolve_run_room(
         self,
@@ -2053,7 +2102,7 @@ async def _notify_inbox(agent_id: str, db: AsyncSession) -> int:
     """
     from hub.routers.hub import notify_inbox
 
-    return await notify_inbox(agent_id, db=db)
+    return await notify_inbox(agent_id, db=db, resume_cloud=False)
 
 
 async def resume_cloud_agent_for_inbox(
