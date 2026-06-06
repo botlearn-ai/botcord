@@ -26,6 +26,9 @@ MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 FORWARD_REPAIR_MIGRATION = (
     MIGRATIONS_DIR / "029_file_records_forward_storage_location_repair.sql"
 )
+LEGACY_STORAGE_COLUMNS_MIGRATION = (
+    MIGRATIONS_DIR / "030_file_records_legacy_storage_columns.sql"
+)
 
 
 @pytest_asyncio.fixture
@@ -871,19 +874,27 @@ def test_file_records_forward_repair_migration_uses_next_number_and_search_path(
 
     assert "027_file_records_cleaned_storage_location.sql" in migration_names
     assert FORWARD_REPAIR_MIGRATION.name in migration_names
+    assert LEGACY_STORAGE_COLUMNS_MIGRATION.name in migration_names
     assert migration_names.index(
         "027_file_records_cleaned_storage_location.sql"
     ) < migration_names.index(FORWARD_REPAIR_MIGRATION.name)
+    assert migration_names.index(
+        FORWARD_REPAIR_MIGRATION.name
+    ) < migration_names.index(LEGACY_STORAGE_COLUMNS_MIGRATION.name)
     assert all(number.isdigit() and len(number) == 3 for number in migration_numbers)
     assert migration_numbers == sorted(migration_numbers)
 
-    sql = FORWARD_REPAIR_MIGRATION.read_text()
+    for migration_path in [
+        FORWARD_REPAIR_MIGRATION,
+        LEGACY_STORAGE_COLUMNS_MIGRATION,
+    ]:
+        sql = migration_path.read_text()
 
-    assert "to_regclass('file_records')" in sql
-    assert "public.file_records" not in sql
-    assert "information_schema" not in sql
-    assert "table_schema = 'public'" not in sql
-    assert "_botcord_schema_migrations" not in sql
+        assert "to_regclass('file_records')" in sql
+        assert "public.file_records" not in sql
+        assert "information_schema" not in sql
+        assert "table_schema = 'public'" not in sql
+        assert "_botcord_schema_migrations" not in sql
 
 
 def test_file_records_forward_repair_migration_has_branch_safe_legacy_path():
@@ -906,6 +917,41 @@ def test_file_records_forward_repair_migration_has_branch_safe_legacy_path():
     legacy_branch = legacy_branch.split("END IF;", 1)[0]
 
     assert "storage_backend" not in legacy_branch
+
+
+def test_file_records_legacy_storage_columns_migration_upgrades_legacy_shape():
+    sql = LEGACY_STORAGE_COLUMNS_MIGRATION.read_text()
+    normalized_sql = " ".join(sql.split())
+
+    assert "IF has_storage_backend THEN" in sql
+    assert "RETURN;" in sql.split("IF has_storage_backend THEN", 1)[1].split(
+        "END IF;", 1
+    )[0]
+    assert "IF NOT has_storage_location THEN" in sql
+    assert "ADD COLUMN IF NOT EXISTS storage_backend VARCHAR(32)" in sql
+    assert "ADD COLUMN IF NOT EXISTS disk_path TEXT" in sql
+    assert "ADD COLUMN IF NOT EXISTS storage_bucket VARCHAR(128)" in sql
+    assert "ADD COLUMN IF NOT EXISTS storage_object_key TEXT" in sql
+    assert (
+        "CHECK (storage_backend IS NULL OR storage_backend IN ('disk', 'supabase'))"
+        in sql
+    )
+    assert (
+        "AND storage_backend = 'disk' AND disk_path IS NOT NULL "
+        "AND storage_object_key IS NULL"
+        in normalized_sql
+    )
+    assert (
+        "AND storage_backend = 'supabase' AND disk_path IS NULL "
+        "AND storage_bucket IS NOT NULL AND storage_object_key IS NOT NULL"
+        in normalized_sql
+    )
+
+    add_columns_sql = sql.split(
+        "ADD COLUMN IF NOT EXISTS storage_backend VARCHAR(32)", 1
+    )[0]
+    assert "SET storage_backend" not in add_columns_sql
+    assert "storage_backend IN ('disk', 'supabase')" not in add_columns_sql
 
 
 @pytest.mark.asyncio
