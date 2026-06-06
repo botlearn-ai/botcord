@@ -7,6 +7,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -21,6 +22,10 @@ from unittest.mock import AsyncMock, patch
 from hub.models import Base, FileRecord
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
+FORWARD_REPAIR_MIGRATION = (
+    MIGRATIONS_DIR / "029_file_records_forward_storage_location_repair.sql"
+)
 
 
 @pytest_asyncio.fixture
@@ -858,6 +863,46 @@ async def test_file_records_storage_location_migration_normalizes_dirty_legacy_r
             and storage_bucket is not None
             and storage_object_key is not None
         )
+
+
+def test_file_records_forward_repair_migration_uses_next_number_and_search_path():
+    migration_names = sorted(path.name for path in MIGRATIONS_DIR.glob("*.sql"))
+
+    assert "028_daemon_instance_version.sql" in migration_names
+    assert FORWARD_REPAIR_MIGRATION.name in migration_names
+    assert migration_names.index("028_daemon_instance_version.sql") < migration_names.index(
+        FORWARD_REPAIR_MIGRATION.name
+    )
+
+    sql = FORWARD_REPAIR_MIGRATION.read_text()
+
+    assert "to_regclass('file_records')" in sql
+    assert "public.file_records" not in sql
+    assert "information_schema" not in sql
+    assert "table_schema = 'public'" not in sql
+    assert "_botcord_schema_migrations" not in sql
+
+
+def test_file_records_forward_repair_migration_has_branch_safe_legacy_path():
+    sql = FORWARD_REPAIR_MIGRATION.read_text()
+
+    assert "IF has_storage_backend THEN" in sql
+    assert "ELSIF has_storage_location THEN" in sql
+    assert "ALTER COLUMN storage_backend DROP NOT NULL" in sql
+    assert "ALTER COLUMN storage_location DROP NOT NULL" in sql
+    assert (
+        "CHECK (storage_backend IS NULL OR storage_backend IN ('disk', 'supabase'))"
+        in sql
+    )
+    assert (
+        "CHECK (storage_location IS NULL OR storage_location IN ('disk', 'supabase'))"
+        in sql
+    )
+
+    legacy_branch = sql.split("ELSIF has_storage_location THEN", 1)[1]
+    legacy_branch = legacy_branch.split("END IF;", 1)[0]
+
+    assert "storage_backend" not in legacy_branch
 
 
 @pytest.mark.asyncio
