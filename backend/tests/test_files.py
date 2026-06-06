@@ -867,12 +867,15 @@ async def test_file_records_storage_location_migration_normalizes_dirty_legacy_r
 
 def test_file_records_forward_repair_migration_uses_next_number_and_search_path():
     migration_names = sorted(path.name for path in MIGRATIONS_DIR.glob("*.sql"))
+    migration_numbers = [name.split("_", 1)[0] for name in migration_names]
 
-    assert "028_daemon_instance_version.sql" in migration_names
+    assert "027_file_records_cleaned_storage_location.sql" in migration_names
     assert FORWARD_REPAIR_MIGRATION.name in migration_names
-    assert migration_names.index("028_daemon_instance_version.sql") < migration_names.index(
-        FORWARD_REPAIR_MIGRATION.name
-    )
+    assert migration_names.index(
+        "027_file_records_cleaned_storage_location.sql"
+    ) < migration_names.index(FORWARD_REPAIR_MIGRATION.name)
+    assert all(number.isdigit() and len(number) == 3 for number in migration_numbers)
+    assert migration_numbers == sorted(migration_numbers)
 
     sql = FORWARD_REPAIR_MIGRATION.read_text()
 
