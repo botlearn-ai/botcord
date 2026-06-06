@@ -18,6 +18,10 @@ function timeSince(iso: string | null): string {
   return `${Math.round(h / 24)} 天前`;
 }
 
+function daemonVersionLabel(version?: string | null): string {
+  return `daemon ${version || "--"}`;
+}
+
 export default function MyDevicesView() {
   const daemons = useDaemonStore((s) => s.daemons);
   const { ownedAgents } = useDashboardSessionStore(
@@ -88,6 +92,8 @@ export default function MyDevicesView() {
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-text-secondary/65">
                         <span className="font-mono">{device.id}</span>
+                        <span>·</span>
+                        <span>{daemonVersionLabel(device.daemon_version)}</span>
                         <span>·</span>
                         <span>上次在线 {timeSince(device.last_seen_at)}</span>
                       </div>

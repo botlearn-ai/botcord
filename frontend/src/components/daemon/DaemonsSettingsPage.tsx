@@ -139,12 +139,13 @@ function RuntimeChip({ runtime }: { runtime: DaemonRuntime }) {
 }
 
 function DaemonVersionChip({ version }: { version?: string | null }) {
+  const label = version || "--";
   return (
     <span
       title="Running botcord-daemon version"
       className="inline-flex items-center rounded-full border border-glass-border bg-glass-bg px-2 py-0.5 font-mono text-[10px] text-text-secondary"
     >
-      daemon {version || "--"}
+      daemon {label}
     </span>
   );
 }
@@ -529,6 +530,7 @@ export default function DaemonsSettingsPage() {
               <tr>
                 <th className="px-4 py-3 text-left text-xs text-text-secondary">Label</th>
                 <th className="px-4 py-3 text-left text-xs text-text-secondary">ID</th>
+                <th className="px-4 py-3 text-left text-xs text-text-secondary">Daemon</th>
                 <th className="px-4 py-3 text-left text-xs text-text-secondary">Last seen</th>
                 <th className="px-4 py-3 text-left text-xs text-text-secondary">Status</th>
                 <th className="px-4 py-3 text-right text-xs text-text-secondary">Actions</th>
@@ -537,7 +539,7 @@ export default function DaemonsSettingsPage() {
             <tbody>
               {!loaded && loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-text-secondary">
+                  <td colSpan={6} className="px-4 py-8 text-center text-text-secondary">
                     <Loader2 className="mx-auto h-4 w-4 animate-spin" />
                   </td>
                 </tr>
@@ -561,6 +563,9 @@ export default function DaemonsSettingsPage() {
                       </td>
                       <td className="px-4 pt-3 font-mono text-xs text-text-secondary" title={d.id}>
                         {truncateId(d.id)}
+                      </td>
+                      <td className="px-4 pt-3">
+                        <DaemonVersionChip version={d.daemon_version} />
                       </td>
                       <td className="px-4 pt-3 text-xs text-text-secondary">
                         {relativeTime(d.last_seen_at)}
@@ -606,7 +611,7 @@ export default function DaemonsSettingsPage() {
                       </td>
                     </tr>
                     <tr className="border-b border-glass-border/50 last:border-0">
-                      <td colSpan={5} className="px-4 pb-3">
+                      <td colSpan={6} className="px-4 pb-3">
                         <RuntimesBlock
                           daemon={d}
                           refreshing={refreshingRuntimesId === d.id}
