@@ -223,7 +223,7 @@ describe("useOwnerChatStore stream terminal handling", () => {
     useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
   });
 
-  it("settles a streaming placeholder when a terminal block arrives before the final message", () => {
+  it("keeps a streaming placeholder open when a terminal block arrives before the final message", () => {
     useOwnerChatStore.getState().appendStreamBlock({
       trace_id: "msg_trace",
       seq: 1,
@@ -241,15 +241,18 @@ describe("useOwnerChatStore stream terminal handling", () => {
       {
         traceId: "msg_trace",
         text: "done",
-        status: "delivered",
+        status: "streaming",
         hubMsgId: null,
-        streamBlocks: [{ block: { kind: "other" } }],
+        streamBlocks: [
+          { block: { kind: "assistant" } },
+          { block: { kind: "other" } },
+        ],
       },
     ]);
-    expect(useOwnerChatStore.getState().activeTraceId).toBeNull();
+    expect(useOwnerChatStore.getState().activeTraceId).toBe("msg_trace");
   });
 
-  it("upgrades a terminal-settled placeholder when the final traced message arrives", () => {
+  it("finalizes a terminal-observed placeholder when the final traced message arrives", () => {
     useOwnerChatStore.getState().appendStreamBlock({
       trace_id: "msg_trace",
       seq: 1,
@@ -275,6 +278,7 @@ describe("useOwnerChatStore stream terminal handling", () => {
       hubMsgId: "msg_final",
       text: "streamed answer",
       status: "delivered",
+      streamBlocks: [{ block: { kind: "other" } }],
     });
   });
 });

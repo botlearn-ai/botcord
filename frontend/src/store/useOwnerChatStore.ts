@@ -108,11 +108,6 @@ function hasVisibleOwnerChatContent(msg: OwnerChatMessage): boolean {
   return visibleExecutionBlocks(msg.streamBlocks).length > 0;
 }
 
-function isTerminalStreamBlock(entry: StreamBlockEntry): boolean {
-  const payload = entry.block.payload;
-  return entry.block.kind === "other" && payload?.terminal === true;
-}
-
 function visibleExecutionBlocks(blocks: StreamBlockEntry[]): StreamBlockEntry[] {
   return blocks.filter(
     (b) =>
@@ -472,7 +467,6 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
   appendStreamBlock: (entry) => {
     set((state) => {
       const traceId = entry.trace_id;
-      const terminal = isTerminalStreamBlock(entry);
 
       // Find existing streaming message for this trace
       const idx = state.messages.findIndex(
@@ -480,14 +474,16 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       );
 
       if (idx === -1) {
-        // Create a new streaming placeholder
+        // Create a streaming placeholder. A terminal runtime block is not the
+        // final chat response; the placeholder remains streaming until the
+        // traced agent message arrives via finalizeStream().
         const streamingMsg: OwnerChatMessage = {
           clientId: `stream_${traceId}`,
           hubMsgId: null,
           sender: "agent",
           text: extractAssistantText([entry]),
-          streamBlocks: terminal ? visibleExecutionBlocks([entry]) : [entry],
-          status: terminal ? "delivered" : "streaming",
+          streamBlocks: [entry],
+          status: "streaming",
           createdAt: entry.created_at,
           senderName: state.agentName,
           type: "message",
@@ -495,7 +491,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         };
         return {
           messages: [...state.messages, streamingMsg],
-          activeTraceId: terminal ? null : traceId,
+          activeTraceId: traceId,
           agentTyping: false,
         };
       }
@@ -507,12 +503,12 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
       const updatedBlocks = [...existing.streamBlocks, entry].sort((a, b) => a.seq - b.seq);
       const updatedText = extractAssistantText(updatedBlocks);
-      const finalized = terminal || existing.status === "delivered";
+      const finalized = existing.status === "delivered";
       const updatedMsg: OwnerChatMessage = {
         ...existing,
         streamBlocks: finalized ? visibleExecutionBlocks(updatedBlocks) : updatedBlocks,
         text: updatedText || existing.text,
-        status: terminal ? "delivered" : existing.status,
+        status: existing.status,
       };
 
       const newMessages = [...state.messages];
@@ -520,7 +516,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
       return {
         messages: newMessages,
-        activeTraceId: terminal ? null : traceId,
+        activeTraceId: traceId,
         agentTyping: false,
       };
     });
