@@ -1,5 +1,11 @@
 # @botcord/daemon
 
+## 0.3.1
+
+### Patch Changes
+
+- 7a775a6: Publish the BotCord group-room replying status reaction runtime support.
+
 ## 0.3.0
 
 ### Minor Changes
