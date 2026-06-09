@@ -43,6 +43,7 @@ from hub.config import (
     HUB_PUBLIC_BASE_URL,
 )
 from hub.routers.cloud_daemon_control import _create_cloud_daemon_access_token
+from hub.routers.daemon_control import HUB_CONTROL_PUBLIC_KEY_B64
 from hub.services.cloud_daemon_provider import CloudDaemonHandle
 
 logger = logging.getLogger(__name__)
@@ -670,6 +671,7 @@ class E2BCloudDaemonProvider:
             "BOTCORD_CLOUD_DAEMON_INSTANCE_ID": cloud_daemon_instance_id,
             "BOTCORD_DAEMON_INSTANCE_ID": daemon_instance_id,
             "BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN": access_token,
+            "BOTCORD_HUB_CONTROL_PUBLIC_KEY": HUB_CONTROL_PUBLIC_KEY_B64,
             "CLOUD_DAEMON_NPM_SPEC": self._daemon_npm_spec,
         }
         if self._deepseek_api_key:

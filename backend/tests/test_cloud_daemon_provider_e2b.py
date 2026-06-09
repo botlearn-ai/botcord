@@ -13,6 +13,7 @@ from hub.routers.cloud_daemon_control import (
     _create_cloud_daemon_access_token,
     _verify_cloud_daemon_access_token,
 )
+from hub.routers.daemon_control import HUB_CONTROL_PUBLIC_KEY_B64
 from hub.services.cloud_agent import (
     CloudAgentService,
     CreateCloudAgentInput,
@@ -115,6 +116,7 @@ async def test_create_or_resume_starts_sandbox_and_injects_env():
     assert env["BOTCORD_HUB_URL"] == "https://hub.test"
     assert env["BOTCORD_CLOUD_DAEMON_INSTANCE_ID"] == "cloud_dm_aaa"
     assert env["BOTCORD_DAEMON_INSTANCE_ID"] == "dm_bbb"
+    assert env["BOTCORD_HUB_CONTROL_PUBLIC_KEY"] == HUB_CONTROL_PUBLIC_KEY_B64
     assert env["DEEPSEEK_API_KEY"] == "ds-secret"
     assert env["CLOUD_DAEMON_NPM_SPEC"] == "@botcord/daemon@latest"
 
@@ -178,6 +180,22 @@ async def test_create_or_resume_injects_extra_runtime_env():
     assert sandbox.env["OPENAI_API_KEY"] == "sk-user"
     assert sandbox.env["OPENAI_BASE_URL"] == "https://new-api.test/v1"
     assert sandbox.env["DEEPSEEK_API_KEY"] == "sk-user"
+
+
+@pytest.mark.asyncio
+async def test_create_or_resume_allows_public_key_override():
+    """Explicit runtime env still wins over provider defaults."""
+    provider, client = _make_provider()
+    handle = await provider.create_or_resume(
+        cloud_daemon_instance_id="cloud_dm_key_override",
+        daemon_instance_id="dm_key_override",
+        user_id=str(uuid.uuid4()),
+        runtime="deepseek-tui",
+        extra_env={"BOTCORD_HUB_CONTROL_PUBLIC_KEY": "override-public-key"},
+    )
+    sandbox = client.get(handle.provider_sandbox_id)
+    assert sandbox is not None
+    assert sandbox.env["BOTCORD_HUB_CONTROL_PUBLIC_KEY"] == "override-public-key"
 
 
 @pytest.mark.asyncio
