@@ -2310,12 +2310,35 @@ async def _broadcast_message_status_reaction(
     room: Room,
     payload: dict[str, Any],
 ) -> None:
-    for member in room.members:
-        if member.muted:
-            continue
+    recipient_ids = {
+        member.agent_id
+        for member in room.members
+        if not member.muted
+    }
+    agent_member_ids = {
+        member.agent_id
+        for member in room.members
+        if not member.muted
+        and (
+            member.participant_type == ParticipantType.agent
+            or member.agent_id.startswith("ag_")
+        )
+    }
+    if agent_member_ids:
+        owner_rows = await db.execute(
+            select(User.human_id)
+            .join(Agent, Agent.user_id == User.id)
+            .where(
+                Agent.agent_id.in_(agent_member_ids),
+                User.human_id.is_not(None),
+            )
+        )
+        recipient_ids.update(owner_rows.scalars().all())
+
+    for recipient_id in recipient_ids:
         event = build_agent_realtime_event(
             type="message_status_reaction",
-            agent_id=member.agent_id,
+            agent_id=recipient_id,
             room_id=room.room_id,
             ext=payload,
         )
@@ -2324,7 +2347,7 @@ async def _broadcast_message_status_reaction(
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "message status reaction realtime publish failed for %s: %s",
-                member.agent_id,
+                recipient_id,
                 exc,
             )
 
