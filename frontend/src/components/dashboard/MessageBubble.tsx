@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Forward, MoreHorizontal, RotateCcw, User } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Forward, Hourglass, MoreHorizontal, RotateCcw, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
 import ReplyQuoteBlock from "./ReplyQuoteBlock";
 import { emitJumpToMessage } from "./messageNavigation";
@@ -162,6 +162,17 @@ function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
           </span>
         );
       })}
+    </span>
+  );
+}
+
+function ReplyingStatusIcon() {
+  return (
+    <span className="replying-hourglass" aria-hidden="true">
+      <Hourglass className="replying-hourglass-frame-icon" strokeWidth={2.2} />
+      <span className="replying-hourglass-top-sand" />
+      <span className="replying-hourglass-stream" />
+      <span className="replying-hourglass-bottom-sand" />
     </span>
   );
 }
@@ -888,7 +899,11 @@ function MessageBubble({
               className="inline-flex items-center gap-1 rounded border border-yellow-400/25 bg-yellow-400/10 px-1 py-px text-[10px] font-medium text-yellow-200"
               title={`${reaction.actor_name || reaction.actor_id} replying`}
             >
-              <span className="text-[11px] leading-none">{reaction.emoji}</span>
+              {reaction.kind === "replying" ? (
+                <ReplyingStatusIcon />
+              ) : (
+                <span className="text-[11px] leading-none">{reaction.emoji}</span>
+              )}
               <span className="max-w-[96px] truncate">{reaction.actor_name || reaction.actor_id}</span>
             </span>
           ))}
