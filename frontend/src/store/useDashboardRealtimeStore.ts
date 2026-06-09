@@ -32,6 +32,10 @@ function isMessageRecallRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean 
   return type === "message_recalled";
 }
 
+function isMessageStatusReactionRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
+  return type === "message_status_reaction";
+}
+
 function isTypingRealtimeEvent(type: RealtimeMetaEvent["type"]): boolean {
   return type === "typing";
 }
@@ -127,6 +131,12 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
         }
 
         const chatStore = useDashboardChatStore.getState();
+        if (currentEvent?.room_id && isMessageStatusReactionRealtimeEvent(currentEvent.type)) {
+          chatStore.applyMessageStatusReaction(currentEvent);
+          nextEvent = queuedRealtimeEvent;
+          continue;
+        }
+
         if (currentEvent?.room_id && isMessageRecallRealtimeEvent(currentEvent.type)) {
           const msgId = typeof currentEvent.ext.msg_id === "string"
             ? currentEvent.ext.msg_id

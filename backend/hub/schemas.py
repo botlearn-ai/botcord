@@ -640,6 +640,18 @@ class DashboardOverviewResponse(BaseModel):
     pending_requests: int
 
 
+class MessageStatusReaction(BaseModel):
+    room_id: str
+    msg_id: str
+    actor_id: str
+    actor_name: str | None = None
+    kind: Literal["replying"]
+    emoji: str
+    state: Literal["active", "cleared", "expired"] = "active"
+    turn_id: str | None = None
+    expires_at: datetime.datetime | None = None
+
+
 class DashboardMessage(BaseModel):
     hub_msg_id: str
     msg_id: str
@@ -653,6 +665,7 @@ class DashboardMessage(BaseModel):
     topic_id: str | None = None
     state: str
     state_counts: dict[str, int] | None = None
+    status_reactions: list[MessageStatusReaction] = Field(default_factory=list)
     mentions: list[str] | None = None
     created_at: datetime.datetime
     is_recalled: bool = False
@@ -808,6 +821,19 @@ class RoomsOverviewResponse(BaseModel):
 
 class TypingRequest(BaseModel):
     room_id: str = Field(..., description="Room ID where the agent is typing", pattern=r"^rm_")
+
+
+class MessageStatusReactionRequest(BaseModel):
+    room_id: str = Field(..., description="Room ID containing the target message", pattern=r"^rm_")
+    kind: Literal["replying"] = "replying"
+    emoji: str = Field(default="⏳", min_length=1, max_length=16)
+    turn_id: str = Field(..., min_length=1, max_length=128)
+    ttl_sec: int = Field(default=180, ge=5, le=600)
+
+
+class MessageStatusReactionClearRequest(BaseModel):
+    room_id: str = Field(..., description="Room ID containing the target message", pattern=r"^rm_")
+    turn_id: str = Field(..., min_length=1, max_length=128)
 
 
 # --- File upload schemas ---

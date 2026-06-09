@@ -89,6 +89,7 @@ function envNonNegativeInt(name: string, fallback: number): number {
  * (or `botcord send` CLI via Bash) to actually deliver replies.
  */
 const OWNER_CHAT_ROOM_PREFIX = "rm_oc_";
+const REPLYING_STATUS_EMOJI = "⏳";
 const TRANSCRIPT_BLOCK_RAW_LIMIT = 16 * 1024;
 const SECRET_KEY_RE = /token|secret|private.?key|api.?key|authorization|password/i;
 
@@ -328,6 +329,36 @@ export function pickReplyToTarget(msg: GatewayInboundMessage): string {
       ? raw.envelope.msg_id
       : null;
   return envMsgId ?? msg.id;
+}
+
+function rawEntryMsgId(entry: unknown): string | null {
+  if (!entry || typeof entry !== "object") return null;
+  const env = (entry as { envelope?: { msg_id?: unknown } }).envelope;
+  return typeof env?.msg_id === "string" && env.msg_id ? env.msg_id : null;
+}
+
+/**
+ * Pick the BotCord room message that should carry the ephemeral "replying"
+ * status reaction for a turn. Batched turns prefer the latest mentioned
+ * message, otherwise the latest batch member.
+ */
+export function pickMessageStatusTarget(msg: GatewayInboundMessage): string | null {
+  const raw = msg.raw as { batch?: unknown; mentioned?: unknown } | null | undefined;
+  const batch = raw && Array.isArray(raw.batch) ? raw.batch : null;
+  if (batch && batch.length > 0) {
+    for (let i = batch.length - 1; i >= 0; i -= 1) {
+      const entry = batch[i] as { mentioned?: unknown } | undefined;
+      if (entry?.mentioned === true) {
+        const msgId = rawEntryMsgId(entry);
+        if (msgId) return msgId;
+      }
+    }
+    for (let i = batch.length - 1; i >= 0; i -= 1) {
+      const msgId = rawEntryMsgId(batch[i]);
+      if (msgId) return msgId;
+    }
+  }
+  return rawEntryMsgId(raw) ?? null;
 }
 
 /** Factory signature for building a runtime adapter at turn dispatch time. */
@@ -1574,6 +1605,39 @@ export class Dispatcher {
       (streamable || !isBotCordChannel(channel));
     const canStream =
       streamable && typeof traceId === "string" && typeof channel.streamBlock === "function";
+    const messageStatusTargetId =
+      isBotCordChannel(channel) &&
+      msg.conversation.kind === "group" &&
+      !isOwnerChatRoom(msg) &&
+      typeof channel.messageStatus === "function"
+        ? pickMessageStatusTarget(msg)
+        : null;
+    let messageStatusStarted = false;
+    const sendReplyingStatus = async (phase: "started" | "cleared"): Promise<void> => {
+      if (!messageStatusTargetId || typeof channel.messageStatus !== "function") return;
+      if (phase === "cleared" && !messageStatusStarted) return;
+      if (phase === "started") messageStatusStarted = true;
+      try {
+        await channel.messageStatus({
+          traceId: traceId ?? null,
+          accountId: msg.accountId,
+          conversationId: msg.conversation.id,
+          messageId: messageStatusTargetId,
+          turnId,
+          kind: "replying",
+          emoji: REPLYING_STATUS_EMOJI,
+          phase,
+          log: this.log,
+        });
+      } catch (err) {
+        this.log.warn("dispatcher: channel.messageStatus failed", {
+          phase,
+          messageId: messageStatusTargetId,
+          turnId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    };
     const recordBlock = (block: StreamBlock): void => {
       if (block.kind === "tool_use" && cloudRunBudget?.maxToolCalls !== undefined) {
         observedToolCalls += 1;
@@ -1824,6 +1888,7 @@ export class Dispatcher {
     // Eagerly fire typing.started before runtime.run so the user sees
     // "agent is responding" within ~one round-trip even if the runtime takes
     // seconds before its first block.
+    await sendReplyingStatus("started");
     fireTypingIfNeeded();
 
     // Compute systemContext right before dispatch. The builder must NOT block
@@ -2389,6 +2454,7 @@ export class Dispatcher {
       // (timeout, error, gated reply). Skipped on cancel-previous: the
       // superseder is about to run its own typing/thinking lifecycle.
       finalizeThinkingIfActive();
+      await sendReplyingStatus("cleared");
       // Clear slot ownership AFTER the reply has been sent (or skipped).
       // Only then do cancel-previous arrivals stop finding this slot — which
       // is exactly what we want: while we're in the post-runtime window, a
