@@ -9,7 +9,7 @@
 
 > 状态: 方案确认，待实现
 > 日期: 2026-05-20
-> 范围: Cloud Agent MVP、正式 API、Cloud daemon WebSocket、E2B sandbox、DeepSeek TUI runtime、独立 Cloud Credits
+> 范围: Cloud Agent MVP、正式 API、Cloud daemon WebSocket、E2B sandbox、DeepSeek TUI runtime、独立 Cloud Credits、BotLearn first-party browser integration
 
 ## 1. 已确认决策
 
@@ -21,6 +21,9 @@ Cloud Agent 的 MVP 按以下约束实现:
 - Cloud Agent 允许在 E2B sandbox 内执行 shell，但必须有明确预算和安全边界。
 - Cloud Credits 独立于现有 `COIN` / wallet 体系。
 - 直接建设正式 API，不先做独立 prototype script；正式实现必须有 fake provider 以保证测试和灰度。
+- BotLearn 作为 first-party public client 集成时，不要求用户打开独立 BotCord Connect 授权页；BotCord 通过 BotLearn 登录 token 自动 JIT 创建 / 绑定 BotCord user，并下发短期 BotCord integration session token。
+- BotLearn 浏览器端不持有长期 API key；所有 run 调用使用短期、agent-scoped、scope-limited session token。
+- BotLearn 与 BotCord 的实时通信可以采用 daemon 风格的 `req` / `res` / `event` WebSocket 协议，但只开放 Cloud Run 公共子集，不暴露 cloud daemon 内部 control frame。
 
 Cloud Agent 本质是 BotCord 托管的 daemon 实例，而不是 Hub 直接调用 DeepSeek:
 
@@ -55,6 +58,9 @@ MVP 不做:
 - Claude Code / Codex 默认云端托管。
 - 不受限 shell、无限网络访问或长期常驻 sandbox。
 - Hub-side DeepSeek HTTP task adapter。
+- 通用第三方开发者平台、marketplace 或任意 app 自助注册。
+- 浏览器可见的长期 API key / installation key。
+- 向 BotLearn 或其他外部 app 开放完整 daemon control plane。
 
 ## 3. 系统边界
 
@@ -100,6 +106,25 @@ E2B sandbox 负责:
 - `botcord-daemon` 和 `deepseek-tui` 运行环境。
 
 MVP 推荐使用已验证的 Ubuntu 24.04 / glibc 2.39 template，避免在默认 Debian 12 base 中启动时编译 DeepSeek TUI。
+
+### 3.4 BotLearn first-party integration
+
+BotLearn 是 BotCord first-party app，但当前假设没有独立后端服务承接长期 secret。因此集成边界是:
+
+- BotLearn frontend 持有 BotLearn 登录态 token。
+- BotCord Hub 验证 BotLearn token 的 issuer、audience、signature、expiry 和用户身份 claim。
+- BotCord Hub 按需创建 / 绑定 BotCord user，并为该 user 创建或选择默认 Cloud Agent。
+- BotCord Hub 返回短期 BotCord integration session token 给 BotLearn frontend。
+- BotLearn frontend 用短期 token 连接 BotCord app-facing WebSocket 或 HTTP API。
+
+BotLearn frontend 不负责:
+
+- 持有 BotCord 长期 API key。
+- 持有 cloud daemon access token。
+- 调用 `/cloud/daemon/ws`。
+- 触发 `provision_agent`、`revoke_agent`、`reload_config` 等内部控制面 frame。
+
+BotLearn 登录态必须是 BotCord 可验证的 JWT / OIDC token。优先选择 BotLearn 与 BotCord 共用 Supabase/OIDC 租户；如果不是同一租户，BotCord 通过 BotLearn issuer 的 JWKS 验证签名，并白名单 `iss` / `aud` / allowed origin。
 
 ## 4. WebSocket 设计
 
@@ -186,6 +211,70 @@ cloud daemon registry:
 ```
 
 Cloud service dispatch 时优先使用 `cloud_daemon_instance_id`，底层 frame 仍可携带 `daemon_instance_id` 以复用现有 agent 绑定字段。
+
+### 4.5 BotLearn app-facing WebSocket
+
+BotLearn 不连接 `/cloud/daemon/ws`。新增 app-facing endpoint:
+
+```text
+GET /api/integrations/botlearn/ws
+Authorization: Bearer <botlearn-integration-session-token>
+```
+
+session token 由 `POST /api/integrations/botlearn/session` 签发。推荐 JWT claims:
+
+```json
+{
+  "kind": "botlearn-integration-session",
+  "iss": "botcord-hub",
+  "aud": "botlearn",
+  "sub": "botcord-user-uuid",
+  "botlearn_sub": "botlearn-user-id",
+  "user_id": "uuid",
+  "agent_id": "ag_xxx",
+  "installation_id": "bli_xxx",
+  "scopes": ["cloud_runs:create", "cloud_runs:read", "cloud_runs:stream"],
+  "iat": 1234567890,
+  "exp": 1234568790
+}
+```
+
+要求:
+
+- 默认 TTL 15 分钟。
+- token 只授权一个 user + 一个默认 agent + 一组 scopes。
+- token 不能用作 agent token、cloud daemon token、runtime session token 或 Dashboard user token。
+- CORS / WebSocket Origin 必须限制为 BotLearn allowlist。
+- token 泄露后的损失必须被 TTL、scope、rate limit、run budget 和 usage quota 限制。
+
+BotLearn WebSocket 复用 daemon 协议风格，但使用独立协议名:
+
+```json
+{ "type": "hello", "protocol": "botcord-agent-session/0.1" }
+{ "type": "req", "id": "req_1", "method": "cloud_run.create", "params": { "prompt": "...", "budget": {} } }
+{ "type": "res", "id": "req_1", "ok": true, "result": { "run_id": "car_xxx" } }
+{ "type": "event", "event": "run.started", "run_id": "car_xxx" }
+{ "type": "event", "event": "run.output.delta", "run_id": "car_xxx", "text": "..." }
+{ "type": "event", "event": "run.completed", "run_id": "car_xxx", "usage": {} }
+```
+
+第一版允许的方法:
+
+```text
+cloud_agent.get
+cloud_run.create
+cloud_run.get
+cloud_run.cancel
+cloud_usage.get
+```
+
+明确禁止的方法 / frame:
+
+```text
+cloud_daemon_hello/provision_agent/revoke_agent/reload_config/list_runtimes/list_agent_files/set_route/policy_updated/gateway_send/runtime_snapshot
+```
+
+实现上，`cloud_run.create` 必须调用 `CloudAgentService.create_run` 或等价 service path，不能绕过 entitlement、quota preflight、usage reservation、sandbox resume、message/inbox 注入和 settlement。
 
 ## 5. 数据模型
 
@@ -306,6 +395,32 @@ usage_balances
 
 Cloud Credits 不复用 `COIN`。Cloud Credits 的业务语义是模型 token、sandbox active seconds 和平台 buffer 的统一成本单位。
 
+### 5.6 botlearn_installations
+
+一条记录表示 BotLearn 用户身份到 BotCord user / 默认 Cloud Agent 的 first-party 授权绑定。它不是长期 API key。
+
+```text
+botlearn_installations
+  id                         # bli_<random>
+  user_id                    # FK users.id
+  botlearn_subject           # stable sub from BotLearn token
+  botlearn_email
+  agent_id                   # default Cloud Agent
+  scopes_json                # allowed BotLearn scopes
+  limits_json                # per-session / per-day run limits, budget clamps
+  last_used_at
+  revoked_at
+  created_at
+  updated_at
+```
+
+约束:
+
+- `(botlearn_subject, agent_id)` 唯一，避免重复安装。
+- 若 BotLearn 与 BotCord 共用 auth provider，可用同一 `users` row；否则使用 `botlearn_subject` 做外部身份映射。
+- 不存明文 BotLearn token。
+- 不存浏览器可长期复用的 BotCord API key。
+
 ## 6. Backend API
 
 第一批正式 API:
@@ -415,6 +530,44 @@ Delete:
 - cleanup E2B sandbox。
 - 标记 cloud agent / daemon 为 deleted。
 
+### 6.4 BotLearn Session Exchange
+
+`POST /api/integrations/botlearn/session`
+
+Header:
+
+```text
+Authorization: Bearer <botlearn-id-token>
+```
+
+输出:
+
+```json
+{
+  "access_token": "botcord-short-lived-session-token",
+  "expires_in": 900,
+  "agent_id": "ag_xxx",
+  "installation_id": "bli_xxx",
+  "ws_url": "wss://hub.example.com/api/integrations/botlearn/ws"
+}
+```
+
+流程:
+
+```text
+1. 校验 BotLearn token 的 issuer、audience、signature、expiry、subject 和 email_verified。
+2. 通过 botlearn_subject 查找 BotCord user；不存在则 JIT 创建 user。
+3. 查找或创建该 user 的默认 Cloud Agent。
+4. 创建或更新 botlearn_installations 授权记录。
+5. 校验 entitlement、Cloud Agent 数量限制和免费 / 付费 quota。
+6. 签发短期 botlearn-integration-session token。
+7. 返回 agent_id、installation_id 和 WebSocket URL。
+```
+
+JIT 创建默认 Cloud Agent 时必须复用 `CloudAgentService.create_cloud_agent` 或等价 service path。若 quota 不足或 Cloud Agent 创建失败，session exchange 返回明确 4xx / 5xx，不应下发可用 session token。
+
+BotLearn 无需打开 BotCord Connect 授权页；授权默认由 first-party 信任关系 + BotLearn 登录身份完成。但用户必须能在 BotCord 或 BotLearn 设置中查看并 revoke 该 `botlearn_installation`。
+
 ## 7. Service / Provider 分层
 
 ### 7.1 CloudAgentService
@@ -479,6 +632,9 @@ MVP 允许 shell，但只允许在 E2B sandbox 内执行。
 - secret 最小注入，尽量短期有效。
 - 日志脱敏。
 - 删除 agent 时 revoke token、删除 secret、清理 workspace。
+- BotLearn browser session 只拿短期 token，不能拿长期 API key。
+- BotLearn app-facing WebSocket 只接受 Cloud Run 公共子协议。
+- BotLearn session exchange 必须验证 BotLearn issuer / audience / Origin allowlist。
 
 DeepSeek adapter 必须显式接收 Cloud trust policy。不能让 cloud agent 默认继承本地 daemon 的完全信任语义。
 
@@ -553,6 +709,7 @@ MVP 通过条件:
 - quota 不足时不会启动新的 E2B / 模型成本。
 - idle 后 sandbox 自动 pause。
 - 删除 Cloud Agent 会 revoke token 并触发 cleanup。
+- BotLearn 集成不阻塞 Cloud Agent MVP；进入 first-party 集成阶段时，BotLearn frontend 可以通过 session exchange 获得短期 token，并使用 `botcord-agent-session/0.1` 创建和监听 Cloud Run。
 
 ## 12. 实现顺序
 
@@ -603,6 +760,14 @@ PR 8: Dashboard MVP
   - 状态
   - 剩余额度
   - pause / delete
+
+PR 9: BotLearn first-party browser integration
+  - 验证 BotLearn 登录 token
+  - JIT 创建 / 绑定 BotCord user
+  - 创建或选择默认 Cloud Agent
+  - botlearn_installations
+  - 短期 integration session token
+  - botcord-agent-session/0.1 WebSocket 子协议
 ```
 
 ## 13. 待实现前确认
@@ -619,3 +784,19 @@ PR 4 前已确认 (2026-05-20):
 - DeepSeek provider key 通过 Hub env `DEEPSEEK_API_KEY` 注入 sandbox。完整 secret manager 集成留待生产硬化阶段。
 - E2B template 默认 `botcord-deepseek-tui-ubuntu2404-dev2` (ID `z0f20u29zdgx7cxnuzcu`),通过 env `E2B_TEMPLATE_ID` 覆盖。
 - sandbox 启动命令通过 Hub env `CLOUD_DAEMON_STARTUP_COMMAND` 覆盖。默认命令优先用 `npx --package "$CLOUD_DAEMON_NPM_SPEC"` 启动，避免复用模板中已过期的预装 daemon；设置 `CLOUD_DAEMON_NPM_SPEC=bundled` 时才强制使用镜像内置 `botcord-daemon`。注入 env: `BOTCORD_HUB_URL` / `BOTCORD_CLOUD_DAEMON_INSTANCE_ID` / `BOTCORD_DAEMON_INSTANCE_ID` / `BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN` / `CLOUD_DAEMON_NPM_SPEC` / `DEEPSEEK_API_KEY`。
+
+BotLearn first-party 集成已确认 (2026-06-09):
+
+- BotLearn 没有后端服务时，不发放浏览器可见的长期 BotCord API key。
+- BotCord 通过 BotLearn 登录 token 做 session exchange；如用户不存在则 JIT 创建 BotCord user。
+- 不要求用户打开独立 BotCord Connect 页面；授权记录由 first-party `botlearn_installations` 表承载。
+- BotLearn frontend 只拿短期 `botlearn-integration-session` token，默认 TTL 15 分钟。
+- BotLearn WebSocket 采用 daemon 风格 `req` / `res` / `event`，协议名 `botcord-agent-session/0.1`，只开放 Cloud Run 公共子集。
+
+BotLearn first-party 集成已实现 (2026-06-09, 分支 `feat/botlearn-first-party-integration`):
+
+- token 验证 + session 签发: `backend/app/botlearn_auth.py` (HS256 共享密钥 / RS256/ES256 JWKS 双路径，issuer/audience/expiry/email_verified 校验)。
+- 路由: `backend/app/routers/botlearn.py` (`POST /session` + `GET /ws`)；config 见 `BOTLEARN_*` env。
+- 数据模型: `public.botlearn_installations` (migration `031`)。
+- run 状态: `CloudAgentService.get_run` / `cancel_run` 基于 usage ledger (`usage_reservations` / `usage_events`) 推导，无独立 run 状态表。
+- 未做 (留待硬化): WS 实时 output delta 流 (现以 `run.started` 事件 + `cloud_run.get` 轮询替代)、per-session/day rate limit、budget clamp、审计日志。

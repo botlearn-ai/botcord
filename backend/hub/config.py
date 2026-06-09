@@ -507,3 +507,42 @@ CREDIT_MILLIS_PER_SANDBOX_SECOND: int = int(
 CLOUD_AGENT_RUN_CREDIT_RESERVATION_FLOOR: int = int(
     os.getenv("CLOUD_AGENT_RUN_CREDIT_RESERVATION_FLOOR", "5")
 )
+
+# ---------------------------------------------------------------------------
+# BotLearn first-party browser integration (PR 9)
+#
+# BotLearn has no backend service holding a long-term secret. The Hub verifies
+# BotLearn's login token directly, JIT-creates/binds a BotCord user, and hands
+# the browser a short-lived, agent-scoped session token. None of these are
+# long-lived browser-visible credentials. See
+# docs/cloud-agent-technical-design.md §3.4 / §6.4.
+# ---------------------------------------------------------------------------
+BOTLEARN_INTEGRATION_ENABLED: bool = os.getenv(
+    "BOTLEARN_INTEGRATION_ENABLED", "false"
+).lower() in ("true", "1", "yes")
+# Expected ``iss`` claim on the BotLearn login token (None disables the check).
+BOTLEARN_ISSUER: str | None = os.getenv("BOTLEARN_ISSUER") or None
+# Expected ``aud`` claim (None disables the check).
+BOTLEARN_AUDIENCE: str | None = os.getenv("BOTLEARN_AUDIENCE") or None
+# JWKS endpoint for asymmetric (RS256/ES256) BotLearn tokens.
+BOTLEARN_JWKS_URL: str | None = os.getenv("BOTLEARN_JWKS_URL") or None
+# Shared secret for HS256 BotLearn tokens (dev / same Supabase tenant).
+BOTLEARN_JWT_SECRET: str | None = os.getenv("BOTLEARN_JWT_SECRET") or None
+# Origin allowlist for the session-exchange + app-facing WS endpoints. Empty
+# means the integration is effectively closed (deny by default).
+BOTLEARN_ALLOWED_ORIGINS: list[str] = [
+    o.strip().rstrip("/")
+    for o in os.getenv("BOTLEARN_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
+# Short-lived integration session token TTL (seconds). Default 15 minutes.
+BOTLEARN_SESSION_TTL_SECONDS: int = int(
+    os.getenv("BOTLEARN_SESSION_TTL_SECONDS", "900")
+)
+# Require ``email_verified=true`` on the BotLearn login token.
+BOTLEARN_REQUIRE_EMAIL_VERIFIED: bool = os.getenv(
+    "BOTLEARN_REQUIRE_EMAIL_VERIFIED", "true"
+).lower() in ("true", "1", "yes")
+# Public WS URL advertised to the BotLearn frontend after session exchange.
+# Falls back to ``HUB_PUBLIC_BASE_URL`` (ws/wss) when unset.
+BOTLEARN_WS_URL: str | None = os.getenv("BOTLEARN_WS_URL") or None

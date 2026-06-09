@@ -128,6 +128,11 @@ def generate_cloud_agent_run_id() -> str:
     return "crun_" + secrets.token_hex(8)
 
 
+def generate_botlearn_installation_id() -> str:
+    """Generate BotLearn installation ID: 'bli_' + 12 random hex chars."""
+    return "bli_" + secrets.token_hex(6)
+
+
 def generate_gateway_connection_id(provider: str) -> str:
     """Generate third-party gateway connection ID: 'gw_<provider>_<12 hex>'.
 

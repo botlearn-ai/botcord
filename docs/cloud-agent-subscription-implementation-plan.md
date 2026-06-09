@@ -55,6 +55,7 @@ MVP 暂不做:
 - BYOK。
 - 团队共享 workspace。
 - marketplace。
+- BotLearn first-party browser integration。
 - 无限常驻 sandbox。
 - 不受限 shell / 网络访问。
 - Hub-side DeepSeek HTTP task adapter。
@@ -142,6 +143,24 @@ MVP 暂不做:
 - 普通用户月成本稳定低于免费内测预算线。
 - 重度用户触发额度墙，不会继续产生无限 E2B 或模型成本。
 - 产出是否进入公开付费、继续免费 beta 或改成 BYOK 的决策依据。
+
+### Gate 5: BotLearn first-party browser integration
+
+> 状态: 已实现 (2026-06-09, 分支 `feat/botlearn-first-party-integration`)。除"rate limit / budget clamp / 审计日志"留待硬化阶段外，其余验收项均已落地并有单测覆盖。WS 暂以 `run.started` 事件 + `cloud_run.get` 轮询替代实时 output delta 流。
+
+目标: BotLearn 没有后端服务时，BotLearn frontend 可以基于 BotLearn 登录态直接使用 BotCord Cloud Agent，但不持有长期 BotCord API key。
+
+验收:
+
+- BotCord 可以验证 BotLearn 登录 token 的 issuer、audience、signature、expiry、subject 和 email_verified。
+- 首次使用时，BotCord 可以按需创建 / 绑定 BotCord user。
+- BotCord 可以为该 user 创建或选择默认 Cloud Agent。
+- `botlearn_installations` 记录 user、BotLearn subject、默认 agent、scopes、limits 和 revoke 状态。
+- BotLearn frontend 只能获得短期 `botlearn-integration-session` token，默认 TTL 15 分钟。
+- BotLearn WebSocket 使用 `botcord-agent-session/0.1`，只开放 Cloud Run 公共子集。
+- `cloud_run.create` 复用 CloudAgentService run path，不绕过 quota、resume、usage reservation 和 settlement。
+- 用户可以在 BotCord 或 BotLearn 设置中撤销 BotLearn 绑定。
+- Origin allowlist、rate limit、budget clamp 和审计日志生效。
 
 ## 4. PR 拆解
 
@@ -311,7 +330,38 @@ MVP 暂不做:
 - 内测用户可以不借助后台脚本完成 Cloud Agent 基础操作。
 - UI 不承诺尚未实现的套餐、BYOK、fallback 或无限能力。
 
-### PR 9: 后置付费商业化
+### PR 9: BotLearn first-party browser integration
+
+> 状态: 已实现 (2026-06-09)。落地: `botlearn_installations` 表 + migration `031`、`POST /api/integrations/botlearn/session`、`GET /api/integrations/botlearn/ws` (`botcord-agent-session/0.1`, 五个公共方法)、`CloudAgentService.get_run` / `cancel_run` (基于 usage ledger 推导 run 状态)。`cloud_run.create` 复用 `CloudAgentService.create_run`。token 过期 / scope mismatch / quota-不足-不发 token / Origin 拒绝 / revoke 后拒绝全套单测通过。BotLearn 认证模块见 `backend/app/botlearn_auth.py`，路由见 `backend/app/routers/botlearn.py`。
+
+范围:
+
+- 新增 `botlearn_installations`。
+- 新增 `POST /api/integrations/botlearn/session`。
+- 校验 BotLearn 登录 token，并白名单 issuer、audience 和 Origin。
+- JIT 创建 / 绑定 BotCord user。
+- 创建或选择默认 Cloud Agent。
+- 签发短期 `botlearn-integration-session` token。
+- 新增 `GET /api/integrations/botlearn/ws`。
+- 实现 `botcord-agent-session/0.1` 的 `req` / `res` / `event` 协议。
+- 第一版只允许 `cloud_agent.get`、`cloud_run.create`、`cloud_run.get`、`cloud_run.cancel`、`cloud_usage.get`。
+- 增加 token 过期、scope mismatch、quota 不足、Origin 拒绝和 revoke 后拒绝的测试。
+
+暂不做:
+
+- 通用第三方 developer app / marketplace。
+- BotLearn 后端长期 API key。
+- 浏览器可见的长期 BotCord API key。
+- 完整 daemon control plane 暴露。
+
+验收:
+
+- Gate 5 通过。
+- BotLearn frontend 可以无 BotCord Connect 页面完成 Cloud Agent run。
+- BotLearn session exchange 失败时不会创建可用 session token。
+- BotLearn WebSocket 的 run 创建路径不会绕过 CloudAgentService。
+
+### PR 10: 后置付费商业化
 
 范围:
 
@@ -364,12 +414,20 @@ PR 6 前已确认 (2026-05-20):
 
 - Cloud trust policy 如何传给 daemon runtime adapter(daemon-side 修改,Hub 侧只透传 budget)。
 
-进入 PR 9 前需要确认:
+进入 PR 10 前需要确认:
 
 - Lite / Pro 的真实价格和额度。
 - E2B Pro 是否需要购买。
 - BYOK 是否作为重度用户分流入口。
 - 免费功能是否继续保留，还是转为限时 trial。
+
+PR 9 前已确认 (2026-06-09):
+
+- BotLearn 是 first-party app，但当前按无后端 public client 处理。
+- 不要求 BotLearn 打开独立 BotCord Connect 授权页。
+- BotCord 通过 BotLearn 登录 token 做 session exchange，并在首次使用时 JIT 创建 / 绑定 user。
+- BotLearn frontend 只拿短期 BotCord integration session token，不拿长期 API key。
+- WebSocket 采用 daemon 风格 `req` / `res` / `event`，协议名 `botcord-agent-session/0.1`，只开放 Cloud Run 公共子集。
 
 ## 6. 风险控制
 

@@ -30,7 +30,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from hub.id_generators import generate_human_id
+from hub.id_generators import generate_botlearn_installation_id, generate_human_id
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     ApprovalKind,
     ApprovalState,
@@ -2186,4 +2186,66 @@ class UsageReservation(Base):
     )
     released_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class BotlearnInstallation(Base):
+    """First-party authorization binding: a BotLearn login identity to a
+    BotCord user + default Cloud Agent.
+
+    This is NOT a long-term API key. BotLearn frontend exchanges its login
+    token for a short-lived ``botlearn-integration-session`` token; this row
+    records the durable authorization (which user, which default agent, what
+    scopes/limits) and supports revocation. See
+    ``docs/cloud-agent-technical-design.md`` §5.6.
+    """
+
+    __tablename__ = "botlearn_installations"
+    __table_args__ = (
+        UniqueConstraint(
+            "botlearn_subject", "agent_id", name="uq_botlearn_subject_agent"
+        ),
+        Index("ix_botlearn_installations_user", "user_id"),
+        Index("ix_botlearn_installations_subject", "botlearn_subject"),
+        {"schema": "public"},
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(32), primary_key=True, default=generate_botlearn_installation_id
+    )
+    # Plain Uuid (no FK) to mirror the cloud-agent usage tables, which keep
+    # ``user_id`` unconstrained so the rows survive cross-schema test setups.
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, nullable=False)
+    # Stable ``sub`` from the BotLearn login token.
+    botlearn_subject: Mapped[str] = mapped_column(String(256), nullable=False)
+    botlearn_email: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # The default Cloud Agent this installation operates. Nullable so the row
+    # survives the agent being deleted; a later session exchange re-selects one.
+    agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    scopes_json: Mapped[list] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=list,
+        server_default="[]",
+    )
+    limits_json: Mapped[dict] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
+    last_used_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
