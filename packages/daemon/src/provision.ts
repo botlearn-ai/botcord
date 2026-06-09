@@ -1195,17 +1195,17 @@ async function installLocalAgent(
     throw err;
   }
 
+  // Hot-add the synthesized per-agent managed route before starting the
+  // channel. `Gateway.addChannel()` launches the BotCord channel immediately;
+  // on cloud cold-start it may drain an already-delivered inbox message before
+  // this function returns. The route must therefore exist before the channel
+  // can emit its first envelope.
   try {
-    await ctx.gateway.addChannel({
-      id: credentials.agentId,
-      type: BOTCORD_CHANNEL_TYPE,
-      accountId: credentials.agentId,
-      agentId: credentials.agentId,
-    });
+    upsertManagedRouteForCredentials(credentials, cfg, ctx.gateway);
   } catch (err) {
-    // Best-effort rollback: drop the new agent from config and remove the
-    // credentials file. Log loudly so operators notice the partial state.
-    daemonLog.error("provision.addChannel failed, rolling back", {
+    // Rollback config + credentials on managed-route failure (shouldn't
+    // happen — pure map op — but keeps the invariant tight).
+    daemonLog.error("provision.upsertManagedRoute failed, rolling back", {
       agentId: credentials.agentId,
       error: err instanceof Error ? err.message : String(err),
     });
@@ -1223,19 +1223,22 @@ async function installLocalAgent(
     throw err;
   }
 
-  // Hot-add the synthesized per-agent managed route so the next turn picks
-  // the agent's runtime + workspace cwd without waiting for reload_config.
   try {
-    upsertManagedRouteForCredentials(credentials, cfg, ctx.gateway);
+    await ctx.gateway.addChannel({
+      id: credentials.agentId,
+      type: BOTCORD_CHANNEL_TYPE,
+      accountId: credentials.agentId,
+      agentId: credentials.agentId,
+    });
   } catch (err) {
-    // Rollback the channel + config + credentials on managed-route failure
-    // (shouldn't happen — pure map op — but keeps the invariant tight).
-    daemonLog.error("provision.upsertManagedRoute failed, rolling back", {
+    // Best-effort rollback: drop the pre-published route, new agent config,
+    // and credentials file. Log loudly so operators notice the partial state.
+    daemonLog.error("provision.addChannel failed, rolling back", {
       agentId: credentials.agentId,
       error: err instanceof Error ? err.message : String(err),
     });
     try {
-      await ctx.gateway.removeChannel(credentials.agentId, "provision rollback");
+      ctx.gateway.removeManagedRoute(credentials.agentId);
     } catch {
       // ignore
     }

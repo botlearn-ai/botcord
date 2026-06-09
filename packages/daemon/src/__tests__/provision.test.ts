@@ -1006,6 +1006,42 @@ describe("provision_agent seeds workspace + hot-adds managed route", () => {
     });
   });
 
+  it("hot-adds the managed route before starting the channel", async () => {
+    await withSandboxHome(async () => {
+      const gw = makeFakeGateway();
+      const events: string[] = [];
+      gw.upsertManagedRoute.mockImplementation((accountId: string, route: GatewayRoute) => {
+        events.push(`route:${accountId}:${route.runtime}:${route.cwd}`);
+      });
+      gw.addChannel.mockImplementation(async (cfg: GatewayChannelConfig) => {
+        events.push(`channel:${cfg.id}`);
+      });
+      const provisioner = createProvisioner({
+        gateway: gw as unknown as Parameters<typeof createProvisioner>[0]["gateway"],
+      });
+      const privateKey = Buffer.alloc(32, 17).toString("base64");
+
+      const ack = await provisioner({
+        id: "req_order",
+        type: CONTROL_FRAME_TYPES.PROVISION_AGENT,
+        params: {
+          runtime: "codex",
+          credentials: {
+            agentId: "ag_order",
+            keyId: "k_order",
+            privateKey,
+            hubUrl: "https://hub.example",
+          },
+        },
+      });
+
+      expect(ack.ok).toBe(true);
+      expect(events).toHaveLength(2);
+      expect(events[0]).toMatch(/^route:ag_order:codex:/);
+      expect(events[1]).toBe("channel:ag_order");
+    });
+  });
+
   it("binds OpenClaw default agent when provisioning only specifies a loopback gateway", async () => {
     await withSandboxHome(async ({ tmp, fs, path: nodePath }) => {
       mockState.cfg = {
@@ -1231,10 +1267,11 @@ describe("provision_agent seeds workspace + hot-adds managed route", () => {
           },
         }),
       ).rejects.toThrow(/channel boom/);
-      // Credentials unlinked; managed route never added (addChannel threw
-      // before the upsert step).
+      // Credentials unlinked; pre-published managed route removed after the
+      // channel failed to start.
       const credFile = nodePath.join(tmp, ".botcord", "credentials", "ag_chfail.json");
       expect(fs.existsSync(credFile)).toBe(false);
+      expect(gw.removeManagedRoute).toHaveBeenCalledWith("ag_chfail");
       expect(gw.listManagedRoutes()).toHaveLength(0);
     });
   });

@@ -171,6 +171,26 @@ class CloudAgentRunView:
 
 
 @dataclass
+class CloudAgentRunStatusView:
+    """Best-effort run state derived from the usage ledger.
+
+    There is no dedicated run-state table (see PR 9 decision); status is
+    inferred from the per-run :class:`UsageReservation` and any settled
+    :class:`UsageEvent`. ``status`` is one of ``running`` / ``completed`` /
+    ``cancelled`` / ``unknown``.
+    """
+
+    run_id: str
+    agent_id: str
+    status: str
+    reserved_credits: int
+    reserved_sandbox_seconds: int
+    credits_charged: int | None
+    created_at: datetime.datetime
+    settled_at: datetime.datetime | None = None
+
+
+@dataclass
 class CloudAgentUsageEventView:
     run_id: str
     provider: str
@@ -1151,6 +1171,169 @@ class CloudAgentService:
                 for row in rows
             ],
         )
+
+    async def get_run(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        agent_id: str,
+        run_id: str,
+    ) -> CloudAgentRunStatusView:
+        """Best-effort run status from the usage ledger.
+
+        No dedicated run-state table exists; status is inferred from the
+        per-run reservation and any settled usage event. Raises
+        ``CloudAgentError`` if the run is unknown for this owned agent.
+        """
+        self._require_feature_enabled()
+        # Ownership gate — raises not_found (404) if the user doesn't own it.
+        await self._load_owned(db, user_id=user_id, agent_id=agent_id)
+
+        reservation = await db.scalar(
+            select(UsageReservation).where(UsageReservation.run_id == run_id)
+        )
+        event = await db.scalar(
+            select(UsageEvent)
+            .where(UsageEvent.run_id == run_id)
+            .order_by(UsageEvent.created_at.desc(), UsageEvent.id.desc())
+        )
+        if reservation is None and event is None:
+            raise CloudAgentError(
+                "run_not_found", f"run {run_id!r} not found", http_status=404
+            )
+        # Cross-check the run actually belongs to this agent.
+        if reservation is not None and reservation.agent_id != agent_id:
+            raise CloudAgentError(
+                "run_not_found", f"run {run_id!r} not found", http_status=404
+            )
+        if event is not None and event.agent_id != agent_id:
+            raise CloudAgentError(
+                "run_not_found", f"run {run_id!r} not found", http_status=404
+            )
+
+        return self._run_status_view(run_id, agent_id, reservation, event)
+
+    async def cancel_run(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        agent_id: str,
+        run_id: str,
+    ) -> CloudAgentRunStatusView:
+        """Cancel an in-flight run: release its reservation and fail the
+        still-queued trigger message (best-effort).
+
+        Already-settled runs are returned as-is. Idempotent — cancelling a
+        run twice is safe.
+        """
+        self._require_feature_enabled()
+        await self._load_owned(db, user_id=user_id, agent_id=agent_id)
+
+        reservation = await db.scalar(
+            select(UsageReservation).where(UsageReservation.run_id == run_id)
+        )
+        event = await db.scalar(
+            select(UsageEvent)
+            .where(UsageEvent.run_id == run_id)
+            .order_by(UsageEvent.created_at.desc(), UsageEvent.id.desc())
+        )
+        if reservation is None and event is None:
+            raise CloudAgentError(
+                "run_not_found", f"run {run_id!r} not found", http_status=404
+            )
+        if reservation is not None and reservation.agent_id != agent_id:
+            raise CloudAgentError(
+                "run_not_found", f"run {run_id!r} not found", http_status=404
+            )
+        if event is not None and event.agent_id != agent_id:
+            raise CloudAgentError(
+                "run_not_found", f"run {run_id!r} not found", http_status=404
+            )
+
+        # Only an active reservation (run not yet settled) can be cancelled.
+        if event is None and reservation is not None and reservation.state == "active":
+            await self._release_run_usage_reservation_durably(db, run_id=run_id)
+            await self._fail_queued_run_message(db, agent_id=agent_id, run_id=run_id)
+            reservation = await db.scalar(
+                select(UsageReservation).where(UsageReservation.run_id == run_id)
+            )
+
+        return self._run_status_view(run_id, agent_id, reservation, event)
+
+    @staticmethod
+    def _run_status_view(
+        run_id: str,
+        agent_id: str,
+        reservation: "UsageReservation | None",
+        event: "UsageEvent | None",
+    ) -> CloudAgentRunStatusView:
+        if event is not None:
+            status = "completed"
+        elif reservation is not None and reservation.state == "active":
+            status = "running"
+        elif reservation is not None and reservation.state == "settled":
+            status = "completed"
+        elif reservation is not None and reservation.state == "released":
+            status = "cancelled"
+        else:
+            status = "unknown"
+        created_at = (
+            event.created_at
+            if event is not None
+            else (reservation.created_at if reservation is not None else _now())
+        )
+        return CloudAgentRunStatusView(
+            run_id=run_id,
+            agent_id=agent_id,
+            status=status,
+            reserved_credits=(
+                reservation.reserved_credits if reservation is not None else 0
+            ),
+            reserved_sandbox_seconds=(
+                reservation.reserved_sandbox_seconds if reservation is not None else 0
+            ),
+            credits_charged=event.credits_charged if event is not None else None,
+            created_at=created_at,
+            settled_at=(reservation.settled_at if reservation is not None else None),
+        )
+
+    async def _fail_queued_run_message(
+        self,
+        db: AsyncSession,
+        *,
+        agent_id: str,
+        run_id: str,
+    ) -> None:
+        """Mark the still-queued ``cloud_agent_run`` trigger message failed.
+
+        Best-effort: the run_id lives inside ``envelope_json`` (not a column),
+        so this scans the agent's queued cloud-run messages and matches on the
+        parsed payload. If the daemon already dequeued it, there is nothing to
+        fail and the released reservation is the meaningful cancellation.
+        """
+        rows = (
+            await db.execute(
+                select(MessageRecord).where(
+                    MessageRecord.receiver_id == agent_id,
+                    MessageRecord.source_type == "cloud_agent_run",
+                    MessageRecord.state == MessageState.queued,
+                )
+            )
+        ).scalars().all()
+        changed = False
+        for record in rows:
+            try:
+                envelope = json.loads(record.envelope_json or "{}")
+                run = (envelope.get("payload") or {}).get("cloud_run") or {}
+            except (ValueError, AttributeError):
+                continue
+            if run.get("run_id") == run_id:
+                record.state = MessageState.failed
+                changed = True
+        if changed:
+            await db.commit()
 
     async def provision_pending_for_cloud_daemon(
         self,
