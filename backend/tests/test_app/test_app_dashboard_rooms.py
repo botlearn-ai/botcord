@@ -283,6 +283,86 @@ async def test_room_messages_as_member(client: AsyncClient, seed: dict):
 
 
 @pytest.mark.asyncio
+async def test_room_messages_include_active_status_reactions_on_initial_load(
+    client: AsyncClient,
+    seed: dict,
+    monkeypatch,
+):
+    from hub.services import message_status_reactions
+
+    async def fake_load_active_status_reactions(room_id: str, msg_ids: list[str]):
+        assert room_id == "rm_pubopen01"
+        assert set(msg_ids) == {"m_rm_msg000", "m_rm_msg001", "m_rm_msg002"}
+        return {
+            "m_rm_msg001": [
+                {
+                    "room_id": "rm_pubopen01",
+                    "msg_id": "m_rm_msg001",
+                    "actor_id": "ag_joiner01",
+                    "actor_name": "Joiner Agent",
+                    "kind": "replying",
+                    "emoji": "⏳",
+                    "state": "active",
+                    "turn_id": "turn_status_1",
+                    "expires_at": "2026-06-09T02:40:00+00:00",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        message_status_reactions,
+        "load_active_status_reactions",
+        fake_load_active_status_reactions,
+    )
+
+    resp = await client.get(
+        "/api/dashboard/rooms/rm_pubopen01/messages",
+        headers=_h(seed["token1"], seed["agent1"]),
+    )
+    assert resp.status_code == 200
+    by_msg_id = {message["msg_id"]: message for message in resp.json()["messages"]}
+    assert by_msg_id["m_rm_msg001"]["status_reactions"] == [
+        {
+            "room_id": "rm_pubopen01",
+            "msg_id": "m_rm_msg001",
+            "actor_id": "ag_joiner01",
+            "actor_name": "Joiner Agent",
+            "kind": "replying",
+            "emoji": "⏳",
+            "state": "active",
+            "turn_id": "turn_status_1",
+            "expires_at": "2026-06-09T02:40:00+00:00",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_room_messages_default_to_empty_status_reactions(
+    client: AsyncClient,
+    seed: dict,
+    monkeypatch,
+):
+    from hub.services import message_status_reactions
+
+    async def fake_load_active_status_reactions(room_id: str, msg_ids: list[str]):
+        return {}
+
+    monkeypatch.setattr(
+        message_status_reactions,
+        "load_active_status_reactions",
+        fake_load_active_status_reactions,
+    )
+
+    resp = await client.get(
+        "/api/dashboard/rooms/rm_pubopen01/messages",
+        headers=_h(seed["token1"], seed["agent1"]),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert all(message["status_reactions"] == [] for message in data["messages"])
+
+
+@pytest.mark.asyncio
 async def test_room_messages_public_no_auth(client: AsyncClient, seed: dict):
     resp = await client.get("/api/dashboard/rooms/rm_pubopen01/messages")
     assert resp.status_code == 200
