@@ -1247,6 +1247,10 @@ class CloudAgentService:
             raise CloudAgentError(
                 "run_not_found", f"run {run_id!r} not found", http_status=404
             )
+        if event is not None and event.agent_id != agent_id:
+            raise CloudAgentError(
+                "run_not_found", f"run {run_id!r} not found", http_status=404
+            )
 
         # Only an active reservation (run not yet settled) can be cancelled.
         if event is None and reservation is not None and reservation.state == "active":

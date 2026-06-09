@@ -180,3 +180,31 @@ async def test_get_run_rejects_run_of_other_agent(db_session, service):
             run_id="crun_foreign01",
         )
     assert exc.value.http_status == 404
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_rejects_settled_run_of_other_agent(db_session, service):
+    seeded = await _seed_agent(db_session, service)
+    # Settled runs may only have a UsageEvent left; cancellation must still
+    # apply the same agent ownership gate as get_run.
+    db_session.add(
+        UsageEvent(
+            user_id=seeded["user_id"],
+            agent_id="ag_someoneelse",
+            run_id="crun_foreign_settled",
+            provider="fake",
+            model="deepseek-v4-flash",
+            output_tokens=100,
+            credits_charged=42,
+            idempotency_key="crun_foreign_settled:settle",
+        )
+    )
+    await db_session.commit()
+    with pytest.raises(CloudAgentError) as exc:
+        await service.cancel_run(
+            db_session,
+            user_id=seeded["user_id"],
+            agent_id=seeded["agent_id"],
+            run_id="crun_foreign_settled",
+        )
+    assert exc.value.http_status == 404

@@ -25,7 +25,7 @@ from app.botlearn_auth import (
     botcord_supabase_id_for_botlearn,
 )
 from hub.config import JWT_ALGORITHM, JWT_SECRET
-from hub.models import Base, BotlearnInstallation, Role, User
+from hub.models import Base, BotlearnInstallation, CloudAgentInstance, Role, User
 from hub.services.cloud_agent import CloudAgentService
 from hub.services.cloud_daemon_provider import FakeCloudDaemonProvider
 from tests.test_app.conftest import create_test_engine
@@ -229,6 +229,155 @@ async def test_session_exchange_is_idempotent_reuses_agent_and_installation(
         )
     ).scalars().all()
     assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_session_exchange_rejects_revoked_installation(
+    client_factory, db_session, monkeypatch
+):
+    _configure_botlearn(monkeypatch)
+    client, _service = await client_factory()
+    token = _botlearn_token("botlearn-user-revoked")
+
+    r1 = await client.post(
+        "/api/integrations/botlearn/session", headers=_headers(token)
+    )
+    assert r1.status_code == 200, r1.text
+    installation_id = r1.json()["installation_id"]
+
+    inst = await db_session.scalar(
+        select(BotlearnInstallation).where(BotlearnInstallation.id == installation_id)
+    )
+    assert inst is not None
+    revoked_at = _now()
+    inst.revoked_at = revoked_at
+    await db_session.commit()
+
+    r2 = await client.post(
+        "/api/integrations/botlearn/session", headers=_headers(token)
+    )
+    assert r2.status_code == 403
+    assert r2.json()["detail"]["code"] == "installation_revoked"
+    assert "access_token" not in r2.json()
+
+    await db_session.refresh(inst)
+    assert inst.revoked_at is not None
+    assert inst.revoked_at.replace(tzinfo=datetime.timezone.utc) == revoked_at
+
+
+@pytest.mark.asyncio
+async def test_session_exchange_rejects_revoked_subject_before_default_agent_selection(
+    client_factory, db_session, monkeypatch
+):
+    _configure_botlearn(monkeypatch)
+    client, _service = await client_factory()
+    token = _botlearn_token("botlearn-user-revoked-stale-agent")
+
+    r1 = await client.post(
+        "/api/integrations/botlearn/session", headers=_headers(token)
+    )
+    assert r1.status_code == 200, r1.text
+    body = r1.json()
+
+    inst = await db_session.scalar(
+        select(BotlearnInstallation).where(
+            BotlearnInstallation.id == body["installation_id"]
+        )
+    )
+    assert inst is not None
+    user_id = inst.user_id
+    revoked_at = _now()
+    inst.revoked_at = revoked_at
+
+    cloud_agent = await db_session.scalar(
+        select(CloudAgentInstance).where(
+            CloudAgentInstance.agent_id == body["agent_id"]
+        )
+    )
+    assert cloud_agent is not None
+    cloud_agent.status = "deleted"
+    await db_session.commit()
+
+    r2 = await client.post(
+        "/api/integrations/botlearn/session", headers=_headers(token)
+    )
+    assert r2.status_code == 403
+    assert r2.json()["detail"]["code"] == "installation_revoked"
+    assert "access_token" not in r2.json()
+
+    installations = (
+        await db_session.execute(
+            select(BotlearnInstallation).where(
+                BotlearnInstallation.botlearn_subject
+                == "botlearn-user-revoked-stale-agent"
+            )
+        )
+    ).scalars().all()
+    assert [row.id for row in installations] == [body["installation_id"]]
+
+    cloud_agents = (
+        await db_session.execute(
+            select(CloudAgentInstance).where(CloudAgentInstance.user_id == user_id)
+        )
+    ).scalars().all()
+    assert [row.agent_id for row in cloud_agents] == [body["agent_id"]]
+
+    await db_session.refresh(inst)
+    assert inst.revoked_at is not None
+    assert inst.revoked_at.replace(tzinfo=datetime.timezone.utc) == revoked_at
+
+
+@pytest.mark.asyncio
+async def test_session_exchange_rejects_stale_revoked_subject_before_user_creation(
+    client_factory, db_session, monkeypatch
+):
+    _configure_botlearn(monkeypatch)
+    client, _service = await client_factory()
+    subject = "botlearn-user-revoked-orphan"
+    stale_installation = BotlearnInstallation(
+        id="bli_revoked_orphan",
+        user_id=uuid.uuid4(),
+        botlearn_subject=subject,
+        botlearn_email="orphan@botlearn.ai",
+        agent_id="ag_revoked_orphan",
+        scopes_json=["cloud_runs:create"],
+        limits_json={},
+        last_used_at=_now(),
+        revoked_at=_now(),
+    )
+    db_session.add(stale_installation)
+    await db_session.commit()
+
+    derived_supabase_id = botcord_supabase_id_for_botlearn(subject)
+    assert await db_session.scalar(
+        select(User).where(User.supabase_user_id == derived_supabase_id)
+    ) is None
+
+    r = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=_headers(_botlearn_token(subject, email="orphan@botlearn.ai")),
+    )
+    assert r.status_code == 403
+    assert r.json()["detail"]["code"] == "installation_revoked"
+    assert "access_token" not in r.json()
+
+    assert await db_session.scalar(
+        select(User).where(User.supabase_user_id == derived_supabase_id)
+    ) is None
+    assert (await db_session.execute(select(User))).scalars().all() == []
+    assert (await db_session.execute(select(CloudAgentInstance))).scalars().all() == []
+
+    installations = (
+        await db_session.execute(
+            select(BotlearnInstallation).where(
+                BotlearnInstallation.botlearn_subject == subject
+            )
+        )
+    ).scalars().all()
+    assert [row.id for row in installations] == [stale_installation.id]
+
+    await db_session.refresh(stale_installation)
+    assert stale_installation.revoked_at is not None
 
 
 # ---------------------------------------------------------------------------

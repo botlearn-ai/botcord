@@ -164,7 +164,6 @@ async def _upsert_installation(
         existing.botlearn_email = identity.email
         existing.scopes_json = list(DEFAULT_BOTLEARN_SCOPES)
         existing.last_used_at = now
-        existing.revoked_at = None
         return existing
     installation = BotlearnInstallation(
         id=generate_botlearn_installation_id(),
@@ -178,6 +177,22 @@ async def _upsert_installation(
     )
     db.add(installation)
     return installation
+
+
+async def _find_revoked_installation_for_subject(
+    db: AsyncSession,
+    *,
+    identity: BotlearnIdentity,
+) -> BotlearnInstallation | None:
+    return await db.scalar(
+        select(BotlearnInstallation)
+        .where(
+            BotlearnInstallation.botlearn_subject == identity.subject,
+            BotlearnInstallation.revoked_at.is_not(None),
+        )
+        .order_by(BotlearnInstallation.revoked_at.desc())
+        .limit(1)
+    )
 
 
 @router.post("/session", response_model=BotlearnSessionOut)
@@ -213,6 +228,16 @@ async def create_botlearn_session(
     except BotlearnAuthError as exc:
         raise _auth_error_to_http(exc) from exc
 
+    revoked_installation = await _find_revoked_installation_for_subject(
+        db, identity=identity
+    )
+    if revoked_installation is not None:
+        await db.rollback()
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "installation_revoked", "message": "BotLearn installation is revoked"},
+        )
+
     user = await _find_or_create_user(db, identity)
 
     # Default Cloud Agent (create on first use). Quota / feature failures must
@@ -229,6 +254,12 @@ async def create_botlearn_session(
     installation = await _upsert_installation(
         db, user=user, identity=identity, agent_id=agent_id
     )
+    if installation.revoked_at is not None:
+        await db.rollback()
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "installation_revoked", "message": "BotLearn installation is revoked"},
+        )
     await db.commit()
 
     access_token, expires_in = issue_botlearn_session_token(
