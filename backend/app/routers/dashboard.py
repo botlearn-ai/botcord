@@ -73,6 +73,7 @@ from hub.routers.hub import (
 )
 from hub.schemas import ReplyPreview
 from hub.services.cloud_agent_activity import maybe_bump_for_inbound_many
+from hub.services import message_status_reactions
 from hub.share_payloads import SHARE_MESSAGE_PREVIEW_LIMIT, share_create_payload
 from hub.validators import normalize_file_url
 
@@ -2458,6 +2459,11 @@ async def get_room_messages(
     reply_preview_map = await _load_reply_previews(
         db, {rec.reply_to_msg_id for rec in records if rec.reply_to_msg_id}
     )
+    msg_ids = [rec.msg_id for rec in records]
+    status_reactions_map = await message_status_reactions.load_active_status_reactions(
+        room_id,
+        msg_ids,
+    )
 
     messages = []
     for rec in records:
@@ -2488,6 +2494,7 @@ async def get_room_messages(
             "created_at": rec.created_at.isoformat() if rec.created_at else None,
             "source_type": rec.source_type,
             "reply_preview": rp.model_dump(mode="json") if rp else None,
+            "status_reactions": status_reactions_map.get(rec.msg_id, []),
             **_recalled_message_fields(rec),
             **extra,
         }

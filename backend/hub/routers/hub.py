@@ -77,12 +77,15 @@ from hub.schemas import (
     InboxPollResponse,
     MessageEnvelope,
     MessageStatusResponse,
+    MessageStatusReactionClearRequest,
+    MessageStatusReactionRequest,
     MessageType,
     ReceiptResponse,
     ReplyPreview,
     SendResponse,
     TypingRequest,
 )
+from hub.services import message_status_reactions
 
 logger = logging.getLogger(__name__)
 
@@ -2267,6 +2270,119 @@ async def query_history(
         count=len(messages),
         has_more=has_more,
     )
+
+
+# ---------------------------------------------------------------------------
+# Message status reactions - ephemeral message-level state
+# ---------------------------------------------------------------------------
+
+
+async def _load_status_reaction_room(
+    *,
+    db: AsyncSession,
+    room_id: str,
+    msg_id: str,
+    current_agent: str,
+) -> Room:
+    room_result = await db.execute(
+        select(Room)
+        .options(selectinload(Room.members))
+        .where(Room.room_id == room_id)
+    )
+    room = room_result.scalar_one_or_none()
+    if room is None:
+        raise I18nHTTPException(status_code=404, message_key="room_not_found")
+    if not any(m.agent_id == current_agent for m in room.members):
+        raise I18nHTTPException(status_code=403, message_key="not_a_member")
+    target_id = await db.scalar(
+        select(MessageRecord.id)
+        .where(MessageRecord.room_id == room_id, MessageRecord.msg_id == msg_id)
+        .limit(1)
+    )
+    if target_id is None:
+        raise I18nHTTPException(status_code=404, message_key="message_not_found")
+    return room
+
+
+async def _broadcast_message_status_reaction(
+    db: AsyncSession,
+    *,
+    room: Room,
+    payload: dict[str, Any],
+) -> None:
+    for member in room.members:
+        if member.muted:
+            continue
+        event = build_agent_realtime_event(
+            type="message_status_reaction",
+            agent_id=member.agent_id,
+            room_id=room.room_id,
+            ext=payload,
+        )
+        try:
+            await _publish_agent_realtime_event(db, event)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "message status reaction realtime publish failed for %s: %s",
+                member.agent_id,
+                exc,
+            )
+
+
+@router.post("/messages/{msg_id}/status-reactions", status_code=204)
+async def set_message_status_reaction(
+    msg_id: str,
+    body: MessageStatusReactionRequest,
+    current_agent: str = Depends(get_current_claimed_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    room = await _load_status_reaction_room(
+        db=db,
+        room_id=body.room_id,
+        msg_id=msg_id,
+        current_agent=current_agent,
+    )
+    actor_name = await db.scalar(
+        select(Agent.display_name).where(Agent.agent_id == current_agent)
+    )
+    payload = await message_status_reactions.set_status_reaction(
+        room_id=body.room_id,
+        msg_id=msg_id,
+        actor_id=current_agent,
+        actor_name=actor_name or current_agent,
+        kind=body.kind,
+        emoji=body.emoji,
+        turn_id=body.turn_id,
+        ttl_sec=body.ttl_sec,
+    )
+    await _broadcast_message_status_reaction(db, room=room, payload=payload)
+
+
+@router.delete("/messages/{msg_id}/status-reactions/{kind}", status_code=204)
+async def clear_message_status_reaction(
+    msg_id: str,
+    kind: str,
+    body: MessageStatusReactionClearRequest,
+    current_agent: str = Depends(get_current_claimed_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    if kind != message_status_reactions.REPLYING_KIND:
+        raise HTTPException(status_code=400, detail="unsupported status reaction kind")
+    room = await _load_status_reaction_room(
+        db=db,
+        room_id=body.room_id,
+        msg_id=msg_id,
+        current_agent=current_agent,
+    )
+    payload = await message_status_reactions.clear_status_reaction(
+        room_id=body.room_id,
+        msg_id=msg_id,
+        actor_id=current_agent,
+        kind=kind,
+        turn_id=body.turn_id,
+    )
+    if payload is not None:
+        await _broadcast_message_status_reaction(db, room=room, payload=payload)
 
 
 # ---------------------------------------------------------------------------

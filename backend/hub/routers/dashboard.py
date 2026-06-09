@@ -65,6 +65,7 @@ from hub.share_payloads import (
     share_create_payload,
     share_public_payload,
 )
+from hub.services import message_status_reactions
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -529,6 +530,10 @@ async def get_room_messages(
         )
         for mid, st, cnt in sc_result.all():
             state_counts_map.setdefault(mid, {})[st.value if hasattr(st, "value") else st] = cnt
+    status_reactions_map = await message_status_reactions.load_active_status_reactions(
+        room_id,
+        msg_ids,
+    )
 
     # Build response messages
     messages: list[DashboardMessage] = []
@@ -570,6 +575,7 @@ async def get_room_messages(
                 goal=rec.goal,
                 state=rec.state.value,
                 state_counts=counts,
+                status_reactions=status_reactions_map.get(rec.msg_id, []),
                 mentions=_extract_mentions_from_envelope(envelope_data),
                 created_at=ca,
                 source_type=rec.source_type,

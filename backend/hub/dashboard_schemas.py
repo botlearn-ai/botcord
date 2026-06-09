@@ -1,6 +1,8 @@
 import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from hub.schemas import MessageStatusReaction
 
 
 class DashboardAgentProfile(BaseModel):
@@ -78,6 +80,7 @@ class DashboardMessage(BaseModel):
     goal: str | None = None
     state: str
     state_counts: dict[str, int] | None = None
+    status_reactions: list[MessageStatusReaction] = Field(default_factory=list)
     created_at: datetime.datetime
     is_recalled: bool = False
     recalled_at: datetime.datetime | None = None

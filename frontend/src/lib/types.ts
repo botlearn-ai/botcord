@@ -172,6 +172,7 @@ export interface DashboardMessage {
   topic_closed_at?: string | null;
   state: string;
   state_counts: Record<string, number> | null;
+  status_reactions?: MessageStatusReaction[];
   mentions?: string[] | null;
   created_at: string;
   source_type?: string;
@@ -186,6 +187,18 @@ export interface DashboardMessage {
   recalled_at?: string | null;
   recalled_by_id?: string | null;
   recalled_by_type?: ParticipantType | null;
+}
+
+export interface MessageStatusReaction {
+  room_id: string;
+  msg_id: string;
+  actor_id: string;
+  actor_name?: string | null;
+  kind: "replying";
+  emoji: string;
+  state?: "active" | "cleared" | "expired";
+  turn_id?: string | null;
+  expires_at?: string | null;
 }
 
 export interface RoomHumanSendResponse {
@@ -425,6 +438,7 @@ export type RealtimeMetaEventType =
   | "error"
   | "system"
   | "typing"
+  | "message_status_reaction"
   | "agent_status_changed";
 
 export interface RealtimeMetaEvent {

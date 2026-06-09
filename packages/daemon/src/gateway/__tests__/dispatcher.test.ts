@@ -2,10 +2,11 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Dispatcher, type RuntimeFactory } from "../dispatcher.js";
+import { Dispatcher, pickMessageStatusTarget, type RuntimeFactory } from "../dispatcher.js";
 import { SessionStore } from "../session-store.js";
 import type {
   ChannelAdapter,
+  ChannelMessageStatusContext,
   ChannelSendContext,
   ChannelSendResult,
   ChannelStreamBlockContext,
@@ -31,9 +32,11 @@ interface FakeChannelOptions {
   type?: string;
   withStream?: boolean;
   withTyping?: boolean;
+  withMessageStatus?: boolean;
   sendImpl?: (ctx: ChannelSendContext) => Promise<ChannelSendResult> | ChannelSendResult;
   streamImpl?: (ctx: ChannelStreamBlockContext) => Promise<void> | void;
   typingImpl?: (ctx: ChannelTypingContext) => Promise<void> | void;
+  messageStatusImpl?: (ctx: ChannelMessageStatusContext) => Promise<void> | void;
 }
 
 class FakeChannel implements ChannelAdapter {
@@ -42,11 +45,14 @@ class FakeChannel implements ChannelAdapter {
   readonly sends: ChannelSendContext[] = [];
   readonly streams: ChannelStreamBlockContext[] = [];
   readonly typings: ChannelTypingContext[] = [];
+  readonly messageStatuses: ChannelMessageStatusContext[] = [];
   private readonly sendImpl?: FakeChannelOptions["sendImpl"];
   private readonly streamImpl?: FakeChannelOptions["streamImpl"];
   private readonly typingImpl?: FakeChannelOptions["typingImpl"];
+  private readonly messageStatusImpl?: FakeChannelOptions["messageStatusImpl"];
   streamBlock?: (ctx: ChannelStreamBlockContext) => Promise<void>;
   typing?: (ctx: ChannelTypingContext) => Promise<void>;
+  messageStatus?: (ctx: ChannelMessageStatusContext) => Promise<void>;
 
   constructor(opts: FakeChannelOptions = {}) {
     this.id = opts.id ?? "botcord";
@@ -54,6 +60,7 @@ class FakeChannel implements ChannelAdapter {
     this.sendImpl = opts.sendImpl;
     this.streamImpl = opts.streamImpl;
     this.typingImpl = opts.typingImpl;
+    this.messageStatusImpl = opts.messageStatusImpl;
     if (opts.withStream !== false) {
       this.streamBlock = async (ctx) => {
         this.streams.push(ctx);
@@ -64,6 +71,12 @@ class FakeChannel implements ChannelAdapter {
       this.typing = async (ctx) => {
         this.typings.push(ctx);
         if (this.typingImpl) await this.typingImpl(ctx);
+      };
+    }
+    if (opts.withMessageStatus) {
+      this.messageStatus = async (ctx) => {
+        this.messageStatuses.push(ctx);
+        if (this.messageStatusImpl) await this.messageStatusImpl(ctx);
       };
     }
   }
@@ -209,6 +222,37 @@ function makeEnvelope(
 ): GatewayInboundEnvelope {
   return { message: makeMessage(partial), ack };
 }
+
+describe("pickMessageStatusTarget", () => {
+  it("uses the latest mentioned batch entry", () => {
+    const msg = makeMessage({
+      raw: {
+        envelope: { msg_id: "msg_latest" },
+        batch: [
+          { hub_msg_id: "h1", mentioned: true, envelope: { msg_id: "msg_1" } },
+          { hub_msg_id: "h2", mentioned: false, envelope: { msg_id: "msg_2" } },
+          { hub_msg_id: "h3", mentioned: true, envelope: { msg_id: "msg_3" } },
+        ],
+      },
+    });
+
+    expect(pickMessageStatusTarget(msg)).toBe("msg_3");
+  });
+
+  it("falls back to the latest batch entry", () => {
+    const msg = makeMessage({
+      raw: {
+        envelope: { msg_id: "msg_latest" },
+        batch: [
+          { hub_msg_id: "h1", mentioned: false, envelope: { msg_id: "msg_1" } },
+          { hub_msg_id: "h2", mentioned: false, envelope: { msg_id: "msg_2" } },
+        ],
+      },
+    });
+
+    expect(pickMessageStatusTarget(msg)).toBe("msg_2");
+  });
+});
 
 function cloudRunRaw(
   budget: { max_wall_time_seconds?: number; max_tool_calls?: number },
@@ -1177,6 +1221,53 @@ describe("Dispatcher", () => {
     );
     expect(channel.sends.length).toBe(1);
     expect(channel.sends[0].message.text).toBe("ok");
+  });
+
+  it("message status: marks BotCord group trigger before runtime and clears after completion", async () => {
+    const channel = new FakeChannel({ type: "botcord", withMessageStatus: true });
+    const observed: string[][] = [];
+    const runtime = new FakeRuntime({
+      observeRun: () => {
+        observed.push(channel.messageStatuses.map((ctx) => ctx.phase));
+      },
+      reply: "ok",
+      newSessionId: "sid",
+    });
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        conversation: { id: "rm_team", kind: "group" },
+        raw: { envelope: { msg_id: "msg_trigger" } },
+        trace: { id: "trace_group", streamable: false },
+      }),
+    );
+
+    expect(observed[0]).toEqual(["started"]);
+    expect(channel.messageStatuses.map((ctx) => ctx.phase)).toEqual(["started", "cleared"]);
+    expect(channel.messageStatuses[0].conversationId).toBe("rm_team");
+    expect(channel.messageStatuses[0].messageId).toBe("msg_trigger");
+    expect(channel.messageStatuses[0].kind).toBe("replying");
+    expect(channel.messageStatuses[0].emoji).toBe("⏳");
+    expect(channel.messageStatuses[1].turnId).toBe(channel.messageStatuses[0].turnId);
+  });
+
+  it("message status: skips owner-chat rooms", async () => {
+    const channel = new FakeChannel({ type: "botcord", withMessageStatus: true });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        conversation: { id: "rm_oc_team", kind: "group" },
+        raw: { envelope: { msg_id: "msg_owner_chat" } },
+        trace: { id: "trace_owner", streamable: true },
+      }),
+    );
+
+    expect(channel.messageStatuses.length).toBe(0);
   });
 
   it("thinking: synthesized before first non-assistant block", async () => {

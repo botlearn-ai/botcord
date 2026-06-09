@@ -287,6 +287,19 @@ export interface ChannelTypingContext {
   log: GatewayLogger;
 }
 
+/** Context passed to `ChannelAdapter.messageStatus()` for message-level ephemeral state. */
+export interface ChannelMessageStatusContext {
+  traceId: string | null;
+  accountId: string;
+  conversationId: string;
+  messageId: string;
+  turnId: string;
+  kind: "replying";
+  emoji: string;
+  phase: "started" | "cleared";
+  log: GatewayLogger;
+}
+
 /** Upstream messaging surface such as BotCord, Telegram, or WeChat. */
 export interface ChannelAdapter {
   readonly id: string;
@@ -302,6 +315,11 @@ export interface ChannelAdapter {
    * this undefined.
    */
   typing?(ctx: ChannelTypingContext): Promise<void>;
+  /**
+   * Optional message-level status reaction hook. BotCord internal rooms use
+   * this to attach a short-lived "replying" emoji to the triggering message.
+   */
+  messageStatus?(ctx: ChannelMessageStatusContext): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

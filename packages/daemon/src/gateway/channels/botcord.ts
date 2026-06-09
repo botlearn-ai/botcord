@@ -11,6 +11,7 @@ import {
 } from "@botcord/protocol-core";
 import type {
   ChannelAdapter,
+  ChannelMessageStatusContext,
   ChannelSendContext,
   ChannelSendResult,
   ChannelStartContext,
@@ -35,6 +36,7 @@ const OWNER_CHAT_PREFIX = "rm_oc_";
 const DM_ROOM_PREFIX = "rm_dm_";
 const INBOX_POLL_LIMIT = 50;
 const CHANNEL_PERMANENT_STOP = "channel_permanent_stop";
+const DEFAULT_REPLYING_STATUS_EMOJI = "⏳";
 
 function withReconnectJitter(delayMs: number): { delayMs: number; jitterMs: number } {
   const jitterMs = Math.floor(Math.random() * delayMs * RECONNECT_JITTER_RATIO);
@@ -393,11 +395,12 @@ async function postControlWithRefresh(
   hubUrl: string,
   path: string,
   body: unknown,
+  method = "POST",
 ): Promise<Response> {
   let token = await client.ensureToken();
   for (let attempt = 0; attempt <= 1; attempt++) {
     const resp = await fetch(`${hubUrl}${path}`, {
-      method: "POST",
+      method,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
@@ -1084,6 +1087,46 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         }
       } catch (err) {
         ctx.log.warn("botcord typing failed", { err: String(err) });
+      }
+    },
+
+    async messageStatus(ctx: ChannelMessageStatusContext): Promise<void> {
+      const client = ensureClient();
+      const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
+      const body = {
+        room_id: ctx.conversationId,
+        turn_id: ctx.turnId,
+      };
+      try {
+        const path = `/hub/messages/${encodeURIComponent(ctx.messageId)}/status-reactions`;
+        const resp = ctx.phase === "started"
+          ? await postControlWithRefresh(client, hubUrl, path, {
+              ...body,
+              kind: ctx.kind,
+              emoji: ctx.emoji || DEFAULT_REPLYING_STATUS_EMOJI,
+              ttl_sec: 180,
+            })
+          : await postControlWithRefresh(
+              client,
+              hubUrl,
+              `${path}/${encodeURIComponent(ctx.kind)}`,
+              body,
+              "DELETE",
+            );
+        if (!resp.ok && resp.status !== 204) {
+          const respBody = await resp.text().catch(() => "");
+          ctx.log.warn("botcord message status non-ok", {
+            phase: ctx.phase,
+            status: resp.status,
+            body: respBody.slice(0, 200),
+          });
+        }
+      } catch (err) {
+        ctx.log.warn("botcord message status failed", {
+          phase: ctx.phase,
+          messageId: ctx.messageId,
+          err: String(err),
+        });
       }
     },
 

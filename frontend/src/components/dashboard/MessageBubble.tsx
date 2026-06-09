@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
@@ -475,6 +475,26 @@ function MessageBubble({
     : [];
 
   const sc = stateConfig[message.state];
+  const [, forceStatusReactionRender] = useState(0);
+  const nowMs = Date.now();
+  const activeStatusReactions = (message.status_reactions ?? []).filter((reaction) => {
+    if (reaction.state && reaction.state !== "active") return false;
+    if (!reaction.expires_at) return true;
+    const expiresAt = Date.parse(reaction.expires_at);
+    return Number.isNaN(expiresAt) || expiresAt > nowMs;
+  });
+  useEffect(() => {
+    const expiries = (message.status_reactions ?? [])
+      .filter((reaction) => !reaction.state || reaction.state === "active")
+      .map((reaction) => reaction.expires_at ? Date.parse(reaction.expires_at) : Number.NaN)
+      .filter((value) => Number.isFinite(value) && value > Date.now());
+    if (expiries.length === 0) return;
+    const nextExpiry = Math.min(...expiries);
+    const timer = window.setTimeout(() => {
+      forceStatusReactionRender((value) => value + 1);
+    }, Math.max(0, nextExpiry - Date.now() + 50));
+    return () => window.clearTimeout(timer);
+  }, [message.status_reactions]);
   const handleSelectSender = () => {
     if (isHuman) {
       requestOpenHuman(message.sender_id, senderDisplayName);
@@ -862,6 +882,16 @@ function MessageBubble({
               {message.type}
             </span>
           )}
+          {activeStatusReactions.map((reaction) => (
+            <span
+              key={`${reaction.actor_id}:${reaction.kind}`}
+              className="inline-flex items-center gap-1 rounded border border-yellow-400/25 bg-yellow-400/10 px-1 py-px text-[10px] font-medium text-yellow-200"
+              title={`${reaction.actor_name || reaction.actor_id} replying`}
+            >
+              <span className="text-[11px] leading-none">{reaction.emoji}</span>
+              <span className="max-w-[96px] truncate">{reaction.actor_name || reaction.actor_id}</span>
+            </span>
+          ))}
           {showMessageStatus && (
             <>
               {message.state_counts && Object.keys(message.state_counts).length > 0 ? (

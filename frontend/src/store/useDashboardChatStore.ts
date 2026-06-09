@@ -18,6 +18,7 @@ import type {
   PublicHumanProfile,
   PublicRoom,
   RealtimeMetaEvent,
+  MessageStatusReaction,
   UserAgent,
 } from "@/lib/types";
 import { api, humansApi } from "@/lib/api";
@@ -118,6 +119,45 @@ function buildRecalledMessagePatch(patch?: {
     recalled_by_id: patch?.recalled_by_id ?? null,
     recalled_by_type: patch?.recalled_by_type ?? null,
   };
+}
+
+function messageStatusReactionFromEvent(event: RealtimeMetaEvent): MessageStatusReaction | null {
+  const ext = event.ext || {};
+  const msgId = typeof ext.msg_id === "string" ? ext.msg_id : null;
+  const actorId = typeof ext.actor_id === "string" ? ext.actor_id : null;
+  const kind = ext.kind === "replying" ? "replying" : null;
+  const state =
+    ext.state === "active" || ext.state === "cleared" || ext.state === "expired"
+      ? ext.state
+      : null;
+  if (!event.room_id || !msgId || !actorId || !kind || !state) return null;
+  return {
+    room_id: event.room_id,
+    msg_id: msgId,
+    actor_id: actorId,
+    actor_name: typeof ext.actor_name === "string" ? ext.actor_name : null,
+    kind,
+    emoji: typeof ext.emoji === "string" && ext.emoji ? ext.emoji : "⏳",
+    state,
+    turn_id: typeof ext.turn_id === "string" ? ext.turn_id : null,
+    expires_at: typeof ext.expires_at === "string" ? ext.expires_at : null,
+  };
+}
+
+function upsertStatusReaction(
+  current: MessageStatusReaction[] | undefined,
+  incoming: MessageStatusReaction,
+): MessageStatusReaction[] {
+  const existing = current ?? [];
+  const key = `${incoming.actor_id}:${incoming.kind}`;
+  const filtered = existing.filter((item) => {
+    if (`${item.actor_id}:${item.kind}` !== key) return true;
+    if (incoming.state === "active") return false;
+    if (!incoming.turn_id) return false;
+    return item.turn_id !== incoming.turn_id;
+  });
+  if (incoming.state !== "active") return filtered;
+  return [...filtered, { ...incoming, state: "active" }];
 }
 
 function dashboardMessageStableId(message: Pick<DashboardMessage, "hub_msg_id" | "msg_id">): string {
@@ -337,6 +377,7 @@ interface DashboardChatState {
   insertMessage: (roomId: string, message: DashboardMessage) => void;
   patchMessageIdentity: (roomId: string, temporaryId: string, patch: Partial<Pick<DashboardMessage, "hub_msg_id" | "msg_id" | "topic_id">>) => void;
   markMessageRecalled: (roomId: string, msgId: string, patch?: { recalled_at?: string | null; recalled_by_id?: string | null; recalled_by_type?: "agent" | "human" | null }) => void;
+  applyMessageStatusReaction: (event: RealtimeMetaEvent) => void;
   recallMessage: (roomId: string, msgId: string) => Promise<void>;
   loadRoomMessages: (roomId: string, opts?: { force?: boolean }) => Promise<void>;
   prefetchRoomMessages: (roomId: string) => Promise<void>;
@@ -582,6 +623,33 @@ export const useDashboardChatStore = create<DashboardChatState>()(
               : state.publicRoomDetails,
             recentVisitedRooms: state.recentVisitedRooms.map(patchRoomSummary),
             ownedAgentRooms: state.ownedAgentRooms.map(patchRoomSummary),
+          };
+        }),
+
+      applyMessageStatusReaction: (event) =>
+        set((state) => {
+          if (!event.room_id) return state;
+          const reaction = messageStatusReactionFromEvent(event);
+          if (!reaction) return state;
+          const current = state.messages[event.room_id];
+          if (!current) return state;
+          let changed = false;
+          const nextMessages = current.map((message) => {
+            if (message.msg_id !== reaction.msg_id && message.hub_msg_id !== reaction.msg_id) {
+              return message;
+            }
+            changed = true;
+            return {
+              ...message,
+              status_reactions: upsertStatusReaction(message.status_reactions, reaction),
+            };
+          });
+          if (!changed) return state;
+          return {
+            messages: {
+              ...state.messages,
+              [event.room_id]: nextMessages,
+            },
           };
         }),
 
