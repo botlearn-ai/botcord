@@ -40,6 +40,12 @@ router = APIRouter(prefix="/api/agents", tags=["app-runtime-skills"])
 
 _CLOUD_SKILLS_RESUME_WAIT_SECONDS = 20.0
 _CLOUD_SKILLS_RESUME_POLL_SECONDS = 0.5
+_CLOUD_SKILLS_DISPATCH_RETRY_CODES = {
+    "cloud_daemon_offline",
+    "cloud_daemon_disconnected",
+    "cloud_daemon_send_failed",
+}
+_CLOUD_SKILLS_DISPATCH_RETRY_FRAME_TYPES = {"list_agent_skills"}
 _REFRESH_SKILLS_TIMEOUT_MS = 5000
 _INSTALL_SKILL_TIMEOUT_MS = 30000
 _INSTALL_SKILL_AGENT_LOAD_WAIT_SECONDS = 10.0
@@ -197,11 +203,13 @@ async def _ensure_cloud_runtime_skills_host_online(
     ctx: RequestContext,
     agent: Agent,
     host: _RuntimeSkillsHost,
+    *,
+    force_resume: bool = False,
 ) -> None:
     cloud_daemon_instance_id = host.cloud_daemon_instance_id
     if not cloud_daemon_instance_id:
         return
-    if is_cloud_daemon_online(cloud_daemon_instance_id):
+    if not force_resume and is_cloud_daemon_online(cloud_daemon_instance_id):
         return
 
     try:
@@ -252,13 +260,48 @@ async def _send_runtime_skills_control_frame(
                 timeout_ms=timeout_ms,
             )
         except CloudDaemonDispatchError as exc:
-            if exc.code in {
-                "cloud_daemon_offline",
-                "cloud_daemon_disconnected",
-                "cloud_daemon_send_failed",
-            }:
+            can_retry_dispatch = (
+                frame_type in _CLOUD_SKILLS_DISPATCH_RETRY_FRAME_TYPES
+                and exc.code in _CLOUD_SKILLS_DISPATCH_RETRY_CODES
+            )
+            if can_retry_dispatch:
+                logger.warning(
+                    "cloud runtime skills dispatch lost connection; attempting resume and retry: "
+                    "agent=%s cloud=%s frame=%s code=%s err=%s",
+                    agent.agent_id,
+                    host.cloud_daemon_instance_id,
+                    frame_type,
+                    exc.code,
+                    exc.message,
+                )
+                await _ensure_cloud_runtime_skills_host_online(
+                    db,
+                    ctx,
+                    agent,
+                    host,
+                    force_resume=True,
+                )
+                try:
+                    return await send_cloud_control_frame(
+                        host.cloud_daemon_instance_id,
+                        frame_type,
+                        params,
+                        timeout_ms=timeout_ms,
+                    )
+                except CloudDaemonDispatchError as retry_exc:
+                    exc = retry_exc
+            if exc.code in _CLOUD_SKILLS_DISPATCH_RETRY_CODES:
                 raise HTTPException(status_code=409, detail="daemon_offline") from exc
             if exc.code == "cloud_daemon_ack_timeout":
+                logger.warning(
+                    "runtime skills daemon ack timeout: agent=%s daemon=%s cloud=%s "
+                    "frame=%s timeout_ms=%s",
+                    agent.agent_id,
+                    host.daemon_instance_id,
+                    host.cloud_daemon_instance_id,
+                    frame_type,
+                    timeout_ms,
+                )
                 raise HTTPException(status_code=504, detail="daemon_ack_timeout") from exc
             raise HTTPException(
                 status_code=502,
@@ -267,12 +310,25 @@ async def _send_runtime_skills_control_frame(
 
     if not is_daemon_online(host.daemon_instance_id):
         raise HTTPException(status_code=409, detail="daemon_offline")
-    return await send_control_frame(
-        host.daemon_instance_id,
-        frame_type,
-        params,
-        timeout_ms=timeout_ms,
-    )
+    try:
+        return await send_control_frame(
+            host.daemon_instance_id,
+            frame_type,
+            params,
+            timeout_ms=timeout_ms,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 504 and exc.detail == "daemon_ack_timeout":
+            logger.warning(
+                "runtime skills daemon ack timeout: agent=%s daemon=%s cloud=%s "
+                "frame=%s timeout_ms=%s",
+                agent.agent_id,
+                host.daemon_instance_id,
+                host.cloud_daemon_instance_id,
+                frame_type,
+                timeout_ms,
+            )
+        raise
 
 
 def _install_params(agent_id: str, body: AgentRuntimeSkillInstallIn) -> dict[str, Any]:
@@ -401,17 +457,46 @@ async def refresh_agent_runtime_skills(
     if not isinstance(ack, dict) or not ack.get("ok"):
         err = ack.get("error") if isinstance(ack, dict) else None
         code = (err or {}).get("code") if isinstance(err, dict) else None
+        if host.cloud_daemon_instance_id and code == "agent_not_loaded":
+            logger.warning(
+                "cloud runtime skills daemon returned agent_not_loaded; forcing resume and retry: "
+                "agent=%s daemon=%s cloud=%s",
+                agent.agent_id,
+                host.daemon_instance_id,
+                host.cloud_daemon_instance_id,
+            )
+            await _ensure_cloud_runtime_skills_host_online(
+                db,
+                ctx,
+                agent,
+                host,
+                force_resume=True,
+            )
+            ack = await _send_runtime_skills_control_frame(
+                host,
+                "list_agent_skills",
+                {"agentId": agent.agent_id},
+                db=db,
+                ctx=ctx,
+                agent=agent,
+            )
+            err = ack.get("error") if isinstance(ack, dict) else None
+            code = (err or {}).get("code") if isinstance(err, dict) else None
         message = (err or {}).get("message") if isinstance(err, dict) else None
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "code": "daemon_runtime_skills_failed",
-                "daemon_code": code,
-                "daemon_message": message,
-            },
-        )
+        if isinstance(ack, dict) and ack.get("ok"):
+            result = ack.get("result") if isinstance(ack.get("result"), dict) else None
+        else:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "daemon_runtime_skills_failed",
+                    "daemon_code": code,
+                    "daemon_message": message,
+                },
+            )
+    else:
+        result = ack.get("result") if isinstance(ack.get("result"), dict) else None
 
-    result = ack.get("result") if isinstance(ack.get("result"), dict) else None
     persisted = None
     if result is not None:
         persisted = await _persist_agent_skill_snapshot(

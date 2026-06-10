@@ -519,7 +519,21 @@ export function createProvisioner(opts: ProvisionerOptions): (
             error: { code: "bad_params", message: "list_agent_files requires params.agentId" },
           };
         }
-        const result = listAgentRuntimeFiles(params);
+        let result: ListAgentFilesResult;
+        try {
+          result = listAgentRuntimeFiles(params);
+        } catch (err) {
+          if (!(err instanceof AgentCredentialsMissingError)) {
+            throw err;
+          }
+          return {
+            ok: false,
+            error: {
+              code: "agent_credentials_missing",
+              message: "agent credentials are missing or unreadable",
+            },
+          };
+        }
         daemonLog.debug("list_agent_files", {
           agentId: params.agentId,
           fileId: params.fileId ?? null,
@@ -858,6 +872,13 @@ const openclawProvisionLocks = new Map<string, Promise<unknown>>();
 
 const RUNTIME_FILE_READ_CAP_BYTES = 128 * 1024;
 
+class AgentCredentialsMissingError extends Error {
+  constructor() {
+    super("agent credentials are missing or unreadable");
+    this.name = "AgentCredentialsMissingError";
+  }
+}
+
 interface ListAgentFilesParams {
   agentId: string;
   fileId?: string;
@@ -895,7 +916,12 @@ interface RuntimeFileCandidate {
 
 function listAgentRuntimeFiles(params: ListAgentFilesParams): ListAgentFilesResult {
   const agentId = params.agentId;
-  const credentials = loadStoredCredentials(defaultCredentialsFile(agentId));
+  let credentials: StoredBotCordCredentials;
+  try {
+    credentials = loadStoredCredentials(defaultCredentialsFile(agentId));
+  } catch {
+    throw new AgentCredentialsMissingError();
+  }
   const candidates = runtimeFileCandidates(credentials);
   const selected = params.fileId
     ? candidates.filter((candidate) => candidate.id === params.fileId)
