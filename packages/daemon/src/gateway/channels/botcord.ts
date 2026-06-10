@@ -37,6 +37,10 @@ const DM_ROOM_PREFIX = "rm_dm_";
 const INBOX_POLL_LIMIT = 50;
 const CHANNEL_PERMANENT_STOP = "channel_permanent_stop";
 const DEFAULT_REPLYING_STATUS_EMOJI = "⏳";
+// Matches the dispatcher's 30-minute turn hard timeout — a turn can never
+// outlive its replying reaction. Clears are retried (below) so a lost DELETE
+// is the only way to eat the full TTL.
+const REPLYING_STATUS_TTL_SEC = 1800;
 
 function withReconnectJitter(delayMs: number): { delayMs: number; jitterMs: number } {
   const jitterMs = Math.floor(Math.random() * delayMs * RECONNECT_JITTER_RATIO);
@@ -1097,36 +1101,43 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         room_id: ctx.conversationId,
         turn_id: ctx.turnId,
       };
-      try {
-        const path = `/hub/messages/${encodeURIComponent(ctx.messageId)}/status-reactions`;
-        const resp = ctx.phase === "started"
-          ? await postControlWithRefresh(client, hubUrl, path, {
-              ...body,
-              kind: ctx.kind,
-              emoji: ctx.emoji || DEFAULT_REPLYING_STATUS_EMOJI,
-              ttl_sec: 180,
-            })
-          : await postControlWithRefresh(
-              client,
-              hubUrl,
-              `${path}/${encodeURIComponent(ctx.kind)}`,
-              body,
-              "DELETE",
-            );
-        if (!resp.ok && resp.status !== 204) {
+      const path = `/hub/messages/${encodeURIComponent(ctx.messageId)}/status-reactions`;
+      // A lost clear leaves the reaction stuck for the full TTL, so retry it.
+      const maxAttempts = ctx.phase === "cleared" ? 2 : 1;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          const resp = ctx.phase === "started"
+            ? await postControlWithRefresh(client, hubUrl, path, {
+                ...body,
+                kind: ctx.kind,
+                emoji: ctx.emoji || DEFAULT_REPLYING_STATUS_EMOJI,
+                ttl_sec: REPLYING_STATUS_TTL_SEC,
+              })
+            : await postControlWithRefresh(
+                client,
+                hubUrl,
+                `${path}/${encodeURIComponent(ctx.kind)}`,
+                body,
+                "DELETE",
+              );
+          if (resp.ok || resp.status === 204) return;
           const respBody = await resp.text().catch(() => "");
           ctx.log.warn("botcord message status non-ok", {
             phase: ctx.phase,
             status: resp.status,
+            attempt,
             body: respBody.slice(0, 200),
           });
+          // 4xx won't succeed on retry (message/room gone, bad request).
+          if (resp.status >= 400 && resp.status < 500) return;
+        } catch (err) {
+          ctx.log.warn("botcord message status failed", {
+            phase: ctx.phase,
+            messageId: ctx.messageId,
+            attempt,
+            err: String(err),
+          });
         }
-      } catch (err) {
-        ctx.log.warn("botcord message status failed", {
-          phase: ctx.phase,
-          messageId: ctx.messageId,
-          err: String(err),
-        });
       }
     },
 
