@@ -8,6 +8,19 @@ import { OpenclawAcpAdapter, probeOpenclaw } from "./openclaw-acp.js";
 import type { RuntimeAdapter, RuntimeProbeResult } from "../types.js";
 
 /**
+ * How a runtime CLI can be brought up to date without user interaction.
+ * - `self`: the binary ships its own updater — run `<binary> <args>`.
+ * - `npm`: no self-updater; when the installed binary is npm-managed,
+ *   run `npm install -g <pkg>@latest`. Non-npm installs (brew, native)
+ *   are skipped rather than guessed at.
+ * Runtimes without a spec (pip-installed, unknown channel) are never
+ * auto-updated.
+ */
+export type RuntimeUpdateSpec =
+  | { kind: "self"; args: string[] }
+  | { kind: "npm"; pkg: string };
+
+/**
  * Metadata + factory for a single runtime adapter, used by the registry.
  * Add a new runtime by exporting one of these from the adapter file and
  * registering it in `REGISTRY` below.
@@ -36,6 +49,8 @@ export interface RuntimeModule {
    * probes as unavailable. Helps users recover without reading source.
    */
   installHint?: string;
+  /** Auto-update channel for this runtime; absent → never auto-updated. */
+  update?: RuntimeUpdateSpec;
 }
 
 /** Built-in runtime module entry for Claude Code. */
@@ -46,6 +61,7 @@ export const claudeCodeModule: RuntimeModule = {
   envVar: "BOTCORD_CLAUDE_BIN",
   probe: () => probeClaude(),
   create: () => new ClaudeCodeAdapter(),
+  update: { kind: "self", args: ["update"] },
 };
 
 /** Built-in runtime module entry for Codex. */
@@ -55,6 +71,7 @@ export const codexModule: RuntimeModule = {
   binary: "codex",
   probe: () => probeCodex(),
   create: () => new CodexAdapter(),
+  update: { kind: "npm", pkg: "@openai/codex" },
 };
 
 /** Built-in runtime module entry for DeepSeek TUI. */
@@ -101,6 +118,7 @@ export const geminiModule: RuntimeModule = {
   create: () => new GeminiAdapter(),
   installHint:
     "Install with `npm install -g @google/gemini-cli` (or `brew install gemini-cli`) and run `gemini` once to complete authentication. Override the binary with BOTCORD_GEMINI_BIN.",
+  update: { kind: "npm", pkg: "@google/gemini-cli" },
 };
 
 /** Built-in runtime module entry for OpenClaw (ACP). */
@@ -111,6 +129,9 @@ export const openclawAcpModule: RuntimeModule = {
   envVar: "BOTCORD_OPENCLAW_BIN",
   probe: () => probeOpenclaw(),
   create: () => new OpenclawAcpAdapter(),
+  // --no-restart: the daemon must never bounce a user's openclaw gateway
+  // service as a side effect; the new version applies on next restart.
+  update: { kind: "self", args: ["update", "--yes", "--no-restart"] },
 };
 
 /**
