@@ -374,6 +374,201 @@ async def test_runtime_skills_refresh_dispatches_persists_and_returns(
 
 
 @pytest.mark.asyncio
+async def test_runtime_skills_refresh_retries_cloud_dispatch_loss_and_persists(
+    client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_skills as runtime_skills_mod
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.hosting_kind = "cloud"
+    agent.daemon_instance_id = "dm_cloud_retry_skills"
+    agent.runtime = "codex"
+    daemon = DaemonInstance(
+        id="dm_cloud_retry_skills",
+        user_id=agent.user_id,
+        kind="cloud",
+        refresh_token_hash="hash",
+    )
+    cloud_daemon = CloudDaemonInstance(
+        id="cloud_dm_retry_skills",
+        user_id=agent.user_id,
+        daemon_instance_id=daemon.id,
+        provider="e2b",
+        status="ready",
+        runtime="codex",
+        max_agents=1,
+        active_agent_count=1,
+    )
+    cloud_binding = CloudAgentInstance(
+        id="cloud_ag_retry_skills",
+        user_id=agent.user_id,
+        agent_id=agent.agent_id,
+        cloud_daemon_instance_id=cloud_daemon.id,
+        daemon_instance_id=daemon.id,
+        runtime="codex",
+        model_profile="default",
+        status="ready",
+    )
+    db_session.add_all([daemon, cloud_daemon, cloud_binding])
+    await db_session.commit()
+
+    monkeypatch.setattr(runtime_skills_mod, "is_cloud_daemon_online", lambda _id: True)
+
+    resume_calls = []
+
+    class FakeCloudAgentService:
+        async def resume_cloud_agent(self, db, *, user_id, agent_id):
+            resume_calls.append({"user_id": user_id, "agent_id": agent_id})
+            return None
+
+    monkeypatch.setattr(runtime_skills_mod, "CloudAgentService", FakeCloudAgentService)
+
+    dispatch_calls = []
+    probed_at = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
+
+    async def fake_send_cloud(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        dispatch_calls.append({
+            "cloud_daemon_instance_id": cloud_daemon_instance_id,
+            "type": type_,
+            "params": params,
+            "timeout_ms": timeout_ms,
+        })
+        if len(dispatch_calls) == 1:
+            raise runtime_skills_mod.CloudDaemonDispatchError(
+                "cloud_daemon_disconnected",
+                "connection closed",
+            )
+        return {
+            "ok": True,
+            "result": {
+                "agentId": "ag_owned",
+                "skills": [
+                    {
+                        "name": "cloud-skill",
+                        "source": "runtime-global",
+                        "description": "Cloud skill",
+                        "mtimeMs": probed_at,
+                    }
+                ],
+                "probedAt": probed_at,
+            },
+        }
+
+    monkeypatch.setattr(runtime_skills_mod, "send_cloud_control_frame", fake_send_cloud)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post("/api/agents/ag_owned/skills/refresh", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["skills"][0]["name"] == "cloud-skill"
+    assert resume_calls == [{"user_id": agent.user_id, "agent_id": "ag_owned"}]
+    assert len(dispatch_calls) == 2
+
+    refreshed = await db_session.scalar(select(Agent).where(Agent.agent_id == "ag_owned"))
+    assert refreshed is not None
+    assert refreshed.skills_json[0]["name"] == "cloud-skill"
+
+
+@pytest.mark.asyncio
+async def test_runtime_skills_install_does_not_retry_cloud_dispatch_loss(
+    client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_skills as runtime_skills_mod
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.hosting_kind = "cloud"
+    agent.daemon_instance_id = "dm_cloud_install_skills"
+    agent.runtime = "codex"
+    daemon = DaemonInstance(
+        id="dm_cloud_install_skills",
+        user_id=agent.user_id,
+        kind="cloud",
+        refresh_token_hash="hash",
+    )
+    cloud_daemon = CloudDaemonInstance(
+        id="cloud_dm_install_skills",
+        user_id=agent.user_id,
+        daemon_instance_id=daemon.id,
+        provider="e2b",
+        status="ready",
+        runtime="codex",
+        max_agents=1,
+        active_agent_count=1,
+    )
+    cloud_binding = CloudAgentInstance(
+        id="cloud_ag_install_skills",
+        user_id=agent.user_id,
+        agent_id=agent.agent_id,
+        cloud_daemon_instance_id=cloud_daemon.id,
+        daemon_instance_id=daemon.id,
+        runtime="codex",
+        model_profile="default",
+        status="ready",
+    )
+    db_session.add_all([daemon, cloud_daemon, cloud_binding])
+    await db_session.commit()
+
+    monkeypatch.setattr(runtime_skills_mod, "is_cloud_daemon_online", lambda _id: True)
+
+    resume_calls = []
+
+    class FakeCloudAgentService:
+        async def resume_cloud_agent(self, db, *, user_id, agent_id):
+            resume_calls.append({"user_id": user_id, "agent_id": agent_id})
+            return None
+
+    monkeypatch.setattr(runtime_skills_mod, "CloudAgentService", FakeCloudAgentService)
+
+    dispatch_calls = []
+
+    async def fake_send_cloud(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        dispatch_calls.append({
+            "cloud_daemon_instance_id": cloud_daemon_instance_id,
+            "type": type_,
+            "params": params,
+            "timeout_ms": timeout_ms,
+        })
+        raise runtime_skills_mod.CloudDaemonDispatchError(
+            "cloud_daemon_disconnected",
+            "connection closed after send",
+        )
+
+    monkeypatch.setattr(runtime_skills_mod, "send_cloud_control_frame", fake_send_cloud)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_owned/skills/install",
+        headers=headers,
+        json={
+            "manifest": {
+                "name": "cloud-install-skill",
+                "skillMd": "# Cloud install skill\n",
+                "targetRuntimes": ["codex"],
+            }
+        },
+    )
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"] == "daemon_offline"
+    assert resume_calls == []
+    assert dispatch_calls == [
+        {
+            "cloud_daemon_instance_id": "cloud_dm_install_skills",
+            "type": "install_agent_skill",
+            "params": {
+                "agentId": "ag_owned",
+                "manifest": {
+                    "name": "cloud-install-skill",
+                    "skillMd": "# Cloud install skill\n",
+                    "targetRuntimes": ["codex"],
+                },
+            },
+            "timeout_ms": 30000,
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_runtime_files_for_owned_cloud_agent_dispatches_cloud_control_frame(
     client, seed, db_session, monkeypatch
 ):
@@ -562,6 +757,100 @@ async def test_runtime_files_for_cloud_agent_resumes_sandbox_before_dispatch(
             "timeout_ms": 5000,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_runtime_files_for_cloud_agent_retries_after_missing_credentials_ack(
+    client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_files as runtime_files_mod
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.hosting_kind = "cloud"
+    agent.daemon_instance_id = "dm_cloud_retry_files"
+    agent.runtime = "codex"
+    daemon = DaemonInstance(
+        id="dm_cloud_retry_files",
+        user_id=agent.user_id,
+        kind="cloud",
+        refresh_token_hash="hash",
+    )
+    cloud_daemon = CloudDaemonInstance(
+        id="cloud_dm_retry_files",
+        user_id=agent.user_id,
+        daemon_instance_id=daemon.id,
+        provider="e2b",
+        status="ready",
+        runtime="codex",
+        max_agents=1,
+        active_agent_count=1,
+    )
+    cloud_binding = CloudAgentInstance(
+        id="cloud_ag_retry_files",
+        user_id=agent.user_id,
+        agent_id=agent.agent_id,
+        cloud_daemon_instance_id=cloud_daemon.id,
+        daemon_instance_id=daemon.id,
+        runtime="codex",
+        model_profile="default",
+        status="ready",
+    )
+    db_session.add_all([daemon, cloud_daemon, cloud_binding])
+    await db_session.commit()
+
+    monkeypatch.setattr(runtime_files_mod, "is_cloud_daemon_online", lambda _id: True)
+
+    resume_calls = []
+
+    class FakeCloudAgentService:
+        async def resume_cloud_agent(self, db, *, user_id, agent_id):
+            resume_calls.append({"user_id": user_id, "agent_id": agent_id})
+            return None
+
+    monkeypatch.setattr(runtime_files_mod, "CloudAgentService", FakeCloudAgentService)
+
+    dispatch_calls = []
+
+    async def fake_send_cloud(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        dispatch_calls.append({
+            "cloud_daemon_instance_id": cloud_daemon_instance_id,
+            "type": type_,
+            "params": params,
+            "timeout_ms": timeout_ms,
+        })
+        if len(dispatch_calls) == 1:
+            return {
+                "ok": False,
+                "error": {
+                    "code": "agent_credentials_missing",
+                    "message": "agent credentials are missing or unreadable",
+                },
+            }
+        return {
+            "ok": True,
+            "result": {
+                "agentId": "ag_owned",
+                "runtime": "codex",
+                "files": [
+                    {
+                        "id": "workspace:AGENTS.md",
+                        "name": "workspace/AGENTS.md",
+                        "scope": "workspace",
+                        "content": "# rules\n",
+                    }
+                ],
+            },
+        }
+
+    monkeypatch.setattr(runtime_files_mod, "send_cloud_control_frame", fake_send_cloud)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.get("/api/agents/ag_owned/runtime-files", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["files"][0]["content"] == "# rules\n"
+    assert resume_calls == [{"user_id": agent.user_id, "agent_id": "ag_owned"}]
+    assert len(dispatch_calls) == 2
 
 
 @pytest.mark.asyncio
