@@ -1459,7 +1459,17 @@ async def _send_room_message(
         "ROOM fan-out msg_id=%s from=%s room=%s topic=%s receivers=%s owner_chat_self=%s",
         envelope.msg_id, envelope.from_, room_id, topic, receivers, _self_delivery,
     )
-    envelope_json = json.dumps(envelope.model_dump(by_alias=True))
+    envelope_data = envelope.model_dump(by_alias=True)
+    if is_owner_chat:
+        from hub.routers.owner_chat_ws import current_owner_chat_trace_id
+
+        owner_chat_trace_id = current_owner_chat_trace_id(
+            room_id=room_id,
+            agent_id=envelope.from_,
+        )
+        if owner_chat_trace_id:
+            envelope_data["trace_id"] = owner_chat_trace_id
+    envelope_json = json.dumps(envelope_data)
 
     first_hub_msg_id: str | None = None
     receiver_hub_msg_ids: dict[str, str] = {}

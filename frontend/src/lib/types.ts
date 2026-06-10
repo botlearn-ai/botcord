@@ -320,6 +320,11 @@ export interface OwnerChatMessage {
 }
 
 /** Convert a DashboardMessage (from API) into an OwnerChatMessage. */
+function dashboardMessageTraceId(msg: DashboardMessage): string | undefined {
+  const traceId = msg.payload?.trace_id ?? msg.payload?.traceId;
+  return typeof traceId === "string" && traceId.length > 0 ? traceId : undefined;
+}
+
 export function dashboardMsgToOwnerChat(
   msg: DashboardMessage,
   agentName: string,
@@ -342,6 +347,7 @@ export function dashboardMsgToOwnerChat(
         : msg.type === "error"
           ? "error"
           : "message",
+    traceId: !isUser ? dashboardMessageTraceId(msg) : undefined,
     replyPreview: msg.reply_preview ?? undefined,
   };
 }
