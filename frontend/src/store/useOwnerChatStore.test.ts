@@ -281,6 +281,64 @@ describe("useOwnerChatStore stream terminal handling", () => {
       streamBlocks: [{ block: { kind: "other" } }],
     });
   });
+
+  it("merges a traced API final message into an existing stream placeholder", () => {
+    useOwnerChatStore.getState().appendStreamBlock({
+      trace_id: "msg_trace",
+      seq: 1,
+      created_at: "2026-05-19T09:00:00.000Z",
+      block: { kind: "thinking", payload: { phase: "updated", label: "Thinking" } },
+    });
+
+    useOwnerChatStore.getState().mergeApiMessages([
+      makeDashboardMessage({
+        hub_msg_id: "msg_final",
+        msg_id: "msg_final",
+        sender_id: "ag_bot",
+        source_type: "agent",
+        text: "final answer",
+        payload: { trace_id: "msg_trace", text: "final answer" },
+        created_at: "2026-05-19T09:00:02.000Z",
+      }),
+    ], "append");
+
+    const msgs = useOwnerChatStore.getState().messages;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({
+      hubMsgId: "msg_final",
+      traceId: "msg_trace",
+      text: "final answer",
+      status: "delivered",
+      streamBlocks: [{ block: { kind: "thinking" } }],
+    });
+  });
+
+  it("merges late stream blocks into an already delivered traced message", () => {
+    useOwnerChatStore.getState().upsertMessage(makeOwnerChatMessage({
+      clientId: "msg_final",
+      hubMsgId: "msg_final",
+      sender: "agent",
+      text: "final answer",
+      status: "delivered",
+      senderName: "Owned bot",
+      traceId: "msg_trace",
+    }));
+
+    useOwnerChatStore.getState().appendStreamBlock({
+      trace_id: "msg_trace",
+      seq: 1,
+      created_at: "2026-05-19T09:00:01.000Z",
+      block: { kind: "thinking", payload: { phase: "updated", label: "Thinking" } },
+    });
+
+    const msgs = useOwnerChatStore.getState().messages;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({
+      hubMsgId: "msg_final",
+      text: "final answer",
+      streamBlocks: [{ block: { kind: "thinking" } }],
+    });
+  });
 });
 
 describe("useOwnerChatStore stream-cache restore", () => {
@@ -415,6 +473,38 @@ describe("useOwnerChatStore stream-cache restore", () => {
     await useOwnerChatStore.getState().restoreActiveRuns("ag_bot");
 
     expect(mocks.getRunStreamBlocks).not.toHaveBeenCalled();
+  });
+
+  it("restoreActiveRuns skips API agent replies whose payload carries the trace id", async () => {
+    mocks.getRoomMessages.mockResolvedValue({
+      messages: [
+        makeDashboardMessage({
+          hub_msg_id: "msg_final",
+          msg_id: "msg_final",
+          sender_id: "ag_bot",
+          source_type: "agent",
+          text: "done",
+          payload: { trace_id: "msg_trace", text: "done" },
+          created_at: "2026-05-19T09:00:02.000Z",
+        }),
+        makeDashboardMessage({
+          hub_msg_id: "msg_trace",
+          msg_id: "msg_trace",
+          sender_id: "ag_bot",
+          source_type: "dashboard_user_chat",
+          text: "do a thing",
+          payload: { text: "do a thing" },
+          created_at: "2026-05-19T09:00:00.000Z",
+        }),
+      ],
+      has_more: false,
+    });
+
+    await useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    await useOwnerChatStore.getState().restoreActiveRuns("ag_bot");
+
+    expect(mocks.getRunStreamBlocks).not.toHaveBeenCalled();
+    expect(useOwnerChatStore.getState().messages.map((m) => m.traceId)).toContain("msg_trace");
   });
 
   it("restoreActiveRuns degrades gracefully when the fetch fails", async () => {

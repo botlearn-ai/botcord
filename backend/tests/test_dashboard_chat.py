@@ -3,6 +3,7 @@
 import base64
 import datetime
 import hashlib
+import json
 import time
 import uuid
 
@@ -454,8 +455,13 @@ async def test_agent_reply_to_owner_chat_creates_record(
     }
 
     # Agent sends a reply back to this room via /hub/send
+    from hub.routers import owner_chat_ws
+
     notify_mock = AsyncMock()
     monkeypatch.setattr("hub.routers.owner_chat_ws.notify_oc_ws_message", notify_mock)
+    trace_id = "h_trace_reply"
+    owner_chat_ws._oc_trace_subs[trace_id] = (user_id, agent_id)
+    owner_chat_ws._oc_trace_block_count[trace_id] = 0
     attachment = {
         "filename": "xhs-01-cover.png",
         "url": "https://api.botcord.chat/hub/files/f_cover",
@@ -487,6 +493,7 @@ async def test_agent_reply_to_owner_chat_creates_record(
     assert record.room_id == room_id
     assert record.sender_id == agent_id
     assert record.receiver_id == owner_human_id
+    assert json.loads(record.envelope_json)["trace_id"] == trace_id
     notify_mock.assert_awaited_once()
     assert notify_mock.await_args.kwargs["attachments"] == [attachment]
     # Crucially: state is 'delivered' (not 'queued') so it never appears in
@@ -499,6 +506,16 @@ async def test_agent_reply_to_owner_chat_creates_record(
     inbox_msgs = inbox_resp.json()["messages"]
     self_reply_ids = [m["hub_msg_id"] for m in inbox_msgs if m["hub_msg_id"] == send_data["hub_msg_id"]]
     assert len(self_reply_ids) == 0, "Self-delivery record must not appear in inbox"
+
+    messages_resp = await client.get(
+        f"/dashboard/rooms/{room_id}/messages",
+        headers=headers,
+    )
+    assert messages_resp.status_code == 200
+    messages = messages_resp.json()["messages"]
+    reply_msg = next(m for m in messages if m["hub_msg_id"] == send_data["hub_msg_id"])
+    assert reply_msg["payload"]["trace_id"] == trace_id
+    owner_chat_ws._cleanup_trace(trace_id)
 
 
 @pytest.mark.asyncio
