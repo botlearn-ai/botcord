@@ -4,12 +4,12 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Forward, Hourglass, MoreHorizontal, RotateCcw, User } from "lucide-react";
+import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Forward, MoreHorizontal, RotateCcw, User } from "lucide-react";
 import ForwardModal from "./ForwardModal";
 import ReplyQuoteBlock from "./ReplyQuoteBlock";
 import { emitJumpToMessage } from "./messageNavigation";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
-import type { DashboardMessage, Attachment } from "@/lib/types";
+import type { DashboardMessage, Attachment, MessageStatusReaction } from "@/lib/types";
 import { canReplyToDashboardMessage } from "@/lib/dashboard-message-actions";
 import { useLanguage } from '@/lib/i18n';
 import { messageBubble } from '@/lib/i18n/translations/dashboard';
@@ -166,13 +166,63 @@ function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
   );
 }
 
-function ReplyingStatusIcon() {
+const MAX_REPLYING_AVATARS = 3;
+
+function ReplyingAvatarStack({ reactions }: { reactions: MessageStatusReaction[] }) {
+  const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
+  // Narrow subscription: resolve only these actors' avatars and return a plain
+  // id → url map, so the stack re-renders only when one of *its* actors'
+  // avatars changes — not on every overview / publicAgents churn.
+  const actorKey = reactions.map((reaction) => reaction.actor_id).join(",");
+  const avatarByActor = useDashboardChatStore(
+    useShallow((state) => {
+      const map: Record<string, string | null> = {};
+      for (const actorId of actorKey.split(",")) {
+        if (!actorId) continue;
+        const currentAgent = state.overview?.agent?.agent_id === actorId ? state.overview.agent : null;
+        const contactAgent = state.overview?.contacts.find((item) => item.contact_agent_id === actorId);
+        const publicAgent = state.publicAgents.find((item) => item.agent_id === actorId);
+        map[actorId] = currentAgent?.avatar_url || contactAgent?.avatar_url || publicAgent?.avatar_url || null;
+      }
+      return map;
+    }),
+  );
+  if (reactions.length === 0) return null;
+  const shown = reactions.slice(0, MAX_REPLYING_AVATARS);
+  const extra = reactions.length - shown.length;
+  const names = reactions.map((reaction) => reaction.actor_name || reaction.actor_id).join("、");
   return (
-    <span className="replying-hourglass" aria-hidden="true">
-      <Hourglass className="replying-hourglass-frame-icon" strokeWidth={2.2} />
-      <span className="replying-hourglass-top-sand" />
-      <span className="replying-hourglass-stream" />
-      <span className="replying-hourglass-bottom-sand" />
+    <span className="inline-flex items-center gap-1" title={`${names} replying`}>
+      <span className="inline-flex items-center">
+        {shown.map((reaction, index) => {
+          const ownedAvatar = ownedAgents.find((item) => item.agent_id === reaction.actor_id)?.avatar_url;
+          return (
+            <span
+              key={reaction.actor_id}
+              className={`replying-avatar ${index > 0 ? "-ml-1.5" : ""}`}
+              style={{ zIndex: shown.length - index }}
+            >
+              <BotAvatar
+                agentId={reaction.actor_id}
+                avatarUrl={ownedAvatar || avatarByActor[reaction.actor_id]}
+                alt={reaction.actor_name || reaction.actor_id}
+                size={18}
+                className="ring-yellow-400/40"
+              />
+            </span>
+          );
+        })}
+        {extra > 0 && (
+          <span className="z-0 -ml-1.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-yellow-400/40 bg-[#1a1a24] text-[9px] font-medium text-yellow-200">
+            +{extra}
+          </span>
+        )}
+      </span>
+      {reactions.length === 1 && (
+        <span className="max-w-[96px] truncate text-[10px] font-medium text-yellow-200/90">
+          {reactions[0].actor_name || reactions[0].actor_id}
+        </span>
+      )}
     </span>
   );
 }
@@ -893,17 +943,14 @@ function MessageBubble({
               {message.type}
             </span>
           )}
-          {activeStatusReactions.map((reaction) => (
+          <ReplyingAvatarStack reactions={activeStatusReactions.filter((reaction) => reaction.kind === "replying")} />
+          {activeStatusReactions.filter((reaction) => reaction.kind !== "replying").map((reaction) => (
             <span
               key={`${reaction.actor_id}:${reaction.kind}`}
               className="inline-flex items-center gap-1 rounded border border-yellow-400/25 bg-yellow-400/10 px-1 py-px text-[10px] font-medium text-yellow-200"
               title={`${reaction.actor_name || reaction.actor_id} replying`}
             >
-              {reaction.kind === "replying" ? (
-                <ReplyingStatusIcon />
-              ) : (
-                <span className="text-[11px] leading-none">{reaction.emoji}</span>
-              )}
+              <span className="text-[11px] leading-none">{reaction.emoji}</span>
               <span className="max-w-[96px] truncate">{reaction.actor_name || reaction.actor_id}</span>
             </span>
           ))}
