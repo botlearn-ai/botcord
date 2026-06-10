@@ -47,6 +47,24 @@ interface DeepseekAdapterDeps {
 
 const PROCESS_POOL = new Map<string, DeepseekProcessHandle>();
 
+let exitCleanupHookInstalled = false;
+
+/**
+ * Kill any pooled deepseek servers when the daemon exits. The pool is
+ * in-memory, so without this a daemon restart orphans the spawned servers.
+ * Installed lazily on first spawn to keep module import side-effect free.
+ */
+function installExitCleanupHook(): void {
+  if (exitCleanupHookInstalled) return;
+  exitCleanupHookInstalled = true;
+  process.once("exit", () => {
+    for (const [key, handle] of PROCESS_POOL.entries()) {
+      shutdownHandle(handle, "daemon-exit");
+      PROCESS_POOL.delete(key);
+    }
+  });
+}
+
 /** Resolve the `deepseek` dispatcher CLI on PATH. */
 export function resolveDeepseekCommand(deps: ProbeDeps = {}): string | null {
   const explicit = (deps.env ?? process.env).BOTCORD_DEEPSEEK_TUI_BIN;
@@ -201,8 +219,13 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
         cwd: opts.cwd,
         env: this.spawnEnv(opts),
         stdio: ["ignore", "pipe", "pipe"],
+        // Own process group: the resolved binary may be a dispatcher that
+        // re-spawns the real deepseek-tui server, so shutdown must signal
+        // the whole group, not just the direct child.
+        detached: true,
       },
     );
+    installExitCleanupHook();
 
     const handle: DeepseekProcessHandle = {
       child,
@@ -658,9 +681,20 @@ function shutdownHandle(handle: DeepseekProcessHandle, reason: string): void {
   handle.closed = true;
   if (handle.idleTimer) clearTimeout(handle.idleTimer);
   try {
-    handle.child.kill("SIGTERM");
+    const pid = handle.child.pid;
+    if (typeof pid === "number" && pid > 0) {
+      // Negative pid signals the process group (see detached spawn above),
+      // killing the dispatcher and the deepseek-tui server it re-spawned.
+      process.kill(-pid, "SIGTERM");
+    } else {
+      handle.child.kill("SIGTERM");
+    }
   } catch {
-    // no-op
+    try {
+      handle.child.kill("SIGTERM");
+    } catch {
+      // no-op
+    }
   }
   try {
     handle.child.stdout?.destroy();
