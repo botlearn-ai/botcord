@@ -29,10 +29,12 @@ import { log as daemonLog } from "./log.js";
 import {
   adoptDiscoveredOpenclawAgents,
   attachRuntimeHealth,
+  clearRuntimeProbeCache,
   collectRuntimeSnapshot,
   createProvisioner,
   type OnAgentInstalledHook,
 } from "./provision.js";
+import { startRuntimeAutoUpdate } from "./runtime-update.js";
 import { openclawAutoProvisionEnabled } from "./openclaw-discovery.js";
 import { SnapshotWriter } from "./snapshot-writer.js";
 import { createDaemonSystemContextBuilder } from "./system-context.js";
@@ -734,6 +736,20 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     });
   }
 
+  // Background runtime auto-update: one round now (async, never blocks
+  // startup), then every 24h. When a round actually changed a version,
+  // refresh the probe cache and push a live runtime_snapshot so the Hub
+  // sees the new versions without a daemon restart.
+  const runtimeUpdater = startRuntimeAutoUpdate({
+    log: logger,
+    onCompleted: (results) => {
+      if (results.some((r) => r.status === "updated")) {
+        clearRuntimeProbeCache();
+        pushLiveRuntimeSnapshot();
+      }
+    },
+  });
+
   const snapshotWriter = new SnapshotWriter({
     path: opts.snapshotPath ?? SNAPSHOT_PATH,
     intervalMs: opts.snapshotIntervalMs ?? resolveSnapshotIntervalMs(),
@@ -746,6 +762,7 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
   const stop = (reason?: string): Promise<void> => {
     if (stopping) return stopping;
     logger.info("daemon stopping", { reason: reason ?? null });
+    runtimeUpdater.stop();
     snapshotWriter.stop();
     // Write one final snapshot so `status` doesn't briefly see stale data,
     // then delete the file on the way out.
