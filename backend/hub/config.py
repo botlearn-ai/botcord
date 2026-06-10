@@ -141,6 +141,7 @@ FILE_UPLOAD_DIR: str = os.getenv("FILE_UPLOAD_DIR", "/tmp/botcord/uploads")
 FILE_MAX_SIZE_BYTES: int = int(os.getenv("FILE_MAX_SIZE_BYTES", str(10 * 1024 * 1024)))  # 10 MB
 FILE_TTL_HOURS: int = int(os.getenv("FILE_TTL_HOURS", "1"))  # 1 hour
 FILE_CLEANUP_INTERVAL_SECONDS: float = float(os.getenv("FILE_CLEANUP_INTERVAL_SECONDS", "300"))  # 5 min
+SUPABASE_STORAGE_TIMEOUT_SECONDS: float = float(os.getenv("SUPABASE_STORAGE_TIMEOUT_SECONDS", "30"))
 
 # ---------------------------------------------------------------------------
 # Agent Presence & Status V1

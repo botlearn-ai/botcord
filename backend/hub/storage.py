@@ -172,13 +172,36 @@ async def _supabase_request(
         "apikey": hub_config.SUPABASE_SERVICE_ROLE_KEY,
         **(headers or {}),
     }
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.request(
+    try:
+        async with httpx.AsyncClient(timeout=hub_config.SUPABASE_STORAGE_TIMEOUT_SECONDS) as client:
+            response = await client.request(
+                method,
+                f"{hub_config.SUPABASE_URL}{path}",
+                headers=request_headers,
+                **kwargs,
+            )
+    except httpx.TimeoutException as exc:
+        logger.warning(
+            "Supabase storage request timed out: %s %s err=%s",
             method,
-            f"{hub_config.SUPABASE_URL}{path}",
-            headers=request_headers,
-            **kwargs,
+            path,
+            exc.__class__.__name__,
         )
+        raise HTTPException(
+            status_code=504,
+            detail="Supabase storage request timed out",
+        ) from exc
+    except (httpx.ConnectError, httpx.NetworkError, httpx.HTTPError) as exc:
+        logger.warning(
+            "Supabase storage request failed before response: %s %s err=%s",
+            method,
+            path,
+            exc.__class__.__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Supabase storage request failed",
+        ) from exc
 
     allowed = expected_statuses or {200}
     if response.status_code in allowed:

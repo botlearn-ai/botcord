@@ -54,11 +54,13 @@ async def client(db_session: AsyncSession, tmp_path):
     original_supabase_url = config.SUPABASE_URL
     original_supabase_service_role_key = config.SUPABASE_SERVICE_ROLE_KEY
     original_supabase_bucket = config.SUPABASE_STORAGE_BUCKET
+    original_supabase_storage_timeout = config.SUPABASE_STORAGE_TIMEOUT_SECONDS
     config.FILE_UPLOAD_DIR = str(tmp_path / "uploads")
     config.FILE_STORAGE_BACKEND = "disk"
     config.SUPABASE_URL = None
     config.SUPABASE_SERVICE_ROLE_KEY = None
     config.SUPABASE_STORAGE_BUCKET = None
+    config.SUPABASE_STORAGE_TIMEOUT_SECONDS = 30
     os.makedirs(config.FILE_UPLOAD_DIR, exist_ok=True)
 
     from hub.main import app
@@ -79,6 +81,7 @@ async def client(db_session: AsyncSession, tmp_path):
     config.SUPABASE_URL = original_supabase_url
     config.SUPABASE_SERVICE_ROLE_KEY = original_supabase_service_role_key
     config.SUPABASE_STORAGE_BUCKET = original_supabase_bucket
+    config.SUPABASE_STORAGE_TIMEOUT_SECONDS = original_supabase_storage_timeout
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +481,52 @@ async def test_download_success_supabase(client: AsyncClient):
     assert dl_resp.content == b"supabase bytes"
     assert "application/pdf" in dl_resp.headers.get("content-type", "")
     assert "report.pdf" in dl_resp.headers.get("content-disposition", "")
+
+
+@pytest.mark.asyncio
+async def test_download_supabase_timeout_returns_504(client: AsyncClient, monkeypatch):
+    from hub import storage
+
+    _enable_supabase_storage()
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+    calls: list[tuple[str, str]] = []
+    side_effects = [
+        _supabase_response(),
+        httpx.ReadTimeout("timed out"),
+    ]
+
+    class FakeSupabaseClient:
+        def __init__(self, *, timeout):
+            assert timeout == 30
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def request(self, method, url, **kwargs):
+            calls.append((method, url))
+            effect = side_effects.pop(0)
+            if isinstance(effect, Exception):
+                raise effect
+            return effect
+
+    monkeypatch.setattr(storage.httpx, "AsyncClient", FakeSupabaseClient)
+
+    upload_resp = await client.post(
+        "/hub/upload",
+        headers=_auth_header(token),
+        files={"file": ("report.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+    )
+    assert upload_resp.status_code == 200
+    file_id = upload_resp.json()["file_id"]
+
+    dl_resp = await client.get(f"/hub/files/{file_id}")
+
+    assert dl_resp.status_code == 504
+    assert [method for method, _ in calls] == ["POST", "GET"]
 
 
 # ===========================================================================
