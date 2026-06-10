@@ -1166,8 +1166,64 @@ class _RefreshRuntimesResponse(BaseModel):
 
 
 _REFRESH_RUNTIMES_TIMEOUT_MS = 10000
+_REFRESH_RUNTIMES_LATE_ACK_GRACE_MS = 3000
 _CLOUD_REFRESH_RELAUNCH_WAIT_SECONDS = 20.0
 _CLOUD_REFRESH_RELAUNCH_POLL_SECONDS = 0.5
+
+
+async def _await_refresh_runtimes_ack(
+    *,
+    conn: _DaemonConn,
+    frame_id: str,
+    fut: asyncio.Future,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    timeout_s = _REFRESH_RUNTIMES_TIMEOUT_MS / 1000
+    grace_s = _REFRESH_RUNTIMES_LATE_ACK_GRACE_MS / 1000
+
+    try:
+        try:
+            return await asyncio.wait_for(asyncio.shield(fut), timeout=timeout_s)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "daemon runtime refresh ack timed out; waiting for late ack: "
+                "instance=%s frame=%s timeout_ms=%s grace_ms=%s",
+                conn.daemon_instance_id,
+                frame_id,
+                _REFRESH_RUNTIMES_TIMEOUT_MS,
+                _REFRESH_RUNTIMES_LATE_ACK_GRACE_MS,
+            )
+            try:
+                ack = await asyncio.wait_for(asyncio.shield(fut), timeout=grace_s)
+            except asyncio.TimeoutError:
+                elapsed_ms = int((time.monotonic() - started) * 1000)
+                logger.warning(
+                    "daemon runtime refresh ack missing after grace: "
+                    "instance=%s frame=%s elapsed_ms=%s",
+                    conn.daemon_instance_id,
+                    frame_id,
+                    elapsed_ms,
+                )
+                raise HTTPException(status_code=504, detail="daemon_ack_timeout") from None
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            logger.warning(
+                "daemon runtime refresh ack arrived during grace: "
+                "instance=%s frame=%s elapsed_ms=%s",
+                conn.daemon_instance_id,
+                frame_id,
+                elapsed_ms,
+            )
+            return ack
+    except RuntimeError as exc:
+        # The control-WS finally block sets this exception on every pending
+        # ack when the daemon disconnects. Surface it as 502 rather than
+        # letting it escape to a generic 500.
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "daemon_disconnected", "daemon_message": str(exc)},
+        ) from exc
+    finally:
+        conn.pending_acks.pop(frame_id, None)
 
 
 async def _relaunch_cloud_daemon_for_runtime_refresh(
@@ -1316,22 +1372,11 @@ async def refresh_instance_runtimes(
         conn.pending_acks.pop(frame["id"], None)
         raise HTTPException(status_code=502, detail=f"daemon_send_failed: {exc}")
 
-    try:
-        ack = await asyncio.wait_for(
-            fut, timeout=_REFRESH_RUNTIMES_TIMEOUT_MS / 1000
-        )
-    except asyncio.TimeoutError:
-        conn.pending_acks.pop(frame["id"], None)
-        raise HTTPException(status_code=504, detail="daemon_ack_timeout")
-    except RuntimeError as exc:
-        # The control-WS finally block sets this exception on every pending
-        # ack when the daemon disconnects. Surface it as 502 rather than
-        # letting it escape to a generic 500.
-        conn.pending_acks.pop(frame["id"], None)
-        raise HTTPException(
-            status_code=502,
-            detail={"code": "daemon_disconnected", "daemon_message": str(exc)},
-        )
+    ack = await _await_refresh_runtimes_ack(
+        conn=conn,
+        frame_id=frame["id"],
+        fut=fut,
+    )
 
     if not isinstance(ack, dict) or not ack.get("ok"):
         err = ack.get("error") if isinstance(ack, dict) else None

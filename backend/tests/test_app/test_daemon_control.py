@@ -1472,6 +1472,115 @@ async def test_refresh_runtimes_success_persists_and_returns(
 
 
 @pytest.mark.asyncio
+async def test_refresh_runtimes_accepts_late_ack_within_grace(
+    client: AsyncClient, seed_user, db_session: AsyncSession, monkeypatch
+):
+    from sqlalchemy import select
+
+    import hub.routers.daemon_control as daemon_control
+    from hub.routers.daemon_control import _DaemonConn, _registry_for_tests
+
+    monkeypatch.setattr(daemon_control, "_REFRESH_RUNTIMES_TIMEOUT_MS", 20)
+    monkeypatch.setattr(daemon_control, "_REFRESH_RUNTIMES_LATE_ACK_GRACE_MS", 200)
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    fake_ws = _FakeWS()
+    conn = _DaemonConn(
+        ws=fake_ws,  # type: ignore[arg-type]
+        user_id=str(seed_user["user_id"]),
+        daemon_instance_id=instance_id,
+        pending_acks={},
+    )
+    registry = _registry_for_tests()
+    await registry.register(conn)
+    try:
+        probed_at = _probed_now_ms()
+        runtimes = [{"id": "codex", "available": True, "version": "0.12.0"}]
+
+        async def _reply_after_primary_timeout() -> None:
+            for _ in range(100):
+                if fake_ws.sent:
+                    break
+                await asyncio.sleep(0.01)
+            assert fake_ws.sent
+            sent = json.loads(fake_ws.sent[0])
+            assert sent["type"] == "list_runtimes"
+            await asyncio.sleep(0.05)
+            fut = conn.pending_acks.get(sent["id"])
+            assert fut is not None
+            fut.set_result(
+                {
+                    "id": sent["id"],
+                    "ok": True,
+                    "result": {
+                        "runtimes": runtimes,
+                        "probedAt": probed_at,
+                        "daemonVersion": "0.3.0",
+                    },
+                }
+            )
+
+        reply_task = asyncio.create_task(_reply_after_primary_timeout())
+        r = await client.post(
+            f"/daemon/instances/{instance_id}/refresh-runtimes",
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        await reply_task
+        assert r.status_code == 200, r.text
+        assert conn.pending_acks == {}
+        body = r.json()
+        assert body["runtimes"] == runtimes
+        assert body["daemon_version"] == "0.3.0"
+
+        await db_session.commit()
+        inst = await db_session.scalar(
+            select(DaemonInstance).where(DaemonInstance.id == instance_id)
+        )
+        assert inst is not None
+        assert inst.runtimes_json == runtimes
+        assert inst.runtimes_probed_at is not None
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
+async def test_refresh_runtimes_timeout_cleans_pending_ack(
+    client: AsyncClient, seed_user, monkeypatch
+):
+    import hub.routers.daemon_control as daemon_control
+    from hub.routers.daemon_control import _DaemonConn, _registry_for_tests
+
+    monkeypatch.setattr(daemon_control, "_REFRESH_RUNTIMES_TIMEOUT_MS", 10)
+    monkeypatch.setattr(daemon_control, "_REFRESH_RUNTIMES_LATE_ACK_GRACE_MS", 10)
+
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+
+    fake_ws = _FakeWS()
+    conn = _DaemonConn(
+        ws=fake_ws,  # type: ignore[arg-type]
+        user_id=str(seed_user["user_id"]),
+        daemon_instance_id=instance_id,
+        pending_acks={},
+    )
+    registry = _registry_for_tests()
+    await registry.register(conn)
+    try:
+        r = await client.post(
+            f"/daemon/instances/{instance_id}/refresh-runtimes",
+            headers={"Authorization": f"Bearer {seed_user['token']}"},
+        )
+        assert r.status_code == 504, r.text
+        assert r.json()["detail"] == "daemon_ack_timeout"
+        assert fake_ws.sent
+        assert conn.pending_acks == {}
+    finally:
+        await registry.unregister(conn)
+
+
+@pytest.mark.asyncio
 async def test_refresh_runtimes_cloud_daemon_uses_cloud_registry(
     client: AsyncClient, seed_user, db_session: AsyncSession, monkeypatch
 ):
