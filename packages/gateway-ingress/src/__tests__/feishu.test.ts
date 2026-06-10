@@ -34,10 +34,16 @@ function makeCtx(
     lastInboundAt?: number;
     lastError?: string | null;
   }[] = [];
+  const logs: Array<{ message: string; meta?: Record<string, unknown> }> = [];
   const ctx: ProviderRuntimeContext = {
     connection,
     secret,
-    log: noopLogger,
+    log: {
+      ...noopLogger,
+      debug(message, meta) {
+        logs.push({ message, meta });
+      },
+    },
     abortSignal: abort.signal,
     async emit(msg, id) {
       emits.push({ msg, providerEventId: id });
@@ -53,7 +59,7 @@ function makeCtx(
       activity.push(patch);
     },
   };
-  return { ctx, emits, cursors, activity };
+  return { ctx, emits, cursors, activity, logs };
 }
 
 interface FakeRequest {
@@ -262,7 +268,7 @@ describe("Feishu provider adapter", () => {
       sdkOverride: harness.sdkOverride,
     });
     const abort = new AbortController();
-    const { ctx, emits } = makeCtx({ appSecret: "shh" }, abort);
+    const { ctx, emits, logs } = makeCtx({ appSecret: "shh" }, abort);
 
     const running = provider.start(ctx);
     const deadline = Date.now() + 1_000;
@@ -284,6 +290,67 @@ describe("Feishu provider adapter", () => {
     abort.abort();
     await running;
     expect(emits).toHaveLength(0);
+    const drop = logs.find((entry) => entry.meta?.reason === "sender_not_allowed");
+    expect(drop?.message).toBe("feishu inbound dropped");
+    expect(drop?.meta).toMatchObject({
+      provider: "feishu",
+      gatewayId: "gw_fs_unit",
+      agentId: "ag_unit",
+      reason: "sender_not_allowed",
+      messageId: "om_blocked",
+      chatId: "oc_chat",
+      chatType: "p2p",
+      messageType: "text",
+      senderOpenId: "ou_eve",
+      allowedSenderIds: ["ou_alice"],
+    });
+  });
+
+  it("logs messages rejected by allowedChatIds", async () => {
+    const harness = makeSdkOverride({ probeBotId: "ou_bot" });
+    const provider = createFeishuProvider({
+      gatewayId: conn.id,
+      sdkOverride: harness.sdkOverride,
+    });
+    const abort = new AbortController();
+    const { ctx, emits, logs } = makeCtx({ appSecret: "shh" }, abort);
+
+    const running = provider.start(ctx);
+    const deadline = Date.now() + 1_000;
+    while (Date.now() < deadline && harness.wsStarted.length === 0) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    await harness.fireMessageEvent({
+      sender: { sender_id: { open_id: "ou_alice" }, sender_type: "user" },
+      message: {
+        message_id: "om_wrong_chat",
+        chat_id: "oc_elsewhere",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "blocked by chat" }),
+      },
+    });
+
+    abort.abort();
+    await running;
+
+    expect(emits).toHaveLength(0);
+    const drop = logs.find((entry) => entry.meta?.reason === "chat_not_allowed");
+    expect(drop?.message).toBe("feishu inbound dropped");
+    expect(drop?.meta).toMatchObject({
+      provider: "feishu",
+      gatewayId: "gw_fs_unit",
+      agentId: "ag_unit",
+      reason: "chat_not_allowed",
+      messageId: "om_wrong_chat",
+      chatId: "oc_elsewhere",
+      chatType: "group",
+      messageType: "text",
+      senderOpenId: "ou_alice",
+      senderType: "user",
+      allowedChatIds: ["oc_chat"],
+    });
   });
 
   it("send() posts text and returns the provider message id", async () => {

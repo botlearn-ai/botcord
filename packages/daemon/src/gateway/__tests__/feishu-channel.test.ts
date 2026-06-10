@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFeishuChannel } from "../channels/feishu.js";
+import type { GatewayLogger } from "../log.js";
 import type {
   ChannelStartContext,
   GatewayInboundEnvelope,
-  GatewayLogger,
 } from "../types.js";
 
 const larkMock = vi.hoisted(() => ({
@@ -67,17 +67,26 @@ function makeStartCtx(abort: AbortController): {
   ctx: ChannelStartContext;
   envelopes: GatewayInboundEnvelope[];
   statuses: Array<Record<string, unknown>>;
+  logs: Array<{ message: string; meta?: Record<string, unknown> }>;
 } {
   const envelopes: GatewayInboundEnvelope[] = [];
   const statuses: Array<Record<string, unknown>> = [];
+  const logs: Array<{ message: string; meta?: Record<string, unknown> }> = [];
+  const log: GatewayLogger = {
+    ...SILENT_LOG,
+    debug: (message, meta) => {
+      logs.push({ message, meta });
+    },
+  };
   return {
     envelopes,
     statuses,
+    logs,
     ctx: {
       config: stubConfig,
       accountId: "ag_self",
       abortSignal: abort.signal,
-      log: SILENT_LOG,
+      log,
       emit: async (env) => {
         envelopes.push(env);
       },
@@ -142,6 +151,80 @@ describe("createFeishuChannel", () => {
     expect(envelopes).toHaveLength(1);
     expect(envelopes[0]!.message.text).toBe("[image: img_v2_x]");
     expect(envelopes[0]!.message.conversation.id).toBe("feishu:chat:oc_chat");
+  });
+
+  it("logs Feishu allowlist drops before emitting", async () => {
+    larkMock.responses.push({
+      code: 0,
+      data: { pingBotInfo: { botID: "ou_bot", botName: "Bot" } },
+    });
+    const adapter = createFeishuChannel({
+      id: "gw_fs",
+      accountId: "ag_self",
+      appId: "cli_a",
+      appSecret: "sec",
+      allowedSenderIds: ["ou_alice"],
+      allowedChatIds: ["oc_chat"],
+      stateFile: path.join(tmp, "state.json"),
+      stateDebounceMs: 0,
+    });
+    const abort = new AbortController();
+    const { ctx, envelopes, logs } = makeStartCtx(abort);
+    const started = adapter.start(ctx);
+    await vi.waitUntil(() => typeof larkMock.handlers["im.message.receive_v1"] === "function");
+
+    await larkMock.handlers["im.message.receive_v1"]!({
+      sender: { sender_id: { open_id: "ou_alice" }, sender_type: "user" },
+      message: {
+        message_id: "om_wrong_chat",
+        chat_id: "oc_other",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "blocked by chat" }),
+      },
+    });
+    await larkMock.handlers["im.message.receive_v1"]!({
+      sender: { sender_id: { open_id: "ou_eve" }, sender_type: "user" },
+      message: {
+        message_id: "om_wrong_sender",
+        chat_id: "oc_chat",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "blocked by sender" }),
+      },
+    });
+
+    abort.abort();
+    await started;
+
+    expect(envelopes).toHaveLength(0);
+    const chatDrop = logs.find((entry) => entry.meta?.reason === "chat_not_allowed");
+    expect(chatDrop?.message).toBe("feishu inbound dropped");
+    expect(chatDrop?.meta).toMatchObject({
+      provider: "feishu",
+      channel: "gw_fs",
+      accountId: "ag_self",
+      reason: "chat_not_allowed",
+      messageId: "om_wrong_chat",
+      chatId: "oc_other",
+      chatType: "group",
+      messageType: "text",
+      senderOpenId: "ou_alice",
+      senderType: "user",
+      allowedChatIds: ["oc_chat"],
+    });
+    const senderDrop = logs.find((entry) => entry.meta?.reason === "sender_not_allowed");
+    expect(senderDrop?.message).toBe("feishu inbound dropped");
+    expect(senderDrop?.meta).toMatchObject({
+      provider: "feishu",
+      channel: "gw_fs",
+      accountId: "ag_self",
+      reason: "sender_not_allowed",
+      messageId: "om_wrong_sender",
+      chatId: "oc_chat",
+      senderOpenId: "ou_eve",
+      allowedSenderIds: ["ou_alice"],
+    });
   });
 
   it("sends text replies through Feishu reply API with thread mode", async () => {

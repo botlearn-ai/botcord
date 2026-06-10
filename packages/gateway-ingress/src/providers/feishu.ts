@@ -240,25 +240,84 @@ export function createFeishuProvider(opts: FeishuProviderOptions): ProviderAdapt
     botOpenId = res.data?.pingBotInfo?.botID;
   }
 
+  function compactMeta(meta: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(meta).filter(([, value]) => value !== undefined),
+    );
+  }
+
+  function logInboundDrop(
+    ctx: ProviderRuntimeContext,
+    reason: string,
+    event: FeishuMessageEvent,
+    extra: Record<string, unknown> = {},
+  ): void {
+    const message = event.message;
+    const sender = event.sender;
+    ctx.log.debug("feishu inbound dropped", compactMeta({
+      provider: FEISHU_PROVIDER,
+      gatewayId: ctx.connection.id,
+      agentId: ctx.connection.agentId,
+      reason,
+      messageId: message?.message_id,
+      chatId: message?.chat_id,
+      chatType: message?.chat_type,
+      messageType: message?.message_type,
+      senderOpenId: sender?.sender_id?.open_id,
+      senderType: sender?.sender_type,
+      ...extra,
+    }));
+  }
+
   function normalizeMessage(
     event: FeishuMessageEvent,
     accountId: string,
     channelId: string,
+    ctx: ProviderRuntimeContext,
   ): { message: GatewayInboundMessage; providerEventId: string } | null {
     const message = event.message;
     const sender = event.sender;
-    if (!message || !sender) return null;
+    if (!message || !sender) {
+      logInboundDrop(ctx, "missing_event_fields", event, {
+        hasMessage: Boolean(message),
+        hasSender: Boolean(sender),
+      });
+      return null;
+    }
     const chatId = message.chat_id;
     const messageId = message.message_id;
     const senderOpenId = sender.sender_id?.open_id;
-    if (!chatId || !messageId || !senderOpenId) return null;
-    if (botOpenId && senderOpenId === botOpenId) return null;
+    if (!chatId || !messageId || !senderOpenId) {
+      logInboundDrop(ctx, "missing_message_fields", event, {
+        hasChatId: Boolean(chatId),
+        hasMessageId: Boolean(messageId),
+        hasSenderOpenId: Boolean(senderOpenId),
+      });
+      return null;
+    }
+    if (botOpenId && senderOpenId === botOpenId) {
+      logInboundDrop(ctx, "self_echo", event, { botOpenId });
+      return null;
+    }
 
-    if (allowedChatIds.size > 0 && !allowedChatIds.has(chatId)) return null;
-    if (allowedSenderIds.size > 0 && !allowedSenderIds.has(senderOpenId)) return null;
+    if (allowedChatIds.size > 0 && !allowedChatIds.has(chatId)) {
+      logInboundDrop(ctx, "chat_not_allowed", event, {
+        allowedChatIds: Array.from(allowedChatIds),
+      });
+      return null;
+    }
+    if (allowedSenderIds.size > 0 && !allowedSenderIds.has(senderOpenId)) {
+      logInboundDrop(ctx, "sender_not_allowed", event, {
+        allowedSenderIds: Array.from(allowedSenderIds),
+      });
+      return null;
+    }
 
     const text = parseInboundText(message);
-    if (text === null) return null;
+    if (text === null) {
+      logInboundDrop(ctx, "unsupported_or_empty_content", event);
+      return null;
+    }
     const chatType = message.chat_type ?? "";
     const conversationKind: "direct" | "group" = chatType === "p2p" ? "direct" : "group";
     const conversationId =
@@ -327,6 +386,7 @@ export function createFeishuProvider(opts: FeishuProviderOptions): ProviderAdapt
           data as FeishuMessageEvent,
           ctx.connection.agentId,
           ctx.connection.id,
+          ctx,
         );
         if (!normalized) return;
         ctx.markActivity({ lastInboundAt: Date.now() });
