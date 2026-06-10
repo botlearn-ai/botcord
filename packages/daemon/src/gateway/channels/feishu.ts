@@ -1,6 +1,7 @@
 import * as Lark from "@larksuiteoapi/node-sdk";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import type { GatewayLogger } from "../log.js";
 import type {
   ChannelAdapter,
   ChannelSendContext,
@@ -319,6 +320,35 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
     return appSecret;
   }
 
+  function compactMeta(meta: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(meta).filter(([, value]) => value !== undefined),
+    );
+  }
+
+  function logInboundDrop(
+    log: GatewayLogger,
+    reason: string,
+    event: FeishuMessageEvent,
+    extra: Record<string, unknown> = {},
+  ): void {
+    const message = event.message;
+    const sender = event.sender;
+    log.debug("feishu inbound dropped", compactMeta({
+      provider: FEISHU_PROVIDER,
+      channel: opts.id,
+      accountId: opts.accountId,
+      reason,
+      messageId: message?.message_id,
+      chatId: message?.chat_id,
+      chatType: message?.chat_type,
+      messageType: message?.message_type,
+      senderOpenId: sender?.sender_id?.open_id,
+      senderType: sender?.sender_type,
+      ...extra,
+    }));
+  }
+
   function ensureClient(): FeishuClient {
     if (client) return client;
     if (!opts.appId || !loadSecretIfNeeded()) {
@@ -358,22 +388,57 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
     botName = res.data?.pingBotInfo?.botName;
   }
 
-  function normalizeMessage(event: FeishuMessageEvent): GatewayInboundMessage | null {
+  function normalizeMessage(
+    event: FeishuMessageEvent,
+    log: GatewayLogger,
+  ): GatewayInboundMessage | null {
     const message = event.message;
     const sender = event.sender;
-    if (!message || !sender) return null;
+    if (!message || !sender) {
+      logInboundDrop(log, "missing_event_fields", event, {
+        hasMessage: Boolean(message),
+        hasSender: Boolean(sender),
+      });
+      return null;
+    }
     const chatId = message.chat_id;
     const messageId = message.message_id;
     const senderOpenId = sender.sender_id?.open_id;
-    if (!chatId || !messageId || !senderOpenId) return null;
-    if (botOpenId && senderOpenId === botOpenId) return null;
-    if (hasSeenMessage(messageId)) return null;
+    if (!chatId || !messageId || !senderOpenId) {
+      logInboundDrop(log, "missing_message_fields", event, {
+        hasChatId: Boolean(chatId),
+        hasMessageId: Boolean(messageId),
+        hasSenderOpenId: Boolean(senderOpenId),
+      });
+      return null;
+    }
+    if (botOpenId && senderOpenId === botOpenId) {
+      logInboundDrop(log, "self_echo", event, { botOpenId });
+      return null;
+    }
+    if (hasSeenMessage(messageId)) {
+      logInboundDrop(log, "duplicate_message", event);
+      return null;
+    }
 
-    if (allowedChatIds.size > 0 && !allowedChatIds.has(chatId)) return null;
-    if (!allowedSenderIds.has(senderOpenId)) return null;
+    if (allowedChatIds.size > 0 && !allowedChatIds.has(chatId)) {
+      logInboundDrop(log, "chat_not_allowed", event, {
+        allowedChatIds: Array.from(allowedChatIds),
+      });
+      return null;
+    }
+    if (!allowedSenderIds.has(senderOpenId)) {
+      logInboundDrop(log, "sender_not_allowed", event, {
+        allowedSenderIds: Array.from(allowedSenderIds),
+      });
+      return null;
+    }
 
     const text = parseInboundText(message);
-    if (text === null) return null;
+    if (text === null) {
+      logInboundDrop(log, "unsupported_or_empty_content", event);
+      return null;
+    }
     rememberMessage(messageId);
     const chatType = message.chat_type ?? "";
     const conversationKind: "direct" | "group" =
@@ -431,7 +496,7 @@ export function createFeishuChannel(opts: FeishuChannelOptions): ChannelAdapter 
       const dispatcher = new sdk.EventDispatcher({});
       dispatcher.register({
         "im.message.receive_v1": async (data: unknown) => {
-          const normalized = normalizeMessage(data as FeishuMessageEvent);
+          const normalized = normalizeMessage(data as FeishuMessageEvent, ctx.log);
           if (!normalized) return;
           markStatus({ lastInboundAt: Date.now(), connected: true, authorized: true });
           await ctx.emit({ message: normalized });
