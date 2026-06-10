@@ -40,6 +40,11 @@ export interface GatewayInboundMessage extends RuntimeGatewayInboundPayload {
  */
 export interface GatewayOutboundAttachment {
   filePath?: string;
+  /**
+   * Hub-hosted attachment URL. Control-plane initiated gateway sends use this
+   * form because the daemon cannot read the CLI caller's local filesystem.
+   */
+  url?: string;
   data?: Uint8Array;
   filename?: string;
   contentType?: string;

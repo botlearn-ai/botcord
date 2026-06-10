@@ -1151,6 +1151,266 @@ describe("gateway_send", () => {
     expect(gw.sendOutbound).toHaveBeenCalledOnce();
   });
 
+  it("downloads and forwards attachments for Feishu outbound", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("send-fs-attachment");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "feishu",
+          accountId: "ag_alice",
+          enabled: true,
+          allowedChatIds: ["oc_any"],
+        },
+      ],
+    });
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => "image/png" },
+      text: async () => "ignored",
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    }));
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io, fetchImpl });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "feishu:chat:oc_any",
+      text: "",
+      attachments: [
+        {
+          url: "https://api.botcord.chat/hub/files/f_testattachment",
+          filename: "plot.png",
+          contentType: "image/png",
+        },
+      ],
+    });
+
+    expect(ack.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://api.botcord.chat/hub/files/f_testattachment",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(gw.sendOutbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: gwId,
+        text: "",
+        attachments: [
+          expect.objectContaining({
+            filename: "plot.png",
+            contentType: "image/png",
+            kind: "image",
+            sourcePath: "https://api.botcord.chat/hub/files/f_testattachment",
+            data: new Uint8Array([1, 2, 3]),
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("uses the downloaded content type when attachment metadata omits it", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("send-fs-attachment-content-type");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "feishu",
+          accountId: "ag_alice",
+          enabled: true,
+          allowedChatIds: ["oc_any"],
+        },
+      ],
+    });
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: (name: string) => (name.toLowerCase() === "content-type" ? "image/png; charset=binary" : null) },
+      text: async () => "ignored",
+      arrayBuffer: async () => new Uint8Array([4, 5, 6]).buffer,
+    }));
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io, fetchImpl });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "feishu:chat:oc_any",
+      text: "",
+      attachments: [
+        {
+          url: "https://api.botcord.chat/hub/files/f_testattachment",
+          filename: "plot.png",
+        },
+      ],
+    });
+
+    expect(ack.ok).toBe(true);
+    expect(gw.sendOutbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [
+          expect.objectContaining({
+            contentType: "image/png",
+            kind: "image",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("rejects non-Hub attachment URLs before download", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("send-fs-attachment-url");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "feishu",
+          accountId: "ag_alice",
+          enabled: true,
+          allowedChatIds: ["oc_any"],
+        },
+      ],
+    });
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      text: async () => "ignored",
+      arrayBuffer: async () => new Uint8Array([1]).buffer,
+    }));
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io, fetchImpl });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "feishu:chat:oc_any",
+      text: "",
+      attachments: [
+        {
+          url: "https://example.com/not-a-hub-file",
+          filename: "plot.png",
+          contentType: "image/png",
+        },
+      ],
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("send_failed");
+    expect(ack.error?.message).toContain("absolute Hub /hub/files URL");
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(gw.sendOutbound).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized Feishu gateway-send attachments", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("send-fs-attachment-size");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "feishu",
+          accountId: "ag_alice",
+          enabled: true,
+          allowedChatIds: ["oc_any"],
+        },
+      ],
+    });
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "feishu:chat:oc_any",
+      text: "",
+      attachments: [
+        {
+          url: "https://api.botcord.chat/hub/files/f_testattachment",
+          filename: "plot.png",
+          contentType: "image/png",
+          sizeBytes: 10 * 1024 * 1024 + 1,
+        },
+      ],
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("send_failed");
+    expect(ack.error?.message).toContain("exceeds 10485760 bytes");
+    expect(gw.sendOutbound).not.toHaveBeenCalled();
+  });
+
+  it("rejects Telegram attachments with an actionable unsupported-provider error", async () => {
+    const gw = makeFakeGateway();
+    const gwId = uniqId("send-tg-attachment");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "telegram",
+          accountId: "ag_alice",
+          enabled: true,
+          allowedChatIds: ["-1001"],
+        },
+      ],
+    });
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "telegram:group:-1001",
+      text: "hello",
+      attachments: [
+        {
+          url: "https://api.botcord.chat/hub/files/f_testattachment",
+          filename: "plot.png",
+          contentType: "image/png",
+        },
+      ],
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("unsupported_provider");
+    expect(ack.error?.message).toContain("telegram gateway_send attachments are not supported");
+    expect(gw.sendOutbound).not.toHaveBeenCalled();
+  });
+
+  it("adds actionable Feishu chat-membership guidance to not-in-chat errors", async () => {
+    const gw = makeFakeGateway();
+    gw.sendOutbound.mockRejectedValueOnce(new Error("feishu send failed: bot is not in chat"));
+    const gwId = uniqId("send-fs-not-in-chat");
+    const { io } = makeConfigIO({
+      ...baseCfg(),
+      thirdPartyGateways: [
+        {
+          id: gwId,
+          type: "feishu",
+          accountId: "ag_alice",
+          enabled: true,
+          allowedChatIds: ["oc_any"],
+        },
+      ],
+    });
+    const ctrl = createGatewayControl({ gateway: gw as any, configIO: io });
+
+    const ack = await ctrl.handleSend({
+      agentId: "ag_alice",
+      gatewayId: gwId,
+      conversationId: "feishu:chat:oc_any",
+      text: "hello",
+    });
+
+    expect(ack.ok).toBe(false);
+    expect(ack.error?.code).toBe("send_failed");
+    expect(ack.error?.message).toContain("add the Feishu app/bot to the chat");
+  });
+
   it("denies Telegram outbound when allowedChatIds is empty", async () => {
     const gw = makeFakeGateway();
     const gwId = uniqId("send-tg-deny-empty");

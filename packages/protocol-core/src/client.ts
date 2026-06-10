@@ -301,14 +301,16 @@ export class BotCordClient {
   async sendGatewayMessage(params: {
     gatewayId: string;
     conversationId: string;
-    text: string;
+    text?: string;
+    attachments?: MessageAttachment[];
     idempotencyKey?: string;
   }): Promise<GatewaySendResponse> {
     const resp = await this.hubFetch(`/hub/gateways/${encodeURIComponent(params.gatewayId)}/send`, {
       method: "POST",
       body: JSON.stringify({
         conversationId: params.conversationId,
-        text: params.text,
+        ...(params.text !== undefined ? { text: params.text } : {}),
+        ...(params.attachments && params.attachments.length > 0 ? { attachments: params.attachments } : {}),
         ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
       }),
     });

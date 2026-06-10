@@ -20,4 +20,5 @@ export type FetchLike = (
   ok?: boolean;
   headers?: { get(name: string): string | null };
   text(): Promise<string>;
+  arrayBuffer?(): Promise<ArrayBuffer>;
 }>;

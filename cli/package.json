@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test tests/*.test.mjs",
     "postinstall": "node ./scripts/postinstall.mjs",
     "prepublishOnly": "tsc"
   },
