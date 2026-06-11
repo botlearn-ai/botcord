@@ -555,6 +555,31 @@ async def test_session_rejected_for_unverified_email(client_factory, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_session_accepts_supabase_user_metadata_email_verified(
+    client_factory, db_session, monkeypatch
+):
+    # Supabase access tokens have no top-level email_verified claim — it lives
+    # in user_metadata. The gate must honor it for shared-tenant logins.
+    _configure_botlearn(monkeypatch)
+    payload = {
+        "sub": "d83f47b0-ce25-439d-ab9b-1d54de6586b7",
+        "email": "person@botlearn.ai",
+        "user_metadata": {"email_verified": True},
+        "iss": BOTLEARN_ISSUER,
+        "exp": _now() + datetime.timedelta(seconds=3600),
+        "iat": _now(),
+    }
+    token = jwt.encode(payload, BOTLEARN_SECRET, algorithm="HS256")
+    client, _ = await client_factory()
+    r = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=_headers(token),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["access_token"]
+
+
+@pytest.mark.asyncio
 async def test_session_no_token_when_cloud_agent_feature_disabled(
     client_factory, db_session, monkeypatch
 ):

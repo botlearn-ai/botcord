@@ -212,7 +212,13 @@ def verify_botlearn_id_token(token: str) -> BotlearnIdentity:
 
     email = payload.get("email")
     email = email.strip().lower() if isinstance(email, str) and email.strip() else None
-    email_verified = bool(payload.get("email_verified", False))
+    # Supabase access tokens carry email_verified inside user_metadata (no
+    # top-level claim); generic OIDC issuers use the top-level claim.
+    user_metadata = payload.get("user_metadata")
+    email_verified = bool(
+        payload.get("email_verified")
+        or (isinstance(user_metadata, dict) and user_metadata.get("email_verified"))
+    )
     if BOTLEARN_REQUIRE_EMAIL_VERIFIED and not email_verified:
         raise BotlearnAuthError(
             "email_not_verified",

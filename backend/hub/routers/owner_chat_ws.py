@@ -301,6 +301,34 @@ async def notify_oc_ws_typing(*, agent_id: str, room_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# BotLearn gateway auth — coach-lab chats with its Cloud Agent over this WS
+# ---------------------------------------------------------------------------
+
+
+def _try_botlearn_session_claims(token: str) -> dict[str, Any] | None:
+    """Return claims if ``token`` is a valid BotLearn integration session
+    token (issued by POST /api/integrations/botlearn/session), else None so
+    the caller falls through to Supabase JWT auth."""
+    from app.botlearn_auth import BotlearnAuthError, verify_botlearn_session_token
+
+    try:
+        return verify_botlearn_session_token(token)
+    except BotlearnAuthError:
+        return None
+
+
+async def _botlearn_installation_active(db, installation_id: str) -> bool:
+    from hub.models import BotlearnInstallation
+
+    if not installation_id:
+        return False
+    installation = await db.scalar(
+        select(BotlearnInstallation).where(BotlearnInstallation.id == installation_id)
+    )
+    return installation is not None and installation.revoked_at is None
+
+
+# ---------------------------------------------------------------------------
 # WebSocket endpoint
 # ---------------------------------------------------------------------------
 
@@ -322,10 +350,14 @@ async def owner_chat_ws(ws: WebSocket):
     # Allow same-origin and configured frontend origin; reject unknown origins.
     origin = ws.headers.get("origin")
     if origin:
+        from app.botlearn_auth import is_botlearn_origin_allowed
         from hub.config import FRONTEND_BASE_URL
         allowed_origins: set[str] = set()
         if FRONTEND_BASE_URL:
             allowed_origins.add(FRONTEND_BASE_URL.rstrip("/"))
+        # BotLearn coach-lab uses this WS as its agent-chat gateway
+        if is_botlearn_origin_allowed(origin):
+            allowed_origins.add(origin.rstrip("/"))
         # Always allow localhost for development
         allowed_origins.add("http://localhost:3000")
         allowed_origins.add("http://localhost:8000")
@@ -351,16 +383,37 @@ async def owner_chat_ws(ws: WebSocket):
             await ws.close(code=4001, reason="Missing token or agent_id")
             return
 
-        # Verify Supabase JWT and resolve ownership
-        try:
-            supabase_uid = verify_supabase_token(token)
-        except Exception as exc:
-            logger.warning("Owner-chat WS auth failed: %s: %s", type(exc).__name__, exc)
-            await ws.close(code=4001, reason="Invalid token")
-            return
+        # Verify the token and resolve the internal user id. Two kinds are
+        # accepted: a BotLearn integration session token (minted by
+        # POST /api/integrations/botlearn/session — BotLearn's coach-lab uses
+        # this WS as its agent-chat gateway), or a dashboard Supabase JWT.
+        botlearn_claims = _try_botlearn_session_claims(token)
+        internal_uid: str | None = None
+        if botlearn_claims is not None:
+            if botlearn_claims["agent_id"] != req_agent_id:
+                await ws.close(code=4001, reason="Token not valid for this agent")
+                return
+            internal_uid = str(botlearn_claims["user_id"])
+        else:
+            try:
+                supabase_uid = verify_supabase_token(token)
+            except Exception as exc:
+                logger.warning("Owner-chat WS auth failed: %s: %s", type(exc).__name__, exc)
+                await ws.close(code=4001, reason="Invalid token")
+                return
 
         async with async_session() as db:
-            internal_uid = await _resolve_internal_user_id(db, supabase_uid)
+            if botlearn_claims is not None:
+                # The durable authorization must still be active (revocable
+                # from BotCord/BotLearn settings) — same gate as the BotLearn
+                # run WS.
+                if not await _botlearn_installation_active(
+                    db, botlearn_claims.get("installation_id", "")
+                ):
+                    await ws.close(code=4003, reason="Installation revoked")
+                    return
+            else:
+                internal_uid = await _resolve_internal_user_id(db, supabase_uid)
             if not internal_uid:
                 await ws.close(code=4001, reason="User not found")
                 return
