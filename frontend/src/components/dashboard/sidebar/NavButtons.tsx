@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
+import { animateIfMotion, cleanupAnime } from "@/lib/anime";
 
 export interface PrimaryNavButtonProps {
   active: boolean;
@@ -27,9 +29,52 @@ export function PrimaryNavButton({
     ? "bg-neon-purple/15 text-neon-purple"
     : "bg-neon-cyan/15 text-neon-cyan";
   const indicatorClass = activeTone === "purple" ? "bg-neon-purple" : "bg-neon-cyan";
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const previousActiveRef = useRef(active);
+  const previousBadgeTextRef = useRef("");
+
+  useEffect(() => {
+    if (!active || previousActiveRef.current === active) {
+      previousActiveRef.current = active;
+      return;
+    }
+
+    const button = buttonRef.current;
+    previousActiveRef.current = active;
+    if (!button) return;
+
+    const animation = animateIfMotion(button, {
+      scale: [0.98, 1.045, 1],
+      duration: 260,
+      ease: "out(3)",
+    });
+    return () => cleanupAnime(animation);
+  }, [active]);
+
+  useEffect(() => {
+    const button = buttonRef.current;
+    const badgeNode = button?.querySelector<HTMLElement>("[data-primary-nav-badge]");
+    const badgeText = badgeNode?.textContent ?? "";
+
+    if (!badgeNode || badgeText === previousBadgeTextRef.current) {
+      previousBadgeTextRef.current = badgeText;
+      return;
+    }
+
+    previousBadgeTextRef.current = badgeText;
+    const animation = animateIfMotion(badgeNode, {
+      opacity: [0, 1],
+      scale: [0.72, 1.18, 1],
+      translateY: [2, -1, 0],
+      duration: 300,
+      ease: "out(3)",
+    });
+    return () => cleanupAnime(animation);
+  }, [badge]);
 
   return (
     <button
+      ref={buttonRef}
       onClick={onClick}
       className={`group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 max-md:h-12 max-md:min-w-0 max-md:flex-1 max-md:px-1 ${
         disabled
@@ -40,6 +85,12 @@ export function PrimaryNavButton({
       }`}
       title={title}
     >
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full ${indicatorClass} transition-opacity duration-200 max-md:bottom-0 max-md:left-1/2 max-md:top-auto max-md:h-0.5 max-md:w-5 max-md:-translate-x-1/2 max-md:translate-y-0 ${
+          active ? "opacity-100" : "opacity-0"
+        }`}
+      />
       {badge}
       {icon}
       <span className="mt-0.5 max-w-full truncate text-[9px] font-medium leading-none">{label}</span>

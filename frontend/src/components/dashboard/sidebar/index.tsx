@@ -339,14 +339,20 @@ function Sidebar({
             let badge: ReactNode = null;
             if (item.key === "messages" && unreadMessageCount > 0 && !requiresLogin) {
               badge = (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold leading-none text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]">
+                <span
+                  data-primary-nav-badge
+                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold leading-none text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]"
+                >
                   {formatBadgeCount(unreadMessageCount)}
                 </span>
               );
             }
             if (item.key === "contacts" && pendingContactRequests > 0 && !requiresLogin) {
               badge = (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]">
+                <span
+                  data-primary-nav-badge
+                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]"
+                >
                   {formatBadgeCount(pendingContactRequests)}
                 </span>
               );
