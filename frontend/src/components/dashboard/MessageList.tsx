@@ -27,6 +27,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
+import { animateIfMotion, animatePop, cleanupAnime } from "@/lib/anime";
 
 const topicStatusColors: Record<string, { color: string; icon: string }> = {
   open:      { color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },
@@ -153,6 +154,7 @@ export function TopicCard({
         {group.messages.map((msg) => (
           <div
             key={messageRenderKey(msg)}
+            data-msg-key={messageRenderKey(msg)}
             data-msg-id={msg.msg_id}
             className="scroll-mt-4 transition-shadow"
           >
@@ -314,8 +316,12 @@ export default function MessageList({
   const markRoomSeen = useDashboardUnreadStore((state) => state.markRoomSeen);
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollToBottomButtonRef = useRef<HTMLButtonElement>(null);
   const prevLengthRef = useRef(0);
   const isLoadingMore = useRef(false);
+  const messageAnimationRoomRef = useRef<string | null>(null);
+  const messageAnimationPrimedRef = useRef(false);
+  const animatedMessageKeysRef = useRef<Set<string>>(new Set());
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const showScrollToBottomButtonRef = useRef(false);
   const wasNearBottomRef = useRef(true);
@@ -376,10 +382,32 @@ export default function MessageList({
       );
       if (!el) return;
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("ring-2", "ring-neon-cyan/70", "rounded-xl");
-      window.setTimeout(() => {
-        el.classList.remove("ring-2", "ring-neon-cyan/70", "rounded-xl");
-      }, 1500);
+      el.classList.add("rounded-xl");
+      const highlight = animateIfMotion(el, {
+        backgroundColor: [
+          "rgba(0, 240, 255, 0.16)",
+          "rgba(0, 240, 255, 0.08)",
+          "rgba(0, 240, 255, 0)",
+        ],
+        boxShadow: [
+          "0 0 0 0 rgba(0, 240, 255, 0)",
+          "0 0 0 2px rgba(0, 240, 255, 0.72)",
+          "0 0 24px rgba(0, 240, 255, 0)",
+        ],
+        duration: 1200,
+        ease: "out(3)",
+        onComplete: () => {
+          el.style.backgroundColor = "";
+          el.style.boxShadow = "";
+          el.classList.remove("rounded-xl");
+        },
+      });
+      if (!highlight) {
+        el.classList.add("ring-2", "ring-neon-cyan/70");
+        window.setTimeout(() => {
+          el.classList.remove("ring-2", "ring-neon-cyan/70", "rounded-xl");
+        }, 1000);
+      }
     };
     window.addEventListener(JUMP_TO_MESSAGE_EVENT, handler);
     return () => window.removeEventListener(JUMP_TO_MESSAGE_EVENT, handler);
@@ -416,6 +444,9 @@ export default function MessageList({
     prevLengthRef.current = 0;
     wasNearBottomRef.current = true;
     initialScrollDoneRef.current = false;
+    messageAnimationRoomRef.current = roomId;
+    messageAnimationPrimedRef.current = false;
+    animatedMessageKeysRef.current = new Set();
     showScrollToBottomButtonRef.current = false;
     setShowScrollToBottomButton(false);
   }, [roomId, setOpenedTopicId]);
@@ -472,6 +503,47 @@ export default function MessageList({
     scrollToBottomAfterLayout();
   }, [roomId, isRoomMessagesLoading, messages.length, scrollToBottomAfterLayout]);
 
+  useEffect(() => {
+    if (!roomId) return;
+    if (messageAnimationRoomRef.current !== roomId) {
+      messageAnimationRoomRef.current = roomId;
+      messageAnimationPrimedRef.current = false;
+      animatedMessageKeysRef.current = new Set();
+    }
+
+    const keys = messages.map(messageRenderKey);
+    if (keys.length === 0) return;
+
+    if (!messageAnimationPrimedRef.current) {
+      animatedMessageKeysRef.current = new Set(keys);
+      messageAnimationPrimedRef.current = true;
+      return;
+    }
+
+    const newlyVisibleKeys = keys.filter((key) => !animatedMessageKeysRef.current.has(key));
+    for (const key of keys) animatedMessageKeysRef.current.add(key);
+    if (newlyVisibleKeys.length === 0 || isLoadingMore.current) return;
+
+    requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (!container) return;
+      newlyVisibleKeys.slice(-6).forEach((key, index) => {
+        const el = container.querySelector<HTMLElement>(
+          `[data-msg-key="${CSS.escape(key)}"]`,
+        );
+        if (!el) return;
+        animateIfMotion(el, {
+          opacity: [0, 1],
+          translateY: [10, 0],
+          scale: [0.985, 1],
+          duration: 340,
+          delay: index * 24,
+          ease: "out(3)",
+        });
+      });
+    });
+  }, [messages, roomId]);
+
   // Auto-scroll or show the follow button when new messages arrive.
   // Uses wasNearBottomRef (snapshotted on scroll events, before DOM changes)
   // to decide whether to auto-scroll or let the user resume manually.
@@ -501,6 +573,12 @@ export default function MessageList({
   // Keep ref in sync with state for use in scroll handler
   useEffect(() => {
     showScrollToBottomButtonRef.current = showScrollToBottomButton;
+  }, [showScrollToBottomButton]);
+
+  useEffect(() => {
+    if (!showScrollToBottomButton || !scrollToBottomButtonRef.current) return;
+    const animation = animatePop(scrollToBottomButtonRef.current);
+    return () => cleanupAnime(animation);
   }, [showScrollToBottomButton]);
 
   // Track scroll position & handle infinite scroll up
@@ -560,6 +638,7 @@ export default function MessageList({
 
   const scrollToBottomButton = showScrollToBottomButton && (
     <button
+      ref={scrollToBottomButtonRef}
       type="button"
       onClick={() => scrollToBottom("auto")}
       aria-label={t.scrollToLatest}
@@ -588,6 +667,7 @@ export default function MessageList({
             return (
               <div
                 key={messageRenderKey(msg)}
+                data-msg-key={messageRenderKey(msg)}
                 data-msg-id={msg.msg_id}
                 className="scroll-mt-4 transition-shadow"
               >
