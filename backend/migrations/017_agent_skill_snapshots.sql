@@ -1,5 +1,0 @@
-ALTER TABLE agents
-  ADD COLUMN IF NOT EXISTS skills_json JSON;
-
-ALTER TABLE agents
-  ADD COLUMN IF NOT EXISTS skills_probed_at TIMESTAMPTZ;

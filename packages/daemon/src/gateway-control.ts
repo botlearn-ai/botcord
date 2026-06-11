@@ -53,6 +53,9 @@ type AckBody = Omit<ControlAck, "id">;
 
 type GatewayProvider = "telegram" | "wechat" | "feishu";
 
+const GATEWAY_SEND_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+const GATEWAY_SEND_ATTACHMENT_PATH_RE = /^\/hub\/files\/f_[a-zA-Z0-9_-]+$/;
+
 interface GatewayProfileSummary {
   id: string;
   type: GatewayProvider;
@@ -194,6 +197,12 @@ interface GatewaySendParams {
   gatewayId: string;
   conversationId: string;
   text: string;
+  attachments?: Array<{
+    url?: string;
+    filename?: string;
+    contentType?: string;
+    sizeBytes?: number;
+  }>;
   idempotencyKey?: string;
 }
 
@@ -1048,8 +1057,9 @@ export function createGatewayControl(ctx: GatewayControlContext) {
     if (!params.conversationId || typeof params.conversationId !== "string") {
       return badParams("gateway_send: conversationId is required");
     }
-    if (typeof params.text !== "string" || params.text.length === 0) {
-      return badParams("gateway_send: text is required");
+    const attachments = Array.isArray(params.attachments) ? params.attachments : [];
+    if ((typeof params.text !== "string" || params.text.length === 0) && attachments.length === 0) {
+      return badParams("gateway_send: text or attachments are required");
     }
 
     const cfg = cfgIO.load();
@@ -1078,16 +1088,28 @@ export function createGatewayControl(ctx: GatewayControlContext) {
         error: { code: "unsupported_provider", message: "wechat gateway_send requires an inbound context_token and is not supported" },
       };
     }
+    if (attachments.length > 0 && profile.type !== "feishu") {
+      return {
+        ok: false,
+        error: {
+          code: "unsupported_provider",
+          message: `${profile.type} gateway_send attachments are not supported; use a Feishu gateway or send text only`,
+        },
+      };
+    }
 
     const conversationErr = validateOutboundConversation(profile, params.conversationId);
     if (conversationErr) return conversationErr;
 
     try {
+      const text = typeof params.text === "string" ? params.text : "";
+      const outboundAttachments = await Promise.all(attachments.map(downloadGatewayAttachment));
       const sendResult = await ctx.gateway.sendOutbound({
         channel: params.gatewayId,
         accountId: params.agentId,
         conversationId: params.conversationId,
-        text: params.text,
+        text,
+        ...(outboundAttachments.length > 0 ? { attachments: outboundAttachments } : {}),
         traceId: `gateway-send:${params.idempotencyKey ?? Date.now()}`,
       });
       const result: GatewaySendResult = {
@@ -1097,7 +1119,8 @@ export function createGatewayControl(ctx: GatewayControlContext) {
       };
       return { ok: true, result };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      const message = addGatewaySendAdvice(profile.type, rawMessage);
       daemonLog.warn("gateway_send failed", {
         gatewayId: params.gatewayId,
         accountId: params.agentId,
@@ -1109,6 +1132,88 @@ export function createGatewayControl(ctx: GatewayControlContext) {
         error: { code: "send_failed", message },
       };
     }
+  }
+
+  async function downloadGatewayAttachment(attachment: NonNullable<GatewaySendParams["attachments"]>[number]) {
+    const url = normalizeGatewayAttachmentUrl(attachment.url);
+    const filename = typeof attachment.filename === "string" ? attachment.filename.trim().slice(0, 200) : "";
+    if (!filename) {
+      throw new Error("gateway attachment filename is required");
+    }
+    if (
+      attachment.sizeBytes !== undefined &&
+      (!Number.isInteger(attachment.sizeBytes) ||
+        attachment.sizeBytes < 0 ||
+        attachment.sizeBytes > GATEWAY_SEND_ATTACHMENT_MAX_BYTES)
+    ) {
+      throw new Error(`gateway attachment exceeds ${GATEWAY_SEND_ATTACHMENT_MAX_BYTES} bytes`);
+    }
+    const res = await fetchImpl(url, {
+      method: "GET",
+      signal: AbortSignal.timeout(30000),
+    });
+    if (res.ok === false || (typeof res.status === "number" && res.status >= 400)) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`gateway attachment download failed: ${res.status ?? "unknown"} ${body}`);
+    }
+    const contentLength = Number.parseInt(res.headers?.get("content-length") ?? "", 10);
+    if (Number.isFinite(contentLength) && contentLength > GATEWAY_SEND_ATTACHMENT_MAX_BYTES) {
+      throw new Error(`gateway attachment exceeds ${GATEWAY_SEND_ATTACHMENT_MAX_BYTES} bytes`);
+    }
+    const bytes =
+      typeof (res as { arrayBuffer?: () => Promise<ArrayBuffer> }).arrayBuffer === "function"
+        ? new Uint8Array(await (res as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer())
+        : new TextEncoder().encode(await res.text());
+    if (bytes.byteLength > GATEWAY_SEND_ATTACHMENT_MAX_BYTES) {
+      throw new Error(`gateway attachment exceeds ${GATEWAY_SEND_ATTACHMENT_MAX_BYTES} bytes`);
+    }
+    const contentType = normalizeAttachmentContentType(attachment.contentType) ??
+      normalizeAttachmentContentType(res.headers?.get("content-type") ?? undefined);
+    return {
+      data: bytes,
+      filename,
+      contentType,
+      kind: contentType?.startsWith("image/") ? "image" as const : "file" as const,
+      sourcePath: url,
+    };
+  }
+
+  function normalizeGatewayAttachmentUrl(raw: unknown): string {
+    if (typeof raw !== "string" || raw.length === 0) {
+      throw new Error("gateway attachment url is required");
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      throw new Error("gateway attachment url must be an absolute Hub /hub/files URL");
+    }
+    if (
+      !["http:", "https:"].includes(parsed.protocol) ||
+      parsed.username ||
+      parsed.password ||
+      !GATEWAY_SEND_ATTACHMENT_PATH_RE.test(parsed.pathname)
+    ) {
+      throw new Error("gateway attachment url must be an absolute Hub /hub/files URL");
+    }
+    parsed.hash = "";
+    return parsed.toString();
+  }
+
+  function normalizeAttachmentContentType(raw: string | undefined): string | undefined {
+    if (typeof raw !== "string") return undefined;
+    const contentType = raw.split(";")[0]?.trim().toLowerCase();
+    return contentType ? contentType.slice(0, 200) : undefined;
+  }
+
+  function addGatewaySendAdvice(provider: GatewayProvider, message: string): string {
+    if (
+      provider === "feishu" &&
+      /out of the chat|not.*in.*chat|not.*out.*chat/i.test(message)
+    ) {
+      return `${message}. Feishu rejected the send because the bot/user is not in the target chat; add the Feishu app/bot to the chat or choose a chat discovered from that gateway.`;
+    }
+    return message;
   }
 
   return {

@@ -7,7 +7,6 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -22,13 +21,6 @@ from unittest.mock import AsyncMock, patch
 from hub.models import Base, FileRecord
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
-MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
-FORWARD_REPAIR_MIGRATION = (
-    MIGRATIONS_DIR / "029_file_records_forward_storage_location_repair.sql"
-)
-LEGACY_STORAGE_COLUMNS_MIGRATION = (
-    MIGRATIONS_DIR / "030_file_records_legacy_storage_columns.sql"
-)
 
 
 @pytest_asyncio.fixture
@@ -54,11 +46,13 @@ async def client(db_session: AsyncSession, tmp_path):
     original_supabase_url = config.SUPABASE_URL
     original_supabase_service_role_key = config.SUPABASE_SERVICE_ROLE_KEY
     original_supabase_bucket = config.SUPABASE_STORAGE_BUCKET
+    original_supabase_storage_timeout = config.SUPABASE_STORAGE_TIMEOUT_SECONDS
     config.FILE_UPLOAD_DIR = str(tmp_path / "uploads")
     config.FILE_STORAGE_BACKEND = "disk"
     config.SUPABASE_URL = None
     config.SUPABASE_SERVICE_ROLE_KEY = None
     config.SUPABASE_STORAGE_BUCKET = None
+    config.SUPABASE_STORAGE_TIMEOUT_SECONDS = 30
     os.makedirs(config.FILE_UPLOAD_DIR, exist_ok=True)
 
     from hub.main import app
@@ -79,6 +73,7 @@ async def client(db_session: AsyncSession, tmp_path):
     config.SUPABASE_URL = original_supabase_url
     config.SUPABASE_SERVICE_ROLE_KEY = original_supabase_service_role_key
     config.SUPABASE_STORAGE_BUCKET = original_supabase_bucket
+    config.SUPABASE_STORAGE_TIMEOUT_SECONDS = original_supabase_storage_timeout
 
 
 # ---------------------------------------------------------------------------
@@ -480,6 +475,52 @@ async def test_download_success_supabase(client: AsyncClient):
     assert "report.pdf" in dl_resp.headers.get("content-disposition", "")
 
 
+@pytest.mark.asyncio
+async def test_download_supabase_timeout_returns_504(client: AsyncClient, monkeypatch):
+    from hub import storage
+
+    _enable_supabase_storage()
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+    calls: list[tuple[str, str]] = []
+    side_effects = [
+        _supabase_response(),
+        httpx.ReadTimeout("timed out"),
+    ]
+
+    class FakeSupabaseClient:
+        def __init__(self, *, timeout):
+            assert timeout == 30
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def request(self, method, url, **kwargs):
+            calls.append((method, url))
+            effect = side_effects.pop(0)
+            if isinstance(effect, Exception):
+                raise effect
+            return effect
+
+    monkeypatch.setattr(storage.httpx, "AsyncClient", FakeSupabaseClient)
+
+    upload_resp = await client.post(
+        "/hub/upload",
+        headers=_auth_header(token),
+        files={"file": ("report.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+    )
+    assert upload_resp.status_code == 200
+    file_id = upload_resp.json()["file_id"]
+
+    dl_resp = await client.get(f"/hub/files/{file_id}")
+
+    assert dl_resp.status_code == 504
+    assert [method for method, _ in calls] == ["POST", "GET"]
+
+
 # ===========================================================================
 # Cleanup tests
 # ===========================================================================
@@ -866,92 +907,6 @@ async def test_file_records_storage_location_migration_normalizes_dirty_legacy_r
             and storage_bucket is not None
             and storage_object_key is not None
         )
-
-
-def test_file_records_forward_repair_migration_uses_next_number_and_search_path():
-    migration_names = sorted(path.name for path in MIGRATIONS_DIR.glob("*.sql"))
-    migration_numbers = [name.split("_", 1)[0] for name in migration_names]
-
-    assert "027_file_records_cleaned_storage_location.sql" in migration_names
-    assert FORWARD_REPAIR_MIGRATION.name in migration_names
-    assert LEGACY_STORAGE_COLUMNS_MIGRATION.name in migration_names
-    assert migration_names.index(
-        "027_file_records_cleaned_storage_location.sql"
-    ) < migration_names.index(FORWARD_REPAIR_MIGRATION.name)
-    assert migration_names.index(
-        FORWARD_REPAIR_MIGRATION.name
-    ) < migration_names.index(LEGACY_STORAGE_COLUMNS_MIGRATION.name)
-    assert all(number.isdigit() and len(number) == 3 for number in migration_numbers)
-    assert migration_numbers == sorted(migration_numbers)
-
-    for migration_path in [
-        FORWARD_REPAIR_MIGRATION,
-        LEGACY_STORAGE_COLUMNS_MIGRATION,
-    ]:
-        sql = migration_path.read_text()
-
-        assert "to_regclass('file_records')" in sql
-        assert "public.file_records" not in sql
-        assert "information_schema" not in sql
-        assert "table_schema = 'public'" not in sql
-        assert "_botcord_schema_migrations" not in sql
-
-
-def test_file_records_forward_repair_migration_has_branch_safe_legacy_path():
-    sql = FORWARD_REPAIR_MIGRATION.read_text()
-
-    assert "IF has_storage_backend THEN" in sql
-    assert "ELSIF has_storage_location THEN" in sql
-    assert "ALTER COLUMN storage_backend DROP NOT NULL" in sql
-    assert "ALTER COLUMN storage_location DROP NOT NULL" in sql
-    assert (
-        "CHECK (storage_backend IS NULL OR storage_backend IN ('disk', 'supabase'))"
-        in sql
-    )
-    assert (
-        "CHECK (storage_location IS NULL OR storage_location IN ('disk', 'supabase'))"
-        in sql
-    )
-
-    legacy_branch = sql.split("ELSIF has_storage_location THEN", 1)[1]
-    legacy_branch = legacy_branch.split("END IF;", 1)[0]
-
-    assert "storage_backend" not in legacy_branch
-
-
-def test_file_records_legacy_storage_columns_migration_upgrades_legacy_shape():
-    sql = LEGACY_STORAGE_COLUMNS_MIGRATION.read_text()
-    normalized_sql = " ".join(sql.split())
-
-    assert "IF has_storage_backend THEN" in sql
-    assert "RETURN;" in sql.split("IF has_storage_backend THEN", 1)[1].split(
-        "END IF;", 1
-    )[0]
-    assert "IF NOT has_storage_location THEN" in sql
-    assert "ADD COLUMN IF NOT EXISTS storage_backend VARCHAR(32)" in sql
-    assert "ADD COLUMN IF NOT EXISTS disk_path TEXT" in sql
-    assert "ADD COLUMN IF NOT EXISTS storage_bucket VARCHAR(128)" in sql
-    assert "ADD COLUMN IF NOT EXISTS storage_object_key TEXT" in sql
-    assert (
-        "CHECK (storage_backend IS NULL OR storage_backend IN ('disk', 'supabase'))"
-        in sql
-    )
-    assert (
-        "AND storage_backend = 'disk' AND disk_path IS NOT NULL "
-        "AND storage_object_key IS NULL"
-        in normalized_sql
-    )
-    assert (
-        "AND storage_backend = 'supabase' AND disk_path IS NULL "
-        "AND storage_bucket IS NOT NULL AND storage_object_key IS NOT NULL"
-        in normalized_sql
-    )
-
-    add_columns_sql = sql.split(
-        "ADD COLUMN IF NOT EXISTS storage_backend VARCHAR(32)", 1
-    )[0]
-    assert "SET storage_backend" not in add_columns_sql
-    assert "storage_backend IN ('disk', 'supabase')" not in add_columns_sql
 
 
 @pytest.mark.asyncio

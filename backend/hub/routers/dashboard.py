@@ -82,6 +82,11 @@ def _extract_text_from_envelope(envelope_data: dict) -> tuple[str, str, dict]:
     payload = envelope_data.get("payload", {})
     if not isinstance(payload, dict):
         payload = {}
+    else:
+        payload = dict(payload)
+    trace_id = envelope_data.get("trace_id")
+    if isinstance(trace_id, str) and trace_id:
+        payload.setdefault("trace_id", trace_id)
 
     text = payload.get("text") or payload.get("body") or payload.get("message") or ""
     if text is not None and not isinstance(text, str):

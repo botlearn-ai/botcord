@@ -41,6 +41,10 @@ _CLOUD_RUNTIME_FILES_DISPATCH_RETRY_CODES = {
     "cloud_daemon_disconnected",
     "cloud_daemon_send_failed",
 }
+_CLOUD_RUNTIME_FILES_DAEMON_RETRY_CODES = {
+    "agent_credentials_missing",
+    "agent_not_loaded",
+}
 
 
 class AgentRuntimeFileOut(BaseModel):
@@ -158,6 +162,15 @@ async def _send_runtime_files_control_frame(
             }:
                 raise HTTPException(status_code=409, detail="daemon_offline") from exc
             if exc.code == "cloud_daemon_ack_timeout":
+                logger.warning(
+                    "runtime files daemon ack timeout: agent=%s daemon=%s cloud=%s "
+                    "frame=%s timeout_ms=%s",
+                    agent.agent_id,
+                    host.daemon_instance_id,
+                    host.cloud_daemon_instance_id,
+                    "list_agent_files",
+                    5000,
+                )
                 raise HTTPException(status_code=504, detail="daemon_ack_timeout") from exc
             raise HTTPException(
                 status_code=502,
@@ -166,12 +179,25 @@ async def _send_runtime_files_control_frame(
 
     if not is_daemon_online(host.daemon_instance_id):
         raise HTTPException(status_code=409, detail="daemon_offline")
-    return await send_control_frame(
-        host.daemon_instance_id,
-        "list_agent_files",
-        params,
-        timeout_ms=5000,
-    )
+    try:
+        return await send_control_frame(
+            host.daemon_instance_id,
+            "list_agent_files",
+            params,
+            timeout_ms=5000,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 504 and exc.detail == "daemon_ack_timeout":
+            logger.warning(
+                "runtime files daemon ack timeout: agent=%s daemon=%s cloud=%s "
+                "frame=%s timeout_ms=%s",
+                agent.agent_id,
+                host.daemon_instance_id,
+                host.cloud_daemon_instance_id,
+                "list_agent_files",
+                5000,
+            )
+        raise
 
 
 async def _ensure_cloud_runtime_files_host_online(
@@ -241,17 +267,49 @@ async def get_agent_runtime_files(
     if not isinstance(ack, dict) or not ack.get("ok"):
         err = ack.get("error") if isinstance(ack, dict) else None
         code = (err or {}).get("code") if isinstance(err, dict) else None
+        if (
+            host.cloud_daemon_instance_id
+            and code in _CLOUD_RUNTIME_FILES_DAEMON_RETRY_CODES
+        ):
+            logger.warning(
+                "cloud runtime files daemon returned %s; forcing resume and retry: "
+                "agent=%s daemon=%s cloud=%s",
+                code,
+                agent.agent_id,
+                host.daemon_instance_id,
+                host.cloud_daemon_instance_id,
+            )
+            await _ensure_cloud_runtime_files_host_online(
+                db,
+                ctx,
+                agent,
+                host,
+                force_resume=True,
+            )
+            ack = await _send_runtime_files_control_frame(
+                host,
+                params,
+                db=db,
+                ctx=ctx,
+                agent=agent,
+            )
+            err = ack.get("error") if isinstance(ack, dict) else None
+            code = (err or {}).get("code") if isinstance(err, dict) else None
         message = (err or {}).get("message") if isinstance(err, dict) else None
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "code": "daemon_runtime_files_failed",
-                "daemon_code": code,
-                "daemon_message": message,
-            },
-        )
+        if isinstance(ack, dict) and ack.get("ok"):
+            result = ack.get("result")
+        else:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "daemon_runtime_files_failed",
+                    "daemon_code": code,
+                    "daemon_message": message,
+                },
+            )
+    else:
+        result = ack.get("result")
 
-    result = ack.get("result")
     if not isinstance(result, dict) or not isinstance(result.get("files"), list):
         raise HTTPException(
             status_code=502,

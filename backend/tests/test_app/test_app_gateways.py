@@ -380,6 +380,99 @@ async def test_agent_gateway_send_dispatches_to_daemon(client, seed, db_session,
 
 
 @pytest.mark.asyncio
+async def test_agent_gateway_send_feishu_forwards_attachments(client, seed, db_session, monkeypatch):
+    token, _ = create_agent_token("ag_daemon")
+    await _insert_gateway(
+        db_session,
+        gateway_id="gw_feishu_send",
+        user_id=seed["user_id"],
+        provider="feishu",
+        config={"allowedChatIds": ["oc_allowed"]},
+    )
+    calls: list[dict] = []
+
+    async def fake_send(daemon_instance_id, type_, params=None, timeout_ms=None):
+        calls.append(
+            {
+                "daemon_instance_id": daemon_instance_id,
+                "type": type_,
+                "params": params,
+                "timeout_ms": timeout_ms,
+            }
+        )
+        return {
+            "ok": True,
+            "result": {"providerMessageId": "feishu:om_123"},
+        }
+
+    _patch_hub_gateway_send(monkeypatch, online=True, send=fake_send)
+    r = await client.post(
+        "/hub/gateways/gw_feishu_send/send",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "conversationId": "feishu:chat:oc_allowed",
+            "text": "",
+            "attachments": [
+                {
+                    "filename": "plot.png",
+                    "url": "/hub/files/f_testattachment",
+                    "content_type": "image/png",
+                    "size_bytes": 12,
+                }
+            ],
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    assert calls == [
+        {
+            "daemon_instance_id": seed["daemon_id"],
+            "type": "gateway_send",
+            "params": {
+                "agentId": "ag_daemon",
+                "gatewayId": "gw_feishu_send",
+                "conversationId": "feishu:chat:oc_allowed",
+                "text": "",
+                "attachments": [
+                    {
+                        "filename": "plot.png",
+                        "url": "https://api.botcord.chat/hub/files/f_testattachment",
+                        "contentType": "image/png",
+                        "sizeBytes": 12,
+                    }
+                ],
+            },
+            "timeout_ms": 30000,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_agent_gateway_send_rejects_telegram_attachments(client, seed, db_session, monkeypatch):
+    token, _ = create_agent_token("ag_daemon")
+    await _insert_gateway(db_session, user_id=seed["user_id"])
+    _patch_hub_gateway_send(monkeypatch, online=True, send=lambda *args, **kwargs: None)
+
+    r = await client.post(
+        "/hub/gateways/gw_tg_send/send",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "conversationId": "telegram:group:-1001",
+            "attachments": [
+                {
+                    "filename": "plot.png",
+                    "url": "/hub/files/f_testattachment",
+                    "content_type": "image/png",
+                }
+            ],
+        },
+    )
+
+    assert r.status_code == 400
+    assert r.json()["detail"] == "gateway_attachments_supported_only_for_feishu"
+
+
+@pytest.mark.asyncio
 async def test_agent_gateway_send_rejects_unallowed_conversation(
     client, seed, db_session, monkeypatch
 ):

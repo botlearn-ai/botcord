@@ -2,14 +2,15 @@
 
 /**
  * [INPUT]: 依赖 chat/ui/session store 的消息和焦点状态，复用 MessageBubble 和 RoomHumanComposer 渲染话题线程
- * [OUTPUT]: 对外提供 TopicDrawer 组件，作为从右侧滑出的话题详情面板
+ * [OUTPUT]: 对外提供带 animejs 进出场动效的 TopicDrawer 组件，作为从右侧滑出的话题详情面板
  * [POS]: dashboard 聊天正文区的话题线程查看/回复面板，避免话题消息在主列表铺开造成视觉杂乱
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
+import { animeStagger, cleanupAnime, createTimelineIfMotion } from "@/lib/anime";
 import { useLanguage } from "@/lib/i18n";
 import { messageList } from "@/lib/i18n/translations/dashboard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -27,6 +28,11 @@ const topicStatusColors: Record<string, { color: string; icon: string }> = {
 };
 
 const EMPTY_MESSAGES: DashboardMessage[] = [];
+const DRAWER_PART_SELECTOR = "[data-topic-drawer-part]";
+
+function getDrawerParts(drawer: HTMLElement | null): HTMLElement[] {
+  return drawer ? Array.from(drawer.querySelectorAll<HTMLElement>(DRAWER_PART_SELECTOR)) : [];
+}
 
 export default function TopicDrawer() {
   const locale = useLanguage();
@@ -44,7 +50,11 @@ export default function TopicDrawer() {
   );
   const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
 
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof createTimelineIfMotion>>(null);
+  const closingRef = useRef(false);
 
   const { topicMessages, topicName, topicStatus, topicGoal } = useMemo(() => {
     if (!openedRoomId || !openedTopicId) {
@@ -66,15 +76,136 @@ export default function TopicDrawer() {
     }
   }, [openedTopicId, topicMessages.length]);
 
+  useLayoutEffect(() => {
+    if (!openedRoomId || !openedTopicId) return;
+
+    closingRef.current = false;
+    cleanupAnime(animationRef.current);
+
+    const overlay = overlayRef.current;
+    const drawer = drawerRef.current;
+    const parts = getDrawerParts(drawer);
+    if (!drawer) return;
+
+    if (overlay) overlay.style.opacity = "0";
+    drawer.style.opacity = "0";
+    drawer.style.transform = "translateX(32px)";
+    parts.forEach((part) => {
+      part.style.opacity = "0";
+      part.style.transform = "translateY(8px)";
+    });
+
+    const timeline = createTimelineIfMotion({
+      onComplete: () => {
+        if (animationRef.current === timeline) animationRef.current = null;
+      },
+    });
+    animationRef.current = timeline;
+
+    if (!timeline) {
+      if (overlay) overlay.style.opacity = "1";
+      drawer.style.opacity = "1";
+      drawer.style.transform = "translateX(0px)";
+      parts.forEach((part) => {
+        part.style.opacity = "1";
+        part.style.transform = "translateY(0px)";
+      });
+      return;
+    }
+
+    if (overlay) {
+      timeline.add(overlay, {
+        opacity: [0, 1],
+        duration: 180,
+        ease: "linear",
+      }, 0);
+    }
+
+    timeline.add(drawer, {
+      opacity: [0, 1],
+      translateX: [32, 0],
+      duration: 280,
+      ease: "out(3)",
+    }, 0);
+
+    if (parts.length) {
+      timeline.add(parts, {
+        opacity: [0, 1],
+        translateY: [8, 0],
+        duration: 220,
+        delay: animeStagger(28),
+        ease: "out(3)",
+      }, 90);
+    }
+
+    return () => cleanupAnime(timeline);
+  }, [openedRoomId, openedTopicId]);
+
+  const closeDrawer = useCallback(() => {
+    if (closingRef.current) return;
+
+    const overlay = overlayRef.current;
+    const drawer = drawerRef.current;
+    const parts = getDrawerParts(drawer);
+    if (!drawer) {
+      setOpenedTopicId(null);
+      return;
+    }
+
+    closingRef.current = true;
+    animationRef.current?.pause();
+
+    const finishClose = () => {
+      closingRef.current = false;
+      animationRef.current = null;
+      setOpenedTopicId(null);
+    };
+
+    const timeline = createTimelineIfMotion({
+      onComplete: finishClose,
+    });
+    animationRef.current = timeline;
+
+    if (!timeline) {
+      finishClose();
+      return;
+    }
+
+    if (parts.length) {
+      timeline.add(parts, {
+        opacity: 0,
+        translateY: -4,
+        duration: 110,
+        delay: animeStagger(12, { reversed: true }),
+        ease: "in(2)",
+      }, 0);
+    }
+
+    timeline.add(drawer, {
+      opacity: 0,
+      translateX: 36,
+      duration: 180,
+      ease: "in(2)",
+    }, parts.length ? 35 : 0);
+
+    if (overlay) {
+      timeline.add(overlay, {
+        opacity: 0,
+        duration: 140,
+        ease: "linear",
+      }, parts.length ? 35 : 0);
+    }
+  }, [setOpenedTopicId]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpenedTopicId(null);
+      if (e.key === "Escape") closeDrawer();
     };
     if (openedTopicId) {
       window.addEventListener("keydown", onKey);
       return () => window.removeEventListener("keydown", onKey);
     }
-  }, [openedTopicId, setOpenedTopicId]);
+  }, [closeDrawer, openedTopicId]);
 
   if (!openedRoomId || !openedTopicId) return null;
 
@@ -86,11 +217,15 @@ export default function TopicDrawer() {
   return (
     <>
       <div
-        onClick={() => setOpenedTopicId(null)}
+        ref={overlayRef}
+        onClick={closeDrawer}
         className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm md:hidden"
       />
-      <aside className="fixed right-0 top-0 z-40 flex h-full w-full max-w-[480px] flex-col border-l border-glass-border bg-deep-black shadow-2xl md:w-[440px]">
-        <header className="flex items-start gap-2 border-b border-glass-border/60 px-4 py-3">
+      <aside
+        ref={drawerRef}
+        className="fixed right-0 top-0 z-40 flex h-full w-full max-w-[480px] flex-col border-l border-glass-border bg-deep-black shadow-2xl md:w-[440px]"
+      >
+        <header data-topic-drawer-part className="flex items-start gap-2 border-b border-glass-border/60 px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="text-xs uppercase tracking-wide text-text-secondary/60">{t.topic || "Topic"}</span>
@@ -107,7 +242,7 @@ export default function TopicDrawer() {
             )}
           </div>
           <button
-            onClick={() => setOpenedTopicId(null)}
+            onClick={closeDrawer}
             className="rounded-md p-1 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
             aria-label="Close topic"
           >
@@ -115,7 +250,7 @@ export default function TopicDrawer() {
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-3 py-3">
+        <div data-topic-drawer-part className="flex-1 overflow-y-auto px-3 py-3">
           {topicMessages.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-text-secondary">
               {t.noMessages}
@@ -134,7 +269,7 @@ export default function TopicDrawer() {
           <div ref={bottomRef} />
         </div>
 
-        <div className="border-t border-glass-border/60 px-3 py-3">
+        <div data-topic-drawer-part className="border-t border-glass-border/60 px-3 py-3">
           <RoomHumanComposer roomId={openedRoomId} topicId={openedTopicId} />
         </div>
       </aside>

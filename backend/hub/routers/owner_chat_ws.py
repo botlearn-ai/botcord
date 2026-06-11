@@ -181,6 +181,16 @@ async def register_owner_chat_run(
     )
 
 
+def current_owner_chat_trace_id(*, room_id: str, agent_id: str) -> str | None:
+    """Return the latest active owner-chat trace for a room/agent pair."""
+    matched_traces: list[str] = []
+    for tid, sub in list(_oc_trace_subs.items()):
+        user_id, sub_agent_id = sub
+        if sub_agent_id == agent_id and _build_owner_chat_room_id(user_id, sub_agent_id) == room_id:
+            matched_traces.append(tid)
+    return matched_traces[-1] if matched_traces else None
+
+
 # Retry backoff schedule (seconds) for notify_inbox when no WS connections are active.
 _NOTIFY_RETRY_DELAYS: Sequence[float] = (1, 2, 4, 8)
 

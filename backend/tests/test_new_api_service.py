@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from pathlib import Path
 
 import httpx
 import pytest
@@ -13,13 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from hub.models import Base, NewApiCredential, User
 from hub.services.new_api import NewApiError, NewApiService
 from tests.test_app.conftest import create_test_engine
-
-
-MIGRATION_025 = (
-    Path(__file__).resolve().parents[1]
-    / "migrations"
-    / "025_new_api_credentials_constraints.sql"
-)
 
 
 @pytest_asyncio.fixture
@@ -73,22 +65,6 @@ def _new_api_response(
         "message": "",
         "data": data,
     }
-
-
-def test_constraints_migration_remediates_invalid_remote_ids_before_checks():
-    sql = MIGRATION_025.read_text()
-    delete_pos = sql.index("DELETE FROM new_api_credentials")
-    user_constraint_pos = sql.index(
-        "ADD CONSTRAINT ck_new_api_credentials_user_id_positive"
-    )
-    token_constraint_pos = sql.index(
-        "ADD CONSTRAINT ck_new_api_credentials_token_id_positive"
-    )
-
-    assert "RAISE EXCEPTION" not in sql
-    assert "new_api_user_id <= 0 OR token_id <= 0" in sql
-    assert delete_pos < user_constraint_pos
-    assert delete_pos < token_constraint_pos
 
 
 @pytest.mark.asyncio

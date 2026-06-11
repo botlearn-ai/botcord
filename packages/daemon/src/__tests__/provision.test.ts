@@ -170,6 +170,36 @@ function makeFakeGateway(initialChannelIds: string[] = []): FakeGateway {
 }
 
 describe("list_agent_files handler", () => {
+  it("returns sanitized agent_credentials_missing when credentials are missing", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const nodePath = await import("node:path");
+
+    const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), "daemon-runtime-files-missing-"));
+    const prevHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      const handler = createProvisioner({ gateway: makeFakeGateway() as any });
+      const res = await handler({
+        id: "req_missing_credentials",
+        type: "list_agent_files",
+        params: { agentId: "ag_missing_creds" },
+      });
+
+      expect(res.ok).toBe(false);
+      expect(res.error?.code).toBe("agent_credentials_missing");
+      expect(res.error?.message).toBe("agent credentials are missing or unreadable");
+      expect(res.error?.message).not.toContain(tmp);
+      expect(res.error?.message).not.toContain(".botcord");
+      expect(res.error?.message).not.toContain("/credentials/");
+      expect(res.error?.message).not.toContain("~");
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("returns allowlisted workspace and attached hermes profile files for the requested agent", async () => {
     const os = await import("node:os");
     const fs = await import("node:fs");

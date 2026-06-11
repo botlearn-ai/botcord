@@ -117,6 +117,40 @@ function visibleExecutionBlocks(blocks: StreamBlockEntry[]): StreamBlockEntry[] 
   );
 }
 
+function mergeStreamedAndFinalText(streamedText: string, finalText: string): string {
+  if (streamedText.length > finalText.length) {
+    return finalText && !streamedText.includes(finalText)
+      ? `${streamedText}\n\n${finalText}`
+      : streamedText;
+  }
+  return finalText;
+}
+
+function mergeFinalAgentMessage(
+  existing: OwnerChatMessage,
+  finalMsg: OwnerChatMessage,
+): OwnerChatMessage | null {
+  const streamedText = extractAssistantText(existing.streamBlocks) || existing.text;
+  const mergedText = mergeStreamedAndFinalText(streamedText, finalMsg.text || "");
+  const visibleStreamBlocks = visibleExecutionBlocks(existing.streamBlocks);
+  const attachments = finalMsg.attachments ?? existing.attachments;
+
+  if (!mergedText.trim() && (attachments?.length ?? 0) === 0 && visibleStreamBlocks.length === 0) {
+    return null;
+  }
+
+  return {
+    ...existing,
+    ...finalMsg,
+    text: mergedText,
+    attachments,
+    status: "delivered",
+    streamBlocks: visibleStreamBlocks,
+    traceId: finalMsg.traceId ?? existing.traceId,
+    replyPreview: finalMsg.replyPreview ?? existing.replyPreview ?? undefined,
+  };
+}
+
 /** In-flight guard + request token to prevent stale loadInitial responses. */
 let loadInFlight = false;
 let loadRequestId = 0;
@@ -231,24 +265,39 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       set((state) => {
         // Build lookup for existing messages by hubMsgId
         const existingByHubId = new Map<string, OwnerChatMessage>();
+        const existingByTraceId = new Map<string, OwnerChatMessage>();
         for (const m of state.messages) {
           if (m.hubMsgId) existingByHubId.set(m.hubMsgId, m);
+          if (m.sender === "agent" && m.traceId) existingByTraceId.set(m.traceId, m);
         }
 
         const merged: OwnerChatMessage[] = [];
         const seenHubIds = new Set<string>();
+        const seenTraceIds = new Set<string>();
 
         // Start with API messages (authoritative ordering)
         for (const apiMsg of apiMsgs) {
           if (apiMsg.hubMsgId) seenHubIds.add(apiMsg.hubMsgId);
-          // Prefer local version if it has richer state (e.g., streamBlocks)
+          if (apiMsg.traceId) seenTraceIds.add(apiMsg.traceId);
+
+          // Prefer local version if it has richer state (e.g., streamBlocks),
+          // including the common reconnect case where the API final message
+          // has a hub id but the local stream placeholder only has traceId.
           const local = apiMsg.hubMsgId ? existingByHubId.get(apiMsg.hubMsgId) : undefined;
-          merged.push(local && local.streamBlocks.length > 0 ? local : apiMsg);
+          const traceLocal = apiMsg.traceId ? existingByTraceId.get(apiMsg.traceId) : undefined;
+          if (traceLocal && traceLocal.streamBlocks.length > 0) {
+            merged.push(mergeFinalAgentMessage(traceLocal, apiMsg) ?? apiMsg);
+          } else if (local && local.streamBlocks.length > 0) {
+            merged.push(mergeFinalAgentMessage(local, apiMsg) ?? apiMsg);
+          } else {
+            merged.push(apiMsg);
+          }
         }
 
         // Append any existing messages not in the API response
         for (const existing of state.messages) {
           if (existing.hubMsgId && seenHubIds.has(existing.hubMsgId)) continue;
+          if (existing.traceId && seenTraceIds.has(existing.traceId)) continue;
           // Keep optimistic/failed messages (they have no hubMsgId or a different one)
           if (existing.status === "optimistic" || existing.status === "failed") {
             merged.push(existing);
@@ -358,6 +407,22 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         return state;
       }
 
+      if (msg.sender === "agent" && msg.traceId) {
+        const traceIdx = state.messages.findIndex(
+          (m) => m.sender === "agent" && m.traceId === msg.traceId,
+        );
+        if (traceIdx !== -1) {
+          const merged = mergeFinalAgentMessage(state.messages[traceIdx], msg);
+          const nextMessages = [...state.messages];
+          if (merged) {
+            nextMessages[traceIdx] = merged;
+          } else {
+            nextMessages.splice(traceIdx, 1);
+          }
+          return { messages: nextMessages };
+        }
+      }
+
       // Match optimistic user message by clientId (sent as client_msg_id via WS)
       if (msg.sender === "user" && msg.hubMsgId) {
         const confirmUpdate = (m: OwnerChatMessage): OwnerChatMessage => ({
@@ -419,6 +484,9 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       const existingIds = new Set(
         state.messages.filter((m) => m.hubMsgId).map((m) => m.hubMsgId!)
       );
+      const existingTraceIds = new Set(
+        state.messages.filter((m) => m.sender === "agent" && m.traceId).map((m) => m.traceId!)
+      );
 
       // Reconcile: if a server message matches a failed optimistic message, confirm it
       const failedUserMsgs = state.messages.filter(
@@ -453,11 +521,36 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         });
       }
 
-      const deduped = converted.filter(
-        (m) => m.hubMsgId && !existingIds.has(m.hubMsgId) && !reconciledServerIds.has(m.hubMsgId)
-      );
-      if (deduped.length === 0 && reconciled === state.messages) return state;
-      return { messages: deduped.length > 0 ? [...reconciled, ...deduped] : reconciled };
+      let nextMessages = reconciled;
+      let changed = reconciled !== state.messages;
+
+      for (const msg of converted) {
+        if (!msg.hubMsgId || existingIds.has(msg.hubMsgId) || reconciledServerIds.has(msg.hubMsgId)) {
+          continue;
+        }
+
+        if (msg.sender === "agent" && msg.traceId && existingTraceIds.has(msg.traceId)) {
+          const traceIdx = nextMessages.findIndex((m) => m.sender === "agent" && m.traceId === msg.traceId);
+          if (traceIdx !== -1) {
+            const merged = mergeFinalAgentMessage(nextMessages[traceIdx], msg);
+            const copy = [...nextMessages];
+            if (merged) copy[traceIdx] = merged;
+            else copy.splice(traceIdx, 1);
+            nextMessages = copy;
+            changed = true;
+            existingIds.add(msg.hubMsgId);
+            continue;
+          }
+        }
+
+        nextMessages = [...nextMessages, msg];
+        existingIds.add(msg.hubMsgId);
+        if (msg.traceId) existingTraceIds.add(msg.traceId);
+        changed = true;
+      }
+
+      if (!changed) return state;
+      return { messages: nextMessages };
     });
     syncOwnerChatRoomSummary(get().roomId, get().messages);
   },
@@ -470,7 +563,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
       // Find existing streaming message for this trace
       const idx = state.messages.findIndex(
-        (m) => m.traceId === traceId && (m.status === "streaming" || (m.sender === "agent" && !m.hubMsgId))
+        (m) => m.traceId === traceId && (m.status === "streaming" || m.sender === "agent")
       );
 
       if (idx === -1) {
@@ -507,7 +600,9 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       const updatedMsg: OwnerChatMessage = {
         ...existing,
         streamBlocks: finalized ? visibleExecutionBlocks(updatedBlocks) : updatedBlocks,
-        text: updatedText || existing.text,
+        text: finalized
+          ? mergeStreamedAndFinalText(updatedText, existing.text)
+          : updatedText || existing.text,
         status: existing.status,
       };
 
@@ -631,41 +726,26 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
       // Upgrade streaming placeholder to delivered
       const existing = state.messages[idx];
-      // Preserve the streamed assistant text if it is richer than the final
-      // `message` text (e.g. Codex streams long intermediate reasoning/answer
-      // segments but only sends a short summary via botcord_send).
-      const streamedText = extractAssistantText(existing.streamBlocks) || existing.text;
-      const finalText = finalData.text || "";
-      let mergedText: string;
-      if (streamedText.length > finalText.length) {
-        mergedText =
-          finalText && !streamedText.includes(finalText)
-            ? `${streamedText}\n\n${finalText}`
-            : streamedText;
-      } else {
-        mergedText = finalText;
-      }
-      const visibleStreamBlocks = visibleExecutionBlocks(existing.streamBlocks);
-      if (!mergedText.trim() && (finalData.attachments?.length ?? 0) === 0 && visibleStreamBlocks.length === 0) {
+      const finalMsg: OwnerChatMessage = {
+        ...existing,
+        hubMsgId: finalData.hubMsgId,
+        text: finalData.text,
+        senderName: finalData.senderName,
+        createdAt: finalData.createdAt,
+        attachments: finalData.attachments,
+        status: "delivered",
+        streamBlocks: [],
+        traceId,
+        replyPreview: finalData.replyPreview ?? undefined,
+      };
+      const finalizedMsg = mergeFinalAgentMessage(existing, finalMsg);
+      if (!finalizedMsg) {
         const newMessages = state.messages.filter((_, i) => i !== idx);
         return {
           messages: newMessages,
           activeTraceId: null,
         };
       }
-
-      const finalizedMsg: OwnerChatMessage = {
-        ...existing,
-        hubMsgId: finalData.hubMsgId,
-        text: mergedText,
-        senderName: finalData.senderName,
-        createdAt: finalData.createdAt,
-        attachments: finalData.attachments,
-        status: "delivered",
-        // Keep only execution blocks (assistant text now lives in `text`)
-        streamBlocks: visibleStreamBlocks,
-        replyPreview: finalData.replyPreview ?? existing.replyPreview ?? undefined,
-      };
 
       const newMessages = [...state.messages];
       newMessages[idx] = finalizedMsg;
@@ -740,6 +820,9 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         const existingHubIds = new Set(
           state.messages.filter((m) => m.hubMsgId).map((m) => m.hubMsgId!)
         );
+        const existingTraceIds = new Set(
+          state.messages.filter((m) => m.sender === "agent" && m.traceId).map((m) => m.traceId!)
+        );
 
         const updatedMessages = state.messages.map((m) => {
           // Only reconcile disconnect-failed user messages
@@ -767,17 +850,39 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           return m;
         });
 
-        // Append any new server messages not already in our list
-        const newServerMsgs = serverMsgs.filter(
-          (sm) => sm.hubMsgId && !existingHubIds.has(sm.hubMsgId)
-            // Skip messages we just reconciled above
-            && !updatedMessages.some((m) => m.hubMsgId === sm.hubMsgId)
-        );
+        let nextMessages = updatedMessages;
+
+        // Append any new server messages not already in our list, merging agent
+        // finals into same-trace stream placeholders when reconnect races.
+        for (const sm of serverMsgs) {
+          if (
+            !sm.hubMsgId ||
+            existingHubIds.has(sm.hubMsgId) ||
+            updatedMessages.some((m) => m.hubMsgId === sm.hubMsgId)
+          ) {
+            continue;
+          }
+
+          if (sm.sender === "agent" && sm.traceId && existingTraceIds.has(sm.traceId)) {
+            const traceIdx = nextMessages.findIndex((m) => m.sender === "agent" && m.traceId === sm.traceId);
+            if (traceIdx !== -1) {
+              const merged = mergeFinalAgentMessage(nextMessages[traceIdx], sm);
+              const copy = [...nextMessages];
+              if (merged) copy[traceIdx] = merged;
+              else copy.splice(traceIdx, 1);
+              nextMessages = copy;
+              existingHubIds.add(sm.hubMsgId);
+              continue;
+            }
+          }
+
+          nextMessages = [...nextMessages, sm];
+          existingHubIds.add(sm.hubMsgId);
+          if (sm.traceId) existingTraceIds.add(sm.traceId);
+        }
 
         return {
-          messages: newServerMsgs.length > 0
-            ? [...updatedMessages, ...newServerMsgs]
-            : updatedMessages,
+          messages: nextMessages,
         };
       });
     } catch (err) {

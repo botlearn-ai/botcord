@@ -33,6 +33,7 @@ from hub.config import (
     PAIR_RATE_LIMIT_PER_MINUTE,
     RATE_LIMIT_PER_MINUTE,
 )
+from hub.validators import normalize_file_url
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.dashboard_message_shaping import load_user_display_names
 from hub.database import async_session, get_db
@@ -150,9 +151,17 @@ async def _load_agent_for_ws_auth(ws: WebSocket, agent_id: str) -> Agent | None:
         return await db.scalar(select(Agent).where(Agent.agent_id == agent_id))
 
 
+class GatewaySendAttachment(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2048)
+    filename: str = Field(..., min_length=1, max_length=200)
+    content_type: str | None = Field(default=None, alias="content_type", max_length=200)
+    size_bytes: int | None = Field(default=None, alias="size_bytes", ge=0)
+
+
 class GatewaySendRequest(BaseModel):
     conversation_id: str = Field(..., alias="conversationId", min_length=1, max_length=256)
-    text: str = Field(..., min_length=1, max_length=20000)
+    text: str = Field(default="", max_length=20000)
+    attachments: list[GatewaySendAttachment] = Field(default_factory=list, max_length=10)
     idempotency_key: str | None = Field(
         default=None,
         alias="idempotencyKey",
@@ -663,6 +672,30 @@ async def send_gateway_message(
         raise HTTPException(status_code=400, detail="gateway_provider_unsupported")
     if row.provider not in ("telegram", "feishu"):
         raise HTTPException(status_code=400, detail="gateway_provider_unsupported")
+    if body.attachments and row.provider != "feishu":
+        raise HTTPException(
+            status_code=400,
+            detail="gateway_attachments_supported_only_for_feishu",
+        )
+
+    text_value = body.text or ""
+    attachments: list[dict[str, Any]] = []
+    for raw in body.attachments:
+        normalized_url = normalize_file_url(raw.url)
+        filename = raw.filename.strip()[:200]
+        if not normalized_url or not filename:
+            raise HTTPException(status_code=400, detail="gateway_attachment_invalid")
+        attachment: dict[str, Any] = {
+            "url": normalized_url,
+            "filename": filename,
+        }
+        if raw.content_type:
+            attachment["contentType"] = raw.content_type[:200]
+        if raw.size_bytes is not None:
+            attachment["sizeBytes"] = raw.size_bytes
+        attachments.append(attachment)
+    if not text_value and not attachments:
+        raise HTTPException(status_code=422, detail="gateway_text_or_attachment_required")
 
     config = dict(row.config_json or {})
     if not _conversation_allowed(row.provider, config, body.conversation_id):
@@ -674,8 +707,10 @@ async def send_gateway_message(
         "agentId": current_agent,
         "gatewayId": row.id,
         "conversationId": body.conversation_id,
-        "text": body.text,
+        "text": text_value,
     }
+    if attachments:
+        params["attachments"] = attachments
     if body.idempotency_key:
         params["idempotencyKey"] = body.idempotency_key
 
@@ -1424,7 +1459,17 @@ async def _send_room_message(
         "ROOM fan-out msg_id=%s from=%s room=%s topic=%s receivers=%s owner_chat_self=%s",
         envelope.msg_id, envelope.from_, room_id, topic, receivers, _self_delivery,
     )
-    envelope_json = json.dumps(envelope.model_dump(by_alias=True))
+    envelope_data = envelope.model_dump(by_alias=True)
+    if is_owner_chat:
+        from hub.routers.owner_chat_ws import current_owner_chat_trace_id
+
+        owner_chat_trace_id = current_owner_chat_trace_id(
+            room_id=room_id,
+            agent_id=envelope.from_,
+        )
+        if owner_chat_trace_id:
+            envelope_data["trace_id"] = owner_chat_trace_id
+    envelope_json = json.dumps(envelope_data)
 
     first_hub_msg_id: str | None = None
     receiver_hub_msg_ids: dict[str, str] = {}

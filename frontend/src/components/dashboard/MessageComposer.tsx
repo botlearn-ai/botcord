@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { AtSign, Bot, Coins, FileText, FileUp, Hash, Plus, Send, User, X } from "lucide-react";
+import { animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
 
 interface PendingFile {
   file: File;
@@ -128,7 +129,17 @@ export default function MessageComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mentionListRef = useRef<HTMLDivElement>(null);
   const mentionOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const sendButtonRef = useRef<HTMLButtonElement>(null);
+  const sendIconRef = useRef<SVGSVGElement>(null);
   const compositionActiveRef = useRef(false);
+  const mentionOpenRef = useRef(false);
+  const lengthErrorVisibleRef = useRef(showLengthError);
+  const mentionListAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const mentionOptionsAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const inputPulseAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const inputShakeAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const sendButtonAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const sendIconAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
   const inputId = `${MESSAGE_COMPOSER_TEXTAREA_ID_PREFIX}-${useId().replace(/:/g, "")}`;
 
   const mentionEnabled = !!mentionCandidates && mentionCandidates.length > 0;
@@ -194,6 +205,81 @@ export default function MessageComposer({
       list.scrollTop = optionBottom - list.clientHeight;
     }
   }, [mentionMatch, mentionIndex, suggestions.length]);
+
+  useEffect(() => {
+    return () => {
+      cleanupAnime(mentionListAnimationRef.current);
+      cleanupAnime(mentionOptionsAnimationRef.current);
+      cleanupAnime(inputPulseAnimationRef.current);
+      cleanupAnime(inputShakeAnimationRef.current);
+      cleanupAnime(sendButtonAnimationRef.current);
+      cleanupAnime(sendIconAnimationRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const isOpen = !!mentionMatch && suggestions.length > 0;
+
+    if (!isOpen) {
+      mentionOpenRef.current = false;
+      cleanupAnime(mentionListAnimationRef.current);
+      cleanupAnime(mentionOptionsAnimationRef.current);
+      mentionListAnimationRef.current = null;
+      mentionOptionsAnimationRef.current = null;
+      return;
+    }
+
+    if (mentionOpenRef.current) return;
+    mentionOpenRef.current = true;
+
+    const list = mentionListRef.current;
+    if (list) {
+      cleanupAnime(mentionListAnimationRef.current);
+      mentionListAnimationRef.current = animateIfMotion(list, {
+        opacity: [0, 1],
+        translateY: [4, 0],
+        scale: [0.985, 1],
+        duration: 170,
+        ease: "out(3)",
+      });
+    }
+
+    const options = mentionOptionRefs.current
+      .filter((node): node is HTMLButtonElement => Boolean(node))
+      .slice(0, 12);
+
+    if (options.length > 0) {
+      cleanupAnime(mentionOptionsAnimationRef.current);
+      mentionOptionsAnimationRef.current = animateIfMotion(options, {
+        opacity: [0, 1],
+        translateY: [3, 0],
+        scale: [0.985, 1],
+        delay: animeStagger(14, { start: 30 }),
+        duration: 180,
+        ease: "out(3)",
+      });
+    }
+
+    const input = inputRef.current;
+    if (input) {
+      cleanupAnime(inputPulseAnimationRef.current);
+      inputPulseAnimationRef.current = animateIfMotion(input, {
+        boxShadow: [
+          "0 0 0 rgba(34, 211, 238, 0)",
+          "0 0 0 3px rgba(34, 211, 238, 0.12), 0 0 14px rgba(34, 211, 238, 0.18)",
+          "0 0 0 rgba(34, 211, 238, 0)",
+        ],
+        duration: 460,
+        ease: "out(3)",
+        onComplete: (animation) => {
+          cleanupAnime(animation);
+          if (inputPulseAnimationRef.current === animation) {
+            inputPulseAnimationRef.current = null;
+          }
+        },
+      });
+    }
+  }, [mentionMatch, suggestions.length]);
 
   const autoResize = useCallback(() => {
     const el = inputRef.current;
@@ -382,6 +468,48 @@ export default function MessageComposer({
   const canSend = !disabled && !hasLengthError && (text.trim().length > 0 || files.length > 0);
   const showActionMenu = allowAttachments || !!onTransfer;
 
+  useEffect(() => {
+    if (hasLengthError && !lengthErrorVisibleRef.current) {
+      const input = inputRef.current;
+      if (input) {
+        cleanupAnime(inputShakeAnimationRef.current);
+        inputShakeAnimationRef.current = animateIfMotion(input, {
+          translateX: [0, -4, 4, -3, 3, 0],
+          duration: 220,
+          ease: "out(3)",
+        });
+      }
+    }
+    lengthErrorVisibleRef.current = hasLengthError;
+  }, [hasLengthError]);
+
+  const handleSendClick = useCallback(() => {
+    if (canSend) {
+      const button = sendButtonRef.current;
+      if (button) {
+        cleanupAnime(sendButtonAnimationRef.current);
+        sendButtonAnimationRef.current = animateIfMotion(button, {
+          scale: [1, 0.97, 1.05, 1],
+          duration: 240,
+          ease: "out(3)",
+        });
+      }
+
+      const icon = sendIconRef.current;
+      if (icon) {
+        cleanupAnime(sendIconAnimationRef.current);
+        sendIconAnimationRef.current = animateIfMotion(icon, {
+          translateX: [0, 3, 0],
+          scale: [1, 0.94, 1.08, 1],
+          duration: 240,
+          ease: "out(3)",
+        });
+      }
+    }
+
+    void handleSend();
+  }, [canSend, handleSend]);
+
   return (
     <div onDrop={handleDrop} onDragOver={handleDragOver}>
       {hasLengthError && (
@@ -535,7 +663,7 @@ export default function MessageComposer({
         {mentionMatch && suggestions.length > 0 && (
           <div
             ref={mentionListRef}
-            className="absolute left-0 right-12 bottom-full mb-1 z-20 max-h-56 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
+            className="absolute left-0 right-12 bottom-full mb-1 z-20 max-h-56 origin-bottom overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
             role="listbox"
           >
             {suggestions.map((s, i) => {
@@ -589,13 +717,14 @@ export default function MessageComposer({
           </div>
         )}
         <button
+          ref={sendButtonRef}
           type="button"
-          onClick={() => void handleSend()}
+          onClick={handleSendClick}
           disabled={!canSend}
           className="flex items-center justify-center w-9 h-9 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           aria-label="Send message"
         >
-          <Send className="w-4 h-4" />
+          <Send ref={sendIconRef} className="w-4 h-4" />
         </button>
       </div>
     </div>

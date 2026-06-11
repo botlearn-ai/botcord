@@ -24,6 +24,7 @@ from dataclasses import dataclass
 
 import jwt as pyjwt
 from jwt import PyJWKClient
+from jwt.exceptions import PyJWKClientError
 
 from hub.config import (
     BOTLEARN_ALLOWED_ORIGINS,
@@ -113,6 +114,10 @@ def _get_jwks_client(jwks_url: str) -> PyJWKClient:
     return _jwks_clients[jwks_url]
 
 
+def _is_unknown_jwks_kid_error(exc: PyJWKClientError) -> bool:
+    return str(exc).startswith("Unable to find a signing key that matches:")
+
+
 def is_botlearn_origin_allowed(origin: str | None) -> bool:
     """Origin allowlist gate for the session + WS endpoints.
 
@@ -187,6 +192,16 @@ def verify_botlearn_id_token(token: str) -> BotlearnIdentity:
         )
     except BotlearnAuthError:
         raise
+    except PyJWKClientError as exc:
+        if _is_unknown_jwks_kid_error(exc):
+            logger.debug("BotLearn JWKS key lookup failed: %s", exc)
+            raise BotlearnAuthError("invalid_token", "Invalid BotLearn token")
+        logger.warning("BotLearn JWKS verification unavailable: %s", exc)
+        raise BotlearnAuthError(
+            "botlearn_jwks_unavailable",
+            "BotLearn JWKS verification is unavailable",
+            http_status=503,
+        )
     except pyjwt.InvalidTokenError as exc:
         logger.debug("BotLearn token verification failed: %s", exc)
         raise BotlearnAuthError("invalid_token", "Invalid BotLearn token")

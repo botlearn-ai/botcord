@@ -8,13 +8,16 @@ quota failure → no token).
 
 from __future__ import annotations
 
+import base64
 import datetime
+import json
 import uuid
 
 import jwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from jwt.exceptions import PyJWKClientError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -61,6 +64,14 @@ def _botlearn_token(
     if audience is not None:
         payload["aud"] = audience
     return jwt.encode(payload, secret, algorithm="HS256")
+
+
+def _unsigned_token(header: dict, payload: dict | None = None) -> str:
+    def enc(value: dict) -> str:
+        raw = json.dumps(value, separators=(",", ":")).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+    return f"{enc(header)}.{enc(payload or {})}.sig"
 
 
 def _configure_botlearn(
@@ -456,6 +467,79 @@ async def test_session_rejected_for_expired_token(client_factory, monkeypatch):
     )
     assert r.status_code == 401
     assert r.json()["detail"]["code"] == "token_expired"
+
+
+@pytest.mark.asyncio
+async def test_session_rejected_when_jwks_kid_is_unknown(client_factory, monkeypatch):
+    class MissingKidJwksClient:
+        def get_signing_key_from_jwt(self, token: str):
+            raise PyJWKClientError(
+                "Unable to find a signing key that matches: "
+                "a5d8f98e-fbd2-40f4-9317-ba02ebaf3e3b"
+            )
+
+    _configure_botlearn(monkeypatch)
+
+    import app.botlearn_auth as ba
+
+    monkeypatch.setattr(ba, "BOTLEARN_JWKS_URL", "https://botlearn.example/jwks.json")
+    monkeypatch.setattr(ba, "_get_jwks_client", lambda jwks_url: MissingKidJwksClient())
+    token = _unsigned_token(
+        {"alg": "RS256", "kid": "a5d8f98e-fbd2-40f4-9317-ba02ebaf3e3b"},
+        {
+            "sub": "u",
+            "email_verified": True,
+            "iss": BOTLEARN_ISSUER,
+            "exp": int((_now() + datetime.timedelta(hours=1)).timestamp()),
+            "iat": int(_now().timestamp()),
+        },
+    )
+
+    client, _ = await client_factory()
+    r = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=_headers(token),
+    )
+
+    assert r.status_code == 401
+    assert r.json()["detail"]["code"] == "invalid_token"
+
+
+@pytest.mark.asyncio
+async def test_session_jwks_provider_failure_is_service_error(
+    client_factory, monkeypatch
+):
+    class FailingJwksClient:
+        def get_signing_key_from_jwt(self, token: str):
+            raise PyJWKClientError(
+                'Fail to fetch data from the url, err: "timed out"'
+            )
+
+    _configure_botlearn(monkeypatch)
+
+    import app.botlearn_auth as ba
+
+    monkeypatch.setattr(ba, "BOTLEARN_JWKS_URL", "https://botlearn.example/jwks.json")
+    monkeypatch.setattr(ba, "_get_jwks_client", lambda jwks_url: FailingJwksClient())
+    token = _unsigned_token(
+        {"alg": "RS256", "kid": "botlearn-key-1"},
+        {
+            "sub": "u",
+            "email_verified": True,
+            "iss": BOTLEARN_ISSUER,
+            "exp": int((_now() + datetime.timedelta(hours=1)).timestamp()),
+            "iat": int(_now().timestamp()),
+        },
+    )
+
+    client, _ = await client_factory()
+    r = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=_headers(token),
+    )
+
+    assert r.status_code == 503
+    assert r.json()["detail"]["code"] == "botlearn_jwks_unavailable"
 
 
 @pytest.mark.asyncio
