@@ -44,6 +44,7 @@ import StripeReturnBanner from "./StripeReturnBanner";
 import UserChatPane from "./UserChatPane";
 import WalletPanel from "./WalletPanel";
 import ActivityPanel from "./ActivityPanel";
+import { animateIfMotion, cleanupAnime } from "@/lib/anime";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
 type DashboardSidebarTab = "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
@@ -138,10 +139,29 @@ export default function DashboardApp() {
   const initResolvedRef = useRef(false);
   const lastAccessTokenRef = useRef<string | null>(null);
   const lastMessagesDirectorySyncRef = useRef(0);
+  const mainContentRef = useRef<HTMLDivElement | null>(null);
+  const mainContentAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const previousMainContentKeyRef = useRef<string | null>(null);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
   const routeSidebarTab = useMemo(() => getSidebarTabFromPathParts(pathnameParts), [pathnameParts]);
   const userChatAgentIdFromQuery = searchParams.get("agent_id");
   const shouldShowBootstrapSkeleton = !sessionStore.authResolved || sessionStore.authBootstrapping;
+  const primaryNavigationPending = Boolean(
+    uiStore.pendingPrimaryNavigation && pathname !== uiStore.pendingPrimaryNavigation.path,
+  );
+  const visibleSidebarTab = primaryNavigationPending
+    ? uiStore.pendingPrimaryNavigation?.tab ?? uiStore.sidebarTab
+    : routeSidebarTab;
+  const mainContentAnimationKey = [
+    primaryNavigationPending ? "pending" : "ready",
+    visibleSidebarTab,
+    uiStore.messagesPane,
+    uiStore.messagesShowRequests ? "requests" : "",
+    uiStore.openedRoomId ?? "",
+    uiStore.selectedContactKey ?? "",
+    uiStore.exploreView,
+    uiStore.contactsView,
+  ].join(":");
   // Human-first: never force-block on "no agent". Authed users always proceed
   // into /chats as their Human identity; creating an Agent is a later,
   // optional CTA. AgentGateModal is kept for manual entry points (account
@@ -207,6 +227,31 @@ export default function DashboardApp() {
       delete target.botcordDebugRealtime;
     };
   }, [supabase]);
+
+  useEffect(() => {
+    if (shouldShowBootstrapSkeleton) return;
+    const content = mainContentRef.current;
+    if (!content || previousMainContentKeyRef.current === mainContentAnimationKey) return;
+
+    previousMainContentKeyRef.current = mainContentAnimationKey;
+    cleanupAnime(mainContentAnimationRef.current);
+
+    let animation: ReturnType<typeof animateIfMotion> = null;
+    const frameId = window.requestAnimationFrame(() => {
+      animation = animateIfMotion(content, {
+        opacity: [0, 1],
+        translateY: [8, 0],
+        duration: 220,
+        ease: "out(3)",
+      });
+      mainContentAnimationRef.current = animation;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      cleanupAnime(animation);
+    };
+  }, [mainContentAnimationKey, shouldShowBootstrapSkeleton]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1069,13 +1114,6 @@ export default function DashboardApp() {
     || mobileMessagesShowsMain
     || mobileContactsShowsMain;
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
-  const primaryNavigationPending = Boolean(
-    uiStore.pendingPrimaryNavigation && pathname !== uiStore.pendingPrimaryNavigation.path,
-  );
-  const visibleSidebarTab = primaryNavigationPending
-    ? uiStore.pendingPrimaryNavigation?.tab ?? uiStore.sidebarTab
-    : routeSidebarTab;
-
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-deep-black max-md:flex-col-reverse">
       <Sidebar
@@ -1084,7 +1122,7 @@ export default function DashboardApp() {
         mobileSecondaryOpen={uiStore.mobileSidebarOpen}
         onMobileSecondaryClose={uiStore.closeMobileSidebar}
       />
-      <div className={mainPaneClass}>
+      <div ref={mainContentRef} className={mainPaneClass}>
         {primaryNavigationPending ? (
           <DashboardTabSkeleton variant={visibleSidebarTab} />
         ) : visibleSidebarTab === "home" ? (

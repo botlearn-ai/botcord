@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileArchive, Loader2, MessageSquare, Users, User, X } from "lucide-react";
+import { CheckCircle2, FileArchive, Loader2, MessageSquare, Users, User, X } from "lucide-react";
 import { api, apiFetch, getActiveIdentity } from "@/lib/api";
+import { animatePop, cleanupAnime, createTimelineIfMotion } from "@/lib/anime";
 import type { Attachment } from "@/lib/types";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -30,10 +31,18 @@ interface ForwardModalProps {
 }
 
 export default function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const modalAnimationRef = useRef<ReturnType<typeof createTimelineIfMotion>>(null);
+  const successAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closingRef = useRef(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
   const router = useRouter();
   const {
     setFocusedRoomId,
@@ -74,6 +83,124 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
         sublabel: r.room_id,
       })),
   ];
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+      cleanupAnime(modalAnimationRef.current);
+      cleanupAnime(successAnimationRef.current);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const overlay = overlayRef.current;
+    const panel = panelRef.current;
+    if (!overlay || !panel) return;
+
+    overlay.style.opacity = "0";
+    panel.style.opacity = "0";
+    panel.style.transform = "translateY(10px) scale(0.985)";
+    panel.style.transformOrigin = "center center";
+
+    const timeline = createTimelineIfMotion({
+      onComplete: () => {
+        if (modalAnimationRef.current === timeline) modalAnimationRef.current = null;
+      },
+    });
+    modalAnimationRef.current = timeline;
+
+    if (!timeline) {
+      overlay.style.opacity = "1";
+      panel.style.opacity = "1";
+      panel.style.transform = "translateY(0px) scale(1)";
+      return;
+    }
+
+    timeline.add(overlay, {
+      opacity: [0, 1],
+      duration: 150,
+      ease: "linear",
+    }, 0);
+    timeline.add(panel, {
+      opacity: [0, 1],
+      translateY: [10, 0],
+      scale: [0.985, 1],
+      duration: 220,
+      ease: "out(3)",
+    }, 20);
+
+    return () => cleanupAnime(timeline);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    if (closingRef.current) return;
+
+    const overlay = overlayRef.current;
+    const panel = panelRef.current;
+    if (!overlay || !panel) {
+      onClose();
+      return;
+    }
+
+    closingRef.current = true;
+    setClosing(true);
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    modalAnimationRef.current?.pause();
+
+    const finishClose = () => {
+      modalAnimationRef.current = null;
+      onClose();
+    };
+
+    const timeline = createTimelineIfMotion({
+      onComplete: finishClose,
+    });
+    modalAnimationRef.current = timeline;
+
+    if (!timeline) {
+      finishClose();
+      return;
+    }
+
+    timeline.add(panel, {
+      opacity: 0,
+      translateY: 8,
+      scale: 0.985,
+      duration: 150,
+      ease: "in(2)",
+    }, 0);
+    timeline.add(overlay, {
+      opacity: 0,
+      duration: 140,
+      ease: "linear",
+    }, 0);
+  }, [onClose]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeModal();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeModal]);
+
+  useEffect(() => {
+    if (!done) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const status = statusRef.current;
+      if (!status) return;
+
+      cleanupAnime(successAnimationRef.current);
+      successAnimationRef.current = animatePop(status);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [done]);
 
   const handleSend = async () => {
     if (selected.size === 0 || sending) return;
@@ -126,7 +253,7 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
         setOpenedRoomId(roomId);
         router.push("/chats/messages");
       }
-      setTimeout(onClose, 800);
+      closeTimerRef.current = setTimeout(closeModal, 800);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "发送失败");
       setSending(false);
@@ -135,17 +262,28 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      ref={overlayRef}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
       onClick={(e) => {
         e.stopPropagation();
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) closeModal();
       }}
     >
-      <div className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
           <span className="text-sm font-medium text-zinc-200">转发消息</span>
-          <button type="button" onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
+          <button
+            type="button"
+            onClick={closeModal}
+            className="text-zinc-500 hover:text-zinc-300 transition-colors"
+            aria-label="Close forward modal"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -203,7 +341,12 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-zinc-800 px-4 py-3">
           {error && <p className="text-[11px] text-red-400">{error}</p>}
-          {done && <p className="text-[11px] text-emerald-400">已发送</p>}
+          {done && (
+            <p ref={statusRef} className="flex origin-center items-center gap-1.5 text-[11px] text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              已发送
+            </p>
+          )}
           {!error && !done && (
             <span className="text-[11px] text-zinc-500">
               {selected.size > 0 ? `已选 ${selected.size} 个` : "选择发送目标"}

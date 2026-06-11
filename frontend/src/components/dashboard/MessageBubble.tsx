@@ -9,6 +9,7 @@ import ForwardModal from "./ForwardModal";
 import ReplyQuoteBlock from "./ReplyQuoteBlock";
 import { emitJumpToMessage } from "./messageNavigation";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
+import { animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
 import type { DashboardMessage, Attachment, MessageStatusReaction } from "@/lib/types";
 import { canReplyToDashboardMessage } from "@/lib/dashboard-message-actions";
 import { useLanguage } from '@/lib/i18n';
@@ -66,9 +67,45 @@ const ACTION_MENU_ITEM_HEIGHT = 30;
 const ACTION_MENU_VERTICAL_PADDING = 8;
 const ACTION_MENU_GAP = 6;
 const ACTION_MENU_VIEWPORT_PADDING = 8;
+const ACTION_MENU_ITEM_SELECTOR = "[data-message-action-item]";
+
+type MotionAnimation = ReturnType<typeof animateIfMotion>;
 
 function shouldCollapseMessage(text: string): boolean {
   return text.length > COLLAPSE_TEXT_LENGTH || text.split(/\r\n|\r|\n/).length > COLLAPSE_LINE_COUNT;
+}
+
+function runStatusBadgeMotion(
+  target: HTMLElement,
+  animationRef: { current: MotionAnimation },
+  failed: boolean,
+) {
+  cleanupAnime(animationRef.current);
+  const animation = animateIfMotion(target, failed ? {
+    translateX: [0, -3, 3, -2, 2, 0],
+    scale: [1, 1.04, 1],
+    boxShadow: [
+      "0 0 0 rgba(248, 113, 113, 0)",
+      "0 0 14px rgba(248, 113, 113, 0.34)",
+      "0 0 0 rgba(248, 113, 113, 0)",
+    ],
+    duration: 360,
+    ease: "out(3)",
+    onComplete: (finishedAnimation) => {
+      cleanupAnime(finishedAnimation);
+      if (animationRef.current === finishedAnimation) animationRef.current = null;
+    },
+  } : {
+    scale: [1, 1.08, 1],
+    translateY: [0, -2, 0],
+    duration: 260,
+    ease: "out(3)",
+    onComplete: (finishedAnimation) => {
+      cleanupAnime(finishedAnimation);
+      if (animationRef.current === finishedAnimation) animationRef.current = null;
+    },
+  });
+  animationRef.current = animation;
 }
 
 function CollapsibleMessageBody({
@@ -139,6 +176,42 @@ function useStateConfig() {
   return config;
 }
 
+function MessageStateBadge({
+  state,
+  label,
+  color,
+  icon,
+}: {
+  state: string;
+  label: string;
+  color: string;
+  icon: string;
+}) {
+  const badgeRef = useRef<HTMLSpanElement>(null);
+  const previousStateRef = useRef(state);
+  const animationRef = useRef<MotionAnimation>(null);
+
+  useEffect(() => {
+    if (previousStateRef.current === state) return;
+    previousStateRef.current = state;
+    const badge = badgeRef.current;
+    if (!badge) return;
+    runStatusBadgeMotion(badge, animationRef, state === "failed");
+  }, [state]);
+
+  useEffect(() => () => cleanupAnime(animationRef.current), []);
+
+  return (
+    <span
+      ref={badgeRef}
+      className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[10px] font-medium ${color}`}
+    >
+      <span className="text-[8px]">{icon}</span>
+      {label}
+    </span>
+  );
+}
+
 function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
   const stateConfig = useStateConfig();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -146,9 +219,31 @@ function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
   const entries = order
     .filter((s) => counts[s] && counts[s] > 0)
     .map((s) => ({ state: s, count: counts[s] }));
+  const signature = entries.map(({ state, count }) => `${state}:${count}/${total}`).join("|");
+  const failedCount = counts.failed ?? 0;
+  const groupRef = useRef<HTMLSpanElement>(null);
+  const previousSignatureRef = useRef(signature);
+  const previousFailedCountRef = useRef(failedCount);
+  const animationRef = useRef<MotionAnimation>(null);
+
+  useEffect(() => {
+    if (previousSignatureRef.current === signature) {
+      previousFailedCountRef.current = failedCount;
+      return;
+    }
+
+    const shouldShake = failedCount > previousFailedCountRef.current;
+    previousSignatureRef.current = signature;
+    previousFailedCountRef.current = failedCount;
+    const group = groupRef.current;
+    if (!group) return;
+    runStatusBadgeMotion(group, animationRef, shouldShake);
+  }, [failedCount, signature]);
+
+  useEffect(() => () => cleanupAnime(animationRef.current), []);
 
   return (
-    <span className="inline-flex items-center gap-1">
+    <span ref={groupRef} className="inline-flex items-center gap-1">
       {entries.map(({ state, count }) => {
         const sc = stateConfig[state];
         if (!sc) return null;
@@ -241,7 +336,11 @@ function MentionChip({
   onSelectHuman: (humanId: string, displayName: string) => void;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+  const tooltipAnimationRef = useRef<MotionAnimation>(null);
+  const tooltipOpenedRef = useRef(false);
   const [tooltipPosition, setTooltipPosition] = useState<{ left: number; top: number } | null>(null);
+  const tooltipOpen = Boolean(tooltipPosition);
   const isHuman = id.startsWith("hu_");
   const isAgent = id.startsWith("ag_");
   const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
@@ -304,6 +403,46 @@ function MentionChip({
     };
   }, [tooltipPosition, updateTooltipPosition]);
 
+  useLayoutEffect(() => {
+    if (!tooltipOpen) {
+      tooltipOpenedRef.current = false;
+      cleanupAnime(tooltipAnimationRef.current);
+      tooltipAnimationRef.current = null;
+      return;
+    }
+
+    if (tooltipOpenedRef.current) return;
+    const tooltip = tooltipRef.current;
+    if (!tooltip) return;
+
+    tooltipOpenedRef.current = true;
+    cleanupAnime(tooltipAnimationRef.current);
+    tooltip.style.opacity = "0";
+    tooltip.style.transform = "translateY(4px) scale(0.98)";
+    tooltip.style.transformOrigin = "top left";
+
+    const animation = animateIfMotion(tooltip, {
+      opacity: [0, 1],
+      translateY: [4, 0],
+      scale: [0.98, 1],
+      duration: 170,
+      ease: "out(3)",
+    });
+    tooltipAnimationRef.current = animation;
+
+    if (!animation) {
+      tooltip.style.opacity = "1";
+      tooltip.style.transform = "translateY(0px) scale(1)";
+      return;
+    }
+
+    return () => {
+      tooltipOpenedRef.current = false;
+      cleanupAnime(tooltipAnimationRef.current);
+      tooltipAnimationRef.current = null;
+    };
+  }, [tooltipOpen]);
+
   const handleClick = () => {
     if (isHuman) {
       onSelectHuman(id, displayName);
@@ -334,6 +473,7 @@ function MentionChip({
       </button>
       {tooltipPosition && typeof document !== "undefined" && createPortal(
         <span
+          ref={tooltipRef}
           className="pointer-events-none fixed z-[9999] w-64 rounded-lg border border-glass-border bg-zinc-950/95 p-3 text-left shadow-xl shadow-black/30"
           style={{ left: tooltipPosition.left, top: tooltipPosition.top }}
         >
@@ -434,6 +574,9 @@ function MessageBubble({
   const [recallPending, setRecallPending] = useState(false);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
+  const actionMenuAnimationRef = useRef<MotionAnimation>(null);
+  const actionMenuItemsAnimationRef = useRef<MotionAnimation>(null);
+  const actionMenuOpenedRef = useRef(false);
   const locale = useLanguage();
   const selectAgent = useDashboardChatStore((state) => state.selectAgent);
   const getRoomSummary = useDashboardChatStore((state) => state.getRoomSummary);
@@ -702,6 +845,76 @@ function MessageBubble({
     };
   }, [menuOpen]);
 
+  const menuVisible = menuOpen && Boolean(menuPosition);
+
+  useLayoutEffect(() => {
+    if (!menuVisible) {
+      actionMenuOpenedRef.current = false;
+      cleanupAnime(actionMenuAnimationRef.current);
+      cleanupAnime(actionMenuItemsAnimationRef.current);
+      actionMenuAnimationRef.current = null;
+      actionMenuItemsAnimationRef.current = null;
+      return;
+    }
+
+    if (actionMenuOpenedRef.current) return;
+    const menu = actionMenuRef.current;
+    if (!menu) return;
+
+    actionMenuOpenedRef.current = true;
+    cleanupAnime(actionMenuAnimationRef.current);
+    cleanupAnime(actionMenuItemsAnimationRef.current);
+    menu.style.opacity = "0";
+    menu.style.transform = "translateY(-4px) scale(0.98)";
+    menu.style.transformOrigin = isOwn ? "top right" : "top left";
+
+    const items = Array.from(menu.querySelectorAll<HTMLElement>(ACTION_MENU_ITEM_SELECTOR));
+    items.forEach((item) => {
+      item.style.opacity = "0";
+      item.style.transform = "translateY(3px) scale(0.98)";
+    });
+
+    const menuAnimation = animateIfMotion(menu, {
+      opacity: [0, 1],
+      translateY: [-4, 0],
+      scale: [0.98, 1],
+      duration: 170,
+      ease: "out(3)",
+    });
+    actionMenuAnimationRef.current = menuAnimation;
+
+    const itemsAnimation = items.length > 0
+      ? animateIfMotion(items, {
+        opacity: [0, 1],
+        translateY: [3, 0],
+        scale: [0.98, 1],
+        delay: animeStagger(16, { start: 28 }),
+        duration: 180,
+        ease: "out(3)",
+      })
+      : null;
+    actionMenuItemsAnimationRef.current = itemsAnimation;
+
+    if (!menuAnimation) {
+      menu.style.opacity = "1";
+      menu.style.transform = "translateY(0px) scale(1)";
+    }
+    if (!itemsAnimation) {
+      items.forEach((item) => {
+        item.style.opacity = "1";
+        item.style.transform = "translateY(0px) scale(1)";
+      });
+    }
+
+    return () => {
+      actionMenuOpenedRef.current = false;
+      cleanupAnime(actionMenuAnimationRef.current);
+      cleanupAnime(actionMenuItemsAnimationRef.current);
+      actionMenuAnimationRef.current = null;
+      actionMenuItemsAnimationRef.current = null;
+    };
+  }, [isOwn, menuVisible]);
+
   const sideAvatar = !fullWidth && (
     <SenderAvatar
       senderId={message.sender_id}
@@ -742,6 +955,7 @@ function MessageBubble({
         >
           {canQuoteReply && (
             <button
+              data-message-action-item
               type="button"
               onMouseDown={(e) => { e.preventDefault(); handleReplyClick(); }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
@@ -752,6 +966,7 @@ function MessageBubble({
           )}
           {displayText && (
             <button
+              data-message-action-item
               type="button"
               onMouseDown={(e) => { e.preventDefault(); handleForwardClick(); }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
@@ -762,6 +977,7 @@ function MessageBubble({
           )}
           {canRecall && (
             <button
+              data-message-action-item
               type="button"
               disabled={recallPending}
               onMouseDown={(e) => { e.preventDefault(); void handleRecallClick(); }}
@@ -773,6 +989,7 @@ function MessageBubble({
           )}
           {displayText && (
             <button
+              data-message-action-item
               type="button"
               onMouseDown={(e) => { e.preventDefault(); void handleCopyClick(); }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
@@ -959,10 +1176,12 @@ function MessageBubble({
               {message.state_counts && Object.keys(message.state_counts).length > 0 ? (
                 <StateCountsBadges counts={message.state_counts} />
               ) : sc ? (
-                <span className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[10px] font-medium ${sc.color}`}>
-                  <span className="text-[8px]">{sc.icon}</span>
-                  {sc.label}
-                </span>
+                <MessageStateBadge
+                  state={message.state}
+                  label={sc.label}
+                  color={sc.color}
+                  icon={sc.icon}
+                />
               ) : null}
             </>
           )}

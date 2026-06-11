@@ -2,13 +2,14 @@
 
 /**
  * [INPUT]: 受控的 option/value/onChange 与可选分组、搜索文案
- * [OUTPUT]: 对外提供 DashboardMultiSelect，渲染 BotCord dashboard 风格的可搜索多选下拉
+ * [OUTPUT]: 对外提供 DashboardMultiSelect，渲染带受控动效的 BotCord dashboard 风格可搜索多选下拉
  * [POS]: dashboard 表单和弹窗里的统一多选控件，替代分散的原生/临时多选列表
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
+import { animatePop, animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
 
 export interface DashboardMultiSelectOption {
   value: string;
@@ -60,7 +61,16 @@ export default function DashboardMultiSelect({
 }: DashboardMultiSelectProps) {
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const chipRefs = useRef(new Map<string, HTMLSpanElement>());
+  const selectedCheckRefs = useRef(new Map<string, HTMLSpanElement>());
+  const overflowChipRef = useRef<HTMLSpanElement>(null);
+  const selectedCountRef = useRef<HTMLSpanElement>(null);
+  const panelAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const optionAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const selectionAnimationRefs = useRef<Array<ReturnType<typeof animatePop>>>([]);
+  const previousValueRef = useRef(value);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -100,6 +110,16 @@ export default function DashboardMultiSelect({
   }, [normalizedGroups, query]);
 
   const visibleCount = filteredGroups.reduce((sum, group) => sum + group.options.length, 0);
+  const visibleOptionKey = useMemo(
+    () => filteredGroups.flatMap((group) => group.options.map((option) => option.value)).join("\u0000"),
+    [filteredGroups],
+  );
+  const valueKey = useMemo(() => value.join("\u0000"), [value]);
+
+  const cleanupSelectionAnimations = useCallback(() => {
+    selectionAnimationRefs.current.forEach(cleanupAnime);
+    selectionAnimationRefs.current = [];
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -121,6 +141,122 @@ export default function DashboardMultiSelect({
     if (open) window.setTimeout(() => searchRef.current?.focus(), 0);
     else setQuery("");
   }, [open]);
+
+  useEffect(() => {
+    return () => {
+      cleanupAnime(panelAnimationRef.current);
+      cleanupAnime(optionAnimationRef.current);
+      cleanupSelectionAnimations();
+    };
+  }, [cleanupSelectionAnimations]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      cleanupAnime(panelAnimationRef.current);
+      cleanupAnime(optionAnimationRef.current);
+      panelAnimationRef.current = null;
+      optionAnimationRef.current = null;
+      return;
+    }
+
+    let panelAnimation: ReturnType<typeof animateIfMotion> = null;
+    const frameId = window.requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      cleanupAnime(panelAnimationRef.current);
+
+      panel.style.opacity = "0";
+      panel.style.transform = "translateY(6px) scale(0.985)";
+      panel.style.transformOrigin = "top center";
+
+      panelAnimation = animateIfMotion(panel, {
+        opacity: [0, 1],
+        translateY: [6, 0],
+        scale: [0.985, 1],
+        duration: 180,
+        ease: "out(3)",
+      });
+
+      if (!panelAnimation) {
+        panel.style.opacity = "1";
+        panel.style.transform = "translateY(0px) scale(1)";
+      }
+
+      panelAnimationRef.current = panelAnimation;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      cleanupAnime(panelAnimation);
+      if (panelAnimationRef.current === panelAnimation) panelAnimationRef.current = null;
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    let optionAnimation: ReturnType<typeof animateIfMotion> = null;
+    const frameId = window.requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      cleanupAnime(optionAnimationRef.current);
+
+      const optionNodes = Array.from(
+        panel.querySelectorAll<HTMLElement>("[data-dashboard-multi-option]"),
+      ).slice(0, 16);
+
+      if (optionNodes.length > 0) {
+        optionAnimation = animateIfMotion(optionNodes, {
+          opacity: [0, 1],
+          translateY: [4, 0],
+          scale: [0.985, 1],
+          delay: animeStagger(12, { start: 35 }),
+          duration: 170,
+          ease: "out(3)",
+        });
+
+        if (!optionAnimation) {
+          optionNodes.forEach((optionNode) => {
+            optionNode.style.opacity = "1";
+            optionNode.style.transform = "translateY(0px) scale(1)";
+          });
+        }
+      }
+
+      optionAnimationRef.current = optionAnimation;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      cleanupAnime(optionAnimation);
+      if (optionAnimationRef.current === optionAnimation) optionAnimationRef.current = null;
+    };
+  }, [open, visibleOptionKey]);
+
+  useEffect(() => {
+    const previousValue = previousValueRef.current;
+    const previousSet = new Set(previousValue);
+    const addedValue = value.find((selectedValue) => !previousSet.has(selectedValue)) ?? null;
+    previousValueRef.current = value;
+
+    if (!addedValue) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      cleanupSelectionAnimations();
+
+      const targets = [
+        chipRefs.current.get(addedValue) ?? overflowChipRef.current,
+        selectedCountRef.current,
+        selectedCheckRefs.current.get(addedValue),
+      ].filter((target): target is HTMLElement => Boolean(target));
+
+      selectionAnimationRefs.current = targets.map((target) => animatePop(target));
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [cleanupSelectionAnimations, value, valueKey]);
 
   const toggle = (optionValue: string) => {
     const next = new Set(selectedSet);
@@ -150,13 +286,20 @@ export default function DashboardMultiSelect({
               {selectedOptions.slice(0, 3).map((option) => (
                 <span
                   key={option.value}
-                  className="max-w-[11rem] truncate rounded border border-neon-cyan/20 bg-neon-cyan/10 px-2 py-0.5 text-xs text-neon-cyan"
+                  ref={(node) => {
+                    if (node) chipRefs.current.set(option.value, node);
+                    else chipRefs.current.delete(option.value);
+                  }}
+                  className="inline-block max-w-[11rem] origin-center truncate rounded border border-neon-cyan/20 bg-neon-cyan/10 px-2 py-0.5 text-xs text-neon-cyan"
                 >
                   {option.label}
                 </span>
               ))}
               {selectedOptions.length > 3 ? (
-                <span className="rounded border border-glass-border bg-deep-black-light px-2 py-0.5 text-xs text-text-secondary">
+                <span
+                  ref={overflowChipRef}
+                  className="inline-block origin-center rounded border border-glass-border bg-deep-black-light px-2 py-0.5 text-xs text-text-secondary"
+                >
                   +{selectedOptions.length - 3}
                 </span>
               ) : null}
@@ -164,13 +307,16 @@ export default function DashboardMultiSelect({
           )}
         </span>
         <span className="flex shrink-0 items-center gap-2">
-          <span className="text-[11px] text-text-secondary">{selectedLabel(selectedOptions.length)}</span>
+          <span ref={selectedCountRef} className="min-w-[4.5rem] origin-center text-right text-[11px] text-text-secondary">
+            {selectedLabel(selectedOptions.length)}
+          </span>
           <ChevronDown className={`h-4 w-4 text-text-secondary transition-transform ${open ? "rotate-180" : ""}`} />
         </span>
       </button>
 
       {open ? (
         <div
+          ref={panelRef}
           id={`${id}-panel`}
           className={`absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-xl border border-glass-border bg-deep-black-light shadow-2xl shadow-black/40 ${panelClassName}`}
         >
@@ -217,12 +363,17 @@ export default function DashboardMultiSelect({
                         role="option"
                         aria-selected={selected}
                         onClick={() => toggle(option.value)}
+                        data-dashboard-multi-option
                         className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${
                           selected ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-primary hover:bg-glass-bg"
                         }`}
                       >
                         <span
-                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                          ref={(node) => {
+                            if (node && selected) selectedCheckRefs.current.set(option.value, node);
+                            else selectedCheckRefs.current.delete(option.value);
+                          }}
+                          className={`flex h-4 w-4 shrink-0 origin-center items-center justify-center rounded border ${
                             selected
                               ? "border-neon-cyan bg-neon-cyan text-deep-black"
                               : "border-glass-border bg-deep-black-light"
