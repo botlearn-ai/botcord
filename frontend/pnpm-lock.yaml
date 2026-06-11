@@ -29,6 +29,9 @@ importers:
       '@vercel/analytics':
         specifier: ^1.6.1
         version: 1.6.1(next@16.1.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
+      animejs:
+        specifier: ^4.4.1
+        version: 4.4.1
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -1299,6 +1302,9 @@ packages:
 
   '@swc/helpers@0.5.15':
     resolution: {integrity: sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g==}
+
+  animejs@4.4.1:
+    resolution: {integrity: sha512-XimhJw4vPb6tAd6Zaoa6BaspJ8UteQMKvL7Pvrt6MW/6u2UvJs0TB/LLqR1sigaiYvpVPC3Tokr9emcCMhWFhw==}
 
   '@tailwindcss/node@4.2.2':
     resolution: {integrity: sha512-pXS+wJ2gZpVXqFaUEjojq7jzMpTGf8rU6ipJz5ovJV6PUGmlJ+jvIwGrzdHdQ80Sg+wmQxUFuoW1UAAwHNEdFA==}
@@ -2678,6 +2684,8 @@ snapshots:
   '@babel/runtime@7.29.2': {}
 
   '@drizzle-team/brocli@0.10.2': {}
+
+  animejs@4.4.1: {}
 
   '@emnapi/core@1.9.1':
     dependencies:

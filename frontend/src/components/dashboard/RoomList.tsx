@@ -2,17 +2,18 @@
 
 /**
  * [INPUT]: 依赖 ui/chat/unread/owner-chat store 的会话状态、缓存消息与后端未读标记，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
- * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项与刷新骨架（头像 + 最后一条消息预览 + 未读数量）
+ * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项与刷新骨架，并提供受 reduced-motion 约束的列表入场/未读/引导动效
  * [POS]: dashboard 左侧消息导航区的会话列表渲染器，被 Sidebar 组合使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { roomList, messagesGrouping } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
+import { animateIfMotion, animatePop, animeStagger, cleanupAnime } from "@/lib/anime";
 import { ContactInfo, DashboardMessage, DashboardRoom } from "@/lib/types";
 import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import { getIsoTimestampValue, getRoomActivityTimestamp, humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
@@ -88,6 +89,27 @@ function formatUnreadCount(count: number): string {
   return count > 99 ? "99+" : String(count);
 }
 
+function UnreadBadge({ count }: { count: number }) {
+  const badgeRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    const badge = badgeRef.current;
+    if (!badge) return;
+
+    const animation = animatePop(badge);
+    return () => cleanupAnime(animation);
+  }, [count]);
+
+  return (
+    <span
+      ref={badgeRef}
+      className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold leading-none text-black shadow-[0_0_10px_rgba(34,211,238,0.55)]"
+    >
+      {formatUnreadCount(count)}
+    </span>
+  );
+}
+
 export default function RoomList({
   rooms: propsRooms,
   loading = false,
@@ -96,6 +118,10 @@ export default function RoomList({
   roomMeta,
 }: RoomListProps) {
   const router = useRouter();
+  const roomListRef = useRef<HTMLDivElement | null>(null);
+  const userChatEntryRef = useRef<HTMLDivElement | null>(null);
+  const previousDisplayStateRef = useRef({ loading: true, count: 0 });
+  const wasOwnerChatEmptyRef = useRef(false);
   const locale = useLanguage();
   const t = roomList[locale];
   const tGroup = messagesGrouping[locale];
@@ -198,6 +224,80 @@ export default function RoomList({
       .sort((a, b) => b.activity - a.activity || a.index - b.index)
       .map((entry) => entry.room);
   }, [cachedLatestMessages, ownerChatLatestMessage, ownerChatRoomId, rooms]);
+  const displayRoomKey = useMemo(() => displayRooms.map((room) => room.room_id).join("\n"), [displayRooms]);
+
+  useEffect(() => {
+    if (loading) {
+      previousDisplayStateRef.current = { loading: true, count: 0 };
+      return;
+    }
+
+    const previousDisplayState = previousDisplayStateRef.current;
+    if (
+      displayRooms.length === 0 ||
+      (!previousDisplayState.loading && previousDisplayState.count > 0)
+    ) {
+      previousDisplayStateRef.current = { loading: false, count: displayRooms.length };
+      return;
+    }
+
+    let animation: ReturnType<typeof animateIfMotion> = null;
+    const frameId = window.requestAnimationFrame(() => {
+      previousDisplayStateRef.current = { loading: false, count: displayRooms.length };
+
+      const roomRows = Array.from(
+        roomListRef.current?.querySelectorAll<HTMLElement>("[data-room-list-row]") ?? [],
+      );
+      if (roomRows.length === 0) return;
+
+      animation = animateIfMotion(roomRows, {
+        opacity: [0, 1],
+        translateY: [8, 0],
+        scale: [0.985, 1],
+        delay: animeStagger(45),
+        duration: 420,
+        ease: "out(3)",
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      cleanupAnime(animation);
+    };
+  }, [displayRoomKey, displayRooms.length, loading]);
+
+  useEffect(() => {
+    const shouldPulseOnboarding = showUserChatEntry && isOwnerChatEmpty;
+    if (!shouldPulseOnboarding) {
+      wasOwnerChatEmptyRef.current = false;
+      return;
+    }
+    if (wasOwnerChatEmptyRef.current) return;
+
+    let animation: ReturnType<typeof animateIfMotion> = null;
+    const frameId = window.requestAnimationFrame(() => {
+      wasOwnerChatEmptyRef.current = true;
+
+      const onboardingRow = userChatEntryRef.current;
+      if (!onboardingRow) return;
+
+      animation = animateIfMotion(onboardingRow, {
+        scale: [1, 1.012, 1],
+        boxShadow: [
+          "0 0 0 rgba(34, 211, 238, 0)",
+          "0 0 12px rgba(34, 211, 238, 0.32)",
+          "0 0 0 rgba(34, 211, 238, 0)",
+        ],
+        duration: 640,
+        ease: "out(3)",
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      cleanupAnime(animation);
+    };
+  }, [isOwnerChatEmpty, showUserChatEntry]);
 
   const handleSelect = async (room: DashboardRoom) => {
     if (isOwnerChatRoom(room.room_id)) {
@@ -271,9 +371,10 @@ export default function RoomList({
   }
 
   return (
-    <div className="py-1">
+    <div ref={roomListRef} className="py-1">
       {showUserChatEntry && (
         <div
+          ref={userChatEntryRef}
           role="button"
           tabIndex={0}
           aria-label={t.userChatAriaLabel}
@@ -285,7 +386,7 @@ export default function RoomList({
             messagesPane === "user-chat"
               ? "border-neon-cyan bg-neon-cyan/10"
               : isOwnerChatEmpty
-                ? "border-neon-cyan/50 bg-neon-cyan/[0.06] animate-[pulse-border_2s_ease-in-out_infinite]"
+                ? "border-neon-cyan/50 bg-neon-cyan/[0.06]"
                 : "border-transparent hover:bg-glass-bg"
           }`}
         >
@@ -294,7 +395,7 @@ export default function RoomList({
               isOwnerChatEmpty ? "border-neon-cyan/50 bg-neon-cyan/15" : "border-neon-cyan/30 bg-neon-cyan/10"
             }`}>
               {isOwnerChatEmpty && (
-                <div className="absolute inset-0 rounded-xl bg-neon-cyan/20 blur-md animate-pulse" />
+                <div className="absolute inset-0 rounded-xl bg-neon-cyan/15 blur-md" />
               )}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="relative h-5 w-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
@@ -308,7 +409,7 @@ export default function RoomList({
                     {t.userChatBadge}
                   </span>
                   {isOwnerChatEmpty && (
-                    <span className="rounded-full bg-neon-green/20 border border-neon-green/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neon-green animate-pulse">
+                    <span className="rounded-full bg-neon-green/20 border border-neon-green/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neon-green">
                       {t.userChatOnboardingBadge}
                     </span>
                   )}
@@ -373,6 +474,7 @@ export default function RoomList({
         return (
           <div
             key={room.room_id}
+            data-room-list-row="true"
             role="button"
             tabIndex={0}
             aria-label={`Open room ${displayName}`}
@@ -435,9 +537,7 @@ export default function RoomList({
                   </span>
                   <div className="flex shrink-0 items-center gap-2">
                     {unreadCount > 0 && (
-                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold leading-none text-black shadow-[0_0_10px_rgba(34,211,238,0.55)]">
-                        {formatUnreadCount(unreadCount)}
-                      </span>
+                      <UnreadBadge count={unreadCount} />
                     )}
                     {messageTime && (
                       <span className="text-[11px] text-text-secondary/80">
