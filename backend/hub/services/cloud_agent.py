@@ -26,7 +26,7 @@ import copy
 from typing import Any
 
 from nacl.signing import SigningKey as NaClSigningKey
-from sqlalchemy import func, select, text as sa_text
+from sqlalchemy import func, or_, select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy.orm.attributes import flag_modified
@@ -2042,7 +2042,9 @@ class CloudAgentService:
             return False
         if any(agent.status == "provisioning" for agent in agents):
             return False
-        if await self._cloud_daemon_has_active_run(db, cdi.id):
+        if await self._cloud_daemon_has_active_run(
+            db, cdi.id, include_owner_chat_inbox=True
+        ):
             return False
 
         for agent in agents:
@@ -2074,7 +2076,11 @@ class CloudAgentService:
         return True
 
     async def _cloud_daemon_has_active_run(
-        self, db: AsyncSession, cloud_daemon_instance_id: str
+        self,
+        db: AsyncSession,
+        cloud_daemon_instance_id: str,
+        *,
+        include_owner_chat_inbox: bool = False,
     ) -> bool:
         agent_ids_subquery = (
             select(CloudAgentInstance.agent_id)
@@ -2095,13 +2101,29 @@ class CloudAgentService:
         if (active_reservations or 0) > 0:
             return True
 
+        active_message_filters = [
+            (
+                (MessageRecord.source_type == "cloud_agent_run")
+                & MessageRecord.state.notin_((MessageState.done, MessageState.failed))
+            )
+        ]
+        if include_owner_chat_inbox:
+            active_message_filters.append(
+                (
+                    (MessageRecord.source_type == "dashboard_user_chat")
+                    & (MessageRecord.source_session_kind == "owner_chat")
+                    & MessageRecord.state.in_(
+                        (MessageState.queued, MessageState.processing)
+                    )
+                )
+            )
+
         active_messages = await db.scalar(
             select(func.count())
             .select_from(MessageRecord)
             .where(
                 MessageRecord.receiver_id.in_(select(agent_ids_subquery.c.agent_id)),
-                MessageRecord.source_type == "cloud_agent_run",
-                MessageRecord.state.notin_((MessageState.done, MessageState.failed)),
+                or_(*active_message_filters),
             )
         )
         return (active_messages or 0) > 0
