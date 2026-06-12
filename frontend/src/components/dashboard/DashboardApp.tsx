@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar as sidebarI18n, chatPane as chatPaneI18n } from "@/lib/i18n/translations/dashboard";
@@ -44,7 +44,7 @@ import StripeReturnBanner from "./StripeReturnBanner";
 import UserChatPane from "./UserChatPane";
 import WalletPanel from "./WalletPanel";
 import ActivityPanel from "./ActivityPanel";
-import { animateIfMotion, cleanupAnime } from "@/lib/anime";
+import { animateIfMotion, cleanupAnime, prefersReducedMotion } from "@/lib/anime";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
 type DashboardSidebarTab = "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
@@ -152,6 +152,9 @@ export default function DashboardApp() {
   const visibleSidebarTab = primaryNavigationPending
     ? uiStore.pendingPrimaryNavigation?.tab ?? uiStore.sidebarTab
     : routeSidebarTab;
+  // Sub-view switches inside explore/contacts animate themselves (MotionGrid
+  // entrance in ChatPane); replaying the whole-pane fade on top reads as the
+  // page rendering twice, so exploreView/contactsView stay out of this key.
   const mainContentAnimationKey = [
     primaryNavigationPending ? "pending" : "ready",
     visibleSidebarTab,
@@ -159,8 +162,6 @@ export default function DashboardApp() {
     uiStore.messagesShowRequests ? "requests" : "",
     uiStore.openedRoomId ?? "",
     uiStore.selectedContactKey ?? "",
-    uiStore.exploreView,
-    uiStore.contactsView,
   ].join(":");
   // Human-first: never force-block on "no agent". Authed users always proceed
   // into /chats as their Human identity; creating an Agent is a later,
@@ -228,28 +229,33 @@ export default function DashboardApp() {
     };
   }, [supabase]);
 
-  useEffect(() => {
+  // Layout effect + pre-paint hide: starting the fade from a rAF let the new
+  // pane paint fully visible for a frame, snap to opacity 0, then fade back
+  // in — reading as the content rendering twice.
+  useLayoutEffect(() => {
     if (shouldShowBootstrapSkeleton) return;
     const content = mainContentRef.current;
     if (!content || previousMainContentKeyRef.current === mainContentAnimationKey) return;
 
     previousMainContentKeyRef.current = mainContentAnimationKey;
     cleanupAnime(mainContentAnimationRef.current);
+    mainContentAnimationRef.current = null;
+    if (prefersReducedMotion()) return;
 
-    let animation: ReturnType<typeof animateIfMotion> = null;
-    const frameId = window.requestAnimationFrame(() => {
-      animation = animateIfMotion(content, {
-        opacity: [0, 1],
-        translateY: [8, 0],
-        duration: 220,
-        ease: "out(3)",
-      });
-      mainContentAnimationRef.current = animation;
+    content.style.opacity = "0";
+    const animation = animateIfMotion(content, {
+      opacity: [0, 1],
+      translateY: [8, 0],
+      duration: 220,
+      ease: "out(3)",
     });
+    mainContentAnimationRef.current = animation;
 
     return () => {
-      window.cancelAnimationFrame(frameId);
       cleanupAnime(animation);
+      // revert() restores the pre-animation inline opacity (our "0"), so
+      // clear it explicitly or an interrupted fade leaves the pane invisible.
+      content.style.opacity = "";
     };
   }, [mainContentAnimationKey, shouldShowBootstrapSkeleton]);
 
