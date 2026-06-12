@@ -107,6 +107,18 @@ function messageRenderKey(message: DashboardMessage): string {
   return message.msg_id || message.hub_msg_id;
 }
 
+// Quiet window after opening a room: deltas merged by the initial poll /
+// forced reloads land right after the cached list painted, so animating them
+// reads as the whole page jittering instead of "new message arrived".
+const MESSAGE_ENTRANCE_SETTLE_MS = 1200;
+
+function messageSeenIds(message: DashboardMessage): string[] {
+  const ids: string[] = [];
+  if (message.msg_id) ids.push(message.msg_id);
+  if (message.hub_msg_id) ids.push(message.hub_msg_id);
+  return ids;
+}
+
 export function TopicCard({
   group,
   currentAgentId,
@@ -322,6 +334,7 @@ export default function MessageList({
   const messageAnimationRoomRef = useRef<string | null>(null);
   const messageAnimationPrimedRef = useRef(false);
   const animatedMessageKeysRef = useRef<Set<string>>(new Set());
+  const roomOpenedAtRef = useRef(0);
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const showScrollToBottomButtonRef = useRef(false);
   const wasNearBottomRef = useRef(true);
@@ -447,6 +460,7 @@ export default function MessageList({
     messageAnimationRoomRef.current = roomId;
     messageAnimationPrimedRef.current = false;
     animatedMessageKeysRef.current = new Set();
+    roomOpenedAtRef.current = performance.now();
     showScrollToBottomButtonRef.current = false;
     setShowScrollToBottomButton(false);
   }, [roomId, setOpenedTopicId]);
@@ -511,18 +525,24 @@ export default function MessageList({
       animatedMessageKeysRef.current = new Set();
     }
 
-    const keys = messages.map(messageRenderKey);
-    if (keys.length === 0) return;
+    if (messages.length === 0) return;
+    const seenIds = animatedMessageKeysRef.current;
 
     if (!messageAnimationPrimedRef.current) {
-      animatedMessageKeysRef.current = new Set(keys);
+      for (const msg of messages) for (const id of messageSeenIds(msg)) seenIds.add(id);
       messageAnimationPrimedRef.current = true;
       return;
     }
 
-    const newlyVisibleKeys = keys.filter((key) => !animatedMessageKeysRef.current.has(key));
-    for (const key of keys) animatedMessageKeysRef.current.add(key);
-    if (newlyVisibleKeys.length === 0 || isLoadingMore.current) return;
+    // A message only counts as new if none of its ids were seen before —
+    // identity patches (tmp_/hub_msg_id → msg_id) change the render key but
+    // must not replay the entrance animation.
+    const newlyVisible = messages.filter((msg) => messageSeenIds(msg).every((id) => !seenIds.has(id)));
+    for (const msg of messages) for (const id of messageSeenIds(msg)) seenIds.add(id);
+    if (newlyVisible.length === 0 || isLoadingMore.current) return;
+    if (performance.now() - roomOpenedAtRef.current < MESSAGE_ENTRANCE_SETTLE_MS) return;
+
+    const newlyVisibleKeys = newlyVisible.map(messageRenderKey);
 
     requestAnimationFrame(() => {
       const container = containerRef.current;
