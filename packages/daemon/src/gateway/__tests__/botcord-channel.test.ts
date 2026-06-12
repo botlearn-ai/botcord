@@ -921,6 +921,152 @@ describe("createBotCordChannel — ack + dedup", () => {
       await server.close();
     }
   });
+
+  it("locally revokes stale credentials when token refresh returns a terminal 404", async () => {
+    const err = new Error(
+      'Token refresh failed: 404 {"code":"key_not_found","retryable":false}',
+    ) as Error & { status?: number; code?: string };
+    err.status = 404;
+    err.code = "key_not_found";
+    const client = makeClient({
+      ensureToken: vi.fn().mockRejectedValue(err),
+    });
+    const localRevokeAgent = vi.fn().mockResolvedValue({
+      agentId: "ag_self",
+      credentialsDeleted: true,
+      stateDeleted: true,
+      workspaceDeleted: false,
+    });
+    const statuses: Record<string, unknown>[] = [];
+    const logs: Array<{ msg: string; meta?: Record<string, unknown> }> = [];
+    const log: GatewayLogger = {
+      ...silentLog,
+      warn: (msg, meta) => logs.push({ msg, meta }),
+    };
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+      hubBaseUrl: "https://hub.example",
+      localRevokeAgent,
+    });
+
+    const startP = channel.start({
+      config: stubConfig,
+      accountId: "ag_self",
+      abortSignal: new AbortController().signal,
+      log,
+      emit: async () => undefined,
+      setStatus: (patch) => statuses.push(patch),
+    });
+
+    await expect(startP).rejects.toMatchObject({ code: "channel_permanent_stop" });
+    expect(localRevokeAgent).toHaveBeenCalledWith("ag_self", log);
+    expect(client.refreshToken).not.toHaveBeenCalled();
+    expect(logs.some((entry) => entry.msg === "botcord agent credentials rejected by Hub; revoked local binding"))
+      .toBe(true);
+    expect(statuses.at(-1)).toMatchObject({
+      running: false,
+      connected: false,
+      restartPending: false,
+      lastError: "agent credentials rejected by Hub; local binding revoked",
+    });
+  });
+
+  it("locally revokes stale credentials when forced websocket refresh returns a terminal 404", async () => {
+    class AuthRejectedWebSocket extends EventEmitter {
+      static instances: AuthRejectedWebSocket[] = [];
+
+      readyState = WebSocket.CONNECTING;
+      close = vi.fn(() => {
+        this.readyState = WebSocket.CLOSED;
+      });
+      send = vi.fn((data: string) => {
+        let msg: { type?: string } | null = null;
+        try {
+          msg = JSON.parse(String(data));
+        } catch {
+          return;
+        }
+        if (msg?.type === "auth") {
+          setImmediate(() => {
+            this.readyState = WebSocket.CLOSED;
+            this.emit("close", 4001, Buffer.from("auth failed"));
+          });
+        }
+      });
+
+      constructor(readonly url: string) {
+        super();
+        AuthRejectedWebSocket.instances.push(this);
+        setImmediate(() => {
+          this.readyState = WebSocket.OPEN;
+          this.emit("open");
+        });
+      }
+    }
+
+    const err = new Error(
+      'Token refresh failed: 404 {"code":"key_not_found","retryable":false}',
+    ) as Error & { status?: number; code?: string };
+    err.status = 404;
+    err.code = "key_not_found";
+    const client = makeClient({
+      refreshToken: vi.fn().mockRejectedValue(err),
+    });
+    const localRevokeAgent = vi.fn().mockResolvedValue({
+      agentId: "ag_self",
+      credentialsDeleted: true,
+      stateDeleted: true,
+      workspaceDeleted: false,
+    });
+    const statuses: Record<string, unknown>[] = [];
+    const logs: Array<{ msg: string; meta?: Record<string, unknown> }> = [];
+    const log: GatewayLogger = {
+      ...silentLog,
+      warn: (msg, meta) => logs.push({ msg, meta }),
+    };
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+      hubBaseUrl: "https://hub.example",
+      localRevokeAgent,
+      webSocketCtor: AuthRejectedWebSocket as unknown as typeof WebSocket,
+    });
+
+    const startP = channel.start({
+      config: stubConfig,
+      accountId: "ag_self",
+      abortSignal: new AbortController().signal,
+      log,
+      emit: async () => undefined,
+      setStatus: (patch) => statuses.push(patch),
+    });
+
+    await expect(startP).rejects.toMatchObject({ code: "channel_permanent_stop" });
+    expect(AuthRejectedWebSocket.instances).toHaveLength(1);
+    expect(client.refreshToken).toHaveBeenCalledTimes(1);
+    expect(localRevokeAgent).toHaveBeenCalledWith("ag_self", log);
+    expect(logs.some((entry) => entry.msg === "botcord agent credentials rejected by Hub; revoked local binding"))
+      .toBe(true);
+    expect(statuses).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          restartPending: true,
+          reconnectAttempts: 1,
+        }),
+      ]),
+    );
+    expect(statuses.at(-1)).toMatchObject({
+      running: false,
+      connected: false,
+      restartPending: false,
+      lastError: "agent credentials rejected by Hub; local binding revoked",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

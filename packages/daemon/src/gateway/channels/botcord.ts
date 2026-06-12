@@ -142,6 +142,27 @@ function isUnclaimedAgentError(err: unknown): boolean {
   );
 }
 
+function isTerminalAgentCredentialError(err: unknown): boolean {
+  const status = (err as { status?: unknown } | null)?.status;
+  const code = (err as { code?: unknown } | null)?.code;
+  if (
+    (status === 404 && (code === "key_not_found" || code === "agent_not_found")) ||
+    (status === 403 && code === "key_not_active")
+  ) {
+    return true;
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    (message.includes('"code":"key_not_found"') ||
+      message.includes('"code":"agent_not_found"') ||
+      message.includes('"code":"key_not_active"') ||
+      message.includes("key_not_found") ||
+      message.includes("agent_not_found") ||
+      message.includes("key_not_active")) &&
+    (message.includes("Token refresh failed: 404") || message.includes("Token refresh failed: 403"))
+  );
+}
+
 async function uploadOutboundAttachments(
   client: BotCordChannelClient,
   attachments: NonNullable<ChannelSendContext["message"]["attachments"]>,
@@ -827,6 +848,74 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       return true;
     }
 
+    async function revokeLocalTerminalCredentials(err: unknown) {
+      if (!isTerminalAgentCredentialError(err)) return false;
+      running = false;
+      permanentStopping = true;
+      clearTimers();
+      try {
+        ws?.close();
+      } catch {
+        // ignore
+      }
+      try {
+        const result = options.localRevokeAgent
+          ? await options.localRevokeAgent(options.agentId, log)
+          : await revokeAgent(
+              {
+                agentId: options.agentId,
+                deleteCredentials: true,
+                deleteState: true,
+                deleteWorkspace: false,
+              },
+              {
+                gateway: {
+                  removeChannel: async () => undefined,
+                  removeManagedRoute: () => undefined,
+                } as unknown as Gateway,
+              },
+            );
+        log.warn("botcord agent credentials rejected by Hub; revoked local binding", {
+          agentId: options.agentId,
+          err: String(err),
+          result,
+        });
+        markStatus({
+          running: false,
+          connected: false,
+          restartPending: false,
+          lastStopAt: Date.now(),
+          lastError: "agent credentials rejected by Hub; local binding revoked",
+        });
+      } catch (cleanupErr) {
+        log.error("botcord terminal credential local revoke failed", {
+          agentId: options.agentId,
+          err: String(cleanupErr),
+        });
+        markStatus({
+          running: false,
+          connected: false,
+          restartPending: false,
+          lastStopAt: Date.now(),
+          lastError: String(cleanupErr),
+        });
+      }
+      permanentStopping = false;
+      if (rejectLoop) {
+        const r = rejectLoop;
+        rejectLoop = null;
+        resolveLoop = null;
+        const stopErr = new Error(
+          "agent credentials rejected by Hub; local binding revoked",
+        ) as Error & {
+          code?: string;
+        };
+        stopErr.code = CHANNEL_PERMANENT_STOP;
+        r(stopErr);
+      }
+      return true;
+    }
+
     async function fireInbox(trigger: InboxDrainTrigger) {
       if (processing) {
         pendingUpdate = true;
@@ -903,6 +992,9 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       try {
         token = await client.ensureToken();
       } catch (err) {
+        if (await revokeLocalTerminalCredentials(err)) {
+          return;
+        }
         log.error("botcord ws token refresh failed", { agentId, err: String(err) });
         markStatus({ lastError: String(err) });
         scheduleReconnect();
@@ -1037,9 +1129,24 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
             }
             return;
           }
-          pendingRefresh = client
-            .refreshToken()
-            .catch((err) => log.error("botcord ws forced refresh failed", { agentId, err: String(err) }));
+          const refresh = (async () => {
+            try {
+              await client.refreshToken();
+            } catch (err) {
+              if (await revokeLocalTerminalCredentials(err)) {
+                return;
+              }
+              log.error("botcord ws forced refresh failed", { agentId, err: String(err) });
+            }
+          })();
+          pendingRefresh = refresh;
+          void refresh.then(() => {
+            if (pendingRefresh === refresh) {
+              pendingRefresh = null;
+            }
+            scheduleReconnect();
+          });
+          return;
         }
         scheduleReconnect();
       });
