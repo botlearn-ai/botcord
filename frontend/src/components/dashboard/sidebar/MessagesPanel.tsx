@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 // messagesFilter is in useDashboardUIStore so ChatPane can also read it.
 import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
@@ -20,6 +20,7 @@ import type { DashboardRoom } from "@/lib/types";
 import RoomList from "../RoomList";
 import RoomZeroState from "../RoomZeroState";
 import SearchBar from "../SearchBar";
+import { animateFadeUp, animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 interface MessagesPanelProps {
   isGuest: boolean;
@@ -85,6 +86,11 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
 
   const [messageQuery, setMessageQuery] = useState("");
   const [mobileGroupingOpen, setMobileGroupingOpen] = useState(false);
+  const [mobileGroupingRendered, setMobileGroupingRendered] = useState(false);
+  const mobileGroupingOverlayRef = useRef<HTMLButtonElement | null>(null);
+  const mobileGroupingPanelRef = useRef<HTMLDivElement | null>(null);
+  const mobileGroupingAnimationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const emptyStateRef = useRef<HTMLDivElement | null>(null);
 
   // Owner-unified Messages list: my own conversations + tagged bot conversations.
   const visibleMessageRooms = useMemo<DashboardRoom[]>(() => {
@@ -184,6 +190,71 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mobileGroupingOpen]);
 
+  useEffect(() => {
+    if (mobileGroupingOpen) {
+      setMobileGroupingRendered(true);
+      return;
+    }
+
+    if (!mobileGroupingRendered) return;
+
+    cleanupAnime(mobileGroupingAnimationRef.current);
+    if (mobileGroupingOverlayRef.current) {
+      mobileGroupingOverlayRef.current.style.opacity = "1";
+    }
+    if (mobileGroupingPanelRef.current) {
+      mobileGroupingPanelRef.current.style.opacity = "1";
+      mobileGroupingPanelRef.current.style.transform = "translate3d(0, 0, 0) scale(1)";
+      mobileGroupingPanelRef.current
+        .querySelectorAll<HTMLElement>("[data-mobile-grouping-motion]")
+        .forEach((part) => {
+          part.style.opacity = "1";
+          part.style.transform = "translateY(0)";
+        });
+    }
+    mobileGroupingAnimationRef.current = animateOverlayPanelExit(
+      mobileGroupingOverlayRef.current,
+      mobileGroupingPanelRef.current,
+      {
+        direction: "left",
+        contentSelector: "[data-mobile-grouping-motion]",
+        onComplete: () => {
+          setMobileGroupingRendered(false);
+          mobileGroupingAnimationRef.current = null;
+        },
+      },
+    );
+  }, [mobileGroupingOpen, mobileGroupingRendered]);
+
+  useEffect(() => {
+    if (!mobileGroupingOpen || !mobileGroupingRendered) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      cleanupAnime(mobileGroupingAnimationRef.current);
+      mobileGroupingAnimationRef.current = animateOverlayPanelEnter(
+        mobileGroupingOverlayRef.current,
+        mobileGroupingPanelRef.current,
+        {
+          direction: "left",
+          contentSelector: "[data-mobile-grouping-motion]",
+        },
+      );
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [mobileGroupingOpen, mobileGroupingRendered]);
+
+  useEffect(() => () => cleanupAnime(mobileGroupingAnimationRef.current), []);
+
+  useEffect(() => {
+    if (showOverviewSkeleton) return;
+    const emptyState = emptyStateRef.current;
+    if (!emptyState) return;
+
+    const animation = animateFadeUp(emptyState);
+    return () => cleanupAnime(animation);
+  }, [filteredMessageRooms.length, isBotsScope, ownedAgents.length, showOverviewSkeleton, visibleMessageRooms.length]);
+
   // (filter chips moved into MessagesGroupingSidebar as expandable children)
 
   const toggleMessagesSearch = () => {
@@ -250,7 +321,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           </div>
         )}
       </div>
-      {!isGuest && mobileGroupingOpen ? (
+      {!isGuest && mobileGroupingRendered ? (
         <div
           className="fixed inset-0 z-50 hidden max-md:block"
           role="dialog"
@@ -258,17 +329,23 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           aria-label={tGrouping.header}
         >
           <button
+            ref={mobileGroupingOverlayRef}
             type="button"
             aria-label={tGrouping.collapse}
             className="absolute inset-0 bg-black/45 backdrop-blur-sm"
             onClick={() => setMobileGroupingOpen(false)}
           />
-          <div className="absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 top-0 w-[min(84vw,280px)] overflow-hidden border-r border-glass-border bg-deep-black-light shadow-2xl shadow-black/60">
+          <div
+            ref={mobileGroupingPanelRef}
+            className="absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 top-0 w-[min(84vw,280px)] overflow-hidden border-r border-glass-border bg-deep-black-light shadow-2xl shadow-black/60"
+          >
+            <div data-mobile-grouping-motion className="h-full">
             <MessagesGroupingSidebar
               fullWidth
               onCollapse={() => setMobileGroupingOpen(false)}
               onFilterSelect={() => setMobileGroupingOpen(false)}
             />
+            </div>
           </div>
         </div>
       ) : null}
@@ -316,7 +393,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
         </div>
       ) : null}
       {isBotsScope && ownedAgents.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+        <div ref={emptyStateRef} className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40">
             <Bot className="h-7 w-7 text-text-secondary/70" />
           </div>
@@ -333,9 +410,11 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           </button>
         </div>
       ) : visibleMessageRooms.length === 0 ? (
-        <RoomZeroState compact />
+        <div ref={emptyStateRef}>
+          <RoomZeroState compact />
+        </div>
       ) : !showOverviewSkeleton && filteredMessageRooms.length === 0 ? (
-        <div className="px-4 py-6 text-center text-xs text-text-secondary">
+        <div ref={emptyStateRef} className="px-4 py-6 text-center text-xs text-text-secondary">
           {t.noMessages}
         </div>
       ) : (

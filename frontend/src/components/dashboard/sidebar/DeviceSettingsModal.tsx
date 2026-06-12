@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw, Loader2, Check, Trash2, FileArchive, Download, Send } from "lucide-react";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import ForwardModal from "@/components/dashboard/ForwardModal";
 import { downloadApiFile } from "@/lib/api";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 import type { DiagnosticBundleResult } from "@/store/useDaemonStore";
 
 interface DeviceSettingsModalProps {
@@ -54,6 +55,14 @@ export default function DeviceSettingsModal({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [forwardLogs, setForwardLogs] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const nameButtonRef = useRef<HTMLButtonElement>(null);
+  const diagnosticResultRef = useRef<HTMLDivElement>(null);
+  const removeErrorRef = useRef<HTMLParagraphElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const feedbackAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   async function handleRename() {
     if (editingName.trim() === label) return;
@@ -70,6 +79,36 @@ export default function DeviceSettingsModal({
       setRemoveError(err instanceof Error ? err.message : String(err));
     }
   }
+
+  const closeWithMotion = useCallback(() => {
+    if (isRemoving || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, isRemoving, onClose]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
+  useEffect(() => {
+    const target = nameSaved ? nameButtonRef.current : removeError ? removeErrorRef.current : diagnosticResult ? diagnosticResultRef.current : null;
+    if (!target) return;
+    cleanupAnime(feedbackAnimationRef.current);
+    feedbackAnimationRef.current = animatePop(target);
+    return () => cleanupAnime(feedbackAnimationRef.current);
+  }, [diagnosticResult, nameSaved, removeError]);
 
   const statusColor =
     status === "online"
@@ -95,15 +134,15 @@ export default function DeviceSettingsModal({
     ? `/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`
     : "";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative w-full max-w-sm rounded-2xl border border-glass-border bg-deep-black-light shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div ref={overlayRef} className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
+      <div ref={panelRef} className="relative w-full max-w-sm rounded-2xl border border-glass-border bg-deep-black-light shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-glass-border/50 px-5 py-4">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 flex-shrink-0 text-text-secondary/60">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0H3" />
           </svg>
           <span className="flex-1 text-sm font-semibold text-text-primary truncate">{label || daemonId.slice(0, 12)}</span>
-          <button type="button" onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary">
+          <button type="button" onClick={closeWithMotion} className="flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -115,6 +154,7 @@ export default function DeviceSettingsModal({
             <div className="flex items-center gap-2">
               <span className={`text-xs font-medium ${statusColor}`}>{statusLabel}</span>
               <button
+                ref={nameButtonRef}
                 type="button"
                 disabled={isRefreshing}
                 onClick={onRefreshDaemons}
@@ -230,7 +270,7 @@ export default function DeviceSettingsModal({
               </button>
             </div>
             {diagnosticResult && (
-              <div className="mt-2 flex items-center gap-2 rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-2">
+              <div ref={diagnosticResultRef} className="mt-2 flex items-center gap-2 rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-2">
                 <FileArchive className="h-4 w-4 shrink-0 text-neon-green" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[11px] font-medium text-neon-green">
@@ -319,7 +359,7 @@ export default function DeviceSettingsModal({
                   </p>
                 )}
                 {removeError && (
-                  <p className="text-[11px] text-red-400">{removeError}</p>
+                  <p ref={removeErrorRef} className="text-[11px] text-red-400">{removeError}</p>
                 )}
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button

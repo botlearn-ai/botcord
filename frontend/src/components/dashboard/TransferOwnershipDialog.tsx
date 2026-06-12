@@ -7,9 +7,10 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PublicRoomMember } from "@/lib/types";
 import { humansApi } from "@/lib/api";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import { useLanguage } from "@/lib/i18n";
 import { agentBrowser } from "@/lib/i18n/translations/dashboard";
 import DashboardSelect from "./DashboardSelect";
@@ -43,6 +44,10 @@ export default function TransferOwnershipDialog({
   const [selectedId, setSelectedId] = useState<string>(candidates[0]?.agent_id ?? "");
   const [confirmText, setConfirmText] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   const selected = candidates.find((c) => c.agent_id === selectedId);
   // Require the user to type the room name exactly — this is a
@@ -55,7 +60,7 @@ export default function TransferOwnershipDialog({
     try {
       await humansApi.transferRoomOwnership(roomId, selected.agent_id);
       onSuccess();
-      onClose();
+      closeWithMotion();
     } catch (e: any) {
       onError(e?.message || t.transferFailed);
     } finally {
@@ -63,12 +68,36 @@ export default function TransferOwnershipDialog({
     }
   };
 
+  const closeWithMotion = useCallback(() => {
+    if (submitting || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose, submitting]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/60"
-      onClick={onClose}
+      ref={overlayRef}
+      className={`fixed inset-0 z-30 flex items-center justify-center bg-black/60 ${closing ? "pointer-events-none" : ""}`}
+      onClick={closeWithMotion}
     >
       <div
+        ref={panelRef}
         className="w-[360px] rounded-lg border border-glass-border bg-deep-black-light p-4"
         onClick={(e) => e.stopPropagation()}
       >
@@ -120,7 +149,7 @@ export default function TransferOwnershipDialog({
 
         <div className="mt-1 flex justify-end gap-2">
           <button
-            onClick={onClose}
+            onClick={closeWithMotion}
             disabled={submitting}
             className="rounded border border-glass-border px-3 py-1.5 text-[11px] text-text-secondary hover:bg-glass-bg"
           >

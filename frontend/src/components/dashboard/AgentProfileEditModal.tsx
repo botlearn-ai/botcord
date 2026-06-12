@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Loader2, Settings, Trash2, X } from "lucide-react";
 import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import UnbindAgentDialog from "./UnbindAgentDialog";
 import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 
 interface AgentProfileEditModalProps {
   agentId: string;
@@ -34,6 +35,12 @@ export default function AgentProfileEditModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showUnbind, setShowUnbind] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const errorAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   useEffect(() => {
     setDisplayName(initialDisplayName);
@@ -47,6 +54,44 @@ export default function AgentProfileEditModal({
   const avatarChanged = avatarUrl !== (initialAvatarUrl ?? "");
   const canSave = !saving && trimmedName.length > 0 && (nameChanged || bioChanged || avatarChanged);
 
+  const closeWithMotion = useCallback((force = false) => {
+    if ((saving && !force) || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose, saving]);
+
+  useLayoutEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-agent-profile-modal-part]",
+      onComplete: () => {
+        animationRef.current = null;
+      },
+    });
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !showUnbind) closeWithMotion();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion, showUnbind]);
+
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    cleanupAnime(errorAnimationRef.current);
+    errorAnimationRef.current = animatePop(errorRef.current);
+  }, [error]);
+
+  useEffect(() => () => {
+    cleanupAnime(animationRef.current);
+    cleanupAnime(errorAnimationRef.current);
+  }, []);
+
   async function handleSave() {
     if (!canSave) return;
     setSaving(true);
@@ -59,7 +104,7 @@ export default function AgentProfileEditModal({
       await userApi.updateAgent(agentId, patch);
       await refreshUserProfile();
       onSaved?.();
-      onClose();
+      closeWithMotion(true);
     } catch (err: any) {
       setError(err?.message || (locale === "zh" ? "保存失败" : "Failed to save"));
       setSaving(false);
@@ -77,17 +122,29 @@ export default function AgentProfileEditModal({
   const tDelete = locale === "zh" ? "删除 Bot" : "Delete Bot";
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+    <div
+      ref={overlayRef}
+      className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) closeWithMotion();
+      }}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <button
-          onClick={onClose}
+          onClick={() => closeWithMotion()}
           disabled={saving}
           className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
         >
           <X className="h-5 w-5" />
         </button>
 
-        <div className="mb-5 pr-8">
+        <div data-agent-profile-modal-part className="mb-5 pr-8">
           <h3 className="flex items-center gap-2 text-xl font-bold text-text-primary">
             <Settings className="h-5 w-5 text-neon-cyan" />
             {tTitle}
@@ -96,7 +153,7 @@ export default function AgentProfileEditModal({
           <p className="mt-1 font-mono text-[10px] text-text-secondary/60">{agentId}</p>
         </div>
 
-        <div className="mb-3">
+        <div data-agent-profile-modal-part className="mb-3">
           <span className="mb-2 block text-xs font-medium text-text-secondary">
             {locale === "zh" ? "头像" : "Avatar"}
           </span>
@@ -124,7 +181,7 @@ export default function AgentProfileEditModal({
           </div>
         </div>
 
-        <label className="mb-3 block">
+        <label data-agent-profile-modal-part className="mb-3 block">
           <span className="mb-1 block text-xs font-medium text-text-secondary">{tNameLabel}</span>
           <input
             type="text"
@@ -136,7 +193,7 @@ export default function AgentProfileEditModal({
           />
         </label>
 
-        <label className="block">
+        <label data-agent-profile-modal-part className="block">
           <span className="mb-1 block text-xs font-medium text-text-secondary">{tBioLabel}</span>
           <textarea
             value={bio}
@@ -150,14 +207,14 @@ export default function AgentProfileEditModal({
         </label>
 
         {error && (
-          <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
+          <p ref={errorRef} className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
             {error}
           </p>
         )}
 
-        <div className="mt-6 flex items-center justify-end gap-3">
+        <div data-agent-profile-modal-part className="mt-6 flex items-center justify-end gap-3">
           <button
-            onClick={onClose}
+            onClick={() => closeWithMotion()}
             disabled={saving}
             className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
           >
@@ -179,7 +236,7 @@ export default function AgentProfileEditModal({
           </button>
         </div>
 
-        <div className="mt-6 border-t border-glass-border pt-4">
+        <div data-agent-profile-modal-part className="mt-6 border-t border-glass-border pt-4">
           <button
             onClick={() => setShowUnbind(true)}
             disabled={saving}
@@ -199,7 +256,7 @@ export default function AgentProfileEditModal({
           onUnbound={async () => {
             await refreshUserProfile();
             onSaved?.();
-            onClose();
+            closeWithMotion(true);
           }}
         />
       )}

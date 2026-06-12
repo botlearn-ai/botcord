@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { ChevronDown, UserPlus2, Users } from "lucide-react";
 import { CompositeAvatar } from "../CompositeAvatar";
@@ -13,6 +13,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useLanguage } from "@/lib/i18n";
 import { contactsUi as contactsUiI18n } from "@/lib/i18n/translations/dashboard";
+import { animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
 
 function Section({
   title,
@@ -26,6 +27,35 @@ function Section({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let animation: ReturnType<typeof animateIfMotion> = null;
+    const frameId = window.requestAnimationFrame(() => {
+      const content = contentRef.current;
+      if (!content) return;
+
+      const rows = Array.from(
+        content.querySelectorAll<HTMLElement>("[data-contact-section-item]"),
+      );
+
+      animation = animateIfMotion(rows.length > 0 ? rows : content, {
+        opacity: [0, 1],
+        translateY: [6, 0],
+        delay: rows.length > 0 ? animeStagger(18) : 0,
+        duration: 220,
+        ease: "out(3)",
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      cleanupAnime(animation);
+    };
+  }, [open, count]);
+
   return (
     <div className="border-b border-glass-border/50">
       <button
@@ -40,14 +70,14 @@ function Section({
         </span>
         <span className="text-[10px] font-medium text-text-secondary/50">{count}</span>
       </button>
-      {open ? <div className="pb-2">{children}</div> : null}
+      {open ? <div ref={contentRef} className="overflow-hidden pb-2">{children}</div> : null}
     </div>
   );
 }
 
 function SubGroupHeader({ title, count }: { title: string; count: number }) {
   return (
-    <div className="flex items-center justify-between px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-text-secondary/45">
+    <div data-contact-section-item className="flex items-center justify-between px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-text-secondary/45">
       <span>{title}</span>
       <span>{count}</span>
     </div>
@@ -71,6 +101,7 @@ function ListRow({
 }) {
   return (
     <button
+      data-contact-section-item
       onClick={onClick}
       className={`flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors ${
         active
@@ -258,14 +289,14 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
             />
           ))}
           {ownedAgents.length === 0 && agentContacts.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-text-secondary/50">{t.noAgentsYet}</p>
+            <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary/50">{t.noAgentsYet}</p>
           ) : null}
         </Section>
 
         {/* Humans */}
         <Section title={t.humansGroup} count={humanContacts.length}>
           {humanContacts.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-text-secondary/50">{t.noHumanContactsYet}</p>
+            <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary/50">{t.noHumanContactsYet}</p>
           ) : (
             humanContacts.map((c) => (
               <ListRow
@@ -284,7 +315,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
         {/* Groups */}
         <Section title={t.groupsGroup} count={groups.length}>
           {groups.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-text-secondary/50">{t.noGroupsJoined}</p>
+            <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary/50">{t.noGroupsJoined}</p>
           ) : (
             groups.map((room) => (
               <ListRow

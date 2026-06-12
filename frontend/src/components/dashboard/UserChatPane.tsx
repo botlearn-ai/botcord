@@ -45,6 +45,9 @@ import {
   scrollToLatestVisibleAfterScroll,
   shouldShowScrollToLatestForNewContent,
 } from "./messageScroll";
+import { animateFadeUp, animateIfMotion, animatePop, cleanupAnime } from "@/lib/anime";
+
+const OWNER_CHAT_ENTRANCE_SETTLE_MS = 1200;
 
 // ---------------------------------------------------------------------------
 // TypewriterText
@@ -125,7 +128,14 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const scrollToLatestLabel = messageList[locale].scrollToLatest;
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollToBottomButtonElementRef = useRef<HTMLButtonElement>(null);
+  const typingIndicatorRef = useRef<HTMLDivElement>(null);
   const animatedRef = useRef<Set<string>>(new Set());
+  const entranceAnimatedRef = useRef<Set<string>>(new Set());
+  const entrancePrimedRef = useRef(false);
+  const roomOpenedAtRef = useRef(0);
+  const previousStatusRef = useRef<Map<string, OwnerChatMessage["status"]>>(new Map());
+  const motionHandlesRef = useRef<Set<ReturnType<typeof animateIfMotion>>>(new Set());
   const initialLoadRef = useRef(true);
   const isLoadingMore = useRef(false);
   const prevLengthRef = useRef(0);
@@ -134,6 +144,21 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const showScrollToBottomButtonRef = useRef(false);
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const [, forceRender] = useState(0);
+
+  const registerMotion = useCallback((animation: ReturnType<typeof animateIfMotion>) => {
+    if (!animation) return;
+    motionHandlesRef.current.add(animation);
+    window.setTimeout(() => {
+      motionHandlesRef.current.delete(animation);
+    }, 1600);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      motionHandlesRef.current.forEach(cleanupAnime);
+      motionHandlesRef.current.clear();
+    };
+  }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = scrollContainerRef.current;
@@ -176,9 +201,13 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     prevLengthRef.current = 0;
     prevMessageContentSignatureRef.current = "";
     wasNearBottomRef.current = true;
+    entrancePrimedRef.current = false;
+    roomOpenedAtRef.current = performance.now();
+    previousStatusRef.current = new Map();
     showScrollToBottomButtonRef.current = false;
     setShowScrollToBottomButton(false);
     animatedRef.current.clear();
+    entranceAnimatedRef.current.clear();
     setPreviewAttachment(null);
     useOwnerChatStore.getState().reset();
 
@@ -196,7 +225,12 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
         // already considers them animated.
         for (const msg of useOwnerChatStore.getState().messages) {
           animatedRef.current.add(msg.clientId);
+          entranceAnimatedRef.current.add(msg.clientId);
         }
+        entrancePrimedRef.current = true;
+        previousStatusRef.current = new Map(
+          useOwnerChatStore.getState().messages.map((msg) => [msg.clientId, msg.status]),
+        );
         initialLoadRef.current = false;
         scrollToBottomAfterLayout();
         // Restore in-flight stream blocks for any user message still awaiting a
@@ -237,6 +271,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       ].join(":");
     }).join("|");
   }, [messages]);
+  const hasStreamingMsg = messages.some((m) => m.status === "streaming");
 
   useEffect(() => {
     if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
@@ -270,6 +305,99 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       setShowScrollToBottomButton(true);
     }
   }, [messageContentSignature, scrollToBottomAfterLayout]);
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const seenIds = entranceAnimatedRef.current;
+
+    if (!entrancePrimedRef.current) {
+      for (const msg of messages) seenIds.add(msg.clientId);
+      entrancePrimedRef.current = true;
+      return;
+    }
+
+    const newlyVisible = messages.filter((msg) => !seenIds.has(msg.clientId));
+    for (const msg of messages) seenIds.add(msg.clientId);
+    if (newlyVisible.length === 0 || isLoadingMore.current) return;
+    if (performance.now() - roomOpenedAtRef.current < OWNER_CHAT_ENTRANCE_SETTLE_MS) return;
+
+    const newlyVisibleIds = newlyVisible.map((msg) => msg.clientId);
+    requestAnimationFrame(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      newlyVisibleIds.slice(-6).forEach((id, index) => {
+        const el = container.querySelector<HTMLElement>(
+          `[data-owner-msg-key="${CSS.escape(id)}"]`,
+        );
+        if (!el) return;
+        registerMotion(animateIfMotion(el, {
+          opacity: [0, 1],
+          translateY: [10, 0],
+          scale: [0.985, 1],
+          duration: 340,
+          delay: index * 24,
+          ease: "out(3)",
+        }));
+      });
+    });
+  }, [messages, registerMotion]);
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      previousStatusRef.current = new Map();
+      return;
+    }
+
+    const previousStatuses = previousStatusRef.current;
+    const nextStatuses = new Map<string, OwnerChatMessage["status"]>();
+    const newlyFailedIds: string[] = [];
+
+    for (const msg of messages) {
+      nextStatuses.set(msg.clientId, msg.status);
+      if (msg.status === "failed" && previousStatuses.get(msg.clientId) !== "failed") {
+        newlyFailedIds.push(msg.clientId);
+      }
+    }
+
+    previousStatusRef.current = nextStatuses;
+    if (initialLoadRef.current || newlyFailedIds.length === 0) return;
+
+    requestAnimationFrame(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      newlyFailedIds.forEach((id) => {
+        const el = container.querySelector<HTMLElement>(
+          `[data-owner-msg-key="${CSS.escape(id)}"]`,
+        );
+        if (!el) return;
+        registerMotion(animateIfMotion(el, {
+          translateX: [0, -4, 4, -3, 3, 0],
+          scale: [1, 1.012, 1],
+          boxShadow: [
+            "0 0 0 rgba(248, 113, 113, 0)",
+            "0 0 16px rgba(248, 113, 113, 0.24)",
+            "0 0 0 rgba(248, 113, 113, 0)",
+          ],
+          duration: 420,
+          ease: "out(3)",
+        }));
+      });
+    });
+  }, [messages, registerMotion]);
+
+  useEffect(() => {
+    showScrollToBottomButtonRef.current = showScrollToBottomButton;
+  }, [showScrollToBottomButton]);
+
+  useEffect(() => {
+    if (!showScrollToBottomButton || !scrollToBottomButtonElementRef.current) return;
+    registerMotion(animatePop(scrollToBottomButtonElementRef.current));
+  }, [showScrollToBottomButton, registerMotion]);
+
+  useEffect(() => {
+    if (!agentTyping || hasStreamingMsg || !typingIndicatorRef.current) return;
+    registerMotion(animateFadeUp(typingIndicatorRef.current));
+  }, [agentTyping, hasStreamingMsg, registerMotion]);
 
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -499,7 +627,6 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     );
   }
 
-  const hasStreamingMsg = messages.some((m) => m.status === "streaming");
   const handleMobileBack = () => {
     if (agentId) {
       setSelectedBotAgentId(null);
@@ -581,7 +708,11 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
           // --- Notification ---
           if (isNotification) {
             return (
-              <div key={msg.clientId} className="flex justify-center">
+              <div
+                key={msg.clientId}
+                data-owner-msg-key={msg.clientId}
+                className="flex justify-center"
+              >
                 <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs bg-amber-500/10 text-amber-300 border border-amber-500/20 flex items-start gap-2">
                   <Bell className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <div>
@@ -597,7 +728,11 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
 
           if (isErrorMessage) {
             return (
-              <div key={msg.clientId} className="space-y-1.5">
+              <div
+                key={msg.clientId}
+                data-owner-msg-key={msg.clientId}
+                className="space-y-1.5"
+              >
                 <div className="flex justify-start">
                   <div className="max-w-[75%] rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
                     <div className="mb-1 flex items-center gap-1.5">
@@ -650,7 +785,11 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
           // --- Streaming agent message ---
           if (msg.status === "streaming") {
             return (
-              <div key={msg.clientId} className="space-y-1.5">
+              <div
+                key={msg.clientId}
+                data-owner-msg-key={msg.clientId}
+                className="space-y-1.5"
+              >
                 <StreamBlocksView
                   key={`${msg.clientId}-streaming`}
                   blocks={msg.streamBlocks}
@@ -667,6 +806,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
             return (
               <div
                 key={msg.clientId}
+                data-owner-msg-key={msg.clientId}
                 className="flex items-start justify-end gap-2"
                 onMouseEnter={() => setHoveredActionId(msg.clientId)}
                 onMouseLeave={() => { setHoveredActionId(null); setActionMenuOpenId(null); }}
@@ -727,7 +867,11 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
           }
 
           return (
-            <div key={msg.clientId} className="space-y-1.5">
+            <div
+              key={msg.clientId}
+              data-owner-msg-key={msg.clientId}
+              className="space-y-1.5"
+            >
               {/* Finalized execution blocks above agent message */}
               {!isUser && msg.streamBlocks.length > 0 && (
                 <StreamBlocksView
@@ -834,7 +978,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
 
         {/* Typing indicator (only when no streaming message exists) */}
         {agentTyping && !hasStreamingMsg && (
-          <div className="flex justify-start">
+          <div ref={typingIndicatorRef} className="flex justify-start">
             <div className="rounded-lg px-3 py-2 bg-zinc-800 border border-zinc-700">
               <div className="flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
@@ -867,6 +1011,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       </div>
       {showScrollToBottomButton && (
         <button
+          ref={scrollToBottomButtonElementRef}
           type="button"
           onClick={() => scrollToBottom("auto")}
           aria-label={scrollToLatestLabel}
@@ -897,13 +1042,20 @@ interface OwnerChatReplyingToBarProps {
 }
 
 function OwnerChatReplyingToBar({ target, locale, onCancel }: OwnerChatReplyingToBarProps) {
+  const barRef = useRef<HTMLDivElement>(null);
   const name = target.senderName || (locale === "zh" ? "消息" : "Message");
   const preview = (target.text || "").slice(0, 80);
   const replyingLabel = locale === "zh" ? "正在回复" : "Replying to";
   const cancelLabel = locale === "zh" ? "取消引用" : "Cancel reply";
 
+  useEffect(() => {
+    if (!barRef.current) return;
+    const animation = animateFadeUp(barRef.current);
+    return () => cleanupAnime(animation);
+  }, [target.clientId]);
+
   return (
-    <div className="mx-1 flex items-start gap-2 rounded-md border-l-2 border-neon-cyan/60 bg-glass-bg/60 pl-2 pr-1 py-1.5 text-xs">
+    <div ref={barRef} className="mx-1 flex items-start gap-2 rounded-md border-l-2 border-neon-cyan/60 bg-glass-bg/60 pl-2 pr-1 py-1.5 text-xs">
       <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-neon-cyan/80" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[11px] font-medium text-neon-cyan/90">

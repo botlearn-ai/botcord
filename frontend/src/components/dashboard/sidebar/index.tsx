@@ -25,6 +25,7 @@ import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useDaemonStore } from "@/store/useDaemonStore";
 import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import { createClient } from "@/lib/supabase/client";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 import AccountMenu from "../AccountMenu";
 import AddFriendModal from "../AddFriendModal";
@@ -187,6 +188,10 @@ function Sidebar({
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [refreshingBots, setRefreshingBots] = useState(false);
   const [createBotForDaemonId, setCreateBotForDaemonId] = useState<string | null>(null);
+  const [mobileSecondaryRendered, setMobileSecondaryRendered] = useState(mobileSecondaryOpen);
+  const mobileSecondaryOverlayRef = useRef<HTMLButtonElement | null>(null);
+  const mobileSecondaryPanelRef = useRef<HTMLDivElement | null>(null);
+  const mobileSecondaryAnimationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   const showCreateBot = uiStore.createBotModalOpen;
   const setShowCreateBot = (v: boolean) => v ? uiStore.openCreateBotModal() : uiStore.closeCreateBotModal();
@@ -286,6 +291,71 @@ function Sidebar({
   useEffect(() => {
     if (!isGuest) void contactStore.loadContactRequests();
   }, [contactStore.loadContactRequests, isGuest]);
+
+  useEffect(() => {
+    if (!mobileHideSecondary) {
+      setMobileSecondaryRendered(false);
+      cleanupAnime(mobileSecondaryAnimationRef.current);
+      mobileSecondaryAnimationRef.current = null;
+      return;
+    }
+
+    if (mobileSecondaryOpen) {
+      setMobileSecondaryRendered(true);
+      return;
+    }
+
+    if (!mobileSecondaryRendered) return;
+
+    cleanupAnime(mobileSecondaryAnimationRef.current);
+    if (mobileSecondaryOverlayRef.current) {
+      mobileSecondaryOverlayRef.current.style.opacity = "1";
+    }
+    if (mobileSecondaryPanelRef.current) {
+      mobileSecondaryPanelRef.current.style.opacity = "1";
+      mobileSecondaryPanelRef.current.style.transform = "translate3d(0, 0, 0) scale(1)";
+      mobileSecondaryPanelRef.current
+        .querySelectorAll<HTMLElement>("[data-mobile-secondary-motion]")
+        .forEach((part) => {
+          part.style.opacity = "1";
+          part.style.transform = "translateY(0)";
+        });
+    }
+    mobileSecondaryAnimationRef.current = animateOverlayPanelExit(
+      mobileSecondaryOverlayRef.current,
+      mobileSecondaryPanelRef.current,
+      {
+        direction: "bottom",
+        contentSelector: "[data-mobile-secondary-motion]",
+        onComplete: () => {
+          setMobileSecondaryRendered(false);
+          mobileSecondaryAnimationRef.current = null;
+        },
+      },
+    );
+  }, [mobileHideSecondary, mobileSecondaryOpen, mobileSecondaryRendered]);
+
+  useEffect(() => {
+    if (!mobileHideSecondary || !mobileSecondaryOpen || !mobileSecondaryRendered) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      cleanupAnime(mobileSecondaryAnimationRef.current);
+      mobileSecondaryAnimationRef.current = animateOverlayPanelEnter(
+        mobileSecondaryOverlayRef.current,
+        mobileSecondaryPanelRef.current,
+        {
+          direction: "bottom",
+          contentSelector: "[data-mobile-secondary-motion]",
+        },
+      );
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [mobileHideSecondary, mobileSecondaryOpen, mobileSecondaryRendered, visibleSidebarTab]);
+
+  useEffect(() => () => cleanupAnime(mobileSecondaryAnimationRef.current), []);
 
   const showLoginModal = () => router.push("/login");
 
@@ -440,8 +510,9 @@ function Sidebar({
         />
       )}
 
-      {mobileHideSecondary && mobileSecondaryOpen && (
+      {mobileHideSecondary && mobileSecondaryRendered && (
         <button
+          ref={mobileSecondaryOverlayRef}
           type="button"
           aria-label="Close sidebar"
           className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] top-0 z-30 hidden bg-black/45 backdrop-blur-sm max-md:block"
@@ -454,7 +525,7 @@ function Sidebar({
       <div
         className={`relative flex h-full flex-col border-r border-glass-border bg-deep-black-light max-md:min-h-0 max-md:flex-1 max-md:!min-w-0 max-md:border-r-0 ${
           mobileHideSecondary
-            ? mobileSecondaryOpen
+            ? mobileSecondaryRendered
               ? "max-md:fixed max-md:inset-x-3 max-md:bottom-[calc(5rem+env(safe-area-inset-bottom))] max-md:top-4 max-md:z-40 max-md:!w-auto max-md:rounded-xl max-md:border max-md:border-glass-border max-md:shadow-2xl max-md:shadow-black/50"
               : "max-md:hidden"
             : "max-md:!w-full"
@@ -465,6 +536,7 @@ function Sidebar({
             : uiStore.sidebarWidth,
           minWidth: SIDEBAR_MIN,
         }}
+        ref={mobileSecondaryPanelRef}
       >
         {/* Resize handle */}
         <div
@@ -509,7 +581,7 @@ function Sidebar({
         {/* Contacts: legacy 4-subtab nav replaced by single-column ContactsPanel below. */}
 
         {/* Panel content */}
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0" data-mobile-secondary-motion>
           {!secondaryPanelLoading && showMessagesGrouping && (
             <div className="max-md:hidden">
               <MessagesGroupingSidebar />

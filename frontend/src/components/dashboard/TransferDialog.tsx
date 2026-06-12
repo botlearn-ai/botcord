@@ -7,10 +7,11 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { transferDialog, walletPanel } from "@/lib/i18n/translations/dashboard";
 import { api, ApiError, type ActiveIdentity } from "@/lib/api";
+import { animateIfMotion, animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
@@ -165,6 +166,12 @@ export default function TransferDialog({ viewer, onClose, onSuccess }: TransferD
   const [memo, setMemo] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const errorAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   const amountNumber = useMemo(() => {
     if (!/^[1-9]\d*$/.test(amount.trim())) return null;
@@ -223,17 +230,48 @@ export default function TransferDialog({ viewer, onClose, onSuccess }: TransferD
     return base.filter((n) => n * 100 <= availableMinor);
   }, [availableMinor]);
 
+  const closeWithMotion = useCallback(() => {
+    if (submitting || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose, submitting]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    cleanupAnime(errorAnimationRef.current);
+    errorAnimationRef.current = animatePop(errorRef.current);
+    return () => cleanupAnime(errorAnimationRef.current);
+  }, [error]);
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
+      ref={overlayRef}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      onClick={closeWithMotion}
     >
       <div
+        ref={panelRef}
         className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-glass-border bg-glass-bg backdrop-blur-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
-          onClick={onClose}
+          onClick={closeWithMotion}
           aria-label="close"
           className="absolute right-4 top-4 z-10 rounded p-1 text-text-secondary hover:text-text-primary"
         >
@@ -390,7 +428,7 @@ export default function TransferDialog({ viewer, onClose, onSuccess }: TransferD
             />
           </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p ref={errorRef} className="text-sm text-red-400">{error}</p>}
         </form>
 
         <div className="shrink-0 border-t border-glass-border bg-glass-bg/40 px-6 py-4">
@@ -433,6 +471,21 @@ function FromCard({
   disabled: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+
+  useEffect(() => {
+    if (!open || disabled || !menuRef.current) return;
+    cleanupAnime(menuAnimationRef.current);
+    menuAnimationRef.current = animateIfMotion(menuRef.current, {
+      opacity: [0, 1],
+      translateY: [-4, 0],
+      scale: [0.98, 1],
+      duration: 160,
+      ease: "out(3)",
+    });
+    return () => cleanupAnime(menuAnimationRef.current);
+  }, [disabled, open]);
 
   return (
     <div className="relative">
@@ -452,7 +505,7 @@ function FromCard({
         {!disabled ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-secondary/60" /> : null}
       </button>
       {open && !disabled ? (
-        <div className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-glass-border bg-deep-black-light shadow-lg">
+        <div ref={menuRef} className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-glass-border bg-deep-black-light shadow-lg">
           {options.map((opt) => {
             const selected =
               value?.type === opt.identity.type && value.id === opt.identity.id;
@@ -510,6 +563,21 @@ function RecipientPicker({
     for (const opt of options) buckets[opt.group].push(opt);
     return buckets;
   }, [options]);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const pickerAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+
+  useEffect(() => {
+    if (!open || !pickerRef.current) return;
+    cleanupAnime(pickerAnimationRef.current);
+    pickerAnimationRef.current = animateIfMotion(pickerRef.current, {
+      opacity: [0, 1],
+      translateY: [-4, 0],
+      scale: [0.98, 1],
+      duration: 160,
+      ease: "out(3)",
+    });
+    return () => cleanupAnime(pickerAnimationRef.current);
+  }, [open]);
 
   return (
     <div className="relative">
@@ -523,7 +591,7 @@ function RecipientPicker({
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-secondary/60" />
       </button>
       {open ? (
-        <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-lg border border-glass-border bg-deep-black-light shadow-lg">
+        <div ref={pickerRef} className="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-lg border border-glass-border bg-deep-black-light shadow-lg">
           {(["human-self", "my-bot", "contact"] as const).map((group) => {
             const items = grouped[group];
             if (items.length === 0) return null;

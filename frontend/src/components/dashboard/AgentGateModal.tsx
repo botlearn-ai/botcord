@@ -7,12 +7,13 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { userApi } from "@/lib/api";
 import type { UserAgent } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
 import { agentGateModal } from "@/lib/i18n/translations/dashboard";
+import { animateOverlayPanelEnter, cleanupAnime } from "@/lib/anime";
 
 interface AgentGateModalProps {
   onAgentReady: (agentId: string) => Promise<void> | void;
@@ -32,6 +33,9 @@ export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const readyRef = useRef(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   const resolveAgents = useCallback(async () => {
     if (readyRef.current) {
@@ -69,10 +73,25 @@ export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
     };
   }, [resolveAgents]);
 
+  useLayoutEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-agent-gate-part]",
+      onComplete: () => {
+        animationRef.current = null;
+      },
+    });
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
-      <div className="w-full max-w-2xl rounded-[28px] border border-glass-border bg-deep-black-light p-8 shadow-2xl">
-        <div className="mx-auto max-w-xl text-center">
+    <div ref={overlayRef} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        className="w-full max-w-2xl rounded-[28px] border border-glass-border bg-deep-black-light p-8 shadow-2xl"
+      >
+        <div data-agent-gate-part className="mx-auto max-w-xl text-center">
           <p className="text-[11px] font-bold uppercase tracking-[0.32em] text-neon-cyan/80">
             {t.communityGate}
           </p>
@@ -84,7 +103,7 @@ export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
           </p>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-glass-border bg-deep-black p-4">
+        <div data-agent-gate-part className="mt-6 rounded-2xl border border-glass-border bg-deep-black p-4">
           {isResolving ? (
             <div className="flex items-center gap-3 text-sm text-text-secondary">
               <Loader2 className="h-4 w-4 animate-spin text-neon-cyan" />

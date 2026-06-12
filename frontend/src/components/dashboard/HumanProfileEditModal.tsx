@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Loader2, UserRound, X } from "lucide-react";
 import { humansApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 
 interface HumanProfileEditModalProps {
   onClose: () => void;
@@ -19,6 +20,12 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
   const [avatarUrl, setAvatarUrl] = useState(human?.avatar_url ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const errorAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   useEffect(() => {
     setDisplayName(human?.display_name ?? "");
@@ -31,6 +38,44 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
   const avatarChanged = trimmedAvatar !== (human?.avatar_url ?? "").trim();
   const canSave = !saving && trimmedName.length > 0 && (nameChanged || avatarChanged);
 
+  const closeWithMotion = useCallback((force = false) => {
+    if ((saving && !force) || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose, saving]);
+
+  useLayoutEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-human-profile-modal-part]",
+      onComplete: () => {
+        animationRef.current = null;
+      },
+    });
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWithMotion();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    cleanupAnime(errorAnimationRef.current);
+    errorAnimationRef.current = animatePop(errorRef.current);
+  }, [error]);
+
+  useEffect(() => () => {
+    cleanupAnime(animationRef.current);
+    cleanupAnime(errorAnimationRef.current);
+  }, []);
+
   async function handleSave() {
     if (!canSave) return;
     setSaving(true);
@@ -41,7 +86,7 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
       if (avatarChanged) patch.avatar_url = trimmedAvatar || null;
       const updated = await humansApi.updateProfile(patch);
       setHuman(updated);
-      onClose();
+      closeWithMotion(true);
     } catch (err: any) {
       setError(err?.message || (locale === "zh" ? "保存失败" : "Failed to save"));
       setSaving(false);
@@ -58,17 +103,29 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
   const tSaving = locale === "zh" ? "保存中..." : "Saving...";
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+    <div
+      ref={overlayRef}
+      className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) closeWithMotion();
+      }}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <button
-          onClick={onClose}
+          onClick={() => closeWithMotion()}
           disabled={saving}
           className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
         >
           <X className="h-5 w-5" />
         </button>
 
-        <div className="mb-5 pr-8">
+        <div data-human-profile-modal-part className="mb-5 pr-8">
           <h3 className="flex items-center gap-2 text-xl font-bold text-text-primary">
             <UserRound className="h-5 w-5 text-neon-purple" />
             {tTitle}
@@ -79,7 +136,7 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
           )}
         </div>
 
-        <label className="mb-3 block">
+        <label data-human-profile-modal-part className="mb-3 block">
           <span className="mb-1 block text-xs font-medium text-text-secondary">{tNameLabel}</span>
           <input
             type="text"
@@ -91,7 +148,7 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
           />
         </label>
 
-        <label className="block">
+        <label data-human-profile-modal-part className="block">
           <span className="mb-1 block text-xs font-medium text-text-secondary">{tAvatarLabel}</span>
           <input
             type="url"
@@ -105,7 +162,7 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
         </label>
 
         {trimmedAvatar && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-glass-border bg-glass-bg p-2">
+          <div data-human-profile-modal-part className="mt-3 flex items-center gap-2 rounded-lg border border-glass-border bg-glass-bg p-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={trimmedAvatar}
@@ -120,14 +177,14 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
         )}
 
         {error && (
-          <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
+          <p ref={errorRef} className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
             {error}
           </p>
         )}
 
-        <div className="mt-6 flex items-center justify-end gap-3">
+        <div data-human-profile-modal-part className="mt-6 flex items-center justify-end gap-3">
           <button
-            onClick={onClose}
+            onClick={() => closeWithMotion()}
             disabled={saving}
             className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
           >

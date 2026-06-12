@@ -1,10 +1,11 @@
 "use client";
 
-import { memo, useEffect } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { MessageCircle, UserCheck, UserPlus, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { humansApi } from "@/lib/api";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import BotAvatar from "./BotAvatar";
@@ -60,15 +61,40 @@ function PeerBotDetailDrawer() {
         (c) => c.contact_agent_id === peerBotAgentId && (c.peer_type ?? "agent") === "agent",
       ) ?? null
     : null;
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const motionRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const closingRef = useRef(false);
+
+  const closeDrawer = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    cleanupAnime(motionRef.current);
+    motionRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      direction: "right",
+      contentSelector: "[data-overlay-section]",
+      onComplete: () => setPeerBotAgentId(null),
+    });
+  }, [setPeerBotAgentId]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPeerBotAgentId(null);
+      if (e.key === "Escape") closeDrawer();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, setPeerBotAgentId]);
+  }, [closeDrawer, open]);
+
+  useEffect(() => {
+    closingRef.current = false;
+    if (!open || (!peer && !contact)) return;
+    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      direction: "right",
+      contentSelector: "[data-overlay-section]",
+    });
+    return () => cleanupAnime(motionRef.current);
+  }, [contact?.contact_agent_id, open, peer?.agent_id]);
 
   if (!open || (!peer && !contact)) return null;
 
@@ -104,17 +130,20 @@ function PeerBotDetailDrawer() {
   return (
     <>
       <div
+        ref={overlayRef}
         className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
-        onClick={() => setPeerBotAgentId(null)}
+        onClick={closeDrawer}
         aria-hidden
       />
       <aside
+        ref={panelRef}
         className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border bg-deep-black-light shadow-2xl shadow-black/50"
         role="dialog"
+        aria-modal="true"
         aria-label="Bot 详情"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-glass-border px-5 py-4">
+        <div className="flex items-center justify-between border-b border-glass-border px-5 py-4" data-overlay-section>
           <div className="flex min-w-0 items-center gap-3">
             <BotAvatar agentId={agentId} size={40} alt={displayName} />
             <div className="min-w-0">
@@ -130,7 +159,7 @@ function PeerBotDetailDrawer() {
             </div>
           </div>
           <button
-            onClick={() => setPeerBotAgentId(null)}
+            onClick={closeDrawer}
             title="关闭"
             aria-label="关闭"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
@@ -140,7 +169,7 @@ function PeerBotDetailDrawer() {
         </div>
 
         {/* Body */}
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4" data-overlay-section>
           <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
             <p className="font-mono text-[11px] text-text-secondary/55">{agentId}</p>
             {bio ? (
@@ -162,7 +191,7 @@ function PeerBotDetailDrawer() {
         </div>
 
         {/* Footer actions */}
-        <div className="grid grid-cols-2 gap-2 border-t border-glass-border px-5 py-4">
+        <div className="grid grid-cols-2 gap-2 border-t border-glass-border px-5 py-4" data-overlay-section>
           <button
             onClick={handleMessage}
             className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"

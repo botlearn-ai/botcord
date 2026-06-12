@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import { useLanguage, chatPane } from "@/lib/i18n";
 import { transferDialog } from "@/lib/i18n/translations/dashboard";
@@ -14,6 +14,7 @@ import { dashboardReplyTargetId } from "@/lib/dashboard-message-actions";
 import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 import { CornerUpLeft, Loader2, X } from "lucide-react";
 import DashboardSelect from "./DashboardSelect";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 interface RoomHumanComposerProps {
   roomId: string;
@@ -40,6 +41,9 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
   const [memo, setMemo] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   const recipientOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -58,6 +62,28 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
         };
       });
   }, [members, senderId]);
+
+  const closeWithMotion = useCallback((afterClose?: () => void) => {
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: () => {
+        onClose();
+        afterClose?.();
+      },
+    });
+  }, [onClose]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWithMotion();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      cleanupAnime(animationRef.current);
+    };
+  }, [closeWithMotion]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -92,7 +118,7 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
         room_id: roomId,
         idempotency_key: crypto.randomUUID(),
       }, senderIdentity);
-      onSuccess();
+      closeWithMotion(onSuccess);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t.transferFailed);
     } finally {
@@ -102,16 +128,20 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
 
   return (
     <div
+      ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={() => closeWithMotion()}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
         className="relative w-full max-w-md rounded-xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => closeWithMotion()}
           className="absolute right-3 top-3 rounded p-1 text-text-secondary hover:text-text-primary"
           aria-label="Close transfer dialog"
         >
@@ -176,7 +206,7 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
           <div className="flex items-center justify-end gap-2 pt-1">
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => closeWithMotion()}
               disabled={submitting}
               className="rounded-lg border border-glass-border px-4 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary disabled:opacity-40"
             >

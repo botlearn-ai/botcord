@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import {
   Bot,
@@ -28,6 +28,7 @@ import { isOwnerChatRoom } from "@/store/dashboard-shared";
 import { useDaemonStore, type DaemonInstance } from "@/store/useDaemonStore";
 import { useConfirm } from "@/store/useConfirmStore";
 import { useLanguage } from "@/lib/i18n";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import { botDetailDrawer } from "@/lib/i18n/translations/dashboard";
 import {
   usePolicyStore,
@@ -142,11 +143,27 @@ function BotDetailDrawer() {
 
   const [tab, setTab] = useState<TabKey>("overview");
   const [stats, setStats] = useState<ActivityStats | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const motionRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const closingRef = useRef(false);
+
+  const closeDrawer = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    cleanupAnime(motionRef.current);
+    motionRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      direction: "right",
+      contentSelector: "[data-overlay-section]",
+      onComplete: () => setBotDetailAgentId(null),
+    });
+  }, [setBotDetailAgentId]);
 
   // Reset state when opening on a different bot. Honour an optional
   // initial-tab hint when the drawer is opened via openBotDetail() (e.g.
   // from the wallet overview's bot row).
   useEffect(() => {
+    closingRef.current = false;
     const legacySettingsTabs = new Set(["policy", "auto", "gateways"]);
     if (botDetailInitialTab && TABS.some((t) => t.key === botDetailInitialTab)) {
       setTab(botDetailInitialTab as TabKey);
@@ -180,11 +197,20 @@ function BotDetailDrawer() {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setBotDetailAgentId(null);
+      if (e.key === "Escape") closeDrawer();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, setBotDetailAgentId]);
+  }, [closeDrawer, open]);
+
+  useEffect(() => {
+    if (!open || !bot) return;
+    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      direction: "right",
+      contentSelector: "[data-overlay-section]",
+    });
+    return () => cleanupAnime(motionRef.current);
+  }, [bot?.agent_id, open]);
 
   if (!open || !bot) return null;
 
@@ -233,17 +259,20 @@ function BotDetailDrawer() {
   return (
     <>
       <div
+        ref={overlayRef}
         className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
-        onClick={() => setBotDetailAgentId(null)}
+        onClick={closeDrawer}
         aria-hidden
       />
       <aside
+        ref={panelRef}
         className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border bg-deep-black-light shadow-2xl shadow-black/50"
         role="dialog"
+        aria-modal="true"
         aria-label={t.ariaLabel}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-glass-border px-5 py-4">
+        <div className="flex items-center justify-between border-b border-glass-border px-5 py-4" data-overlay-section>
           <div className="flex min-w-0 items-center gap-3">
             <BotAvatar agentId={bot.agent_id} avatarUrl={bot.avatar_url} size={40} alt={bot.display_name} />
             <div className="min-w-0">
@@ -261,7 +290,7 @@ function BotDetailDrawer() {
             </div>
           </div>
           <button
-            onClick={() => setBotDetailAgentId(null)}
+            onClick={closeDrawer}
             title={t.close}
             aria-label={t.close}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
@@ -271,7 +300,7 @@ function BotDetailDrawer() {
         </div>
 
         {/* Tab strip */}
-        <div className="grid grid-cols-5 border-b border-glass-border">
+        <div className="grid grid-cols-5 border-b border-glass-border" data-overlay-section>
           {TABS.map(({ key, icon: Icon }) => {
             const active = tab === key;
             return (
@@ -292,7 +321,7 @@ function BotDetailDrawer() {
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="flex-1 overflow-y-auto px-5 py-4" data-overlay-section>
           {tab === "overview" && (
             <OverviewTab
               t={t}

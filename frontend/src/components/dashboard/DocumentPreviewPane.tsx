@@ -12,6 +12,7 @@ import {
 } from "react";
 import { Download, FileText, Loader2, X } from "lucide-react";
 import type { Attachment } from "@/lib/types";
+import { cleanupAnime, createTimelineIfMotion } from "@/lib/anime";
 import {
   DOCUMENT_PREVIEW_MAX_BYTES,
   getAttachmentPreviewFetchUrl,
@@ -24,6 +25,8 @@ interface DocumentPreviewPaneProps {
   attachment: Attachment;
   onClose: () => void;
 }
+
+type MotionTimeline = ReturnType<typeof createTimelineIfMotion>;
 
 export const DOCUMENT_PREVIEW_MIN_WIDTH = 360;
 export const DOCUMENT_PREVIEW_MAX_WIDTH = 960;
@@ -67,6 +70,9 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
   const [paneWidth, setPaneWidth] = useState(DOCUMENT_PREVIEW_DEFAULT_WIDTH);
   const [paneWidthReady, setPaneWidthReady] = useState(false);
   const [resizing, setResizing] = useState(false);
+  const paneRef = useRef<HTMLElement | null>(null);
+  const paneAnimationRef = useRef<MotionTimeline>(null);
+  const closingRef = useRef(false);
   const resizeStartRef = useRef({
     x: 0,
     width: DOCUMENT_PREVIEW_DEFAULT_WIDTH,
@@ -168,6 +174,40 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
   const paneStyle = {
     "--document-preview-pane-width": `${paneWidth}px`,
   } as CSSProperties;
+
+  useEffect(() => {
+    return () => cleanupAnime(paneAnimationRef.current);
+  }, []);
+
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+
+    pane.style.opacity = "0";
+    pane.style.transform = "translateX(28px)";
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      pane.style.transform = "translateY(18px)";
+    }
+
+    const direction = window.matchMedia("(max-width: 767px)").matches ? "bottom" : "right";
+    const animation = createTimelineIfMotion();
+    paneAnimationRef.current = animation;
+
+    if (!animation) {
+      pane.style.opacity = "1";
+      pane.style.transform = "translate3d(0, 0, 0)";
+      return;
+    }
+
+    animation.add(pane, {
+      opacity: [0, 1],
+      ...(direction === "bottom" ? { translateY: [18, 0] } : { translateX: [28, 0] }),
+      duration: 240,
+      ease: "out(3)",
+    }, 0);
+
+    return () => cleanupAnime(animation);
+  }, []);
 
   useEffect(() => {
     if (!kind || tooLarge || kind === "image") {
@@ -277,10 +317,45 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
     );
   })();
 
+  const handleClose = useCallback(() => {
+    if (closingRef.current) return;
+
+    const pane = paneRef.current;
+    if (!pane) {
+      onClose();
+      return;
+    }
+
+    closingRef.current = true;
+    cleanupAnime(paneAnimationRef.current);
+
+    const finishClose = () => {
+      paneAnimationRef.current = null;
+      onClose();
+    };
+
+    const direction = window.matchMedia("(max-width: 767px)").matches ? "bottom" : "right";
+    const animation = createTimelineIfMotion({ onComplete: finishClose });
+    paneAnimationRef.current = animation;
+
+    if (!animation) {
+      finishClose();
+      return;
+    }
+
+    animation.add(pane, {
+      opacity: 0,
+      ...(direction === "bottom" ? { translateY: 18 } : { translateX: 24 }),
+      duration: 160,
+      ease: "in(2)",
+    }, 0);
+  }, [onClose]);
+
   return (
     <aside
+      ref={paneRef}
       style={paneStyle}
-      className="relative flex h-full w-[var(--document-preview-pane-width)] max-w-[78vw] min-w-[360px] shrink-0 flex-col border-l border-glass-border bg-deep-black shadow-2xl shadow-black/40 max-md:absolute max-md:inset-0 max-md:z-40 max-md:w-full max-md:max-w-none max-md:min-w-0"
+      className="relative flex h-full w-[var(--document-preview-pane-width)] max-w-[78vw] min-w-[360px] shrink-0 flex-col border-l border-glass-border bg-deep-black shadow-2xl shadow-black/40 will-change-transform max-md:absolute max-md:inset-0 max-md:z-40 max-md:w-full max-md:max-w-none max-md:min-w-0"
     >
       {resizing && (
         <div className="fixed inset-0 z-[80] cursor-col-resize max-md:hidden" aria-hidden="true" />
@@ -322,7 +397,7 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
         </a>
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
           aria-label="Close preview"
           title="Close preview"

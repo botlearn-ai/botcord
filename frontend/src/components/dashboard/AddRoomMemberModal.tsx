@@ -6,9 +6,10 @@
  */
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { humansApi } from "@/lib/api";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 import { useLanguage } from "@/lib/i18n";
 import { agentBrowser } from "@/lib/i18n/translations/dashboard";
 import DashboardMultiSelect from "./DashboardMultiSelect";
@@ -48,6 +49,12 @@ export default function AddRoomMemberModal({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const errorAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   const candidates = useMemo(() => {
     const existing = new Set(existingMemberIds);
@@ -85,7 +92,7 @@ export default function AddRoomMemberModal({
         await humansApi.addRoomMember(roomId, { participant_id: participantId, role: "member" });
       }
       await onAdded();
-      onClose();
+      closeWithMotion();
     } catch (err) {
       setError(err instanceof Error ? err.message : t.addMemberFailed);
     } finally {
@@ -93,9 +100,39 @@ export default function AddRoomMemberModal({
     }
   };
 
+  const closeWithMotion = useCallback(() => {
+    if (saving || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose, saving]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    cleanupAnime(errorAnimationRef.current);
+    errorAnimationRef.current = animatePop(errorRef.current);
+    return () => cleanupAnime(errorAnimationRef.current);
+  }, [error]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div ref={overlayRef} className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
       <div
+        ref={panelRef}
         className="flex h-[min(760px,calc(100dvh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
         onClick={(e) => e.stopPropagation()}
       >
@@ -105,7 +142,7 @@ export default function AddRoomMemberModal({
             <p className="mt-1 text-xs text-text-secondary">{t.addMemberDescription}</p>
           </div>
           <button
-            onClick={onClose}
+            onClick={closeWithMotion}
             className="rounded p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
             aria-label={t.closeAddMemberModal}
             title={t.closeAddMemberModal}
@@ -116,7 +153,7 @@ export default function AddRoomMemberModal({
 
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
           {error ? (
-            <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
               {error}
             </div>
           ) : null}
@@ -152,7 +189,7 @@ export default function AddRoomMemberModal({
 
         <div className="flex items-center justify-end gap-2 border-t border-glass-border px-6 py-4">
           <button
-            onClick={onClose}
+            onClick={closeWithMotion}
             disabled={saving}
             className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
           >
