@@ -142,6 +142,7 @@ export default function DashboardApp() {
   const mainContentRef = useRef<HTMLDivElement | null>(null);
   const mainContentAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
   const previousMainContentKeyRef = useRef<string | null>(null);
+  const lastSubtabSyncedPathnameRef = useRef<string | null>(null);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
   const routeSidebarTab = useMemo(() => getSidebarTabFromPathParts(pathnameParts), [pathnameParts]);
   const userChatAgentIdFromQuery = searchParams.get("agent_id");
@@ -343,12 +344,27 @@ export default function DashboardApp() {
         return;
       }
 
-      if (tab === "explore" && (subtab === "rooms" || subtab === "agents" || subtab === "humans") && uiStore.exploreView !== subtab) {
+      // URL → store sub-view sync must only run when the pathname itself
+      // changed (deep link, back/forward, completed navigation). This effect
+      // also re-runs on store changes, where the pathname is still the OLD
+      // route while a sub-tab click's router.push is in flight — syncing then
+      // would revert the eager store update and bounce the view back to the
+      // previous sub-tab until the RSC navigation lands (~1s on slow links).
+      const subtabPathnameChanged = lastSubtabSyncedPathnameRef.current !== pathname;
+      lastSubtabSyncedPathnameRef.current = pathname;
+
+      if (
+        subtabPathnameChanged
+        && tab === "explore"
+        && (subtab === "rooms" || subtab === "agents" || subtab === "humans")
+        && uiStore.exploreView !== subtab
+      ) {
         uiStore.setExploreView(subtab);
       }
 
       if (
-        tab === "contacts"
+        subtabPathnameChanged
+        && tab === "contacts"
         && (subtab === "agents" || subtab === "requests" || subtab === "rooms" || subtab === "created")
         && uiStore.contactsView !== subtab
       ) {
