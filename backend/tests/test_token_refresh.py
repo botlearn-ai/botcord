@@ -174,6 +174,58 @@ async def test_wrong_key_id_rejected(client: AsyncClient):
         json={"key_id": "k_nonexistent", "nonce": nonce, "sig": sig},
     )
     assert resp.status_code == 404
+    assert resp.headers.get("X-BotCord-Access-Log") is None
+
+
+@pytest.mark.asyncio
+async def test_missing_agent_refresh_is_terminal_quiet_stale_credentials(
+    client: AsyncClient,
+):
+    """Missing agents use the released daemon's terminal stale-credential shape."""
+    sk, _ = _make_keypair()
+    nonce = base64.b64encode(b"nonce-for-missing-agent-test-123").decode()
+    sig = _sign_nonce(sk, nonce)
+
+    resp = await client.post(
+        "/registry/agents/ag_missing/token/refresh",
+        json={"key_id": "k_missing", "nonce": nonce, "sig": sig},
+    )
+
+    assert resp.status_code == 404
+    assert resp.headers["X-BotCord-Access-Log"] == "quiet"
+    assert resp.headers["X-BotCord-Refresh-Status"] == "stale-agent"
+    assert resp.json()["code"] == "agent_not_found"
+    assert resp.json()["retryable"] is False
+
+
+@pytest.mark.asyncio
+async def test_deleted_agent_refresh_is_terminal_quiet_stale_credentials(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Soft-deleted agents should be compatible terminal refresh failures."""
+    sk, pubkey_str = _make_keypair()
+    agent_id, key_id = await _register_and_verify(client, sk, pubkey_str)
+
+    agent = await db_session.scalar(select(Agent).where(Agent.agent_id == agent_id))
+    assert agent is not None
+    agent.status = "deleted"
+    agent.deleted_at = datetime.datetime.now(datetime.timezone.utc)
+    await db_session.commit()
+
+    nonce = base64.b64encode(b"nonce-for-deleted-agent-test-123").decode()
+    sig = _sign_nonce(sk, nonce)
+
+    resp = await client.post(
+        f"/registry/agents/{agent_id}/token/refresh",
+        json={"key_id": key_id, "nonce": nonce, "sig": sig},
+    )
+
+    assert resp.status_code == 404
+    assert resp.headers["X-BotCord-Access-Log"] == "quiet"
+    assert resp.headers["X-BotCord-Refresh-Status"] == "stale-agent"
+    data = resp.json()
+    assert data["code"] == "agent_not_found"
+    assert "agent_token" not in data
 
 
 @pytest.mark.asyncio

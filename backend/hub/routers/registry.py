@@ -50,6 +50,11 @@ from hub.validators import check_agent_ownership, parse_pubkey, probe_endpoint, 
 
 router = APIRouter(prefix="/registry", tags=["registry"])
 
+_QUIET_TOKEN_REFRESH_HEADERS = {
+    "X-BotCord-Access-Log": "quiet",
+    "X-BotCord-Refresh-Status": "stale-agent",
+}
+
 
 def _generate_claim_code() -> str:
     return f"clm_{uuid.uuid4().hex}"
@@ -664,7 +669,17 @@ async def refresh_token(
     agent_id: str, req: TokenRefreshRequest, db: AsyncSession = Depends(get_db)
 ):
     """Refresh JWT by proving key ownership via nonce signature."""
-    # 1. Look up the signing key
+    # 1. Missing/deleted agents are terminal stale credentials. Classify them
+    # before key lookup so old runtimes stop producing noisy 404 refresh logs.
+    agent = await db.scalar(select(Agent).where(Agent.agent_id == agent_id))
+    if agent is None or agent.deleted_at is not None or agent.status == "deleted":
+        raise I18nHTTPException(
+            status_code=404,
+            message_key="agent_not_found",
+            headers=_QUIET_TOKEN_REFRESH_HEADERS,
+        )
+
+    # 2. Look up the signing key
     result = await db.execute(
         select(SigningKey).where(
             SigningKey.key_id == req.key_id,
@@ -678,7 +693,7 @@ async def refresh_token(
     if signing_key.state != KeyState.active:
         raise I18nHTTPException(status_code=403, message_key="key_not_active")
 
-    # 2. Check nonce has not been used (anti-replay)
+    # 3. Check nonce has not been used (anti-replay)
     result = await db.execute(
         select(UsedNonce).where(
             UsedNonce.agent_id == agent_id,
@@ -688,12 +703,12 @@ async def refresh_token(
     if result.scalar_one_or_none() is not None:
         raise I18nHTTPException(status_code=409, message_key="nonce_already_used")
 
-    # 3. Verify signature over the nonce
+    # 4. Verify signature over the nonce
     pubkey_b64 = signing_key.pubkey[len("ed25519:"):]
     if not verify_challenge_sig(pubkey_b64, req.nonce, req.sig):
         raise I18nHTTPException(status_code=401, message_key="signature_verification_failed")
 
-    # 4. Record nonce as used (with IntegrityError guard for concurrent requests)
+    # 5. Record nonce as used (with IntegrityError guard for concurrent requests)
     db.add(UsedNonce(agent_id=agent_id, nonce=req.nonce))
     try:
         await db.flush()
@@ -701,11 +716,8 @@ async def refresh_token(
         await db.rollback()
         raise I18nHTTPException(status_code=409, message_key="nonce_already_used")
 
-    # 5. Issue new token and make it the current accepted token.
+    # 6. Issue new token and make it the current accepted token.
     token, expires_at = create_agent_token(agent_id)
-    agent = await db.scalar(select(Agent).where(Agent.agent_id == agent_id))
-    if agent is None:
-        raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     agent.agent_token = token
     agent.token_expires_at = datetime.datetime.fromtimestamp(
         expires_at, tz=datetime.timezone.utc

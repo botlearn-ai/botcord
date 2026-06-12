@@ -235,6 +235,7 @@ async def i18n_http_exception_handler(request: Request, exc: I18nHTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content=content,
+        headers=exc.headers,
     )
 
 
