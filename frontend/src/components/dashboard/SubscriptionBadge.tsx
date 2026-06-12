@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/i18n";
 import { subscriptionBadge } from "@/lib/i18n/translations/dashboard";
@@ -20,6 +20,7 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 interface SubscriptionBadgeProps {
   productId?: string | null;
@@ -60,6 +61,9 @@ export default function SubscriptionBadge({
   const [error, setError] = useState<string | null>(null);
   const [errorKind, setErrorKind] = useState<"generic" | "insufficient_balance">("generic");
   const [subscribing, setSubscribing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   const { activeAgentId, sessionMode, activeIdentityType } = useDashboardSessionStore(useShallow((state) => ({
     activeAgentId: state.activeAgentId,
@@ -103,10 +107,22 @@ export default function SubscriptionBadge({
   const alreadySubscribed = subscription?.status === "active";
   const isInsufficientBalance = errorKind === "insufficient_balance";
 
+  const closeWithMotion = useCallback((afterClose?: () => void) => {
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-motion-item]",
+      onComplete: () => {
+        setShowModal(false);
+        afterClose?.();
+      },
+    });
+  }, []);
+
   const handleOpenWallet = () => {
-    setShowModal(false);
-    setSidebarTab("wallet");
-    router.push("/chats/wallet");
+    closeWithMotion(() => {
+      setSidebarTab("wallet");
+      router.push("/chats/wallet");
+    });
   };
 
   // Eagerly load product data on mount so the badge can show subscriber count
@@ -146,6 +162,21 @@ export default function SubscriptionBadge({
       cancelled = true;
     };
   }, [activeAgentId, isAgentMode, ensureSubscriptions, isAuthedReady]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-motion-item]",
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWithMotion();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      cleanupAnime(animationRef.current);
+    };
+  }, [closeWithMotion, showModal]);
 
   if (!productId) return null;
 
@@ -205,7 +236,7 @@ export default function SubscriptionBadge({
         startPrimaryNavigation("messages", path);
         router.push(path);
       }
-      setShowModal(false);
+      closeWithMotion();
     } catch (err) {
       const raw = err instanceof Error ? err.message : "";
       setErrorKind(INSUFFICIENT_BALANCE_RE.test(raw) ? "insufficient_balance" : "generic");
@@ -267,14 +298,18 @@ export default function SubscriptionBadge({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           onClick={(event) => {
             event.stopPropagation();
-            setShowModal(false);
+            closeWithMotion();
           }}
+          ref={overlayRef}
         >
           <div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
             className="w-full max-w-sm rounded-xl border border-glass-border bg-deep-black p-6 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2 className="mb-2 flex items-center gap-2 text-lg font-semibold text-yellow-500">
+            <h2 data-motion-item className="mb-2 flex items-center gap-2 text-lg font-semibold text-yellow-500">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
@@ -288,7 +323,7 @@ export default function SubscriptionBadge({
                 textClassName="text-center text-sm text-text-secondary animate-pulse"
               />
             ) : productData ? (
-              <div className="space-y-4">
+              <div data-motion-item className="space-y-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h3 className="text-base font-medium text-text-primary">{productData.name}</h3>
@@ -365,7 +400,7 @@ export default function SubscriptionBadge({
 
                 <div className="flex justify-end gap-2 pt-2">
                   <button
-                    onClick={() => setShowModal(false)}
+                    onClick={() => closeWithMotion()}
                     className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
                   >
                     {t.close}
@@ -392,7 +427,7 @@ export default function SubscriptionBadge({
                 </div>
                 <div className="flex justify-end">
                   <button
-                    onClick={() => setShowModal(false)}
+                    onClick={() => closeWithMotion()}
                     className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
                   >
                     {t.close}

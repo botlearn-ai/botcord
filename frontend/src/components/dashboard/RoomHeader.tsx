@@ -24,6 +24,7 @@ import RoomSettingsModal from "./RoomSettingsModal";
 import DMSettingsModal from "./DMSettingsModal";
 import AddRoomMemberModal from "./AddRoomMemberModal";
 import { dmPeerId, resolveDmDisplayName } from "./dmRoom";
+import { animateIfMotion, cleanupAnime } from "@/lib/anime";
 
 const OPEN_ROOM_ADD_MEMBER_EVENT = "botcord:open-room-add-member";
 const OPEN_ROOM_SETTINGS_EVENT = "botcord:open-room-settings";
@@ -38,6 +39,10 @@ export default function RoomHeader() {
   const [addMemberLoading, setAddMemberLoading] = useState(false);
   const [humanJoining, setHumanJoining] = useState(false);
   const rulePopoverRef = useRef<HTMLDivElement>(null);
+  const rulePopoverPanelRef = useRef<HTMLDivElement>(null);
+  const rulePopoverBackdropRef = useRef<HTMLButtonElement>(null);
+  const rulePopoverAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const rulePopoverBackdropAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
   const locale = useLanguage();
   const router = useRouter();
   const t = roomList[locale];
@@ -118,6 +123,29 @@ export default function RoomHeader() {
       : `you are ${myRole}`
     : null;
 
+  const closeRulePopover = useCallback(() => {
+    cleanupAnime(rulePopoverAnimationRef.current);
+    cleanupAnime(rulePopoverBackdropAnimationRef.current);
+    if (rulePopoverBackdropRef.current) {
+      rulePopoverBackdropAnimationRef.current = animateIfMotion(rulePopoverBackdropRef.current, {
+        opacity: [1, 0],
+        duration: 120,
+        ease: "linear",
+      });
+    }
+    if (rulePopoverPanelRef.current) {
+      rulePopoverAnimationRef.current = animateIfMotion(rulePopoverPanelRef.current, {
+        opacity: [1, 0],
+        scale: [1, 0.98],
+        translateY: [0, 6],
+        duration: 140,
+        ease: "in(2)",
+        onComplete: () => setShowRulePopover(false),
+      });
+    }
+    if (!rulePopoverAnimationRef.current) setShowRulePopover(false);
+  }, []);
+
   useEffect(() => {
     if (!canActAsCurrentViewer || !room?.room_id || isJoined || !isInviteOnly) return;
     setJoinRequestStatus("idle");
@@ -135,14 +163,41 @@ export default function RoomHeader() {
   // Close rule popover on outside click
   useEffect(() => {
     if (!showRulePopover) return;
+    cleanupAnime(rulePopoverAnimationRef.current);
+    cleanupAnime(rulePopoverBackdropAnimationRef.current);
+    if (rulePopoverBackdropRef.current) {
+      rulePopoverBackdropAnimationRef.current = animateIfMotion(rulePopoverBackdropRef.current, {
+        opacity: [0, 1],
+        duration: 150,
+        ease: "linear",
+      });
+    }
+    if (rulePopoverPanelRef.current) {
+      rulePopoverAnimationRef.current = animateIfMotion(rulePopoverPanelRef.current, {
+        opacity: [0, 1],
+        scale: [0.97, 1],
+        translateY: [8, 0],
+        duration: 210,
+        ease: "out(3)",
+      });
+    }
     const onClick = (e: MouseEvent) => {
       if (rulePopoverRef.current && !rulePopoverRef.current.contains(e.target as Node)) {
-        setShowRulePopover(false);
+        closeRulePopover();
       }
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeRulePopover();
+    };
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [showRulePopover]);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKeyDown);
+      cleanupAnime(rulePopoverAnimationRef.current);
+      cleanupAnime(rulePopoverBackdropAnimationRef.current);
+    };
+  }, [closeRulePopover, showRulePopover]);
 
   useLayoutEffect(() => {
     const el = ruleRef.current;
@@ -321,7 +376,10 @@ export default function RoomHeader() {
             {hasInfo && (
               <div className="relative" ref={rulePopoverRef}>
                 <button
-                  onClick={() => setShowRulePopover((v) => !v)}
+                  onClick={() => {
+                    if (showRulePopover) closeRulePopover();
+                    else setShowRulePopover(true);
+                  }}
                   className={`${iconBtn} text-neon-cyan`}
                   title={t.viewRoomInfo}
                   aria-label={t.viewRoomInfo}
@@ -331,18 +389,22 @@ export default function RoomHeader() {
                 {showRulePopover && (
                   <>
                     <button
+                      ref={rulePopoverBackdropRef}
                       type="button"
                       aria-label="Close"
-                      onClick={() => setShowRulePopover(false)}
+                      onClick={closeRulePopover}
                       className="fixed inset-0 z-40 hidden bg-black/70 backdrop-blur-sm max-md:block"
                     />
                     <div
+                      ref={rulePopoverPanelRef}
+                      role="dialog"
+                      aria-modal="true"
                       className="absolute left-0 top-full z-50 mt-1 w-[min(32rem,calc(100vw-2rem))] space-y-3 rounded-lg border border-glass-border bg-deep-black p-3 shadow-xl
                         max-md:fixed max-md:inset-x-4 max-md:top-1/2 max-md:mt-0 max-md:w-auto max-md:max-h-[75vh] max-md:-translate-y-1/2 max-md:space-y-4 max-md:overflow-y-auto max-md:rounded-2xl max-md:border-glass-border max-md:bg-deep-black-light max-md:p-5 max-md:pt-12 max-md:shadow-2xl"
                     >
                       <button
                         type="button"
-                        onClick={() => setShowRulePopover(false)}
+                        onClick={closeRulePopover}
                         className="absolute right-3 top-3 hidden h-7 w-7 items-center justify-center rounded text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
                         aria-label="Close"
                       >

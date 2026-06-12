@@ -1,10 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, FileText, CheckCircle2, Code2, Brain, HelpCircle, Wrench, ChevronDown, ChevronRight, Bot, AlertTriangle, ListTodo, Info } from "lucide-react";
 import type { StreamBlockEntry } from "@/lib/types";
+import { animateFadeUp, animateIfMotion, animeStagger, cleanupAnime, createTimelineIfMotion } from "@/lib/anime";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import ToolResultContent from "./ToolResultContent";
+
+type MotionAnimation = ReturnType<typeof animateIfMotion>;
+type MotionTimeline = ReturnType<typeof createTimelineIfMotion>;
 
 /** Icon for a tool_call based on tool name heuristics. */
 function ToolCallIcon({ name }: { name: string }) {
@@ -844,6 +848,13 @@ export default function StreamBlocksView({
   onScrollRequest?: () => void;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
+  const [renderExpandedContent, setRenderExpandedContent] = useState(defaultExpanded ?? false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const rowAnimationRef = useRef<MotionAnimation>(null);
+  const panelAnimationRef = useRef<MotionTimeline>(null);
+  const composingAnimationRef = useRef<MotionAnimation>(null);
+  const previousRowKeysRef = useRef<Set<string>>(new Set());
+  const previousComposingTextRef = useRef("");
 
   const isAssistant = (k: string) => k === "assistant" || k === "assistant_text";
   const executionBlocks = blocks.filter((b) => !isAssistant(b.block.kind));
@@ -857,6 +868,8 @@ export default function StreamBlocksView({
   const normalized = displayBlocks.map((b) => normalizeBlock(b.block, { toolNameById }).kind);
   const toolCallCount = normalized.filter((k) => k === "tool_call").length;
   const reasoningCount = normalized.filter((k) => k === "reasoning").length;
+  const displayBlockKeys = displayBlocks.map((block) => `${block.trace_id}-${block.seq}`);
+  const displayBlockKeySignature = displayBlockKeys.join("|");
 
   /** Compose the streamed prose by walking every block — covers mixed
    *  Claude-code blocks where the daemon labelled the block as `tool_use`
@@ -905,6 +918,143 @@ export default function StreamBlocksView({
     onScrollRequest?.();
   }, [blocks.length, onScrollRequest]);
 
+  useEffect(() => () => {
+    cleanupAnime(rowAnimationRef.current);
+    cleanupAnime(panelAnimationRef.current);
+    cleanupAnime(composingAnimationRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (expanded) {
+      cleanupAnime(panelAnimationRef.current);
+      panelAnimationRef.current = null;
+      setRenderExpandedContent(true);
+      return;
+    }
+
+    const content = contentRef.current;
+    cleanupAnime(panelAnimationRef.current);
+
+    if (!content) {
+      setRenderExpandedContent(false);
+      return;
+    }
+
+    const animation = createTimelineIfMotion({
+      onComplete: () => {
+        panelAnimationRef.current = null;
+        setRenderExpandedContent(false);
+      },
+    });
+    panelAnimationRef.current = animation;
+
+    if (!animation) {
+      setRenderExpandedContent(false);
+      return;
+    }
+
+    animation.add(content, {
+      opacity: 0,
+      translateY: -4,
+      duration: 120,
+      ease: "in(2)",
+    }, 0);
+  }, [expanded]);
+
+  useEffect(() => {
+    if (!renderExpandedContent) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const content = contentRef.current;
+      if (!content) return;
+
+      cleanupAnime(panelAnimationRef.current);
+      panelAnimationRef.current = createTimelineIfMotion();
+      if (panelAnimationRef.current) {
+        panelAnimationRef.current.add(content, {
+          opacity: [0, 1],
+          translateY: [6, 0],
+          duration: 180,
+          ease: "out(3)",
+        }, 0);
+      } else {
+        content.style.opacity = "1";
+        content.style.transform = "translateY(0)";
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [renderExpandedContent]);
+
+  useEffect(() => {
+    if (!renderExpandedContent) {
+      previousRowKeysRef.current = new Set(displayBlockKeys);
+      previousComposingTextRef.current = composingText;
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const content = contentRef.current;
+      if (!content) return;
+
+      const previousKeys = previousRowKeysRef.current;
+      const rows = Array.from(content.querySelectorAll<HTMLElement>("[data-stream-block-row]"));
+      const enteringRows = rows.filter((row) => {
+        const rowKey = row.dataset.streamBlockKey;
+        return !!rowKey && !previousKeys.has(rowKey);
+      });
+
+      cleanupAnime(rowAnimationRef.current);
+      if (enteringRows.length > 0) {
+        enteringRows.forEach((row) => {
+          row.style.opacity = "0";
+          row.style.transform = "translateY(6px)";
+        });
+        const rowAnimation = animateIfMotion(enteringRows, {
+          opacity: [0, 1],
+          translateY: [6, 0],
+          duration: 210,
+          delay: animeStagger(24),
+          ease: "out(3)",
+        });
+        rowAnimationRef.current = rowAnimation;
+        if (!rowAnimation) {
+          enteringRows.forEach((row) => {
+            row.style.opacity = "1";
+            row.style.transform = "translateY(0)";
+          });
+        }
+      }
+
+      previousRowKeysRef.current = new Set(displayBlockKeys);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [renderExpandedContent, displayBlockKeySignature]);
+
+  useEffect(() => {
+    const hadComposingText = previousComposingTextRef.current.length > 0;
+    if (!renderExpandedContent || !composingText || hadComposingText) {
+      previousComposingTextRef.current = composingText;
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const composing = contentRef.current?.querySelector<HTMLElement>("[data-stream-composing]");
+      if (!composing) return;
+
+      cleanupAnime(composingAnimationRef.current);
+      composingAnimationRef.current = animateFadeUp(composing, 20);
+      if (!composingAnimationRef.current) {
+        composing.style.opacity = "1";
+        composing.style.transform = "translateY(0)";
+      }
+      previousComposingTextRef.current = composingText;
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [renderExpandedContent, composingText]);
+
   if (blocks.length === 0 || displayBlocks.length === 0) return null;
 
   const summaryParts: string[] = [];
@@ -921,25 +1071,32 @@ export default function StreamBlocksView({
               onClick={() => setExpanded(!expanded)}
               className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
             >
-              {expanded ? (
-                <ChevronDown className="w-3 h-3" />
-              ) : (
-                <ChevronRight className="w-3 h-3" />
-              )}
+              <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`} />
               <Wrench className="w-3 h-3" />
               <span>{summaryParts.join(", ")}</span>
             </button>
-            {expanded && (
-              <div className="border-t border-zinc-800/60 px-3 py-1 divide-y divide-zinc-800/40">
-                {displayBlocks.map((block) => (
-                  <StreamBlockItem
-                    key={`${block.trace_id}-${block.seq}`}
-                    block={block}
-                    toolNameById={toolNameById}
-                  />
-                ))}
+            {renderExpandedContent && (
+              <div
+                ref={contentRef}
+                className="border-t border-zinc-800/60 px-3 py-1 divide-y divide-zinc-800/40 will-change-transform"
+              >
+                {displayBlocks.map((block) => {
+                  const blockKey = `${block.trace_id}-${block.seq}`;
+                  return (
+                    <div
+                      key={blockKey}
+                      data-stream-block-row
+                      data-stream-block-key={blockKey}
+                    >
+                      <StreamBlockItem
+                        block={block}
+                        toolNameById={toolNameById}
+                      />
+                    </div>
+                  );
+                })}
                 {composingText && (
-                  <div className="py-2">
+                  <div data-stream-composing className="py-2 will-change-transform">
                     <div className="mb-1 flex items-center gap-1.5">
                       <Bot className="w-3 h-3 text-zinc-400" />
                       <span className="text-xs text-zinc-400">Composing...</span>

@@ -37,6 +37,7 @@ import {
   type WechatLoginStatus,
 } from "@/store/useAgentGatewayStore";
 import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 interface Props {
   agentId: string;
@@ -946,16 +947,46 @@ function TelegramAddForm({
 }
 
 function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+
+  const closeWithMotion = useCallback(() => {
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-motion-item]",
+      onComplete: onClose,
+    });
+  }, [onClose]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-motion-item]",
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWithMotion();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      cleanupAnime(animationRef.current);
+    };
+  }, [closeWithMotion]);
+
   return (
     <div
+      ref={overlayRef}
       className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={closeWithMotion}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
         className="w-full max-w-md rounded-2xl border border-glass-border bg-deep-black p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-start justify-between gap-3">
+        <div data-motion-item className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-text-primary">
               从 BotFather 获取 Bot token
@@ -966,7 +997,7 @@ function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeWithMotion}
             aria-label="关闭"
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan"
           >
@@ -974,35 +1005,35 @@ function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <ol className="space-y-3 text-xs text-text-secondary">
-          <li className="flex gap-3">
+          <li data-motion-item className="flex gap-3">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
               1
             </span>
             <span>打开 Telegram，搜索并进入官方账号 @BotFather。</span>
           </li>
-          <li className="flex gap-3">
+          <li data-motion-item className="flex gap-3">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
               2
             </span>
             <span>发送 /newbot，按提示填写 bot 显示名称和以 bot 结尾的用户名。</span>
           </li>
-          <li className="flex gap-3">
+          <li data-motion-item className="flex gap-3">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
               3
             </span>
             <span>BotFather 会返回一串 HTTP API token，格式通常类似 123456:ABC-...。</span>
           </li>
-          <li className="flex gap-3">
+          <li data-motion-item className="flex gap-3">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
               4
             </span>
             <span>复制 token，粘贴到 Bot token 输入框；不要把 token 发到群聊或提交到代码仓库。</span>
           </li>
         </ol>
-        <div className="mt-5 flex justify-end">
+        <div data-motion-item className="mt-5 flex justify-end">
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeWithMotion}
             className="rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20"
           >
             知道了
@@ -2633,30 +2664,60 @@ function DeleteConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+
+  const closeWithMotion = useCallback(() => {
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-motion-item]",
+      onComplete: onCancel,
+    });
+  }, [onCancel]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-motion-item]",
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWithMotion();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      cleanupAnime(animationRef.current);
+    };
+  }, [closeWithMotion]);
+
   return (
     <div
+      ref={overlayRef}
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4"
-      onClick={onCancel}
+      onClick={closeWithMotion}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
         className="w-full max-w-sm rounded-2xl border border-glass-border bg-deep-black p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-2 text-base font-semibold text-text-primary">
+        <h3 data-motion-item className="mb-2 text-base font-semibold text-text-primary">
           删除接入
         </h3>
-        <p className="text-xs text-text-secondary">
+        <p data-motion-item className="text-xs text-text-secondary">
           即将删除 <span className="text-text-primary">{gateway.label || providerName(gateway.provider)}</span>。
         </p>
-        <ul className="mt-3 list-disc space-y-1 pl-5 text-[11px] text-text-secondary">
+        <ul data-motion-item className="mt-3 list-disc space-y-1 pl-5 text-[11px] text-text-secondary">
           <li>仅移除第三方接入。</li>
           <li>不会删除 BotCord agent。</li>
           <li>不会删除 agent workspace、memory 或 runtime 配置。</li>
         </ul>
-        <div className="mt-5 flex justify-end gap-2">
+        <div data-motion-item className="mt-5 flex justify-end gap-2">
           <button
             type="button"
-            onClick={onCancel}
+            onClick={closeWithMotion}
             disabled={busy}
             className="rounded-md border border-glass-border bg-glass-bg/60 px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
           >

@@ -7,8 +7,9 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { userApi } from "@/lib/api";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 import { useLanguage } from "@/lib/i18n";
 import { credentialResetDialog } from "@/lib/i18n/translations/dashboard";
 import { buildResetCredentialPrompt, getHubApiBaseUrl } from "@/lib/onboarding";
@@ -30,6 +31,13 @@ export default function CredentialResetDialog({
   const [resetCode, setResetCode] = useState("");
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const copyButtonRef = useRef<HTMLButtonElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const feedbackAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -72,11 +80,41 @@ export default function CredentialResetDialog({
     }
   }
 
+  const closeWithMotion = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
+  useEffect(() => {
+    const target = copied ? copyButtonRef.current : error ? errorRef.current : null;
+    if (!target) return;
+    cleanupAnime(feedbackAnimationRef.current);
+    feedbackAnimationRef.current = animatePop(target);
+    return () => cleanupAnime(feedbackAnimationRef.current);
+  }, [copied, error]);
+
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+    <div ref={overlayRef} className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`} onMouseDown={(event) => { if (event.target === event.currentTarget) closeWithMotion(); }}>
+      <div ref={panelRef} className="relative w-full max-w-xl rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
         <button
-          onClick={onClose}
+          onClick={closeWithMotion}
           className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
         >
           <X className="h-5 w-5" />
@@ -96,6 +134,7 @@ export default function CredentialResetDialog({
               {t.prompt}
             </p>
             <button
+              ref={copyButtonRef}
               onClick={handleCopyPrompt}
               disabled={!promptText}
               className="flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-semibold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-60"
@@ -135,14 +174,14 @@ export default function CredentialResetDialog({
         </div>
 
         {error ? (
-          <p className="mt-4 rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
+          <p ref={errorRef} className="mt-4 rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
             {error}
           </p>
         ) : null}
 
         <div className="mt-6 flex items-center justify-center">
           <button
-            onClick={onClose}
+            onClick={closeWithMotion}
             className="min-h-11 rounded-xl border border-neon-cyan/50 bg-neon-cyan px-5 py-3 text-sm font-bold text-black transition-all hover:bg-neon-cyan/90"
           >
             {t.close}

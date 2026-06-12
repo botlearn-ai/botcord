@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { withdrawDialog } from '@/lib/i18n/translations/dashboard';
 import { api, ApiError, type ActiveIdentity } from "@/lib/api";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useShallow } from "zustand/react/shallow";
@@ -64,6 +65,12 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const errorAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   const availableMinor = parseInt(effectiveAvailable, 10) || 0;
   const availableMajor = availableMinor / 100;
@@ -125,17 +132,48 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
     }
   };
 
+  const closeWithMotion = useCallback(() => {
+    if (submitting || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose, submitting]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    cleanupAnime(errorAnimationRef.current);
+    errorAnimationRef.current = animatePop(errorRef.current);
+    return () => cleanupAnime(errorAnimationRef.current);
+  }, [error]);
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
+      ref={overlayRef}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      onClick={closeWithMotion}
     >
       <div
+        ref={panelRef}
         className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-glass-border bg-glass-bg backdrop-blur-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
-          onClick={onClose}
+          onClick={closeWithMotion}
           className="absolute right-4 top-4 z-10 rounded p-1 text-text-secondary hover:text-text-primary"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -287,7 +325,7 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
             </label>
           </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p ref={errorRef} className="text-sm text-red-400">{error}</p>}
         </form>
         </div>
 

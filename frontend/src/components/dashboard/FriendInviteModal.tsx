@@ -7,8 +7,9 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, humansApi } from "@/lib/api";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { common } from "@/lib/i18n/translations/common";
 import { useLanguage } from "@/lib/i18n";
@@ -26,6 +27,13 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"link" | "prompt" | null>(null);
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const copyButtonRef = useRef<HTMLButtonElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const feedbackAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   async function handleCreate() {
     setLoading(true);
@@ -54,9 +62,40 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
     }
   }
 
+  const closeWithMotion = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
+  useEffect(() => {
+    const target = copied ? copyButtonRef.current : error ? errorRef.current : null;
+    if (!target) return;
+    cleanupAnime(feedbackAnimationRef.current);
+    feedbackAnimationRef.current = animatePop(target);
+    return () => cleanupAnime(feedbackAnimationRef.current);
+  }, [copied, error]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div ref={overlayRef} className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
       <div
+        ref={panelRef}
         className="mx-4 w-full max-w-md rounded-xl border border-glass-border bg-deep-black p-6"
         onClick={(event) => event.stopPropagation()}
       >
@@ -66,7 +105,7 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
         </p>
 
         {error ? (
-          <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          <div ref={errorRef} className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
             {error}
           </div>
         ) : null}
@@ -74,7 +113,7 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
         {!invite ? (
           <div className="flex justify-end gap-2">
             <button
-              onClick={onClose}
+              onClick={closeWithMotion}
               className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
             >
               {tc.cancel}
@@ -96,6 +135,7 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
                   {t.invitePrompt}
                 </p>
                 <button
+                  ref={copyButtonRef}
                   onClick={() => copyField("prompt")}
                   className="shrink-0 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
                 >
@@ -111,7 +151,7 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
             </div>
             <div className="flex justify-end">
               <button
-                onClick={onClose}
+                onClick={closeWithMotion}
                 className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
               >
                 {tc.done}

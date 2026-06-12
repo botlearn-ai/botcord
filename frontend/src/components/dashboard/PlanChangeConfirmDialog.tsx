@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import { useLanguage } from "@/lib/i18n";
 import { roomAdvancedSettings } from "@/lib/i18n/translations/dashboard";
 
@@ -23,6 +25,10 @@ export default function PlanChangeConfirmDialog({
 }: PlanChangeConfirmDialogProps) {
   const locale = useLanguage();
   const ta = roomAdvancedSettings[locale];
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   const fromTo = ta.planChangeFromTo
     .replace("{from}", fromLabel)
@@ -32,18 +38,42 @@ export default function PlanChangeConfirmDialog({
     String(affectedCount),
   );
 
+  const closeWithMotion = useCallback(() => {
+    if (loading || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, loading, onClose]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      ref={overlayRef}
+      className={`fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      onClick={closeWithMotion}
     >
       <div
+        ref={panelRef}
         className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={closeWithMotion}
           disabled={loading}
           className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
           aria-label={ta.planChangeCancel}
@@ -65,7 +95,7 @@ export default function PlanChangeConfirmDialog({
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeWithMotion}
             disabled={loading}
             className="rounded-lg border border-glass-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-glass-bg disabled:opacity-50"
           >

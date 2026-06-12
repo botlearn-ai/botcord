@@ -7,8 +7,9 @@
  * [PROTOCOL]: update header on changes
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Cpu, X } from "lucide-react";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import { useDaemonStore } from "@/store/useDaemonStore";
 import { useLanguage } from "@/lib/i18n";
 import { DeviceConnectPanel } from "./HomePanel";
@@ -23,6 +24,10 @@ export default function AddDeviceDialog({ onClose }: AddDeviceDialogProps) {
   const loading = useDaemonStore((s) => s.loading);
   const refresh = useDaemonStore((s) => s.refresh);
   const existingIdsRef = useRef<Set<string> | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const [closing, setClosing] = useState(false);
 
   if (existingIdsRef.current === null) {
     existingIdsRef.current = new Set(daemons.map((d) => d.id));
@@ -39,22 +44,38 @@ export default function AddDeviceDialog({ onClose }: AddDeviceDialogProps) {
     return () => window.clearInterval(id);
   }, [refresh]);
 
+  const closeWithMotion = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") closeWithMotion();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [closeWithMotion]);
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      ref={overlayRef}
+      className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) closeWithMotion();
       }}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-device-title"
@@ -70,7 +91,7 @@ export default function AddDeviceDialog({ onClose }: AddDeviceDialogProps) {
           </h3>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeWithMotion}
             aria-label={locale === "zh" ? "关闭" : "Close"}
             className="shrink-0 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
           >

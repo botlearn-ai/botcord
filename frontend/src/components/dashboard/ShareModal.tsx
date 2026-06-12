@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { shareModal } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
@@ -15,6 +15,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import type { CreateShareResponse, InvitePreviewResponse, PublicRoomMember } from "@/lib/types";
 import { Globe2, Link2, Loader2, Lock, Sparkles, X } from "lucide-react";
 import { initialsFromName, themeFromRoomName } from "./roomVisualTheme";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 interface ShareModalProps {
   roomId: string;
@@ -36,6 +37,37 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
   const [memberTotal, setMemberTotal] = useState(0);
   const [membersLoading, setMembersLoading] = useState(true);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const motionRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const closingRef = useRef(false);
+
+  const closeWithAnimation = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    cleanupAnime(motionRef.current);
+    motionRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      direction: "center",
+      contentSelector: "[data-overlay-section]",
+      onComplete: onClose,
+    });
+  }, [onClose]);
+
+  useEffect(() => {
+    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      direction: "center",
+      contentSelector: "[data-overlay-section]",
+    });
+    return () => cleanupAnime(motionRef.current);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWithAnimation();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [closeWithAnimation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,14 +157,22 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm" onClick={onClose}>
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+      onClick={closeWithAnimation}
+    >
       <div
+        ref={panelRef}
         className="relative w-full max-w-2xl overflow-hidden rounded-[28px] shadow-[0_32px_120px_rgba(0,0,0,0.45)]"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-modal-title"
       >
         <div className="relative flex max-h-[90vh] flex-col overflow-hidden">
           <button
-            onClick={onClose}
+            onClick={closeWithAnimation}
             className="absolute right-3 top-3 z-10 rounded-full bg-black/25 p-2 text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
             aria-label={common[locale].close}
             title={common[locale].close}
@@ -147,7 +187,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
               </div>
             ) : null}
 
-            <section className="w-full">
+            <section className="w-full" data-overlay-section>
               <div
                 className="relative h-56 overflow-hidden rounded-[28px] border border-white/10"
                 style={{ backgroundImage: roomVisualTheme.patternUrl, backgroundRepeat: "repeat" }}
@@ -172,7 +212,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                         {roomInitials}
                       </div>
                       <div className="min-w-0">
-                        <h2 className="truncate text-[34px] font-semibold leading-none text-white">{roomName}</h2>
+                        <h2 id="share-modal-title" className="truncate text-[34px] font-semibold leading-none text-white">{roomName}</h2>
                         <p className="mt-3 text-sm leading-6 text-white/72">{t.createShareAssets}</p>
                       </div>
                     </div>
@@ -208,7 +248,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                 </div>
               </div>
 
-              <div className="space-y-4 px-1 pt-5">
+              <div className="space-y-4 px-1 pt-5" data-overlay-section>
                 {!canInvite ? (
                   <div className="space-y-3">
                     <button

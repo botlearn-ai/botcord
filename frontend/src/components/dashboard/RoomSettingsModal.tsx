@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Loader2, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import CopyableId from "@/components/ui/CopyableId";
@@ -23,6 +23,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import DashboardSelect from "./DashboardSelect";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 interface RoomSettingsModalProps {
   roomId: string;
@@ -251,6 +252,10 @@ export default function RoomSettingsModal({
   const [dissolveConfirmText, setDissolveConfirmText] = useState("");
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const motionRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const closingRef = useRef(false);
   const groupInitial = name.trim().charAt(0).toUpperCase() || "G";
   const persistedRoomName = initialName.trim();
   const dissolveConfirmArmed = dissolveConfirmText.trim() === persistedRoomName;
@@ -273,6 +278,33 @@ export default function RoomSettingsModal({
     [roomMemberIds, sessionOwnedAgents],
   );
   const selectedPolicyAgent = roomOwnedAgents.find((agent) => agent.agent_id === policyAgentId) ?? null;
+
+  const closeWithAnimation = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    cleanupAnime(motionRef.current);
+    motionRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      direction: "right",
+      contentSelector: "[data-overlay-section]",
+      onComplete: onClose,
+    });
+  }, [onClose]);
+
+  useEffect(() => {
+    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      direction: "right",
+      contentSelector: "[data-overlay-section]",
+    });
+    return () => cleanupAnime(motionRef.current);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWithAnimation();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [closeWithAnimation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -645,16 +677,20 @@ export default function RoomSettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose}>
+    <div ref={overlayRef} className="fixed inset-0 z-50 bg-black/60" onClick={closeWithAnimation}>
       <div
+        ref={panelRef}
         className="ml-auto flex h-full w-full max-w-[520px] flex-col overflow-hidden border-l border-glass-border bg-deep-black shadow-2xl"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="room-settings-title"
       >
         <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
-          <h2 className="text-xl font-semibold text-text-primary">{t.title}</h2>
+          <h2 id="room-settings-title" className="text-xl font-semibold text-text-primary">{t.title}</h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeWithAnimation}
             className="rounded-full p-2 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
             aria-label={t.cancel}
           >
@@ -670,7 +706,7 @@ export default function RoomSettingsModal({
           )}
 
           <div className="divide-y divide-glass-border/80">
-            <section className="py-5">
+            <section className="py-5" data-overlay-section>
               <div className="flex items-start gap-4">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-neon-cyan/30 bg-neon-cyan/10 text-2xl font-semibold text-neon-cyan">
                   {groupInitial}
@@ -751,7 +787,7 @@ export default function RoomSettingsModal({
               </div>
             </section>
 
-            <section className="py-5">
+            <section className="py-5" data-overlay-section>
               <div className="flex items-center justify-between py-1">
                 <div>
                   <p className="text-lg font-semibold text-text-primary">{t.membersSection}</p>
@@ -929,7 +965,7 @@ export default function RoomSettingsModal({
               </section>
             ) : null}
 
-            <section className="py-5">
+            <section className="py-5" data-overlay-section>
               <button
                 type="button"
                 onClick={() => setAdvancedOpen((v) => !v)}
@@ -1020,7 +1056,7 @@ export default function RoomSettingsModal({
               )}
             </section>
 
-            <section className="py-5">
+            <section className="py-5" data-overlay-section>
               <button
                 type="button"
                 onClick={() => setSubscriptionOpen((v) => !v)}
@@ -1152,7 +1188,7 @@ export default function RoomSettingsModal({
               )}
             </section>
 
-            {(viewerRole || isOwner) && <section className="py-5">
+            {(viewerRole || isOwner) && <section className="py-5" data-overlay-section>
               <div>
                 <p className="text-lg font-semibold text-text-primary">{t.actionsSection}</p>
               </div>
@@ -1229,7 +1265,7 @@ export default function RoomSettingsModal({
 
         <div className="flex justify-end gap-2 border-t border-glass-border px-6 py-4">
           <button
-            onClick={onClose}
+            onClick={closeWithAnimation}
             disabled={saving}
             className="rounded-xl border border-glass-border px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary disabled:opacity-50"
           >

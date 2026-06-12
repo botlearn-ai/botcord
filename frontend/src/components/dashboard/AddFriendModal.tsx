@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Check, Copy, Loader2, Search } from "lucide-react";
 import { api, humansApi } from "@/lib/api";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { addFriendModal } from "@/lib/i18n/translations/dashboard";
@@ -33,13 +34,41 @@ export default function AddFriendModal({ onClose }: AddFriendModalProps) {
   const t = addFriendModal[locale];
   const tc = common[locale];
   const [tab, setTab] = useState<TabKey>("search");
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+
+  const closeWithMotion = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
-      onClick={onClose}
+      ref={overlayRef}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 ${closing ? "pointer-events-none" : ""}`}
+      onClick={closeWithMotion}
     >
       <div
+        ref={panelRef}
         className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
         onClick={(e) => e.stopPropagation()}
       >
@@ -63,12 +92,12 @@ export default function AddFriendModal({ onClose }: AddFriendModalProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {tab === "search" ? <SearchPane onClose={onClose} /> : <InvitePane />}
+          {tab === "search" ? <SearchPane onClose={closeWithMotion} /> : <InvitePane />}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-glass-border px-6 py-3">
           <button
-            onClick={onClose}
+            onClick={closeWithMotion}
             className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
           >
             {t.close}
@@ -119,6 +148,9 @@ function SearchPane({ onClose }: { onClose: () => void }) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<"idle" | "sent" | "exists" | "pending">("idle");
+  const statusRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const feedbackAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   useEffect(() => {
     const q = query.trim();
@@ -211,6 +243,21 @@ function SearchPane({ onClose }: { onClose: () => void }) {
     }
   }
 
+  useEffect(() => {
+    const target = status === "idle" ? null : statusRef.current;
+    if (!target) return;
+    cleanupAnime(feedbackAnimationRef.current);
+    feedbackAnimationRef.current = animatePop(target);
+    return () => cleanupAnime(feedbackAnimationRef.current);
+  }, [status]);
+
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    cleanupAnime(feedbackAnimationRef.current);
+    feedbackAnimationRef.current = animatePop(errorRef.current);
+    return () => cleanupAnime(feedbackAnimationRef.current);
+  }, [error]);
+
   if (selected) {
     const isContact = contactIds.has(selected.id);
     return (
@@ -239,15 +286,15 @@ function SearchPane({ onClose }: { onClose: () => void }) {
         </div>
 
         {status === "sent" ? (
-          <div className="rounded border border-neon-green/40 bg-neon-green/10 px-3 py-2 text-sm text-neon-green">
+          <div ref={statusRef} className="rounded border border-neon-green/40 bg-neon-green/10 px-3 py-2 text-sm text-neon-green">
             {t.requestSent}
           </div>
         ) : status === "exists" ? (
-          <div className="rounded border border-glass-border px-3 py-2 text-sm text-text-secondary">
+          <div ref={statusRef} className="rounded border border-glass-border px-3 py-2 text-sm text-text-secondary">
             {t.alreadyContact}
           </div>
         ) : status === "pending" ? (
-          <div className="rounded border border-glass-border px-3 py-2 text-sm text-text-secondary">
+          <div ref={statusRef} className="rounded border border-glass-border px-3 py-2 text-sm text-text-secondary">
             {t.alreadyRequested}
           </div>
         ) : isContact ? (
@@ -265,7 +312,7 @@ function SearchPane({ onClose }: { onClose: () => void }) {
               className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
             />
             {error && (
-              <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
                 {error}
               </div>
             )}
@@ -299,7 +346,7 @@ function SearchPane({ onClose }: { onClose: () => void }) {
       </div>
 
       {error && (
-        <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+        <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
           {error}
         </div>
       )}
@@ -354,6 +401,9 @@ function InvitePane() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"link" | "prompt" | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const copyRef = useRef<HTMLButtonElement>(null);
+  const feedbackAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   async function create() {
     setLoading(true);
@@ -379,12 +429,26 @@ function InvitePane() {
     setTimeout(() => setCopied(null), 1500);
   }
 
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    cleanupAnime(feedbackAnimationRef.current);
+    feedbackAnimationRef.current = animatePop(errorRef.current);
+    return () => cleanupAnime(feedbackAnimationRef.current);
+  }, [error]);
+
+  useEffect(() => {
+    if (!copied || !copyRef.current) return;
+    cleanupAnime(feedbackAnimationRef.current);
+    feedbackAnimationRef.current = animatePop(copyRef.current);
+    return () => cleanupAnime(feedbackAnimationRef.current);
+  }, [copied]);
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-text-secondary">{t.inviteDescription}</p>
 
       {error && (
-        <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+        <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
           {error}
         </div>
       )}
@@ -405,6 +469,7 @@ function InvitePane() {
               {t.invitePrompt}
             </span>
             <button
+              ref={copyRef}
               onClick={() => copy("prompt")}
               className="inline-flex items-center gap-1 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-2.5 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
             >

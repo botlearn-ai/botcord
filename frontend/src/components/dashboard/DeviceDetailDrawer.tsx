@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -24,6 +24,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import ForwardModal from "@/components/dashboard/ForwardModal";
 import { downloadApiFile } from "@/lib/api";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import BotAvatar from "./BotAvatar";
 
 /**
@@ -86,6 +87,21 @@ function DeviceDetailDrawer() {
   const [forwardLogs, setForwardLogs] = useState(false);
   /** Nested view — when set, drawer shows that bot's detail instead of device sections. */
   const [viewingBotId, setViewingBotId] = useState<string | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const motionRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const closingRef = useRef(false);
+
+  const closeDrawer = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    cleanupAnime(motionRef.current);
+    motionRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      direction: "right",
+      contentSelector: "[data-overlay-section]",
+      onComplete: () => setSelectedDeviceId(null),
+    });
+  }, [setSelectedDeviceId]);
 
   // Reset local state when the drawer opens against a different device.
   useEffect(() => {
@@ -96,17 +112,27 @@ function DeviceDetailDrawer() {
     setShowLogs(false);
     setForwardLogs(false);
     setViewingBotId(null);
+    closingRef.current = false;
   }, [device?.id]);
 
   // Close on Escape.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelectedDeviceId(null);
+      if (e.key === "Escape") closeDrawer();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, setSelectedDeviceId]);
+  }, [closeDrawer, open]);
+
+  useEffect(() => {
+    if (!open || !device) return;
+    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      direction: "right",
+      contentSelector: "[data-overlay-section]",
+    });
+    return () => cleanupAnime(motionRef.current);
+  }, [device?.id, open]);
 
   if (!open || !device) return null;
 
@@ -169,18 +195,21 @@ function DeviceDetailDrawer() {
     <>
       {/* Backdrop */}
       <div
+        ref={overlayRef}
         className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity"
-        onClick={() => setSelectedDeviceId(null)}
+        onClick={closeDrawer}
         aria-hidden
       />
       {/* Drawer */}
       <aside
+        ref={panelRef}
         className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border bg-deep-black-light shadow-2xl shadow-black/50"
         role="dialog"
+        aria-modal="true"
         aria-label="设备详情"
       >
         {/* Drawer header */}
-        <div className="flex items-center gap-3 border-b border-glass-border px-5 py-4">
+        <div className="flex items-center gap-3 border-b border-glass-border px-5 py-4" data-overlay-section>
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass-bg/60 text-text-secondary">
             <DeviceIcon className="h-5 w-5" />
           </div>
@@ -217,7 +246,7 @@ function DeviceDetailDrawer() {
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
         </button>
         <button
-          onClick={() => setSelectedDeviceId(null)}
+          onClick={closeDrawer}
           title="关闭"
           aria-label="关闭"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
@@ -227,7 +256,7 @@ function DeviceDetailDrawer() {
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4" data-overlay-section>
 
       {viewingBotId ? (
         <BotDetailNested

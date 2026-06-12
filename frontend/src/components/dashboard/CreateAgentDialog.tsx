@@ -7,7 +7,7 @@
  * [PROTOCOL]: update header on changes
  */
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Bot,
@@ -52,6 +52,7 @@ import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
 import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import { DeviceConnectPanel } from "./HomePanel";
 import DashboardSelect from "./DashboardSelect";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 interface CreateAgentDialogProps {
   onClose: () => void;
@@ -329,10 +330,14 @@ export default function CreateAgentDialog({
   const [error, setError] = useState<string | null>(null);
   const [addingDevice, setAddingDevice] = useState(false);
   const [justConnected, setJustConnected] = useState(false);
+  const [closing, setClosing] = useState(false);
   const prevHadOnlineRef = useRef<boolean | null>(null);
   const addDeviceExistingIdsRef = useRef<Set<string>>(new Set());
   const autoFilledNameRef = useRef<string | null>(null);
   const lastRandomIdxRef = useRef<number | undefined>(undefined);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   function handleRandomize(): void {
     const pick = pickRandomAgentIdentity(locale, lastRandomIdxRef.current);
@@ -343,17 +348,35 @@ export default function CreateAgentDialog({
     if (error === t.nameRequired) setError(null);
   }
 
+  const closeWithMotion = useCallback((force = false) => {
+    if ((submitting && !force) || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose, submitting]);
+
   useEffect(() => {
     if (!loaded && !loading) void refresh();
   }, [loaded, loading, refresh]);
 
+  useLayoutEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      onComplete: () => {
+        animationRef.current = null;
+      },
+    });
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !submitting) onClose();
+      if (event.key === "Escape") closeWithMotion();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, submitting]);
+  }, [closeWithMotion]);
 
   // Brief celebratory state when a daemon transitions from offline to online
   // while the user is staring at step 1. Without this, the dialog snaps to
@@ -373,11 +396,11 @@ export default function CreateAgentDialog({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !submitting) onClose();
+      if (event.key === "Escape") closeWithMotion();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, submitting]);
+  }, [closeWithMotion]);
 
   // Brief celebratory state when a daemon transitions from offline to online
   // while the user is staring at step 1. Without this, the dialog snaps to
@@ -688,9 +711,9 @@ export default function CreateAgentDialog({
             ...(selectedRuntimeId === "hermes-agent" && selectedHermesProfile
               ? { hermesProfile: selectedHermesProfile }
               : {}),
-          });
+      });
       await onSuccess(res.agentId);
-      onClose();
+      closeWithMotion(true);
     } catch (err) {
       setError(translateError(err));
     } finally {
@@ -771,12 +794,14 @@ export default function CreateAgentDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      ref={overlayRef}
+      className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !submitting) onClose();
+        if (event.target === event.currentTarget) closeWithMotion();
       }}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-agent-title"
@@ -813,7 +838,7 @@ export default function CreateAgentDialog({
                 </div>
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={() => closeWithMotion()}
                   disabled={submitting}
                   aria-label={t.cancel}
                   className="shrink-0 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
@@ -1093,7 +1118,7 @@ export default function CreateAgentDialog({
                 <div className="flex shrink-0 items-center justify-end gap-3 border-t border-glass-border/40 px-4 py-3 sm:px-5">
                   <button
                     type="button"
-                    onClick={onClose}
+                    onClick={() => closeWithMotion()}
                     disabled={submitting}
                     className="rounded-xl border border-glass-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
                   >

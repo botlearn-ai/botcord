@@ -7,9 +7,10 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PublicRoomMember } from "@/lib/types";
 import { humansApi } from "@/lib/api";
+import { animateIfMotion, animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import { useLanguage } from "@/lib/i18n";
 import { agentBrowser } from "@/lib/i18n/translations/dashboard";
 import { useConfirm } from "@/store/useConfirmStore";
@@ -33,6 +34,8 @@ export default function MemberActionsMenu({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [permOpen, setPermOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
 
   const isOwner = viewerRole === "owner";
   const isOwnerTarget = member.role === "owner";
@@ -44,6 +47,19 @@ export default function MemberActionsMenu({
   // Already surfaced by the outer ✕ — this menu focuses on role + perms;
   // include Remove here too for a single unified surface.
   const canRemove = !isOwnerTarget && (isOwner || (viewerRole === "admin" && !isAdminTarget));
+
+  useEffect(() => {
+    if (!open || !menuRef.current) return;
+    cleanupAnime(menuAnimationRef.current);
+    menuAnimationRef.current = animateIfMotion(menuRef.current, {
+      opacity: [0, 1],
+      translateY: [-4, 0],
+      scale: [0.98, 1],
+      duration: 150,
+      ease: "out(3)",
+    });
+    return () => cleanupAnime(menuAnimationRef.current);
+  }, [open]);
 
   if (!canPromoteDemote && !canEditPerms && !canRemove) return null;
 
@@ -84,7 +100,7 @@ export default function MemberActionsMenu({
         ⋯
       </button>
       {open && (
-        <div className="absolute right-0 z-20 mt-1 min-w-[140px] rounded-md border border-glass-border bg-deep-black-light p-1 shadow-lg">
+        <div ref={menuRef} className="absolute right-0 z-20 mt-1 min-w-[140px] rounded-md border border-glass-border bg-deep-black-light p-1 shadow-lg">
           {canPromoteDemote && (
             <button
               onClick={toggleRole}
@@ -145,6 +161,10 @@ function PermissionsDialog({
   const [canSend, setCanSend] = useState<boolean | null>(member.can_send ?? null);
   const [canInvite, setCanInvite] = useState<boolean | null>(member.can_invite ?? null);
   const [saving, setSaving] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   const save = async () => {
     if (saving) return;
@@ -155,7 +175,7 @@ function PermissionsDialog({
         can_invite: canInvite,
       });
       onSaved();
-      onClose();
+      closeWithMotion();
     } catch (e: any) {
       onError(e?.message || t.permSaveFailed);
     } finally {
@@ -163,12 +183,36 @@ function PermissionsDialog({
     }
   };
 
+  const closeWithMotion = useCallback(() => {
+    if (saving || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose, saving]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-black/60"
-      onClick={onClose}
+      ref={overlayRef}
+      className={`fixed inset-0 z-30 flex items-center justify-center bg-black/60 ${closing ? "pointer-events-none" : ""}`}
+      onClick={closeWithMotion}
     >
       <div
+        ref={panelRef}
         className="w-[320px] rounded-lg border border-glass-border bg-deep-black-light p-4"
         onClick={(e) => e.stopPropagation()}
       >
@@ -179,7 +223,7 @@ function PermissionsDialog({
         <TriToggle label={t.permCanInvite} value={canInvite} onChange={setCanInvite} t={t} />
         <div className="mt-4 flex justify-end gap-2">
           <button
-            onClick={onClose}
+            onClick={closeWithMotion}
             disabled={saving}
             className="rounded border border-glass-border px-3 py-1.5 text-[11px] text-text-secondary hover:bg-glass-bg"
           >

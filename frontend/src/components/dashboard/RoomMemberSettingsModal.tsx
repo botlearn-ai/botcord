@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
@@ -8,6 +8,7 @@ import { useLanguage } from "@/lib/i18n";
 import { roomMemberSettingsModal } from "@/lib/i18n/translations/dashboard";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 interface RoomMemberSettingsModalProps {
   roomId: string;
@@ -44,6 +45,9 @@ export default function RoomMemberSettingsModal({
   const [error, setError] = useState<string | null>(null);
   const [cancellingSubscription, setCancellingSubscription] = useState(false);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   const isOwner = myRole === "owner";
   const isLeaving = leavingRoomId === roomId;
@@ -51,6 +55,28 @@ export default function RoomMemberSettingsModal({
     ? getActiveSubscription(requiredSubscriptionProductId)
     : null;
   const isSubscriptionRoom = Boolean(requiredSubscriptionProductId);
+
+  const closeWithMotion = useCallback((afterClose?: () => void) => {
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: () => {
+        onClose();
+        afterClose?.();
+      },
+    });
+  }, [onClose]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWithMotion();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      cleanupAnime(animationRef.current);
+    };
+  }, [closeWithMotion]);
 
   const handleLeave = async () => {
     if (isOwner) return;
@@ -61,8 +87,7 @@ export default function RoomMemberSettingsModal({
     setError(null);
     try {
       await leaveRoom(roomId);
-      onClose();
-      router.push("/chats/messages");
+      closeWithMotion(() => router.push("/chats/messages"));
     } catch (err) {
       setError(err instanceof Error ? err.message : t.leaveRoomFailed);
       setConfirmingLeave(false);
@@ -75,7 +100,7 @@ export default function RoomMemberSettingsModal({
     setCancellingSubscription(true);
     try {
       await cancelSubscription(activeSubscription.subscription_id);
-      onClose();
+      closeWithMotion();
     } catch (err) {
       setError(err instanceof Error ? err.message : t.cancelSubscriptionFailed);
     } finally {
@@ -84,8 +109,11 @@ export default function RoomMemberSettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+    <div ref={overlayRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={() => closeWithMotion()}>
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
         className="flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
         onClick={(e) => e.stopPropagation()}
       >
@@ -157,7 +185,7 @@ export default function RoomMemberSettingsModal({
             )
           )}
           <button
-            onClick={onClose}
+            onClick={() => closeWithMotion()}
             className="ml-auto rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
           >
             {t.close}

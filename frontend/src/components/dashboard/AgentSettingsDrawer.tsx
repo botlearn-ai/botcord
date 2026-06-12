@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, Bot, Clock, FileText, Loader2, MessageSquare, Plug, RefreshCw, Shield, Sparkles, Trash2, User, UserRound, X } from "lucide-react";
 import { apiFetch, userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -21,6 +21,7 @@ import AgentSchedulesTab from "./AgentSchedulesTab";
 import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
 import BotRuntimeCapabilitiesPanel from "./BotRuntimeCapabilitiesPanel";
 import AgentSkillsTab from "./AgentSkillsTab";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 interface AgentSettingsDrawerProps {
   agentId: string;
@@ -326,6 +327,9 @@ export default function AgentSettingsDrawer({
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesLoaded, setFilesLoaded] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   // --- Profile state ---
   const [nameVal, setNameVal] = useState(displayName);
@@ -424,9 +428,34 @@ export default function AgentSettingsDrawer({
 
   const selectedFile = runtimeFiles.find((file) => file.id === selectedFileId) ?? null;
 
+  const closeWithMotion = useCallback(() => {
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, drawerRef.current, {
+      direction: "right",
+      onComplete: onClose,
+    });
+  }, [onClose]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, drawerRef.current, {
+      direction: "right",
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWithMotion();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      cleanupAnime(animationRef.current);
+    };
+  }, [closeWithMotion]);
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose}>
+    <div ref={overlayRef} className="fixed inset-0 z-50 bg-black/60" onClick={closeWithMotion}>
       <div
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
         className="ml-auto flex h-full w-full max-w-[480px] flex-col overflow-hidden border-l border-glass-border bg-deep-black shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -440,7 +469,7 @@ export default function AgentSettingsDrawer({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeWithMotion}
             className="ml-4 rounded-full p-2 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
           >
             <X className="h-5 w-5" />
@@ -856,7 +885,7 @@ export default function AgentSettingsDrawer({
           onUnbound={async () => {
             await refreshUserProfile();
             onSaved?.();
-            onClose();
+            closeWithMotion();
           }}
         />
       )}

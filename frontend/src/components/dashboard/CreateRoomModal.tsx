@@ -7,9 +7,10 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { humansApi } from "@/lib/api";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
 import { createRoomModal } from "@/lib/i18n/translations/dashboard";
@@ -47,6 +48,12 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const errorAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   const memberGroups = useMemo<DashboardMultiSelectGroup[]>(() => {
     const groups: DashboardMultiSelectGroup[] = [];
@@ -103,7 +110,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
       const room = await humansApi.createRoom(body);
       await Promise.all([refreshOverview(), refreshHumanRooms()]);
       onCreated?.(room);
-      onClose();
+      closeWithMotion();
     } catch (err) {
       // ApiError.message already carries the 400/403 body ("detail" field)
       // via extractErrorMessage in lib/api.ts, so surface it verbatim.
@@ -113,12 +120,43 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
     }
   }
 
+  const closeWithMotion = useCallback(() => {
+    if (saving || closing) return;
+    setClosing(true);
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      onComplete: onClose,
+    });
+  }, [closing, onClose, saving]);
+
+  useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    return () => cleanupAnime(animationRef.current);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeWithMotion();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeWithMotion]);
+
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    cleanupAnime(errorAnimationRef.current);
+    errorAnimationRef.current = animatePop(errorRef.current);
+    return () => cleanupAnime(errorAnimationRef.current);
+  }, [error]);
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
-      onClick={onClose}
+      ref={overlayRef}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 ${closing ? "pointer-events-none" : ""}`}
+      onClick={closeWithMotion}
     >
       <div
+        ref={panelRef}
         className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
         onClick={(e) => e.stopPropagation()}
       >
@@ -187,7 +225,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
           </section>
 
           {error && (
-            <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
               {error}
             </div>
           )}
@@ -195,7 +233,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
 
         <div className="flex justify-end gap-2 border-t border-glass-border px-6 py-3">
           <button
-            onClick={onClose}
+            onClick={closeWithMotion}
             disabled={saving}
             className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-50"
           >

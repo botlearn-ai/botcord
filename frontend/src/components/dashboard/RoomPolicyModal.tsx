@@ -16,7 +16,7 @@
  * [PROTOCOL]: update header on changes
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bell, Loader2, RotateCcw, X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -27,6 +27,7 @@ import {
   type AttentionMode,
   type RoomPolicyEffective,
 } from "@/store/usePolicyStore";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[] = [
   { value: "always", label: "所有消息", hint: "本房间任何新消息都会唤醒 Bot" },
@@ -77,6 +78,9 @@ export default function RoomPolicyModal({
   const [members, setMembers] = useState<PublicRoomMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -150,16 +154,43 @@ export default function RoomPolicyModal({
     [],
   );
 
+  const closeWithMotion = useCallback(() => {
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-motion-item]",
+      onComplete: onClose,
+    });
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      contentSelector: "[data-motion-item]",
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeWithMotion();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      cleanupAnime(animationRef.current);
+    };
+  }, [closeWithMotion, mounted]);
+
   const modal = (
     <div
+      ref={overlayRef}
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur"
-      onClick={onClose}
+      onClick={closeWithMotion}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
         className="max-h-[calc(100vh-48px)] w-full max-w-lg overflow-y-auto rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mb-4 flex items-start justify-between">
+        <div data-motion-item className="mb-4 flex items-start justify-between">
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
               <Bell className="h-4 w-4 text-neon-cyan" />
@@ -172,7 +203,7 @@ export default function RoomPolicyModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeWithMotion}
             className="rounded p-1 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
             aria-label="关闭"
           >
@@ -181,7 +212,7 @@ export default function RoomPolicyModal({
         </div>
 
         {loading && !data ? (
-          <div className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg/40 px-3 py-3 text-sm text-text-secondary">
+          <div data-motion-item className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg/40 px-3 py-3 text-sm text-text-secondary">
             <MobileBotCordLoading
               label="加载中…"
               size="sm"
@@ -190,12 +221,12 @@ export default function RoomPolicyModal({
             />
           </div>
         ) : error && !data ? (
-          <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-3 text-sm text-red-300">
+          <div data-motion-item className="rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-3 text-sm text-red-300">
             加载失败：{error}
           </div>
         ) : data && effective ? (
           isDM ? (
-            <div className="rounded-xl border border-neon-cyan/25 bg-neon-cyan/5 px-4 py-4">
+            <div data-motion-item className="rounded-xl border border-neon-cyan/25 bg-neon-cyan/5 px-4 py-4">
               <div className="text-sm font-medium text-neon-cyan">私聊始终唤醒</div>
               <p className="mt-1 text-xs text-text-secondary">
                 DM 房间当前强制使用所有消息唤醒，不能在房间级静音或覆盖。
@@ -205,7 +236,7 @@ export default function RoomPolicyModal({
             <>
               <EffectiveBadge effective={effective} hasOverride={hasOverride} />
 
-              <div className="mt-4">
+              <div data-motion-item className="mt-4">
                 <div className="mb-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
                   快速静音
                 </div>
@@ -257,7 +288,7 @@ export default function RoomPolicyModal({
                 </div>
               </div>
 
-              <div className="mt-4 rounded-xl border border-glass-border bg-glass-bg/30 p-3">
+              <div data-motion-item className="mt-4 rounded-xl border border-glass-border bg-glass-bg/30 p-3">
                 <button
                   type="button"
                   onClick={() => setExpanded((v) => !v)}
@@ -289,7 +320,7 @@ export default function RoomPolicyModal({
               </div>
 
               {hasOverride ? (
-                <div className="mt-4">
+                <div data-motion-item className="mt-4">
                   <button
                     type="button"
                     onClick={() =>

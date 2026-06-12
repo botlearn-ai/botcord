@@ -5,10 +5,11 @@
  * copy-to-clipboard, and full-screen overlay for large payloads.
  */
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Copy, Check, Maximize2, X } from "lucide-react";
 import MarkdownContent from "@/components/ui/MarkdownContent";
+import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 // ---------------------------------------------------------------------------
 // Content type detection
@@ -142,47 +143,68 @@ function FullScreenOverlay({
   contentType: ContentType;
   onClose: () => void;
 }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+
+  const closeWithMotion = useCallback(() => {
+    cleanupAnime(animationRef.current);
+    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
+      direction: "bottom",
+      onComplete: onClose,
+    });
+  }, [onClose]);
+
   // Close on Escape
   useEffect(() => {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      direction: "bottom",
+    });
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeWithMotion();
     };
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+    return () => {
+      document.removeEventListener("keydown", handler);
+      cleanupAnime(animationRef.current);
+    };
+  }, [closeWithMotion]);
 
   return createPortal(
     <div
+      ref={overlayRef}
       className="fixed inset-0 z-[9999] flex flex-col bg-black/90 backdrop-blur-sm"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) closeWithMotion();
       }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-glass-border bg-zinc-950/80">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-mono text-emerald-400">{title}</span>
-          <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">
-            {contentType.toUpperCase()}
-          </span>
-          <span className="text-xs text-zinc-600">
-            {rawText.length.toLocaleString()} 字符
-          </span>
+      <div ref={panelRef} role="dialog" aria-modal="true" className="flex min-h-0 flex-1 flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-glass-border bg-zinc-950/80">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-mono text-emerald-400">{title}</span>
+            <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">
+              {contentType.toUpperCase()}
+            </span>
+            <span className="text-xs text-zinc-600">
+              {rawText.length.toLocaleString()} 字符
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <CopyButton text={rawText} />
+            <button
+              onClick={closeWithMotion}
+              className="p-1 rounded hover:bg-white/10 transition-colors"
+            >
+              <X className="w-4 h-4 text-zinc-400 hover:text-zinc-200" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <CopyButton text={rawText} />
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-white/10 transition-colors"
-          >
-            <X className="w-4 h-4 text-zinc-400 hover:text-zinc-200" />
-          </button>
-        </div>
-      </div>
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-4xl mx-auto">
-          <ResultRenderer text={rawText} contentType={contentType} fullMode />
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-6">
+          <div className="max-w-4xl mx-auto">
+            <ResultRenderer text={rawText} contentType={contentType} fullMode />
+          </div>
         </div>
       </div>
     </div>,
