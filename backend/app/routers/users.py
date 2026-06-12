@@ -47,6 +47,7 @@ from hub.database import async_session as _default_session_factory, get_db
 from hub.models import (
     Agent,
     AgentSubscription,
+    CloudAgentInstance,
     DaemonAgentCleanup,
     DaemonInstance,
     OpenclawHostInstance,
@@ -416,6 +417,18 @@ async def _unbind_agent_from_user(db: AsyncSession, agent_id: str, user_id: UUID
     agent = result.scalar_one_or_none()
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+    cloud_agent = await db.scalar(
+        select(CloudAgentInstance.id).where(
+            CloudAgentInstance.agent_id == agent_id,
+            CloudAgentInstance.status != "deleted",
+        )
+    )
+    if cloud_agent is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="cloud_agent_requires_cloud_delete",
+        )
 
     await _ensure_agent_unbind_allowed(db, agent_id)
 

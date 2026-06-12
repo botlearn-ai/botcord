@@ -29,6 +29,8 @@ from hub.models import (
     Agent,
     AgentSubscription,
     Base,
+    CloudAgentInstance,
+    CloudDaemonInstance,
     DaemonAgentCleanup,
     DaemonInstance,
     KeyState,
@@ -287,6 +289,77 @@ async def test_unbind_agent_binding(client: AsyncClient, db_session: AsyncSessio
         )
     )
     assert role_result.scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_unbind_agent_rejects_active_cloud_agent(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    seed_user: dict,
+):
+    """Cloud Agents must be deleted through /api/cloud-agents so the
+    cloud_agent_instances row and sandbox quota state stay in sync."""
+    seed_user["agent1"].hosting_kind = "cloud"
+    seed_user["agent1"].daemon_instance_id = "dm_cloud"
+    db_session.add(
+        DaemonInstance(
+            id="dm_cloud",
+            user_id=seed_user["user_id"],
+            label="cloud-codex",
+            kind="cloud",
+            refresh_token_hash="ab" * 32,
+        )
+    )
+    db_session.add(
+        CloudDaemonInstance(
+            id="cloud_dm_test",
+            user_id=seed_user["user_id"],
+            daemon_instance_id="dm_cloud",
+            provider="fake",
+            runtime="codex",
+            status="paused",
+            max_agents=5,
+            active_agent_count=1,
+        )
+    )
+    db_session.add(
+        CloudAgentInstance(
+            id="cloud_ag_test",
+            user_id=seed_user["user_id"],
+            agent_id="ag_agent001",
+            cloud_daemon_instance_id="cloud_dm_test",
+            daemon_instance_id="dm_cloud",
+            runtime="codex",
+            model_profile="codex",
+            status="paused",
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.delete(
+        "/api/users/me/agents/ag_agent001/binding",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "cloud_agent_requires_cloud_delete"
+
+    agent = (
+        await db_session.execute(select(Agent).where(Agent.agent_id == "ag_agent001"))
+    ).scalar_one()
+    assert agent.user_id == seed_user["user_id"]
+    assert agent.daemon_instance_id == "dm_cloud"
+
+    cloud_agent = (
+        await db_session.execute(
+            select(CloudAgentInstance).where(
+                CloudAgentInstance.agent_id == "ag_agent001"
+            )
+        )
+    ).scalar_one()
+    assert cloud_agent.user_id == seed_user["user_id"]
+    assert cloud_agent.daemon_instance_id == "dm_cloud"
+    assert cloud_agent.status == "paused"
 
 
 @pytest.mark.asyncio
