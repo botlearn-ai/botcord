@@ -30,6 +30,8 @@ import { revokeAgent } from "../../provision.js";
 const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000];
 const RECONNECT_JITTER_RATIO = 0.25;
 const KEEPALIVE_INTERVAL = 20_000;
+const WS_HANDSHAKE_TIMEOUT_MS = 15_000;
+const WS_STALE_TIMEOUT_MS = 60_000;
 const MAX_AUTH_FAILURES = 5;
 const SEEN_MESSAGES_CAP = 500;
 const OWNER_CHAT_PREFIX = "rm_oc_";
@@ -120,6 +122,10 @@ export interface BotCordChannelOptions {
    * can't spin up a real WS server.
    */
   webSocketCtor?: typeof WebSocket;
+  /** Test hook: override the connect/auth watchdog. Set <=0 to disable. Defaults to 15s. */
+  wsHandshakeTimeoutMs?: number;
+  /** Test hook: override the post-auth server-frame watchdog. Set <=0 to disable. Defaults to 60s. */
+  wsStaleTimeoutMs?: number;
   /** Test hook: override local cleanup after Hub says the agent is unclaimed. */
   localRevokeAgent?: (agentId: string, log: GatewayLogger) => Promise<unknown>;
 }
@@ -648,6 +654,8 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
 
     let ws: WebSocket | null = null;
     let reconnectTimer: NodeJS.Timeout | null = null;
+    let handshakeTimer: NodeJS.Timeout | null = null;
+    let staleTimer: NodeJS.Timeout | null = null;
     let keepaliveTimer: NodeJS.Timeout | null = null;
     let pollTimer: NodeJS.Timeout | null = null;
     let reconnectAttempt = 0;
@@ -666,11 +674,27 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       rejectLoop = reject;
     });
 
+    function clearHandshakeTimer() {
+      if (handshakeTimer) {
+        clearTimeout(handshakeTimer);
+        handshakeTimer = null;
+      }
+    }
+
+    function clearStaleTimer() {
+      if (staleTimer) {
+        clearTimeout(staleTimer);
+        staleTimer = null;
+      }
+    }
+
     function clearTimers() {
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      clearHandshakeTimer();
+      clearStaleTimer();
       if (keepaliveTimer) {
         clearInterval(keepaliveTimer);
         keepaliveTimer = null;
@@ -684,6 +708,58 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     function markStatus(patch: Partial<ChannelStatusSnapshot>) {
       statusSnapshot = { ...statusSnapshot, ...patch };
       setStatus(patch);
+    }
+
+    function terminateSocket(socket: WebSocket) {
+      try {
+        socket.terminate();
+      } catch {
+        try {
+          socket.close();
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    function armHandshakeTimeout(socket: WebSocket, connectionId: number, agentId: string) {
+      clearHandshakeTimer();
+      const timeoutMs = options.wsHandshakeTimeoutMs ?? WS_HANDSHAKE_TIMEOUT_MS;
+      if (timeoutMs <= 0) return;
+      handshakeTimer = setTimeout(() => {
+        handshakeTimer = null;
+        if (!running || ws !== socket || connectionId !== connectionSeq) {
+          return;
+        }
+        const readyState = socket.readyState;
+        const lastError = `botcord ws handshake timeout after ${timeoutMs}ms`;
+        log.warn("botcord ws handshake timeout", { agentId, timeoutMs, readyState });
+        ws = null;
+        markStatus({ connected: false, lastError });
+        terminateSocket(socket);
+        scheduleReconnect();
+      }, timeoutMs);
+      handshakeTimer.unref?.();
+    }
+
+    function armStaleTimeout(socket: WebSocket, connectionId: number, agentId: string) {
+      clearStaleTimer();
+      const timeoutMs = options.wsStaleTimeoutMs ?? WS_STALE_TIMEOUT_MS;
+      if (timeoutMs <= 0) return;
+      staleTimer = setTimeout(() => {
+        staleTimer = null;
+        if (!running || ws !== socket || connectionId !== connectionSeq) {
+          return;
+        }
+        const readyState = socket.readyState;
+        const lastError = `botcord ws stale after ${timeoutMs}ms without server frame`;
+        log.warn("botcord ws stale", { agentId, timeoutMs, readyState });
+        ws = null;
+        markStatus({ connected: false, lastError });
+        terminateSocket(socket);
+        scheduleReconnect();
+      }, timeoutMs);
+      staleTimer.unref?.();
     }
 
     async function revokeLocalUnclaimedAgent(err: unknown) {
@@ -859,6 +935,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         }
         socket.send(JSON.stringify({ type: "auth", token }));
       });
+      armHandshakeTimeout(socket, connectionId, agentId);
 
       socket.on("message", (data: WebSocket.RawData) => {
         if (ws !== socket || connectionId !== connectionSeq) return;
@@ -870,6 +947,8 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         }
         if (!msg || typeof msg.type !== "string") return;
         if (msg.type === "auth_ok") {
+          clearHandshakeTimer();
+          armStaleTimeout(socket, connectionId, agentId);
           reconnectAttempt = 0;
           consecutiveAuthFailures = 0;
           markStatus({
@@ -902,11 +981,16 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
             }
           }, KEEPALIVE_INTERVAL);
         } else if (msg.type === "inbox_update") {
+          armStaleTimeout(socket, connectionId, agentId);
           log.info("botcord ws inbox_update received");
           void fireInbox("ws_inbox_update");
         } else if (msg.type === "heartbeat" || msg.type === "pong") {
+          armStaleTimeout(socket, connectionId, agentId);
           // no-op
         } else if (msg.type === "error" || msg.type === "auth_failed") {
+          if (statusSnapshot.connected) {
+            armStaleTimeout(socket, connectionId, agentId);
+          }
           log.warn("botcord ws server error", { agentId, msg });
         }
       });

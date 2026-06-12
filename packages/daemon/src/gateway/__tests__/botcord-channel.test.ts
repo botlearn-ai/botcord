@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WebSocketServer, type WebSocket as WsType } from "ws";
+import { EventEmitter } from "node:events";
+import WebSocket, { WebSocketServer, type WebSocket as WsType } from "ws";
 import type { AddressInfo } from "node:net";
 import {
   createBotCordChannel,
@@ -1629,6 +1630,185 @@ describe("createBotCordChannel — typing()", () => {
 });
 
 describe("createBotCordChannel — websocket logging", () => {
+  it("terminates and reconnects when websocket handshake never completes", async () => {
+    class HangingWebSocket extends EventEmitter {
+      static instances: HangingWebSocket[] = [];
+
+      readyState = WebSocket.CONNECTING;
+      send = vi.fn();
+      close = vi.fn(() => {
+        this.readyState = WebSocket.CLOSED;
+      });
+      terminate = vi.fn(() => {
+        this.readyState = WebSocket.CLOSED;
+      });
+
+      constructor(readonly url: string) {
+        super();
+        HangingWebSocket.instances.push(this);
+      }
+    }
+
+    const statuses: Array<Record<string, unknown>> = [];
+    const log: GatewayLogger = {
+      ...silentLog,
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const client = makeClient();
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+      webSocketCtor: HangingWebSocket as unknown as typeof WebSocket,
+      wsHandshakeTimeoutMs: 5,
+    });
+    const abort = new AbortController();
+    const startPromise = channel.start({
+      config: stubConfig,
+      accountId: "ag_self",
+      abortSignal: abort.signal,
+      log,
+      emit: async () => {},
+      setStatus: (patch) => statuses.push(patch),
+    });
+
+    try {
+      await vi.waitFor(() => {
+        expect(HangingWebSocket.instances).toHaveLength(1);
+        expect(HangingWebSocket.instances[0]!.terminate).toHaveBeenCalledTimes(1);
+        expect(log.warn).toHaveBeenCalledWith(
+          "botcord ws handshake timeout",
+          expect.objectContaining({
+            agentId: "ag_self",
+            timeoutMs: 5,
+          }),
+        );
+        expect(statuses).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              connected: false,
+              lastError: "botcord ws handshake timeout after 5ms",
+            }),
+            expect.objectContaining({
+              connected: false,
+              restartPending: true,
+              reconnectAttempts: 1,
+            }),
+          ]),
+        );
+      });
+    } finally {
+      abort.abort();
+      await startPromise;
+    }
+  });
+
+  it("terminates and reconnects when an authenticated websocket stops receiving server frames", async () => {
+    class AuthOnlyWebSocket extends EventEmitter {
+      static instances: AuthOnlyWebSocket[] = [];
+
+      readyState = WebSocket.CONNECTING;
+      close = vi.fn(() => {
+        this.readyState = WebSocket.CLOSED;
+      });
+      terminate = vi.fn(() => {
+        this.readyState = WebSocket.CLOSED;
+      });
+      send = vi.fn((data: string) => {
+        let msg: { type?: string } | null = null;
+        try {
+          msg = JSON.parse(String(data));
+        } catch {
+          return;
+        }
+        if (msg?.type === "auth") {
+          setImmediate(() => {
+            this.emit("message", JSON.stringify({ type: "auth_ok", agent_id: "ag_self" }));
+          });
+        }
+      });
+
+      constructor(readonly url: string) {
+        super();
+        AuthOnlyWebSocket.instances.push(this);
+        setImmediate(() => {
+          this.readyState = WebSocket.OPEN;
+          this.emit("open");
+        });
+      }
+    }
+
+    const statuses: Array<Record<string, unknown>> = [];
+    const log: GatewayLogger = {
+      ...silentLog,
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const client = makeClient();
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+      pollIntervalMs: 0,
+      webSocketCtor: AuthOnlyWebSocket as unknown as typeof WebSocket,
+      wsHandshakeTimeoutMs: 50,
+      wsStaleTimeoutMs: 5,
+    });
+    const abort = new AbortController();
+    const startPromise = channel.start({
+      config: stubConfig,
+      accountId: "ag_self",
+      abortSignal: abort.signal,
+      log,
+      emit: async () => {},
+      setStatus: (patch) => statuses.push(patch),
+    });
+
+    try {
+      await vi.waitFor(() => {
+        expect(log.info).toHaveBeenCalledWith(
+          "botcord ws authenticated",
+          expect.objectContaining({ agentId: "ag_self" }),
+        );
+      });
+      await vi.waitFor(() => {
+        expect(AuthOnlyWebSocket.instances).toHaveLength(1);
+        expect(AuthOnlyWebSocket.instances[0]!.terminate).toHaveBeenCalledTimes(1);
+        expect(log.warn).toHaveBeenCalledWith(
+          "botcord ws stale",
+          expect.objectContaining({
+            agentId: "ag_self",
+            timeoutMs: 5,
+          }),
+        );
+        expect(statuses).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              connected: true,
+              reconnectAttempts: 0,
+              lastError: null,
+            }),
+            expect.objectContaining({
+              connected: false,
+              lastError: "botcord ws stale after 5ms without server frame",
+            }),
+            expect.objectContaining({
+              connected: false,
+              restartPending: true,
+              reconnectAttempts: 1,
+            }),
+          ]),
+        );
+      });
+    } finally {
+      abort.abort();
+      await startPromise;
+    }
+  });
+
   it("includes the agent id on websocket server errors", async () => {
     const server = await startAuthOkServer();
     const client = makeClient({
