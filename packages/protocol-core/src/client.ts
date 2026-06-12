@@ -35,6 +35,17 @@ import type { AttentionPolicy } from "./should-wake.js";
 const MAX_RETRIES = 2;
 const RETRY_BASE_MS = 1000;
 
+function parseErrorCode(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as { code?: unknown; detail?: unknown };
+    if (typeof parsed.code === "string") return parsed.code;
+    if (typeof parsed.detail === "string") return parsed.detail;
+  } catch {
+    // Non-JSON error bodies are still included in the thrown message.
+  }
+  return undefined;
+}
+
 export interface BotCordClientConfig {
   hubUrl: string;
   agentId: string;
@@ -95,7 +106,11 @@ export class BotCordClient {
 
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
-      throw new Error(`Token refresh failed: ${resp.status} ${body}`);
+      const err = new Error(`Token refresh failed: ${resp.status} ${body}`);
+      (err as any).status = resp.status;
+      const code = parseErrorCode(body);
+      if (code) (err as any).code = code;
+      throw err;
     }
 
     const data = (await resp.json()) as { agent_token: string; token?: string; expires_at?: number };

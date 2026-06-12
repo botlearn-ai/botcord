@@ -68,6 +68,34 @@ describe("BotCordClient token refresh", () => {
     expect(inboxRequests[1].authorization).toBe("Bearer new-token");
   });
 
+  it("attaches status and code to token refresh failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          {
+            code: "key_not_found",
+            detail: "Key not found",
+            retryable: false,
+          },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_stale",
+      privateKey,
+    });
+
+    await expect(client.refreshToken()).rejects.toMatchObject({
+      status: 404,
+      code: "key_not_found",
+    });
+  });
+
   it("includes structured error_ref on typed error messages", async () => {
     let sentBody: any;
     vi.stubGlobal(
