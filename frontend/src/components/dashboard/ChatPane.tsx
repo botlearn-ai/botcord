@@ -7,7 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { chatPane, exploreUi, messagesGrouping } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
@@ -30,7 +30,7 @@ import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
 import type { Attachment, PublicHumanProfile, PublicRoom } from "@/lib/types";
 import { api } from "@/lib/api";
-import { animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
+import { animateIfMotion, animeStagger, cleanupAnime, prefersReducedMotion } from "@/lib/anime";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -60,27 +60,31 @@ function MotionGrid({
 }) {
   const gridRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    let animation: ReturnType<typeof animateIfMotion> = null;
-    const frameId = window.requestAnimationFrame(() => {
-      const items = Array.from(
-        gridRef.current?.querySelectorAll<HTMLElement>("[data-motion-grid-item]") ?? [],
-      );
-      if (items.length === 0) return;
+  // Layout effect + pre-paint hide: with the rAF approach the items painted
+  // fully visible for one frame, snapped to opacity 0, then faded back in —
+  // reading as the grid rendering twice.
+  useLayoutEffect(() => {
+    if (prefersReducedMotion()) return;
+    const items = Array.from(
+      gridRef.current?.querySelectorAll<HTMLElement>("[data-motion-grid-item]") ?? [],
+    );
+    if (items.length === 0) return;
 
-      animation = animateIfMotion(items, {
-        opacity: [0, 1],
-        translateY: [10, 0],
-        scale: [0.985, 1],
-        delay: animeStagger(35),
-        duration: 320,
-        ease: "out(3)",
-      });
+    for (const item of items) item.style.opacity = "0";
+    const animation = animateIfMotion(items, {
+      opacity: [0, 1],
+      translateY: [10, 0],
+      scale: [0.985, 1],
+      delay: animeStagger(35),
+      duration: 320,
+      ease: "out(3)",
     });
 
     return () => {
-      window.cancelAnimationFrame(frameId);
       cleanupAnime(animation);
+      // revert() restores the pre-animation inline opacity (our "0"), so
+      // clear it explicitly or a cancelled run leaves the grid invisible.
+      for (const item of items) item.style.opacity = "";
     };
   }, [motionKey]);
 
@@ -497,18 +501,25 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   const isRoomsView = exploreView === "rooms";
   const isAgentsView = exploreView === "agents";
   const isHumansView = exploreView === "humans";
+  // Store lists are shared across visits, so right after a tab/query switch
+  // they still hold the previous results. Track which view+query the lists
+  // are fresh for and show the skeleton until then, instead of flashing the
+  // stale grid (with its entrance animation) before the reload kicks in.
+  const exploreRequestKey = `${exploreView}:${query.trim().toLowerCase()}`;
+  const [freshRequestKey, setFreshRequestKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authResolved) return;
     const normalizedQuery = query.trim();
-    if (isRoomsView) {
-      void loadPublicRooms(normalizedQuery);
-    } else if (isAgentsView) {
-      void loadPublicAgents(normalizedQuery);
-    } else if (isHumansView) {
-      void loadPublicHumans(normalizedQuery);
-    }
-  }, [authResolved, isRoomsView, isAgentsView, isHumansView, query, loadPublicRooms, loadPublicAgents, loadPublicHumans]);
+    let cancelled = false;
+    const load = isRoomsView ? loadPublicRooms : isAgentsView ? loadPublicAgents : loadPublicHumans;
+    void load(normalizedQuery).then(() => {
+      if (!cancelled) setFreshRequestKey(exploreRequestKey);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authResolved, exploreRequestKey, isRoomsView, isAgentsView, query, loadPublicRooms, loadPublicAgents, loadPublicHumans]);
 
   useEffect(() => {
     if (publicAgents.length === 0) return;
@@ -556,17 +567,12 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   };
 
   const searchPlaceholder = isRoomsView ? t.searchRooms : isAgentsView ? t.searchAgents : t.searchHumans;
-  const loading = isRoomsView ? publicRoomsLoading : isAgentsView ? publicAgentsLoading : publicHumansLoading;
+  const loading = (isRoomsView ? publicRoomsLoading : isAgentsView ? publicAgentsLoading : publicHumansLoading)
+    || freshRequestKey !== exploreRequestKey;
   const emptyText = isRoomsView ? t.noRoomsFound : isAgentsView ? t.noAgentsFound : t.noHumansFound;
-  const exploreMotionKey = [
-    exploreView,
-    query.trim().toLowerCase(),
-    isRoomsView
-      ? publicRooms.map((room) => room.room_id).join("|")
-      : isAgentsView
-        ? publicAgents.map((agent) => agent.agent_id).join("|")
-        : publicHumans.map((human) => human.human_id).join("|"),
-  ].join(":");
+  // Keyed by view+query only: a silent data refresh must not replay the
+  // entrance animation on a grid the user is already looking at.
+  const exploreMotionKey = exploreRequestKey;
 
   const exploreTabs: Array<{ key: "rooms" | "agents" | "humans"; label: string }> = [
     { key: "rooms", label: locale === "zh" ? "群组" : "Groups" },
