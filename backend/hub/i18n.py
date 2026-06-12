@@ -1412,6 +1412,7 @@ class I18nHTTPException(HTTPException):
         message_key: str,
         *,
         hint_key: str | None = None,
+        headers: dict[str, str] | None = None,
         **kwargs: object,
     ) -> None:
         self.message_key = message_key
@@ -1419,4 +1420,4 @@ class I18nHTTPException(HTTPException):
         self.message_kwargs = kwargs
         # Use the key as the detail so FastAPI's default handler still
         # produces something meaningful if our custom handler is bypassed.
-        super().__init__(status_code=status_code, detail=message_key)
+        super().__init__(status_code=status_code, detail=message_key, headers=headers)
