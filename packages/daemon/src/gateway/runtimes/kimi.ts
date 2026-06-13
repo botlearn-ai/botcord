@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { writeManagedSystemRulesFile } from "../../system-rules.js";
 import { buildCliEnv } from "../cli-resolver.js";
@@ -81,6 +82,8 @@ const KIMI_ADAPTER_OWNED_FLAGS = new Set([
   "-w",
 ]);
 
+const kimiWorkDirSupport = new Map<string, boolean>();
+
 function flagName(arg: string): string {
   if (!arg.startsWith("-")) return arg;
   const eq = arg.indexOf("=");
@@ -131,6 +134,33 @@ function sanitizeKimiExtraArgs(extraArgs: string[] | undefined): string[] {
   return out;
 }
 
+function parseKimiVersionMajor(version: string | null): number | null {
+  const match = version?.match(/\b(\d+)\.(\d+)\.(\d+)\b/);
+  if (!match) return null;
+  return Number.parseInt(match[1], 10);
+}
+
+function probeKimiSupportsWorkDir(command: string): boolean {
+  const cached = kimiWorkDirSupport.get(command);
+  if (cached !== undefined) return cached;
+
+  let supported = false;
+  try {
+    const help = execFileSync(command, ["--help"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5000,
+    });
+    supported = /(?:^|\s)--work-dir(?:[=\s,]|$)/.test(help);
+  } catch {
+    const major = parseKimiVersionMajor(readCommandVersion(command));
+    supported = major !== null && major >= 1;
+  }
+
+  kimiWorkDirSupport.set(command, supported);
+  return supported;
+}
+
 /** Resolve the Kimi CLI executable on PATH. */
 export function resolveKimiCommand(deps: ProbeDeps = {}): string | null {
   return resolveCommandOnPath("kimi", deps);
@@ -150,7 +180,7 @@ export function probeKimi(deps: ProbeDeps = {}): RuntimeProbeResult {
 /**
  * Kimi CLI adapter — spawns:
  *
- *   kimi --work-dir <cwd> --print --output-format stream-json --session <sid> --afk --prompt <text>
+ *   kimi [--work-dir <cwd>] --print --output-format stream-json --session <sid> --afk --prompt <text>
  *
  * `--session <sid>` resumes an existing session or creates a new session with
  * that id, so the adapter generates a UUID on first turn and persists it for
@@ -196,8 +226,6 @@ export class KimiAdapter extends NdjsonStreamAdapter {
     if (!isValidKimiSessionId(sessionId)) throw new Error(invalidKimiSessionIdError());
 
     const args = [
-      "--work-dir",
-      opts.cwd,
       "--print",
       "--output-format",
       "stream-json",
@@ -205,6 +233,7 @@ export class KimiAdapter extends NdjsonStreamAdapter {
       sessionId,
       "--afk",
     ];
+    if (probeKimiSupportsWorkDir(this.resolveBinary())) args.unshift("--work-dir", opts.cwd);
     args.push(...sanitizeKimiExtraArgs(opts.extraArgs));
     args.push("--prompt", promptWithSystemContext(opts.text, opts.systemContext));
     return args;
