@@ -77,6 +77,48 @@ process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify(ar
     expect(argv).toContain("--afk");
   });
 
+  it("passes --work-dir when the Kimi CLI advertises support", async () => {
+    const script = makeScript(
+      "work-dir-supported.js",
+      `
+const argv = process.argv.slice(2);
+if (argv.includes("--help")) {
+  process.stdout.write("Usage: kimi --work-dir <dir> --print\\n");
+  process.exit(0);
+}
+process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify({argv, cwd:process.cwd()})}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, "sid-123");
+    const seen = JSON.parse(res.text) as { argv: string[]; cwd: string };
+    expect(seen.argv).toContain("--work-dir");
+    expect(seen.argv[seen.argv.indexOf("--work-dir") + 1]).toBe(tmpRoot);
+    expect(seen.cwd).toBe(tmpRoot);
+  });
+
+  it("omits --work-dir and relies on child cwd when the Kimi CLI lacks support", async () => {
+    const script = makeScript(
+      "work-dir-unsupported.js",
+      `
+const argv = process.argv.slice(2);
+if (argv.includes("--help")) {
+  process.stdout.write("Usage: kimi --print\\n");
+  process.exit(0);
+}
+if (argv.includes("--work-dir")) {
+  process.stderr.write("unknown option '--work-dir'\\n");
+  process.exit(1);
+}
+process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify({argv, cwd:process.cwd()})}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, "sid-123");
+    const seen = JSON.parse(res.text) as { argv: string[]; cwd: string };
+    expect(seen.argv).not.toContain("--work-dir");
+    expect(seen.cwd).toBe(tmpRoot);
+    expect(res.error).toBeUndefined();
+  });
+
   it("drops non-Kimi inherited extraArgs and their values", async () => {
     const script = makeScript(
       "filter-foreign-argv.js",
@@ -146,6 +188,10 @@ process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify(ar
       "evil-session",
       "--prompt",
       "evil prompt",
+      "--work-dir",
+      "/tmp/evil",
+      "-w",
+      "/tmp/evil2",
       "--plan",
     ]);
     const argv = JSON.parse(res.text) as string[];
@@ -158,6 +204,9 @@ process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify(ar
     expect(argv).toContain("--plan");
     expect(argv).not.toContain("evil-session");
     expect(argv).not.toContain("evil prompt");
+    expect(argv).not.toContain("/tmp/evil");
+    expect(argv).not.toContain("-w");
+    expect(argv).not.toContain("/tmp/evil2");
   });
 
   it("rejects session ids that could be parsed as flags", async () => {
