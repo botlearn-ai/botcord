@@ -24,14 +24,16 @@ const { updateWorkingMemory, clearWorkingMemory } = await import(
   "../working-memory.js"
 );
 const { ActivityTracker } = await import("../activity-tracker.js");
-const { createDaemonSystemContextBuilder } = await import("../system-context.js");
+const { createDaemonSystemContextBuilder } = await import(
+  "../system-context.js"
+);
 const { ensureAgentWorkspace, agentWorkspaceDir } = await import(
   "../agent-workspace.js"
 );
 const { writeFileSync } = await import("node:fs");
 
 function makeMessage(
-  partial: Partial<GatewayInboundMessage> = {},
+  partial: Partial<GatewayInboundMessage> = {}
 ): GatewayInboundMessage {
   return {
     id: partial.id ?? "hub_msg_sc",
@@ -41,6 +43,7 @@ function makeMessage(
     sender: partial.sender ?? { id: "ag_peer", kind: "agent" },
     text: partial.text ?? "hello",
     raw: partial.raw ?? {},
+    mentioned: partial.mentioned,
     receivedAt: partial.receivedAt ?? Date.now(),
   };
 }
@@ -60,14 +63,48 @@ describe("createDaemonSystemContextBuilder", () => {
   it("injects group-room runtime environment even when memory is empty", () => {
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
     const out = builder(makeMessage()) as string;
+    expect(out).toContain("[BotCord Room-Type Awareness]");
+    expect(out).toContain("room_type: team_room");
+    expect(out).toContain("NO_REPLY is a normal first-class outcome");
+    expect(out).toContain("Shared-room spokesperson convention");
+    expect(out).not.toContain("CTO handles code-flow coordination");
+    expect(out).not.toContain("Code Reviewer posts findings");
+    expect(out).not.toContain("Recorder is silent by default");
     expect(out).toContain("[BotCord Runtime Environment]");
     expect(out).toContain("local agent process");
     expect(out).toContain("cannot access this machine's local filesystem");
   });
 
+  it("treats local text mentions as mentioned even when Hub mentioned is false", () => {
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    const out = builder(
+      makeMessage({
+        mentioned: false,
+        text: "@ag_me please review this",
+      })
+    ) as string;
+    expect(out).toContain("mentioned: true");
+  });
+
+  it("labels scheduler turns separately from normal direct chats", () => {
+    const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
+    const out = builder(
+      makeMessage({
+        conversation: { id: "rm_schedule_ag_me", kind: "direct" },
+        raw: { source_type: "botcord_schedule" },
+      })
+    ) as string;
+    expect(out).toContain("[BotCord Room-Type Awareness]");
+    expect(out).toContain("room_type: scheduler");
+    expect(out).toContain("proactive work triggers");
+  });
+
   it("injects the empty working-memory block even when no memory file exists", () => {
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
-    const out = builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } }));
+    const out = builder(
+      makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } })
+    );
+    expect(out).toContain("room_type: user_dm");
     expect(out).toContain("[BotCord Working Memory]");
     expect(out).toContain("This is the only BotCord memory source.");
     expect(out).toContain("Your working memory is currently empty.");
@@ -81,7 +118,9 @@ describe("createDaemonSystemContextBuilder", () => {
       agentId: "ag_me",
       activityTracker: tracker,
     });
-    const out = builder(makeMessage({ conversation: { id: "rm_x", kind: "group" } })) as string;
+    const out = builder(
+      makeMessage({ conversation: { id: "rm_x", kind: "group" } })
+    ) as string;
     expect(out).toContain("[BotCord Runtime Environment]");
     expect(out).not.toContain("[BotCord Cross-Room Awareness]");
   });
@@ -114,7 +153,7 @@ describe("createDaemonSystemContextBuilder", () => {
     expect(out).toContain("A friendly IM agent who tracks contacts.");
     // Identity must precede working memory so it frames every other block.
     expect(out.indexOf("[BotCord Identity]")).toBeLessThan(
-      out.indexOf("[BotCord Working Memory]"),
+      out.indexOf("[BotCord Working Memory]")
     );
   });
 
@@ -127,7 +166,7 @@ describe("createDaemonSystemContextBuilder", () => {
     // Simulate an out-of-band edit (dashboard reconcile, user, control frame…).
     writeFileSync(
       path.join(agentWorkspaceDir("ag_me"), "identity.md"),
-      "# Identity\n\n- **Display name**: New Name\n",
+      "# Identity\n\n- **Display name**: New Name\n"
     );
     const second = builder(makeMessage()) as string;
     expect(second).toContain("New Name");
@@ -137,7 +176,9 @@ describe("createDaemonSystemContextBuilder", () => {
   it("skips the identity block cleanly when identity.md is missing", () => {
     // No ensureAgentWorkspace — workspace never provisioned.
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
-    const out = builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } }));
+    const out = builder(
+      makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } })
+    );
     expect(out).not.toContain("[BotCord Identity]");
     expect(out).toContain("[BotCord Working Memory]");
   });
@@ -153,7 +194,9 @@ describe("createDaemonSystemContextBuilder", () => {
 
   it("detects a newly added global Claude skill on the next turn", () => {
     const builder = createDaemonSystemContextBuilder({ agentId: "ag_me" });
-    const before = builder(makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } }));
+    const before = builder(
+      makeMessage({ conversation: { id: "rm_dm_peer", kind: "direct" } })
+    );
     expect(before).toContain("[BotCord Working Memory]");
     expect(before).not.toContain("[BotCord Daemon Skill Index]");
 
@@ -164,11 +207,11 @@ describe("createDaemonSystemContextBuilder", () => {
       [
         "---",
         "name: digest-query",
-        "description: \"Search archived conversation digests with the local digest_query CLI.\"",
+        'description: "Search archived conversation digests with the local digest_query CLI."',
         "---",
         "",
         "# Digest Query",
-      ].join("\n"),
+      ].join("\n")
     );
 
     const out = builder(makeMessage()) as string;
@@ -214,7 +257,7 @@ describe("createDaemonSystemContextBuilder", () => {
       activityTracker: tracker,
     });
     const out = builder(
-      makeMessage({ conversation: { id: "rm_current", kind: "group" } }),
+      makeMessage({ conversation: { id: "rm_current", kind: "group" } })
     );
     expect(out).toContain("[BotCord Cross-Room Awareness]");
     expect(out).toContain("Other Room (rm_other)");
@@ -253,7 +296,7 @@ describe("createDaemonSystemContextBuilder", () => {
     const out = builder(
       makeMessage({
         conversation: { id: "rm_shared", kind: "group", threadId: "tp_alpha" },
-      }),
+      })
     );
     // Different topic on same room is still digest-worthy.
     expect(out).toContain("beta ping");
@@ -280,7 +323,7 @@ describe("createDaemonSystemContextBuilder", () => {
       activityTracker: tracker,
     });
     const raw = builder(
-      makeMessage({ conversation: { id: "rm_current", kind: "group" } }),
+      makeMessage({ conversation: { id: "rm_current", kind: "group" } })
     );
     expect(typeof raw).toBe("string");
     const out = raw as string;
@@ -300,14 +343,18 @@ describe("createDaemonSystemContextBuilder", () => {
       makeMessage({
         conversation: { id: "rm_oc_abc", kind: "direct" },
         sender: { id: "usr_1", name: "Susan", kind: "user" },
-      }),
+      })
     );
     expect(typeof out).toBe("string");
     expect(out).toContain("[BotCord Scene: Owner Chat]");
     expect(out).toContain("full administrative authority");
     expect(out).toContain("cannot open this machine's local filesystem paths");
-    expect(out).toContain("share it as a BotCord attachment or an uploaded BotCord URL");
-    expect(out).toContain("Do not use local or relative paths such as `output/card.png`");
+    expect(out).toContain(
+      "share it as a BotCord attachment or an uploaded BotCord URL"
+    );
+    expect(out).toContain(
+      "Do not use local or relative paths such as `output/card.png`"
+    );
     expect(out).toContain("upload/attach the file first");
   });
 
@@ -318,7 +365,7 @@ describe("createDaemonSystemContextBuilder", () => {
         conversation: { id: "rm_plain", kind: "direct" },
         sender: { id: "usr_1", name: "Susan", kind: "user" },
         raw: { source_type: "dashboard_user_chat" },
-      }),
+      })
     );
     expect(out).toContain("[BotCord Scene: Owner Chat]");
   });
@@ -329,7 +376,7 @@ describe("createDaemonSystemContextBuilder", () => {
       makeMessage({
         conversation: { id: "rm_group", kind: "group" },
         sender: { id: "ag_peer", kind: "agent" },
-      }),
+      })
     );
     expect(out).not.toContain("[BotCord Scene: Owner Chat]");
     expect(out).toContain("[BotCord Runtime Environment]");
@@ -352,10 +399,13 @@ describe("createDaemonSystemContextBuilder", () => {
     const builder = createDaemonSystemContextBuilder({
       agentId: "ag_me",
       activityTracker: tracker,
-      roomContextBuilder: async () => "[BotCord Room Context]\nRoom: Team (rm_team)",
+      roomContextBuilder: async () =>
+        "[BotCord Room Context]\nRoom: Team (rm_team)",
     });
     const out = await builder(
-      makeMessage({ conversation: { id: "rm_team", kind: "group", title: "Team" } }),
+      makeMessage({
+        conversation: { id: "rm_team", kind: "group", title: "Team" },
+      })
     );
     expect(typeof out).toBe("string");
     const s = out as string;
@@ -384,7 +434,7 @@ describe("createDaemonSystemContextBuilder", () => {
     });
     // The room metadata block is skipped, but group-room environment remains.
     const out = await builder(
-      makeMessage({ conversation: { id: "rm_team", kind: "group" } }),
+      makeMessage({ conversation: { id: "rm_team", kind: "group" } })
     );
     expect(out).toContain("[BotCord Runtime Environment]");
     expect(out).not.toContain("[BotCord Room Context]");
@@ -394,10 +444,11 @@ describe("createDaemonSystemContextBuilder", () => {
     const builder = createDaemonSystemContextBuilder({
       agentId: "ag_me",
       roomContextBuilder: async () => null,
-      loopRiskBuilder: () => "[BotCord loop-risk check]\nObserved signals:\n- x",
+      loopRiskBuilder: () =>
+        "[BotCord loop-risk check]\nObserved signals:\n- x",
     });
     const out = await builder(
-      makeMessage({ conversation: { id: "rm_team", kind: "group" } }),
+      makeMessage({ conversation: { id: "rm_team", kind: "group" } })
     );
     expect(typeof out).toBe("string");
     expect(out).toContain("[BotCord loop-risk check]");
@@ -406,7 +457,8 @@ describe("createDaemonSystemContextBuilder", () => {
   it("also injects loopRiskBuilder in the sync (no roomContextBuilder) branch", () => {
     const builder = createDaemonSystemContextBuilder({
       agentId: "ag_me",
-      loopRiskBuilder: () => "[BotCord loop-risk check]\nObserved signals:\n- y",
+      loopRiskBuilder: () =>
+        "[BotCord loop-risk check]\nObserved signals:\n- y",
     });
     const out = builder(makeMessage()) as string | undefined;
     expect(typeof out).toBe("string");
@@ -445,7 +497,7 @@ describe("createDaemonSystemContextBuilder", () => {
       activityTracker: tracker,
     });
     const out = builder(
-      makeMessage({ conversation: { id: "rm_conv_id_123", kind: "group" } }),
+      makeMessage({ conversation: { id: "rm_conv_id_123", kind: "group" } })
     );
     // Empty working memory + digest excluding the only entry leaves only the
     // always-on group-room runtime environment block.

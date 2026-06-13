@@ -19,8 +19,14 @@ import {
 } from "./runtime-errors.js";
 import { resolveRoute } from "./router.js";
 import { sessionKey, type SessionStore } from "./session-store.js";
-import { clearWaitMarker, consumeWaitMarker, resolveWaitMarkerPath, MAX_WAIT_MS } from "./wait-marker.js";
+import {
+  clearWaitMarker,
+  consumeWaitMarker,
+  resolveWaitMarkerPath,
+  MAX_WAIT_MS,
+} from "./wait-marker.js";
 import { buildRoomSystemRules } from "../system-rules.js";
+import { effectiveMention } from "../mention-scan.js";
 import {
   truncateTextField,
   type DeliveryStatus,
@@ -91,7 +97,8 @@ function envNonNegativeInt(name: string, fallback: number): number {
 const OWNER_CHAT_ROOM_PREFIX = "rm_oc_";
 const REPLYING_STATUS_EMOJI = "⏳";
 const TRANSCRIPT_BLOCK_RAW_LIMIT = 16 * 1024;
-const SECRET_KEY_RE = /token|secret|private.?key|api.?key|authorization|password/i;
+const SECRET_KEY_RE =
+  /token|secret|private.?key|api.?key|authorization|password/i;
 
 /** Maximum number of buffered serial entries per queue. Excess entries drop oldest. */
 const MAX_BATCH_BUFFER_ENTRIES = 40;
@@ -152,8 +159,10 @@ const REPLY_LOCAL_PATH_RE =
   /(^|[\s([{"'`])((?:\/|\.{1,2}\/)?(?:[\w@+.-]+\/)+[\w@+.-]+\.(?:avif|bmp|csv|docx?|gif|html?|jpe?g|pdf|png|pptx?|svg|webp|xlsx?|zip))(?=$|[\s)\]}"'`,.!?:;])/gi;
 
 function transcriptBlocksVerbose(): boolean {
-  return process.env.BOTCORD_TRANSCRIPT_BLOCKS === "verbose" ||
-    process.env.BOTCORD_TRACE_VERBOSE === "1";
+  return (
+    process.env.BOTCORD_TRANSCRIPT_BLOCKS === "verbose" ||
+    process.env.BOTCORD_TRACE_VERBOSE === "1"
+  );
 }
 
 function buildMemoryUpdateNotice(args: {
@@ -163,7 +172,9 @@ function buildMemoryUpdateNotice(args: {
 }): string {
   return [
     "[BotCord Memory Update Notice]",
-    `The persistent working memory changed since this runtime session last used it (previous: ${args.previousVersion ?? "none"}, current: ${args.currentVersion}).`,
+    `The persistent working memory changed since this runtime session last used it (previous: ${
+      args.previousVersion ?? "none"
+    }, current: ${args.currentVersion}).`,
     "Before acting on the message below, retrieve the latest working memory through the available BotCord memory tool or CLI, then treat that latest memory as authoritative.",
     "If using the local daemon CLI, run: botcord-daemon memory get",
     "The latest memory supersedes older goals, monitoring rules, preferences, and task state in the resumed conversation.",
@@ -175,19 +186,23 @@ function buildMemoryUpdateNotice(args: {
 
 function summarizeStreamBlock(block: StreamBlock): TranscriptBlockSummary {
   const summary: TranscriptBlockSummary = { type: block.kind };
-  const raw = block.raw as {
-    text?: unknown;
-    name?: unknown;
-    update?: unknown;
-    params?: { update?: unknown };
-  } | null | undefined;
+  const raw = block.raw as
+    | {
+        text?: unknown;
+        name?: unknown;
+        update?: unknown;
+        params?: { update?: unknown };
+      }
+    | null
+    | undefined;
   if (raw && typeof raw === "object") {
     if (typeof raw.text === "string") summary.chars = raw.text.length;
     if (typeof raw.name === "string") summary.name = raw.name;
     const update = raw.params?.update ?? raw.update;
     if (update && typeof update === "object") {
       const u = update as Record<string, unknown>;
-      if (typeof u.sessionUpdate === "string" && !summary.name) summary.name = u.sessionUpdate;
+      if (typeof u.sessionUpdate === "string" && !summary.name)
+        summary.name = u.sessionUpdate;
       const toolCall = u.toolCall;
       if (toolCall && typeof toolCall === "object") {
         const toolName = (toolCall as Record<string, unknown>).name;
@@ -198,18 +213,25 @@ function summarizeStreamBlock(block: StreamBlock): TranscriptBlockSummary {
   return summary;
 }
 
-function redactAndCap(value: unknown, budget = TRANSCRIPT_BLOCK_RAW_LIMIT): unknown {
+function redactAndCap(
+  value: unknown,
+  budget = TRANSCRIPT_BLOCK_RAW_LIMIT
+): unknown {
   const seen = new WeakSet<object>();
   const walk = (v: unknown): unknown => {
     if (typeof v === "string") {
-      return redactSecretString(v.length > budget ? `${v.slice(0, budget)}…` : v);
+      return redactSecretString(
+        v.length > budget ? `${v.slice(0, budget)}…` : v
+      );
     }
     if (Array.isArray(v)) return v.slice(0, 50).map(walk);
     if (!v || typeof v !== "object") return v;
     if (seen.has(v)) return "[Circular]";
     seen.add(v);
     const out: Record<string, unknown> = {};
-    for (const [key, child] of Object.entries(v as Record<string, unknown>).slice(0, 80)) {
+    for (const [key, child] of Object.entries(
+      v as Record<string, unknown>
+    ).slice(0, 80)) {
       out[key] = SECRET_KEY_RE.test(key) ? "[REDACTED]" : walk(child);
     }
     return out;
@@ -224,7 +246,9 @@ function redactSecretString(value: string): string {
     .replace(/\b(drt_|dit_|gho_)[A-Za-z0-9_-]+/g, "$1[REDACTED]");
 }
 
-function extractCloudRunBudget(msg: GatewayInboundMessage): CloudRunBudgetCaps | undefined {
+function extractCloudRunBudget(
+  msg: GatewayInboundMessage
+): CloudRunBudgetCaps | undefined {
   const envelope = (msg.raw as { envelope?: unknown } | undefined)?.envelope as
     | {
         type?: unknown;
@@ -256,12 +280,15 @@ function extractCloudRunBudget(msg: GatewayInboundMessage): CloudRunBudgetCaps |
   ) {
     out.maxToolCalls = Math.floor(budget.max_tool_calls);
   }
-  return out.maxWallTimeMs !== undefined || out.maxToolCalls !== undefined ? out : undefined;
+  return out.maxWallTimeMs !== undefined || out.maxToolCalls !== undefined
+    ? out
+    : undefined;
 }
 
 function looksLikeRecoverableSessionFailure(error: string): boolean {
-  return /compact|compaction|context|token limit|maximum context|too many tokens|conversation found|session .*not found|resume/i
-    .test(error);
+  return /compact|compaction|context|token limit|maximum context|too many tokens|conversation found|session .*not found|resume/i.test(
+    error
+  );
 }
 
 function buildRuntimeRecoveryPrompt(args: {
@@ -288,7 +315,7 @@ function buildRuntimeRecoveryPrompt(args: {
     args.recoveryContext?.trim() || "[Recent Room Messages]\n(unavailable)",
     "",
     "[Current User Turn]",
-    args.userTurn,
+    args.userTurn
   );
   return lines.join("\n");
 }
@@ -337,13 +364,57 @@ function rawEntryMsgId(entry: unknown): string | null {
   return typeof env?.msg_id === "string" && env.msg_id ? env.msg_id : null;
 }
 
+function rawEntryText(entry: unknown): string {
+  if (!entry || typeof entry !== "object") return "";
+  const rec = entry as {
+    text?: unknown;
+    envelope?: { payload?: { text?: unknown } };
+  };
+  if (typeof rec.text === "string") return rec.text;
+  if (typeof rec.envelope?.payload?.text === "string")
+    return rec.envelope.payload.text;
+  return "";
+}
+
+const FYI_MENTION_RE =
+  /\b(?:fyi|for your awareness|for visibility|heads up|cc\b|no[- ]action|no[- ]reply(?: needed)?|no[- ]response(?: needed)?|just sharing|just noting|ack only|context[- ]only)\b/i;
+const STRONG_ACTION_MENTION_RE =
+  /\b(?:can you|could you|would you|need you|take a look|review|fix|implement|publish|deploy|restart|verify|investigate|check|confirm|approve|blocker|blocked|error|failed|failure|incident|rollback|release|ship|merge)\b|[?？]/i;
+const ACTION_MENTION_RE =
+  /\b(?:please|pls|can you|could you|would you|need you|take a look|review|fix|implement|publish|deploy|restart|verify|investigate|check|confirm|approve|blocker|blocked|error|failed|failure|incident|rollback|release|ship|merge)\b|[?？]/i;
+
+/**
+ * Status reactions are visible room noise. Only show "replying" when a
+ * BotCord team turn looks action-bearing; FYI/no-action mentions can still
+ * wake the runtime, but should not imply a public response is coming.
+ */
+export function shouldShowReplyingStatus(msg: GatewayInboundMessage): boolean {
+  if (msg.conversation.kind !== "group") return false;
+  if (!effectiveMention(msg)) return false;
+  const raw = msg.raw as { batch?: unknown } | null | undefined;
+  const textParts = [msg.text ?? ""];
+  if (raw && Array.isArray(raw.batch)) {
+    for (const entry of raw.batch) textParts.push(rawEntryText(entry));
+  }
+  const text = textParts.join("\n").trim();
+  if (FYI_MENTION_RE.test(text) && !STRONG_ACTION_MENTION_RE.test(text))
+    return false;
+  if (!ACTION_MENTION_RE.test(text)) return false;
+  return true;
+}
+
 /**
  * Pick the BotCord room message that should carry the ephemeral "replying"
  * status reaction for a turn. Batched turns prefer the latest mentioned
  * message, otherwise the latest batch member.
  */
-export function pickMessageStatusTarget(msg: GatewayInboundMessage): string | null {
-  const raw = msg.raw as { batch?: unknown; mentioned?: unknown } | null | undefined;
+export function pickMessageStatusTarget(
+  msg: GatewayInboundMessage
+): string | null {
+  const raw = msg.raw as
+    | { batch?: unknown; mentioned?: unknown }
+    | null
+    | undefined;
   const batch = raw && Array.isArray(raw.batch) ? raw.batch : null;
   if (batch && batch.length > 0) {
     for (let i = batch.length - 1; i >= 0; i -= 1) {
@@ -364,7 +435,7 @@ export function pickMessageStatusTarget(msg: GatewayInboundMessage): string | nu
 /** Factory signature for building a runtime adapter at turn dispatch time. */
 export type RuntimeFactory = (
   runtimeId: string,
-  extraArgs?: string[],
+  extraArgs?: string[]
 ) => RuntimeAdapter;
 
 /** Constructor options for `Dispatcher`. */
@@ -465,7 +536,7 @@ export interface DispatcherOptions {
    * the agent.
    */
   attentionGate?: (
-    message: GatewayInboundMessage,
+    message: GatewayInboundMessage
   ) => Promise<boolean> | boolean;
   /**
    * Resolve the hub URL the inbound message's agent is registered against.
@@ -606,13 +677,15 @@ export class Dispatcher {
   private readonly composeUserTurn?: UserTurnBuilder;
   private readonly managedRoutes?: Map<string, GatewayRoute>;
   private readonly attentionGate?: (
-    message: GatewayInboundMessage,
+    message: GatewayInboundMessage
   ) => Promise<boolean> | boolean;
   private readonly resolveHubUrl?: (accountId: string) => string | undefined;
   private readonly transcript: TranscriptWriter;
   private readonly queues: Map<string, QueueState> = new Map();
-  private readonly deferredMultimodal: Map<string, DeferredMultimodalEntry[]> = new Map();
-  private readonly runtimeAuthFailures: Map<string, RuntimeAuthFailureState> = new Map();
+  private readonly deferredMultimodal: Map<string, DeferredMultimodalEntry[]> =
+    new Map();
+  private readonly runtimeAuthFailures: Map<string, RuntimeAuthFailureState> =
+    new Map();
   /**
    * Last `/hub/typing` ping timestamp per (accountId, conversationId).
    * Used to debounce cancel-previous bursts so we don't trip Hub's 20/min
@@ -628,18 +701,23 @@ export class Dispatcher {
     this.log = opts.log;
     this.turnTimeoutMs = opts.turnTimeoutMs ?? DEFAULT_TURN_TIMEOUT_MS;
     this.runtimeAuthFailureThreshold =
-      opts.runtimeAuthFailureThreshold ?? DEFAULT_RUNTIME_AUTH_FAILURE_THRESHOLD;
+      opts.runtimeAuthFailureThreshold ??
+      DEFAULT_RUNTIME_AUTH_FAILURE_THRESHOLD;
     this.runtimeAuthFailureCooldownMs =
-      opts.runtimeAuthFailureCooldownMs ?? DEFAULT_RUNTIME_AUTH_FAILURE_COOLDOWN_MS;
+      opts.runtimeAuthFailureCooldownMs ??
+      DEFAULT_RUNTIME_AUTH_FAILURE_COOLDOWN_MS;
     this.maxResumeInputTokens =
       opts.maxResumeInputTokens ??
       envNonNegativeInt(
         "BOTCORD_GATEWAY_MAX_RESUME_INPUT_TOKENS",
-        DEFAULT_MAX_RESUME_INPUT_TOKENS,
+        DEFAULT_MAX_RESUME_INPUT_TOKENS
       );
     this.maxResumeTurns =
       opts.maxResumeTurns ??
-      envNonNegativeInt("BOTCORD_GATEWAY_MAX_RESUME_TURNS", DEFAULT_MAX_RESUME_TURNS);
+      envNonNegativeInt(
+        "BOTCORD_GATEWAY_MAX_RESUME_TURNS",
+        DEFAULT_MAX_RESUME_TURNS
+      );
     this.buildSystemContext = opts.buildSystemContext;
     this.buildMemoryContext = opts.buildMemoryContext;
     this.buildRuntimeRecoveryContext = opts.buildRuntimeRecoveryContext;
@@ -693,7 +771,7 @@ export class Dispatcher {
    * session start. Never throws — failures degrade to no context.
    */
   private async fetchRecoveryContext(
-    msg: GatewayInboundMessage,
+    msg: GatewayInboundMessage
   ): Promise<string | null | undefined> {
     if (!this.buildRuntimeRecoveryContext) return undefined;
     try {
@@ -706,7 +784,7 @@ export class Dispatcher {
           roomId: msg.conversation.id,
           topicId: msg.conversation.threadId ?? null,
           error: err instanceof Error ? err.message : String(err),
-        },
+        }
       );
       return undefined;
     }
@@ -741,7 +819,9 @@ export class Dispatcher {
       return;
     }
 
-    const managed = this.managedRoutes ? Array.from(this.managedRoutes.values()) : undefined;
+    const managed = this.managedRoutes
+      ? Array.from(this.managedRoutes.values())
+      : undefined;
     const route = resolveRoute(msg, this.config, managed);
     const mode = resolveQueueMode(route, msg.conversation.kind);
     const queueKey = buildQueueKey(msg);
@@ -764,7 +844,13 @@ export class Dispatcher {
     if (isMultimodalOnlyMessage(msg)) {
       await this.safeAck(envelope);
       this.emitInbound(turnId, msg);
-      this.deferMultimodal(queueKey, { route, msg, channel, turnId, queuedAt: Date.now() });
+      this.deferMultimodal(queueKey, {
+        route,
+        msg,
+        channel,
+        turnId,
+        queuedAt: Date.now(),
+      });
       this.log.info("dispatcher: deferred multimodal-only inbound", {
         agentId: msg.accountId,
         roomId: msg.conversation.id,
@@ -799,7 +885,7 @@ export class Dispatcher {
     if (deferred.length > 0) {
       const merged = this.mergeSerialBuffer(
         [...deferred, { route, msg, channel, turnId }],
-        queueKey,
+        queueKey
       );
       if (merged) {
         dispatchMsg = merged.msg;
@@ -829,6 +915,7 @@ export class Dispatcher {
     // the full coalesced batch instead of any single arrival), so calling
     // the composer here would just be redundant work.
     let composeFailedError: string | undefined;
+    const mentionedAtCompose = dispatchMsg.mentioned === true;
     if (mode === "cancel-previous" && this.composeUserTurn) {
       try {
         const composed = this.composeUserTurn(dispatchMsg);
@@ -911,6 +998,27 @@ export class Dispatcher {
       }
     }
 
+    if (
+      mode === "cancel-previous" &&
+      this.composeUserTurn &&
+      dispatchMsg.mentioned === true &&
+      !mentionedAtCompose
+    ) {
+      try {
+        const composed = this.composeUserTurn(dispatchMsg);
+        if (typeof composed === "string" && composed.length > 0) {
+          text = composed;
+          composeFailedError = undefined;
+        }
+      } catch (err) {
+        composeFailedError = err instanceof Error ? err.message : String(err);
+        this.log.warn("dispatcher: composeUserTurn threw — using raw text", {
+          messageId: dispatchMsg.id,
+          error: composeFailedError,
+        });
+      }
+    }
+
     if (composeFailedError) {
       this.transcript.write({
         ts: nowIso(),
@@ -924,14 +1032,17 @@ export class Dispatcher {
       });
     }
 
-    const openAuthBreaker = this.openRuntimeAuthBreaker(dispatchRoute, dispatchMsg);
+    const openAuthBreaker = this.openRuntimeAuthBreaker(
+      dispatchRoute,
+      dispatchMsg
+    );
     if (openAuthBreaker) {
       await this.skipRuntimeForAuthBreaker(
         openAuthBreaker,
         dispatchRoute,
         dispatchMsg,
         dispatchChannel,
-        dispatchTurnId,
+        dispatchTurnId
       );
       return;
     }
@@ -944,7 +1055,7 @@ export class Dispatcher {
         dispatchMsg,
         dispatchChannel,
         dispatchTurnId,
-        mergedFromDeferredTurnIds,
+        mergedFromDeferredTurnIds
       );
     } else {
       await this.runSerial(
@@ -954,7 +1065,7 @@ export class Dispatcher {
         dispatchMsg,
         dispatchChannel,
         dispatchTurnId,
-        mergedFromDeferredTurnIds,
+        mergedFromDeferredTurnIds
       );
     }
   }
@@ -1011,16 +1122,22 @@ export class Dispatcher {
     return q;
   }
 
-  private deferMultimodal(queueKey: string, entry: DeferredMultimodalEntry): void {
+  private deferMultimodal(
+    queueKey: string,
+    entry: DeferredMultimodalEntry
+  ): void {
     const list = this.deferredMultimodal.get(queueKey) ?? [];
     list.push(entry);
     while (list.length > MAX_BATCH_BUFFER_ENTRIES) {
       const dropped = list.shift()!;
-      this.log.warn("dispatcher: deferred multimodal buffer overflow — dropped oldest", {
-        queueKey,
-        droppedMessageId: dropped.msg.id,
-        bufferCap: MAX_BATCH_BUFFER_ENTRIES,
-      });
+      this.log.warn(
+        "dispatcher: deferred multimodal buffer overflow — dropped oldest",
+        {
+          queueKey,
+          droppedMessageId: dropped.msg.id,
+          bufferCap: MAX_BATCH_BUFFER_ENTRIES,
+        }
+      );
       this.transcript.write({
         ts: nowIso(),
         kind: "dropped",
@@ -1042,14 +1159,17 @@ export class Dispatcher {
     return list;
   }
 
-  private runtimeAuthBreakerKey(route: GatewayRoute, msg: GatewayInboundMessage): string {
+  private runtimeAuthBreakerKey(
+    route: GatewayRoute,
+    msg: GatewayInboundMessage
+  ): string {
     const thread = msg.conversation.threadId ?? "";
     return `${route.runtime}:${msg.channel}:${msg.accountId}:${msg.conversation.id}:${thread}`;
   }
 
   private openRuntimeAuthBreaker(
     route: GatewayRoute,
-    msg: GatewayInboundMessage,
+    msg: GatewayInboundMessage
   ): RuntimeAuthFailureState | null {
     const key = this.runtimeAuthBreakerKey(route, msg);
     const state = this.runtimeAuthFailures.get(key);
@@ -1064,14 +1184,15 @@ export class Dispatcher {
   private pruneExpiredRuntimeAuthBreakers(): void {
     const now = Date.now();
     for (const [key, state] of this.runtimeAuthFailures) {
-      if (state.blockedUntil > 0 && state.blockedUntil <= now) this.runtimeAuthFailures.delete(key);
+      if (state.blockedUntil > 0 && state.blockedUntil <= now)
+        this.runtimeAuthFailures.delete(key);
     }
   }
 
   private recordRuntimeAuthFailure(
     route: GatewayRoute,
     msg: GatewayInboundMessage,
-    error: string,
+    error: string
   ): RuntimeAuthFailureState | null {
     const now = Date.now();
     const key = this.runtimeAuthBreakerKey(route, msg);
@@ -1122,7 +1243,10 @@ export class Dispatcher {
     return null;
   }
 
-  private clearRuntimeAuthFailures(route: GatewayRoute, msg: GatewayInboundMessage): void {
+  private clearRuntimeAuthFailures(
+    route: GatewayRoute,
+    msg: GatewayInboundMessage
+  ): void {
     const key = this.runtimeAuthBreakerKey(route, msg);
     if (!this.runtimeAuthFailures.delete(key)) return;
     this.log.info("dispatcher: runtime auth circuit breaker cleared", {
@@ -1150,10 +1274,11 @@ export class Dispatcher {
     route: GatewayRoute,
     msg: GatewayInboundMessage,
     channel: ChannelAdapter,
-    turnId: string,
+    turnId: string
   ): Promise<void> {
-    const error =
-      `runtime authentication failed repeatedly; dispatch paused until ${new Date(state.blockedUntil).toISOString()}`;
+    const error = `runtime authentication failed repeatedly; dispatch paused until ${new Date(
+      state.blockedUntil
+    ).toISOString()}`;
     this.log.warn("dispatcher: runtime auth circuit breaker blocking turn", {
       key: state.key,
       runtime: route.runtime,
@@ -1175,21 +1300,27 @@ export class Dispatcher {
       durationMs: 0,
     });
 
-    const canDeliverRuntimeText = isOwnerChatRoom(msg) || !isBotCordChannel(channel);
-    const canDeliverRuntimeDiagnostics = canDeliverRuntimeText || isBotCordChannel(channel);
+    const canDeliverRuntimeText =
+      isOwnerChatRoom(msg) || !isBotCordChannel(channel);
+    const canDeliverRuntimeDiagnostics =
+      canDeliverRuntimeText || isBotCordChannel(channel);
     if (canDeliverRuntimeDiagnostics) {
-      const sendResult = await this.sendReply(channel, {
-        channel: msg.channel,
-        accountId: msg.accountId,
-        conversationId: msg.conversation.id,
-        threadId: msg.conversation.threadId ?? null,
-        type: "error",
-        text: looksLikeUsageLimit(error)
-          ? formatUsageLimitMessage(error, route.runtime)
-          : `⚠️ Runtime error: ${truncate(error, 500)}`,
-        replyTo: this.providerReplyTo(msg),
-        traceId: msg.trace?.id ?? null,
-      }, turnId);
+      const sendResult = await this.sendReply(
+        channel,
+        {
+          channel: msg.channel,
+          accountId: msg.accountId,
+          conversationId: msg.conversation.id,
+          threadId: msg.conversation.threadId ?? null,
+          type: "error",
+          text: looksLikeUsageLimit(error)
+            ? formatUsageLimitMessage(error, route.runtime)
+            : `⚠️ Runtime error: ${truncate(error, 500)}`,
+          replyTo: this.providerReplyTo(msg),
+          traceId: msg.trace?.id ?? null,
+        },
+        turnId
+      );
       this.emitOutbound({
         turnId,
         msg,
@@ -1211,7 +1342,7 @@ export class Dispatcher {
     msg: GatewayInboundEnvelope["message"],
     channel: ChannelAdapter,
     turnId: string,
-    mergedFromTurnIds: string[] = [],
+    mergedFromTurnIds: string[] = []
   ): Promise<void> {
     const q = this.getQueue(queueKey);
     this.supersedePendingPark(q);
@@ -1272,7 +1403,15 @@ export class Dispatcher {
       });
       return;
     }
-    await this.runTurn(queueKey, route, text, msg, channel, turnId, mergedFromTurnIds);
+    await this.runTurn(
+      queueKey,
+      route,
+      text,
+      msg,
+      channel,
+      turnId,
+      mergedFromTurnIds
+    );
   }
 
   /**
@@ -1300,18 +1439,21 @@ export class Dispatcher {
     msg: GatewayInboundEnvelope["message"],
     channel: ChannelAdapter,
     turnId: string,
-    mergedFromTurnIds: string[] = [],
+    mergedFromTurnIds: string[] = []
   ): Promise<void> {
     const q = this.getQueue(queueKey);
     this.supersedePendingPark(q);
     q.serialBuffer.push({ route, msg, channel, turnId });
     while (q.serialBuffer.length > MAX_BATCH_BUFFER_ENTRIES) {
       const dropped = q.serialBuffer.shift()!;
-      this.log.warn("dispatcher: serial buffer overflow — dropped oldest entry", {
-        queueKey,
-        droppedMessageId: dropped.msg.id,
-        bufferCap: MAX_BATCH_BUFFER_ENTRIES,
-      });
+      this.log.warn(
+        "dispatcher: serial buffer overflow — dropped oldest entry",
+        {
+          queueKey,
+          droppedMessageId: dropped.msg.id,
+          bufferCap: MAX_BATCH_BUFFER_ENTRIES,
+        }
+      );
       this.transcript.write({
         ts: nowIso(),
         kind: "dropped",
@@ -1349,7 +1491,10 @@ export class Dispatcher {
         }
         const mergedTurnIds =
           drained.length > 1
-            ? [...mergedFromTurnIds, ...drained.slice(0, -1).map((e) => e.turnId)]
+            ? [
+                ...mergedFromTurnIds,
+                ...drained.slice(0, -1).map((e) => e.turnId),
+              ]
             : mergedFromTurnIds;
         await this.runTurn(
           queueKey,
@@ -1358,7 +1503,7 @@ export class Dispatcher {
           merged.msg,
           merged.channel,
           merged.turnId,
-          mergedTurnIds,
+          mergedTurnIds
         );
       }
     } finally {
@@ -1377,7 +1522,7 @@ export class Dispatcher {
    */
   private mergeSerialBuffer(
     entries: BufferedSerialEntry[],
-    queueKey: string,
+    queueKey: string
   ): {
     route: GatewayRoute;
     text: string;
@@ -1403,40 +1548,49 @@ export class Dispatcher {
     const items: Array<Record<string, unknown>> = [];
     for (const e of entries) {
       const raw = e.msg.raw as Record<string, unknown> | null | undefined;
-      const batch = raw && Array.isArray((raw as { batch?: unknown }).batch)
-        ? ((raw as { batch: Array<Record<string, unknown>> }).batch)
-        : null;
+      const batch =
+        raw && Array.isArray((raw as { batch?: unknown }).batch)
+          ? (raw as { batch: Array<Record<string, unknown>> }).batch
+          : null;
       if (batch) {
         for (const m of batch) items.push(m);
       } else if (raw) {
-        items.push(raw);
+        items.push(
+          e.msg.mentioned === true ? { ...raw, mentioned: true } : raw
+        );
       }
     }
 
     // Char-cap: drop oldest until we fit. Reserve at least one item so we
     // never produce an empty merged batch.
     let totalChars = items.reduce(
-      (acc, m) => acc + (typeof m?.text === "string" ? (m.text as string).length : 0),
-      0,
+      (acc, m) =>
+        acc + (typeof m?.text === "string" ? (m.text as string).length : 0),
+      0
     );
     let droppedCount = 0;
     while (totalChars > MAX_BATCH_BUFFER_CHARS && items.length > 1) {
       const removed = items.shift()!;
-      totalChars -= typeof removed?.text === "string" ? (removed.text as string).length : 0;
+      totalChars -=
+        typeof removed?.text === "string" ? (removed.text as string).length : 0;
       droppedCount += 1;
     }
     if (droppedCount > 0) {
-      this.log.warn("dispatcher: merged batch exceeded char cap — dropped oldest", {
-        queueKey,
-        droppedCount,
-        remaining: items.length,
-        totalChars,
-        charCap: MAX_BATCH_BUFFER_CHARS,
-      });
+      this.log.warn(
+        "dispatcher: merged batch exceeded char cap — dropped oldest",
+        {
+          queueKey,
+          droppedCount,
+          remaining: items.length,
+          totalChars,
+          charCap: MAX_BATCH_BUFFER_CHARS,
+        }
+      );
     }
 
     const latest = entries[entries.length - 1]!;
-    const latestRaw = (latest.msg.raw as Record<string, unknown> | null | undefined) ?? {};
+    const latestRaw =
+      (latest.msg.raw as Record<string, unknown> | null | undefined) ?? {};
     const mergedRaw = { ...latestRaw, batch: items };
     const anyMentioned = entries.some((e) => e.msg.mentioned === true);
     const mergedText = entries
@@ -1471,10 +1625,13 @@ export class Dispatcher {
       const composed = this.composeUserTurn(msg);
       if (typeof composed === "string" && composed.length > 0) return composed;
     } catch (err) {
-      this.log.warn("dispatcher: composeUserTurn (drain) threw — using raw text", {
-        messageId: msg.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      this.log.warn(
+        "dispatcher: composeUserTurn (drain) threw — using raw text",
+        {
+          messageId: msg.id,
+          error: err instanceof Error ? err.message : String(err),
+        }
+      );
     }
     return rawText;
   }
@@ -1486,7 +1643,7 @@ export class Dispatcher {
     msg: GatewayInboundEnvelope["message"],
     channel: ChannelAdapter,
     turnId: string,
-    mergedFromTurnIds: string[],
+    mergedFromTurnIds: string[]
   ): Promise<void> {
     const q = this.getQueue(queueKey);
     const controller = new AbortController();
@@ -1545,8 +1702,10 @@ export class Dispatcher {
         composedText: composedField.text,
         runtime: route.runtime,
       };
-      if (mergedFromTurnIds.length > 0) dispatched.mergedFromTurnIds = mergedFromTurnIds;
-      if (composedField.truncated) dispatched.truncated = { composedText: true };
+      if (mergedFromTurnIds.length > 0)
+        dispatched.mergedFromTurnIds = mergedFromTurnIds;
+      if (composedField.truncated)
+        dispatched.truncated = { composedText: true };
       this.transcript.write(dispatched);
     }
 
@@ -1557,14 +1716,16 @@ export class Dispatcher {
       turnId,
       runtime: route.runtime,
       cwd: route.cwd,
-      ...(mergedFromTurnIds.length > 0 ? { mergedFromTurns: mergedFromTurnIds.length } : {}),
+      ...(mergedFromTurnIds.length > 0
+        ? { mergedFromTurns: mergedFromTurnIds.length }
+        : {}),
       composedPreview: logPreview(text),
     });
 
     const cloudRunBudget = extractCloudRunBudget(msg);
     const effectiveTurnTimeoutMs = Math.min(
       this.turnTimeoutMs,
-      cloudRunBudget?.maxWallTimeMs ?? this.turnTimeoutMs,
+      cloudRunBudget?.maxWallTimeMs ?? this.turnTimeoutMs
     );
     let observedToolCalls = 0;
 
@@ -1604,17 +1765,23 @@ export class Dispatcher {
       typeof channel.typing === "function" &&
       (streamable || !isBotCordChannel(channel));
     const canStream =
-      streamable && typeof traceId === "string" && typeof channel.streamBlock === "function";
+      streamable &&
+      typeof traceId === "string" &&
+      typeof channel.streamBlock === "function";
     const messageStatusTargetId =
       isBotCordChannel(channel) &&
       msg.conversation.kind === "group" &&
       !isOwnerChatRoom(msg) &&
+      shouldShowReplyingStatus(msg) &&
       typeof channel.messageStatus === "function"
         ? pickMessageStatusTarget(msg)
         : null;
     let messageStatusStarted = false;
-    const sendReplyingStatus = async (phase: "started" | "cleared"): Promise<void> => {
-      if (!messageStatusTargetId || typeof channel.messageStatus !== "function") return;
+    const sendReplyingStatus = async (
+      phase: "started" | "cleared"
+    ): Promise<void> => {
+      if (!messageStatusTargetId || typeof channel.messageStatus !== "function")
+        return;
       if (phase === "cleared" && !messageStatusStarted) return;
       if (phase === "started") messageStatusStarted = true;
       try {
@@ -1639,9 +1806,15 @@ export class Dispatcher {
       }
     };
     const recordBlock = (block: StreamBlock): void => {
-      if (block.kind === "tool_use" && cloudRunBudget?.maxToolCalls !== undefined) {
+      if (
+        block.kind === "tool_use" &&
+        cloudRunBudget?.maxToolCalls !== undefined
+      ) {
         observedToolCalls += 1;
-        if (observedToolCalls > cloudRunBudget.maxToolCalls && !controller.signal.aborted) {
+        if (
+          observedToolCalls > cloudRunBudget.maxToolCalls &&
+          !controller.signal.aborted
+        ) {
           slot.budgetExceeded = `tool call budget exceeded after ${observedToolCalls} tool call(s)`;
           this.log.warn("dispatcher: cloud_run tool budget exceeded", {
             agentId: msg.accountId,
@@ -1669,7 +1842,9 @@ export class Dispatcher {
           seq: block.seq,
           blockType: block.kind,
           summary,
-          ...(transcriptBlocksVerbose() ? { raw: redactAndCap(block.raw) } : {}),
+          ...(transcriptBlocksVerbose()
+            ? { raw: redactAndCap(block.raw) }
+            : {}),
         });
       }
     };
@@ -1733,7 +1908,7 @@ export class Dispatcher {
     const sendThinkingMarker = (
       phase: "started" | "updated" | "stopped",
       label: string | undefined,
-      source: "dispatcher" | "runtime",
+      source: "dispatcher" | "runtime"
     ): void => {
       if (!forwardBlockToChannel) return;
       const raw: Record<string, unknown> = { phase, source };
@@ -1796,7 +1971,8 @@ export class Dispatcher {
       typingLoopStarted = true;
       sendTypingPing();
       typingRefreshTimer = setInterval(sendTypingPing, TYPING_REFRESH_MS);
-      if (typeof typingRefreshTimer.unref === "function") typingRefreshTimer.unref();
+      if (typeof typingRefreshTimer.unref === "function")
+        typingRefreshTimer.unref();
     };
 
     const stopTypingRefresh = (): void => {
@@ -1805,43 +1981,46 @@ export class Dispatcher {
       typingRefreshTimer = null;
     };
 
-    const onStatus = canType || canStream
-      ? (event: RuntimeStatusEvent) => {
-          // Drop runtime callbacks after this turn's controller aborts —
-          // NDJSON/ACP adapters keep parsing stdout until the child exits
-          // (up to KILL_GRACE_MS after SIGTERM), so without this guard a
-          // superseded turn leaks frames to the new turn's UI.
-          if (controller.signal.aborted) return;
-          if (event.kind === "typing") {
-            // `/hub/typing` has no stopped semantic — frontend self-clears on
-            // stream/message arrival. typing.stopped is observed for daemon
-            // bookkeeping only (currently a no-op; kept for telemetry).
-            if (event.phase === "started") fireTypingIfNeeded();
-            return;
-          }
-          if (event.phase === "stopped") {
-            // Forward to wire ONLY if we previously announced thinking — that
-            // way `finalizeThinkingIfActive` doesn't double-emit, and adapters
-            // that signal terminal closure earlier than child exit (e.g.
-            // acp-stream's prompt-done) reach the frontend without waiting.
-            if (thinkingActive) {
-              sendThinkingMarker("stopped", event.label, "runtime");
+    const onStatus =
+      canType || canStream
+        ? (event: RuntimeStatusEvent) => {
+            // Drop runtime callbacks after this turn's controller aborts —
+            // NDJSON/ACP adapters keep parsing stdout until the child exits
+            // (up to KILL_GRACE_MS after SIGTERM), so without this guard a
+            // superseded turn leaks frames to the new turn's UI.
+            if (controller.signal.aborted) return;
+            if (event.kind === "typing") {
+              // `/hub/typing` has no stopped semantic — frontend self-clears on
+              // stream/message arrival. typing.stopped is observed for daemon
+              // bookkeeping only (currently a no-op; kept for telemetry).
+              if (event.phase === "started") fireTypingIfNeeded();
+              return;
             }
-            thinkingActive = false;
-            return;
+            if (event.phase === "stopped") {
+              // Forward to wire ONLY if we previously announced thinking — that
+              // way `finalizeThinkingIfActive` doesn't double-emit, and adapters
+              // that signal terminal closure earlier than child exit (e.g.
+              // acp-stream's prompt-done) reach the frontend without waiting.
+              if (thinkingActive) {
+                sendThinkingMarker("stopped", event.label, "runtime");
+              }
+              thinkingActive = false;
+              return;
+            }
+            // Runtime-emitted thinking.started/.updated is trusted unconditionally:
+            // we deliberately do NOT apply the `sawAssistantText` sticky guard
+            // here, only to dispatcher-synthesized starts. Adapters opting into
+            // explicit status events accept the responsibility of driving a
+            // sensible lifecycle (don't fire .started after the final answer).
+            thinkingActive = true;
+            sendThinkingMarker(event.phase, event.label, "runtime");
           }
-          // Runtime-emitted thinking.started/.updated is trusted unconditionally:
-          // we deliberately do NOT apply the `sawAssistantText` sticky guard
-          // here, only to dispatcher-synthesized starts. Adapters opting into
-          // explicit status events accept the responsibility of driving a
-          // sensible lifecycle (don't fire .started after the final answer).
-          thinkingActive = true;
-          sendThinkingMarker(event.phase, event.label, "runtime");
-        }
-      : undefined;
+        : undefined;
 
     const shouldObserveBlocks =
-      canStream || this.transcript.enabled || cloudRunBudget?.maxToolCalls !== undefined;
+      canStream ||
+      this.transcript.enabled ||
+      cloudRunBudget?.maxToolCalls !== undefined;
     const onBlock = shouldObserveBlocks
       ? (block: StreamBlock) => {
           // Always record adapter-emitted blocks for transcript fidelity, even
@@ -1902,10 +2081,13 @@ export class Dispatcher {
           systemContext = result;
         }
       } catch (err) {
-        this.log.warn("buildSystemContext threw — continuing without systemContext", {
-          error: err instanceof Error ? err.message : String(err),
-          messageId: msg.id,
-        });
+        this.log.warn(
+          "buildSystemContext threw — continuing without systemContext",
+          {
+            error: err instanceof Error ? err.message : String(err),
+            messageId: msg.id,
+          }
+        );
       }
     }
     const systemRules = buildRoomSystemRules(msg);
@@ -1937,10 +2119,13 @@ export class Dispatcher {
           }
         }
       } catch (err) {
-        this.log.warn("buildMemoryContext threw — continuing without memory version check", {
-          error: err instanceof Error ? err.message : String(err),
-          messageId: msg.id,
-        });
+        this.log.warn(
+          "buildMemoryContext threw — continuing without memory version check",
+          {
+            error: err instanceof Error ? err.message : String(err),
+            messageId: msg.id,
+          }
+        );
       }
     }
 
@@ -1952,7 +2137,10 @@ export class Dispatcher {
     const hubUrl = this.resolveHubUrl?.(msg.accountId);
     try {
       try {
-        const runRuntime = (textForRun: string, sessionIdForRun: string | null) =>
+        const runRuntime = (
+          textForRun: string,
+          sessionIdForRun: string | null
+        ) =>
           runtime.run({
             text: textForRun,
             sessionId: sessionIdForRun,
@@ -1977,7 +2165,9 @@ export class Dispatcher {
             },
             ...(cloudRunBudget ? { budget: cloudRunBudget } : {}),
             gateway: route.gateway,
-            ...(route.hermesProfile ? { hermesProfile: route.hermesProfile } : {}),
+            ...(route.hermesProfile
+              ? { hermesProfile: route.hermesProfile }
+              : {}),
           });
 
         // Proactive session rotation: a resumed session replays its whole
@@ -1991,10 +2181,13 @@ export class Dispatcher {
             try {
               await this.sessionStore.delete(key);
             } catch (err) {
-              this.log.warn("dispatcher: session-store.delete failed before rotation", {
-                key,
-                error: err instanceof Error ? err.message : String(err),
-              });
+              this.log.warn(
+                "dispatcher: session-store.delete failed before rotation",
+                {
+                  key,
+                  error: err instanceof Error ? err.message : String(err),
+                }
+              );
             }
             const recoveryContext = await this.fetchRecoveryContext(msg);
             runtimeText = buildRuntimeRecoveryPrompt({
@@ -2003,20 +2196,23 @@ export class Dispatcher {
               reason: rotation.reason,
               recoveryContext,
             });
-            this.log.info("dispatcher: rotated runtime session to control context growth", {
-              key,
-              prevRuntimeSessionId: activeSessionId,
-              runtime: route.runtime,
-              prevTurnCount: entry?.turnCount ?? null,
-              prevInputTokens: entry?.lastInputTokens ?? null,
-              maxResumeInputTokens: this.maxResumeInputTokens,
-              maxResumeTurns: this.maxResumeTurns,
-              agentId: msg.accountId,
-              roomId: msg.conversation.id,
-              topicId: msg.conversation.threadId ?? null,
-              turnId,
-              queueKey,
-            });
+            this.log.info(
+              "dispatcher: rotated runtime session to control context growth",
+              {
+                key,
+                prevRuntimeSessionId: activeSessionId,
+                runtime: route.runtime,
+                prevTurnCount: entry?.turnCount ?? null,
+                prevInputTokens: entry?.lastInputTokens ?? null,
+                maxResumeInputTokens: this.maxResumeInputTokens,
+                maxResumeTurns: this.maxResumeTurns,
+                agentId: msg.accountId,
+                roomId: msg.conversation.id,
+                topicId: msg.conversation.threadId ?? null,
+                turnId,
+                queueKey,
+              }
+            );
             activeSessionId = null;
           }
         }
@@ -2038,17 +2234,23 @@ export class Dispatcher {
         if (shouldRetryFresh) {
           try {
             await this.sessionStore.delete(key);
-            this.log.info("dispatcher: dropped unrecoverable runtime session before fresh retry", {
-              key,
-              prevRuntimeSessionId: activeSessionId,
-              runtime: route.runtime,
-              error: firstError,
-            });
+            this.log.info(
+              "dispatcher: dropped unrecoverable runtime session before fresh retry",
+              {
+                key,
+                prevRuntimeSessionId: activeSessionId,
+                runtime: route.runtime,
+                error: firstError,
+              }
+            );
           } catch (err) {
-            this.log.warn("dispatcher: session-store.delete failed before fresh retry", {
-              key,
-              error: err instanceof Error ? err.message : String(err),
-            });
+            this.log.warn(
+              "dispatcher: session-store.delete failed before fresh retry",
+              {
+                key,
+                error: err instanceof Error ? err.message : String(err),
+              }
+            );
           }
 
           const recoveryContext = await this.fetchRecoveryContext(msg);
@@ -2061,13 +2263,16 @@ export class Dispatcher {
             error: firstError,
             recoveryContext,
           });
-          this.log.info("dispatcher: retrying codex turn in a fresh session with recovery context", {
-            agentId: msg.accountId,
-            roomId: msg.conversation.id,
-            topicId: msg.conversation.threadId ?? null,
-            turnId,
-            queueKey,
-          });
+          this.log.info(
+            "dispatcher: retrying codex turn in a fresh session with recovery context",
+            {
+              agentId: msg.accountId,
+              roomId: msg.conversation.id,
+              topicId: msg.conversation.threadId ?? null,
+              turnId,
+              queueKey,
+            }
+          );
           result = await runRuntime(runtimeText, null);
         }
       } catch (err) {
@@ -2131,11 +2336,14 @@ export class Dispatcher {
       // own loop-risk accounting downstream.
       const isOwnerChat = isOwnerChatRoom(msg);
       const canDeliverRuntimeText = isOwnerChat || !isBotCordChannel(channel);
-      const canDeliverRuntimeDiagnostics = canDeliverRuntimeText || isBotCordChannel(channel);
+      const canDeliverRuntimeDiagnostics =
+        canDeliverRuntimeText || isBotCordChannel(channel);
 
       if (slot.timedOut || slot.budgetExceeded) {
         const phase = slot.budgetExceeded ? "budget" : "timeout";
-        const error = slot.budgetExceeded ?? `runtime timeout after ${effectiveTurnTimeoutMs}ms`;
+        const error =
+          slot.budgetExceeded ??
+          `runtime timeout after ${effectiveTurnTimeoutMs}ms`;
         this.transcript.write({
           ts: nowIso(),
           kind: "turn_error",
@@ -2148,28 +2356,37 @@ export class Dispatcher {
           durationMs: Date.now() - slot.dispatchedAt,
         });
         if (canDeliverRuntimeDiagnostics) {
-          await this.sendReply(channel, {
-            channel: msg.channel,
-            accountId: msg.accountId,
-            conversationId: msg.conversation.id,
-            threadId: msg.conversation.threadId ?? null,
-            type: "error",
-            text: slot.budgetExceeded
-              ? `Cloud run budget exceeded: ${slot.budgetExceeded}`
-              : `Runtime timeout after ${Math.round(effectiveTurnTimeoutMs / 60000)} minute(s); aborted`,
-            replyTo: this.providerReplyTo(msg),
-            traceId: msg.trace?.id ?? null,
-          }, turnId);
+          await this.sendReply(
+            channel,
+            {
+              channel: msg.channel,
+              accountId: msg.accountId,
+              conversationId: msg.conversation.id,
+              threadId: msg.conversation.threadId ?? null,
+              type: "error",
+              text: slot.budgetExceeded
+                ? `Cloud run budget exceeded: ${slot.budgetExceeded}`
+                : `Runtime timeout after ${Math.round(
+                    effectiveTurnTimeoutMs / 60000
+                  )} minute(s); aborted`,
+              replyTo: this.providerReplyTo(msg),
+              traceId: msg.trace?.id ?? null,
+            },
+            turnId
+          );
         } else {
-          this.log.warn("dispatcher: timeout in non-owner-chat room — error reply suppressed", {
-            agentId: msg.accountId,
-            roomId: msg.conversation.id,
-            topicId: msg.conversation.threadId ?? null,
-            turnId,
-            queueKey,
-            timeoutMs: effectiveTurnTimeoutMs,
-            budgetExceeded: slot.budgetExceeded,
-          });
+          this.log.warn(
+            "dispatcher: timeout in non-owner-chat room — error reply suppressed",
+            {
+              agentId: msg.accountId,
+              roomId: msg.conversation.id,
+              topicId: msg.conversation.threadId ?? null,
+              turnId,
+              queueKey,
+              timeoutMs: effectiveTurnTimeoutMs,
+              budgetExceeded: slot.budgetExceeded,
+            }
+          );
         }
         return;
       }
@@ -2184,27 +2401,37 @@ export class Dispatcher {
           hubUrl,
         });
         if (canDeliverRuntimeDiagnostics) {
-          await this.sendReply(channel, {
-            channel: msg.channel,
-            accountId: msg.accountId,
-            conversationId: msg.conversation.id,
-            threadId: msg.conversation.threadId ?? null,
-            type: "error",
-            text:
-              failure.usageLimitText ??
-              `⚠️ Runtime error: ${truncate(failure.safeMessage, 500)} [error_ref: ${failure.errorRef}]`,
-            errorRef: failure.errorRef,
-            replyTo: this.providerReplyTo(msg),
-            traceId: msg.trace?.id ?? null,
-          }, turnId);
+          await this.sendReply(
+            channel,
+            {
+              channel: msg.channel,
+              accountId: msg.accountId,
+              conversationId: msg.conversation.id,
+              threadId: msg.conversation.threadId ?? null,
+              type: "error",
+              text:
+                failure.usageLimitText ??
+                `⚠️ Runtime error: ${truncate(
+                  failure.safeMessage,
+                  500
+                )} [error_ref: ${failure.errorRef}]`,
+              errorRef: failure.errorRef,
+              replyTo: this.providerReplyTo(msg),
+              traceId: msg.trace?.id ?? null,
+            },
+            turnId
+          );
         } else {
-          this.log.warn("dispatcher: runtime error in non-owner-chat room — error reply suppressed", {
-            agentId: msg.accountId,
-            roomId: msg.conversation.id,
-            topicId: msg.conversation.threadId ?? null,
-            turnId,
-            queueKey,
-          });
+          this.log.warn(
+            "dispatcher: runtime error in non-owner-chat room — error reply suppressed",
+            {
+              agentId: msg.accountId,
+              roomId: msg.conversation.id,
+              topicId: msg.conversation.threadId ?? null,
+              turnId,
+              queueKey,
+            }
+          );
         }
         return;
       }
@@ -2212,21 +2439,30 @@ export class Dispatcher {
       if (!result) return;
 
       const rawReplyText = (result.text || "").trim();
-      const replyLooksLikeAuthFailure = looksLikeRuntimeAuthFailure(rawReplyText);
+      const replyLooksLikeAuthFailure =
+        looksLikeRuntimeAuthFailure(rawReplyText);
       const replyText = replyLooksLikeAuthFailure ? "" : rawReplyText;
-      const effectiveError = result.error ?? (replyLooksLikeAuthFailure ? rawReplyText : undefined);
+      const effectiveError =
+        result.error ?? (replyLooksLikeAuthFailure ? rawReplyText : undefined);
       const authFailureError =
-        effectiveError && looksLikeRuntimeAuthFailure(effectiveError) ? effectiveError : undefined;
-      const finalTextField = truncateTextField(replyLooksLikeAuthFailure ? "" : result.text || "");
+        effectiveError && looksLikeRuntimeAuthFailure(effectiveError)
+          ? effectiveError
+          : undefined;
+      const finalTextField = truncateTextField(
+        replyLooksLikeAuthFailure ? "" : result.text || ""
+      );
       if (replyLooksLikeAuthFailure) {
-        this.log.error("dispatcher: runtime text looked like authentication failure; treating as error", {
-          agentId: msg.accountId,
-          roomId: msg.conversation.id,
-          topicId: msg.conversation.threadId ?? null,
-          turnId,
-          runtime: route.runtime,
-          error: rawReplyText,
-        });
+        this.log.error(
+          "dispatcher: runtime text looked like authentication failure; treating as error",
+          {
+            agentId: msg.accountId,
+            roomId: msg.conversation.id,
+            topicId: msg.conversation.threadId ?? null,
+            turnId,
+            runtime: route.runtime,
+            error: rawReplyText,
+          }
+        );
       }
       if (authFailureError) {
         this.recordRuntimeAuthFailure(route, msg, authFailureError);
@@ -2265,11 +2501,14 @@ export class Dispatcher {
         // the new session's birth.
         const resumedSameSession =
           !!activeSessionId && entry?.runtimeSessionId === activeSessionId;
-        const nextTurnCount = resumedSameSession ? (entry?.turnCount ?? 0) + 1 : 1;
+        const nextTurnCount = resumedSameSession
+          ? (entry?.turnCount ?? 0) + 1
+          : 1;
         const reportedInputTokens =
           result.inputCacheHitTokens !== undefined ||
           result.inputCacheMissTokens !== undefined
-            ? (result.inputCacheHitTokens ?? 0) + (result.inputCacheMissTokens ?? 0)
+            ? (result.inputCacheHitTokens ?? 0) +
+              (result.inputCacheMissTokens ?? 0)
             : undefined;
         const session: GatewaySessionEntry = {
           key,
@@ -2330,19 +2569,26 @@ export class Dispatcher {
             hubUrl,
           });
           if (canDeliverRuntimeDiagnostics) {
-            const sendResult = await this.sendReply(channel, {
-              channel: msg.channel,
-              accountId: msg.accountId,
-              conversationId: msg.conversation.id,
-              threadId: msg.conversation.threadId ?? null,
-              type: "error",
-              text:
-                failure.usageLimitText ??
-                `⚠️ Runtime error: ${truncate(failure.safeMessage, 500)} [error_ref: ${failure.errorRef}]`,
-              errorRef: failure.errorRef,
-              replyTo: this.providerReplyTo(msg),
-              traceId: msg.trace?.id ?? null,
-            }, turnId);
+            const sendResult = await this.sendReply(
+              channel,
+              {
+                channel: msg.channel,
+                accountId: msg.accountId,
+                conversationId: msg.conversation.id,
+                threadId: msg.conversation.threadId ?? null,
+                type: "error",
+                text:
+                  failure.usageLimitText ??
+                  `⚠️ Runtime error: ${truncate(
+                    failure.safeMessage,
+                    500
+                  )} [error_ref: ${failure.errorRef}]`,
+                errorRef: failure.errorRef,
+                replyTo: this.providerReplyTo(msg),
+                traceId: msg.trace?.id ?? null,
+              },
+              turnId
+            );
             this.emitOutbound({
               turnId,
               msg,
@@ -2387,7 +2633,7 @@ export class Dispatcher {
             turnId,
             queueKey,
             replyTextLen: replyText.length,
-          },
+          }
         );
         this.emitOutbound({
           turnId,
@@ -2425,16 +2671,20 @@ export class Dispatcher {
         });
       }
 
-      const sendResult = await this.sendReply(channel, {
-        channel: msg.channel,
-        accountId: msg.accountId,
-        conversationId: msg.conversation.id,
-        threadId: msg.conversation.threadId ?? null,
-        text: replyText,
-        attachments: attachments.length > 0 ? attachments : undefined,
-        replyTo: this.providerReplyTo(msg),
-        traceId: msg.trace?.id ?? null,
-      }, turnId);
+      const sendResult = await this.sendReply(
+        channel,
+        {
+          channel: msg.channel,
+          accountId: msg.accountId,
+          conversationId: msg.conversation.id,
+          threadId: msg.conversation.threadId ?? null,
+          text: replyText,
+          attachments: attachments.length > 0 ? attachments : undefined,
+          replyTo: this.providerReplyTo(msg),
+          traceId: msg.trace?.id ?? null,
+        },
+        turnId
+      );
       this.emitOutbound({
         turnId,
         msg,
@@ -2463,7 +2713,15 @@ export class Dispatcher {
       if (q.current === slot) q.current = null;
       // Agent-driven defer: a group-room turn may have run `botcord wait` to
       // park its decision. Honor it now (timer lives here, not in the runtime).
-      this.maybeSchedulePark(queueKey, route, msg, channel, slot, controller, waitMarkerFile);
+      this.maybeSchedulePark(
+        queueKey,
+        route,
+        msg,
+        channel,
+        slot,
+        controller,
+        waitMarkerFile
+      );
       resolveDone();
     }
   }
@@ -2501,7 +2759,7 @@ export class Dispatcher {
     channel: ChannelAdapter,
     slot: TurnSlot,
     controller: AbortController,
-    waitMarkerFile: string | undefined,
+    waitMarkerFile: string | undefined
   ): void {
     const q = this.queues.get(queueKey);
     if (!q) return;
@@ -2536,7 +2794,10 @@ export class Dispatcher {
     }
 
     const remainingBudget = MAX_WAIT_MS - q.parkAccumMs;
-    const waitMs = Math.max(0, Math.min(marker.deadlineMs - Date.now(), remainingBudget));
+    const waitMs = Math.max(
+      0,
+      Math.min(marker.deadlineMs - Date.now(), remainingBudget)
+    );
     if (waitMs <= 0) {
       q.parkCount = 0;
       q.parkAccumMs = 0;
@@ -2569,7 +2830,7 @@ export class Dispatcher {
         this.recomposeUserTurn(msg),
         msg,
         channel,
-        randomUUID(),
+        randomUUID()
       ).catch((err) => {
         this.log.warn("dispatcher: park re-wake failed", {
           queueKey,
@@ -2584,7 +2845,7 @@ export class Dispatcher {
   private async sendReply(
     channel: ChannelAdapter,
     outbound: GatewayOutboundMessage,
-    turnId?: string,
+    turnId?: string
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     try {
       await channel.send({ message: outbound, log: this.log });
@@ -2620,13 +2881,18 @@ export class Dispatcher {
     return pickReplyToTarget(msg);
   }
 
-  private emitInbound(turnId: string, msg: GatewayInboundEnvelope["message"]): void {
+  private emitInbound(
+    turnId: string,
+    msg: GatewayInboundEnvelope["message"]
+  ): void {
     if (!this.transcript.enabled) return;
     const rawText = typeof msg.text === "string" ? msg.text : "";
     const tField = truncateTextField(rawText);
     const raw = msg.raw as Record<string, unknown> | null | undefined;
     const batch =
-      raw && typeof raw === "object" && Array.isArray((raw as { batch?: unknown }).batch)
+      raw &&
+      typeof raw === "object" &&
+      Array.isArray((raw as { batch?: unknown }).batch)
         ? (raw as { batch: unknown[] }).batch.length
         : undefined;
     const rec: import("./transcript.js").InboundTranscriptRecord = {
@@ -2637,12 +2903,19 @@ export class Dispatcher {
       roomId: msg.conversation.id,
       topicId: msg.conversation.threadId ?? null,
       messageId: msg.id,
-      sender: { id: msg.sender.id, kind: msg.sender.kind, ...(msg.sender.name ? { name: msg.sender.name } : {}) },
+      sender: {
+        id: msg.sender.id,
+        kind: msg.sender.kind,
+        ...(msg.sender.name ? { name: msg.sender.name } : {}),
+      },
       text: tField.text,
     };
     if (batch !== undefined && batch > 1) rec.rawBatchEntries = batch;
     if (msg.trace?.id) {
-      rec.trace = { id: msg.trace.id, ...(msg.trace.streamable ? { streamable: true } : {}) };
+      rec.trace = {
+        id: msg.trace.id,
+        ...(msg.trace.streamable ? { streamable: true } : {}),
+      };
     }
     if (tField.truncated) rec.truncated = { text: true };
     this.transcript.write(rec);
@@ -2713,15 +2986,18 @@ export class Dispatcher {
     const baseMessage =
       sanitizeRuntimeFailureText(
         info.error_message || String(args.result?.error ?? "runtime error"),
-        2048,
+        2048
       ) || "runtime error";
     // Surface the process exit code alongside the adapter message so opaque
     // errors (e.g. a bare "codex error") still say *how* the runtime died
     // without needing a separate `debug runtime-error` lookup.
     const failureExitCode =
-      typeof resultFailure.exit_code === "number" ? resultFailure.exit_code : null;
+      typeof resultFailure.exit_code === "number"
+        ? resultFailure.exit_code
+        : null;
     const safeMessage =
-      failureExitCode !== null && !baseMessage.includes(`code ${failureExitCode}`)
+      failureExitCode !== null &&
+      !baseMessage.includes(`code ${failureExitCode}`)
         ? `${baseMessage} (exit code ${failureExitCode})`
         : baseMessage;
     // Quota exhaustion is not a crash to debug — surface a calm line with the
@@ -2735,10 +3011,17 @@ export class Dispatcher {
       topic_id: args.msg.conversation.threadId ?? null,
       turn_id: args.turnId,
       runtime: args.route.runtime,
-      cwd: typeof resultFailure.cwd === "string" ? resultFailure.cwd : args.route.cwd,
+      cwd:
+        typeof resultFailure.cwd === "string"
+          ? resultFailure.cwd
+          : args.route.cwd,
       command: safeCommand(resultFailure.command ?? null),
-      exit_code: typeof resultFailure.exit_code === "number" ? resultFailure.exit_code : null,
-      signal: typeof resultFailure.signal === "string" ? resultFailure.signal : null,
+      exit_code:
+        typeof resultFailure.exit_code === "number"
+          ? resultFailure.exit_code
+          : null,
+      signal:
+        typeof resultFailure.signal === "string" ? resultFailure.signal : null,
       duration_ms:
         typeof resultFailure.duration_ms === "number"
           ? resultFailure.duration_ms
@@ -2798,7 +3081,7 @@ export class Dispatcher {
         msg: args.msg,
         hubUrl: args.hubUrl,
       }),
-      this.log,
+      this.log
     );
     return { errorRef, summary, safeMessage, usageLimitText };
   }
@@ -2811,21 +3094,24 @@ function buildRuntimeFailureReport(args: {
   msg: GatewayInboundMessage;
   hubUrl?: string;
 }): import("../error-reporting.js").DaemonErrorReport {
-  const raw = args.msg.raw as {
-    envelope?: {
-      type?: unknown;
-      msg_id?: unknown;
-      message_id?: unknown;
-    };
-  } | null | undefined;
+  const raw = args.msg.raw as
+    | {
+        envelope?: {
+          type?: unknown;
+          msg_id?: unknown;
+          message_id?: unknown;
+        };
+      }
+    | null
+    | undefined;
   const controlFrameType =
     typeof raw?.envelope?.type === "string" ? raw.envelope.type : undefined;
   const controlMessageId =
     typeof raw?.envelope?.msg_id === "string"
       ? raw.envelope.msg_id
       : typeof raw?.envelope?.message_id === "string"
-        ? raw.envelope.message_id
-        : undefined;
+      ? raw.envelope.message_id
+      : undefined;
 
   return {
     type: "runtime_failure",
@@ -2868,7 +3154,10 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function collectOwnerChatReplyAttachments(text: string, cwd: string): GatewayOutboundMessage["attachments"] {
+function collectOwnerChatReplyAttachments(
+  text: string,
+  cwd: string
+): GatewayOutboundMessage["attachments"] {
   const baseDir = safeRealpath(cwd);
   if (!baseDir) return undefined;
 
@@ -2884,7 +3173,8 @@ function collectOwnerChatReplyAttachments(text: string, cwd: string): GatewayOut
       ? path.resolve(rawPath)
       : path.resolve(baseDir, rawPath);
     const realPath = safeRealpath(resolved);
-    if (!realPath || seen.has(realPath) || !isPathInside(baseDir, realPath)) continue;
+    if (!realPath || seen.has(realPath) || !isPathInside(baseDir, realPath))
+      continue;
 
     const ext = path.extname(realPath).toLowerCase();
     if (!AUTO_ATTACHMENT_EXTENSIONS.has(ext)) continue;
@@ -2905,7 +3195,9 @@ function collectOwnerChatReplyAttachments(text: string, cwd: string): GatewayOut
       filename: path.basename(realPath),
       sourcePath: rawPath,
       ...(contentType ? { contentType } : {}),
-      ...(contentType?.startsWith("image/") ? { kind: "image" as const } : { kind: "file" as const }),
+      ...(contentType?.startsWith("image/")
+        ? { kind: "image" as const }
+        : { kind: "file" as const }),
     });
     seen.add(realPath);
     if (out.length >= AUTO_ATTACHMENT_LIMIT) break;
@@ -2993,7 +3285,9 @@ function isBotCordChannel(channel: ChannelAdapter): boolean {
   return channel.type === "botcord" || channel.id === "botcord";
 }
 
-function isMultimodalOnlyMessage(msg: GatewayInboundEnvelope["message"]): boolean {
+function isMultimodalOnlyMessage(
+  msg: GatewayInboundEnvelope["message"]
+): boolean {
   if (!hasMultimodalContent(msg.raw)) return false;
   return !hasAuthoredText(msg.raw);
 }
@@ -3025,7 +3319,9 @@ function hasAuthoredText(raw: unknown): boolean {
     return itemList.some((item) => {
       if (!item || typeof item !== "object") return false;
       const textItem = (item as { text_item?: { text?: unknown } }).text_item;
-      return typeof textItem?.text === "string" && textItem.text.trim().length > 0;
+      return (
+        typeof textItem?.text === "string" && textItem.text.trim().length > 0
+      );
     });
   }
 
@@ -3036,7 +3332,8 @@ function hasMultimodalContent(raw: unknown): boolean {
   if (!raw || typeof raw !== "object") return false;
   const obj = raw as Record<string, unknown>;
   const batch = obj.batch;
-  if (Array.isArray(batch)) return batch.some((item) => hasMultimodalContent(item));
+  if (Array.isArray(batch))
+    return batch.some((item) => hasMultimodalContent(item));
 
   const envelope = obj.envelope as Record<string, unknown> | undefined;
   const payload = envelope?.payload as Record<string, unknown> | undefined;
@@ -3056,7 +3353,7 @@ function hasMultimodalContent(raw: unknown): boolean {
 
 function resolveQueueMode(
   route: GatewayRoute,
-  kind: "direct" | "group",
+  kind: "direct" | "group"
 ): QueueMode {
   if (route.queueMode) return route.queueMode;
   return kind === "direct" ? "cancel-previous" : "serial";

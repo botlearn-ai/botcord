@@ -26,12 +26,18 @@
  * `system-context.ts` already gives the model the context it needs.
  */
 import type { GatewayInboundMessage } from "./gateway/index.js";
-import { sanitizeSenderName, sanitizeUntrustedContent } from "./gateway/index.js";
+import {
+  sanitizeSenderName,
+  sanitizeUntrustedContent,
+} from "./gateway/index.js";
 import { classifyActivitySender } from "./sender-classify.js";
+import { effectiveMention } from "./mention-scan.js";
 
 const GROUP_HINT =
   "[In group chats, do not send a message back to the current group room " +
-  "unless you are explicitly mentioned, addressed, or the room policy says you should participate.\n\n" +
+  "unless you have new facts, a blocker, an approval request, an execution result, a review finding, " +
+  "or an explicit action request to handle. A mention is context for deciding relevance; it is not by itself " +
+  "a requirement to post publicly. Treat FYI/CC/no-action mentions as context unless working memory or room policy requires action.\n\n" +
   "This group-reply restriction only controls whether you post back into the current group. " +
   "It does not prevent you from performing owner-approved or policy-approved background actions, " +
   "including analyzing the message, updating memory, calling tools, starting a task, " +
@@ -48,9 +54,11 @@ const GROUP_HINT =
   "be re-woken after the wait — or sooner if a new message arrives — so you can re-decide with " +
   "the newer context (for example, stay silent if someone already covered it). Prefer this over " +
   "racing to answer an unaddressed question.\n\n" +
+  "Shared-room spokesperson convention: prefer a single public summary from the person or agent responsible " +
+  "for the relevant area. Others should avoid duplicate confirmations, boundary restatements, or courtesy acknowledgements.\n\n" +
   'If no group reply and no background action is needed, reply exactly "NO_REPLY".]';
 const DIRECT_HINT =
-  '[If the conversation has naturally concluded or no response is needed, ' +
+  "[If the conversation has naturally concluded or no response is needed, " +
   'reply with exactly "NO_REPLY" and nothing else.]';
 
 /**
@@ -98,7 +106,7 @@ function replyDeliveryHint(msg: GatewayInboundMessage): string {
 
 function appendConversationFields(
   fields: string[],
-  msg: GatewayInboundMessage,
+  msg: GatewayInboundMessage
 ): void {
   const conversationId = sanitizeSenderName(msg.conversation.id);
   fields.push(`conversation_id: ${conversationId}`);
@@ -172,7 +180,10 @@ function formatScheduleContext(raw: unknown): string[] {
         "This turn was triggered by a proactive schedule.",
         fields.join(" | "),
       ]
-    : ["[BotCord Schedule]", "This turn was triggered by a proactive schedule."];
+    : [
+        "[BotCord Schedule]",
+        "This turn was triggered by a proactive schedule.",
+      ];
 }
 
 /**
@@ -193,11 +204,13 @@ function entryFromLabel(e: BatchedEntry): {
   kind: "human" | "agent";
   envelopeType: string | undefined;
 } {
-  const envType = typeof e.envelope?.type === "string" ? e.envelope.type : undefined;
+  const envType =
+    typeof e.envelope?.type === "string" ? e.envelope.type : undefined;
   const isHuman =
     e.source_type === "dashboard_human_room" ||
     (typeof e.envelope?.from === "string" && e.envelope.from.startsWith("hu_"));
-  const fromId = typeof e.envelope?.from === "string" ? e.envelope.from : "unknown";
+  const fromId =
+    typeof e.envelope?.from === "string" ? e.envelope.from : "unknown";
   const label = isHuman
     ? typeof e.source_user_name === "string" && e.source_user_name
       ? e.source_user_name
@@ -208,7 +221,8 @@ function entryFromLabel(e: BatchedEntry): {
 
 function entryText(e: BatchedEntry): string {
   if (typeof e.text === "string") return e.text;
-  if (typeof e.envelope?.payload?.text === "string") return e.envelope.payload.text;
+  if (typeof e.envelope?.payload?.text === "string")
+    return e.envelope.payload.text;
   return "";
 }
 
@@ -232,11 +246,10 @@ function formatReplyQuoteLine(raw: unknown): string | null {
     typeof rp.sender_display_name === "string" && rp.sender_display_name
       ? rp.sender_display_name
       : typeof rp.sender_id === "string" && rp.sender_id
-        ? rp.sender_id
-        : "unknown";
+      ? rp.sender_id
+      : "unknown";
   const sender = sanitizeSenderName(senderRaw);
-  const previewRaw =
-    typeof rp.text_preview === "string" ? rp.text_preview : "";
+  const previewRaw = typeof rp.text_preview === "string" ? rp.text_preview : "";
   const previewClean = sanitizeUntrustedContent(previewRaw)
     .replace(/[\r\n]+/g, " ")
     .slice(0, 120);
@@ -246,28 +259,43 @@ function formatReplyQuoteLine(raw: unknown): string | null {
   return `[quoting ${sender}: "${previewClean}"]`;
 }
 
-function formatRoomContext(raw: unknown, fallback: { id: string; title?: string }): string[] {
+function formatRoomContext(
+  raw: unknown,
+  fallback: { id: string; title?: string }
+): string[] {
   const r = raw && typeof raw === "object" ? (raw as RoomContextRaw) : {};
-  const roomId = typeof r.room_id === "string" && r.room_id ? r.room_id : fallback.id;
-  const roomName = typeof r.room_name === "string" && r.room_name ? r.room_name : fallback.title;
+  const roomId =
+    typeof r.room_id === "string" && r.room_id ? r.room_id : fallback.id;
+  const roomName =
+    typeof r.room_name === "string" && r.room_name
+      ? r.room_name
+      : fallback.title;
   const memberCount =
-    typeof r.room_member_count === "number" && Number.isFinite(r.room_member_count)
+    typeof r.room_member_count === "number" &&
+    Number.isFinite(r.room_member_count)
       ? r.room_member_count
       : undefined;
   const memberNames = Array.isArray(r.room_member_names)
-    ? r.room_member_names.filter((n): n is string => typeof n === "string" && n.length > 0)
+    ? r.room_member_names.filter(
+        (n): n is string => typeof n === "string" && n.length > 0
+      )
     : [];
-  const role = typeof r.my_role === "string" && r.my_role ? r.my_role : undefined;
-  const canSend = typeof r.my_can_send === "boolean" ? r.my_can_send : undefined;
+  const role =
+    typeof r.my_role === "string" && r.my_role ? r.my_role : undefined;
+  const canSend =
+    typeof r.my_can_send === "boolean" ? r.my_can_send : undefined;
 
   const parts = [`id: ${sanitizeSenderName(roomId)}`];
   if (roomName) parts.push(`name: ${sanitizeSenderName(roomName)}`);
   if (memberCount !== undefined) {
     const names = memberNames.slice(0, 10).map(sanitizeSenderName).join(", ");
-    parts.push(names ? `members: ${memberCount}: ${names}` : `members: ${memberCount}`);
+    parts.push(
+      names ? `members: ${memberCount}: ${names}` : `members: ${memberCount}`
+    );
   }
   if (role) parts.push(`role: ${sanitizeSenderName(role)}`);
-  if (canSend !== undefined) parts.push(`can_send: ${canSend ? "true" : "false"}`);
+  if (canSend !== undefined)
+    parts.push(`can_send: ${canSend ? "true" : "false"}`);
 
   return [`[BotCord Room] | ${parts.join(" | ")}`];
 }
@@ -321,7 +349,7 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
     const safeRoom = sanitizeSenderName(roomTitle.replace(/[\r\n]+/g, " "));
     headerFields.push(`room: ${safeRoom}`);
   }
-  if (msg.mentioned) {
+  if (effectiveMention(msg)) {
     headerFields.push("mentioned: true");
   }
 
@@ -347,7 +375,9 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
   const lines: string[] = [
     headerFields.join(" | "),
     ...formatScheduleContext(msg.raw),
-    ...(isGroup ? formatRoomContext(msg.raw, { id: conversation.id, title: roomTitle }) : []),
+    ...(isGroup
+      ? formatRoomContext(msg.raw, { id: conversation.id, title: roomTitle })
+      : []),
     `<${tag} sender="${sanitizedSenderLabel}" sender_kind="${senderKindAttr}">`,
     ...(quoteLine ? [quoteLine] : []),
     trimmed,
@@ -371,7 +401,7 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
  */
 function composeBatchedTurn(
   msg: GatewayInboundMessage,
-  batch: BatchedEntry[],
+  batch: BatchedEntry[]
 ): string {
   const conversation = msg.conversation;
   const isGroup = conversation.kind === "group";
@@ -387,7 +417,7 @@ function composeBatchedTurn(
     const safeRoom = sanitizeSenderName(roomTitle.replace(/[\r\n]+/g, " "));
     header.push(`room: ${safeRoom}`);
   }
-  if (msg.mentioned) {
+  if (effectiveMention(msg)) {
     header.push("mentioned: true");
   }
 
@@ -405,7 +435,7 @@ function composeBatchedTurn(
     const quoteLine = formatReplyQuoteLine(entry);
     const inner = quoteLine ? `${quoteLine}\n${safeBody}` : safeBody;
     blocks.push(
-      `<${tag} sender="${safeLabel}" sender_kind="${kind}">\n${inner}\n</${tag}>`,
+      `<${tag} sender="${safeLabel}" sender_kind="${kind}">\n${inner}\n</${tag}>`
     );
     if (envelopeType === "contact_request") {
       contactRequestSenders.push(safeLabel);
@@ -415,7 +445,9 @@ function composeBatchedTurn(
   const hint = isGroup ? GROUP_HINT : DIRECT_HINT;
   const lines: string[] = [
     header.join(" | "),
-    ...(isGroup ? formatRoomContext(msg.raw, { id: conversation.id, title: roomTitle }) : []),
+    ...(isGroup
+      ? formatRoomContext(msg.raw, { id: conversation.id, title: roomTitle })
+      : []),
     blocks.join("\n"),
     "",
     hint,
@@ -432,7 +464,7 @@ function composeBatchedTurn(
         unique.join(", ") +
         ". Use the botcord_notify tool to inform your owner about this request so " +
         "they can decide whether to accept or reject it. Include the sender's " +
-        "agent ID and any message they attached.]",
+        "agent ID and any message they attached.]"
     );
   }
   return lines.join("\n");

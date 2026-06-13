@@ -50,11 +50,20 @@ import {
 } from "./loop-risk.js";
 import { composeBotCordUserTurn } from "./turn-text.js";
 import { UserAuthManager } from "./user-auth.js";
-import { PolicyResolver, type DaemonAttentionPolicy } from "./gateway/policy-resolver.js";
-import { scanMention } from "./mention-scan.js";
-import { createDiagnosticBundle, uploadDiagnosticBundle } from "./diagnostics.js";
+import {
+  PolicyResolver,
+  type DaemonAttentionPolicy,
+} from "./gateway/policy-resolver.js";
+import { applyLocalMention } from "./mention-scan.js";
+import {
+  createDiagnosticBundle,
+  uploadDiagnosticBundle,
+} from "./diagnostics.js";
 import { createAttentionPolicyFetcher } from "./attention-policy-fetcher.js";
-import { collectAgentSkillSnapshot, type SkillIndexOptions } from "./skill-index.js";
+import {
+  collectAgentSkillSnapshot,
+  type SkillIndexOptions,
+} from "./skill-index.js";
 import {
   createDaemonErrorReporter,
   initializeErrorReporterSafely,
@@ -120,7 +129,8 @@ export function createActivityRecorder(opts: {
     const rawText = typeof msg.text === "string" ? msg.text : "";
     // Owner text passes through verbatim; everything else gets the same
     // sanitization the legacy dispatcher applied before recording a preview.
-    const preview = kind === "owner" ? rawText : sanitizeUntrustedContent(rawText);
+    const preview =
+      kind === "owner" ? rawText : sanitizeUntrustedContent(rawText);
     const agentId = msg.accountId || opts.fallbackAgentId || "";
     opts.activityTracker.record({
       agentId,
@@ -150,7 +160,7 @@ export interface CreateDaemonChannelDeps {
  */
 export function createDaemonChannel(
   chCfg: GatewayChannelConfig,
-  deps: CreateDaemonChannelDeps,
+  deps: CreateDaemonChannelDeps
 ): ChannelAdapter {
   switch (chCfg.type) {
     case "botcord": {
@@ -161,7 +171,8 @@ export function createDaemonChannel(
         accountId: chCfg.accountId,
         agentId,
         credentialsPath:
-          deps.credentialPathByAgentId.get(agentId) ?? deps.defaultCredentialsPath,
+          deps.credentialPathByAgentId.get(agentId) ??
+          deps.defaultCredentialsPath,
         hubBaseUrl: deps.hubBaseUrl,
       });
     }
@@ -169,28 +180,44 @@ export function createDaemonChannel(
       return createTelegramChannel({
         id: chCfg.id,
         accountId: chCfg.accountId,
-        ...(typeof chCfg.baseUrl === "string" ? { baseUrl: chCfg.baseUrl } : {}),
+        ...(typeof chCfg.baseUrl === "string"
+          ? { baseUrl: chCfg.baseUrl }
+          : {}),
         ...(Array.isArray(chCfg.allowedSenderIds)
           ? { allowedSenderIds: chCfg.allowedSenderIds as string[] }
           : {}),
         ...(Array.isArray(chCfg.allowedChatIds)
           ? { allowedChatIds: chCfg.allowedChatIds as string[] }
           : {}),
-        ...(typeof chCfg.splitAt === "number" ? { splitAt: chCfg.splitAt } : {}),
-        ...(typeof chCfg.secretFile === "string" ? { secretFile: chCfg.secretFile } : {}),
-        ...(typeof chCfg.stateFile === "string" ? { stateFile: chCfg.stateFile } : {}),
+        ...(typeof chCfg.splitAt === "number"
+          ? { splitAt: chCfg.splitAt }
+          : {}),
+        ...(typeof chCfg.secretFile === "string"
+          ? { secretFile: chCfg.secretFile }
+          : {}),
+        ...(typeof chCfg.stateFile === "string"
+          ? { stateFile: chCfg.stateFile }
+          : {}),
       });
     case "wechat":
       return createWechatChannel({
         id: chCfg.id,
         accountId: chCfg.accountId,
-        ...(typeof chCfg.baseUrl === "string" ? { baseUrl: chCfg.baseUrl } : {}),
+        ...(typeof chCfg.baseUrl === "string"
+          ? { baseUrl: chCfg.baseUrl }
+          : {}),
         ...(Array.isArray(chCfg.allowedSenderIds)
           ? { allowedSenderIds: chCfg.allowedSenderIds as string[] }
           : {}),
-        ...(typeof chCfg.splitAt === "number" ? { splitAt: chCfg.splitAt } : {}),
-        ...(typeof chCfg.secretFile === "string" ? { secretFile: chCfg.secretFile } : {}),
-        ...(typeof chCfg.stateFile === "string" ? { stateFile: chCfg.stateFile } : {}),
+        ...(typeof chCfg.splitAt === "number"
+          ? { splitAt: chCfg.splitAt }
+          : {}),
+        ...(typeof chCfg.secretFile === "string"
+          ? { secretFile: chCfg.secretFile }
+          : {}),
+        ...(typeof chCfg.stateFile === "string"
+          ? { stateFile: chCfg.stateFile }
+          : {}),
       });
     case "feishu":
       return createFeishuChannel({
@@ -206,8 +233,12 @@ export function createDaemonChannel(
         ...(Array.isArray(chCfg.allowedChatIds)
           ? { allowedChatIds: chCfg.allowedChatIds as string[] }
           : {}),
-        ...(typeof chCfg.splitAt === "number" ? { splitAt: chCfg.splitAt } : {}),
-        ...(typeof chCfg.secretFile === "string" ? { secretFile: chCfg.secretFile } : {}),
+        ...(typeof chCfg.splitAt === "number"
+          ? { splitAt: chCfg.splitAt }
+          : {}),
+        ...(typeof chCfg.secretFile === "string"
+          ? { secretFile: chCfg.secretFile }
+          : {}),
       });
     default:
       throw new Error(`unknown channel type "${chCfg.type}"`);
@@ -236,7 +267,7 @@ export interface RuntimeSnapshotSink {
  */
 export function pushRuntimeSnapshot(
   sink: RuntimeSnapshotSink,
-  liveSnapshot?: GatewayRuntimeSnapshot,
+  liveSnapshot?: GatewayRuntimeSnapshot
 ): boolean {
   const base = collectRuntimeSnapshot();
   const snap = liveSnapshot ? attachRuntimeHealth(base, liveSnapshot) : base;
@@ -257,7 +288,7 @@ export function pushRuntimeSnapshot(
 export function pushAgentSkillSnapshot(
   sink: RuntimeSnapshotSink,
   agentId: string,
-  opts: SkillIndexOptions = {},
+  opts: SkillIndexOptions = {}
 ): boolean {
   const snap = collectAgentSkillSnapshot(agentId, opts);
   const ok = sink.send({
@@ -267,10 +298,13 @@ export function pushAgentSkillSnapshot(
     ts: Date.now(),
   });
   if (!ok) {
-    daemonLog.warn("agent-skill-snapshot: control-channel send returned false", {
-      agentId,
-      skills: snap.skills.length,
-    });
+    daemonLog.warn(
+      "agent-skill-snapshot: control-channel send returned false",
+      {
+        agentId,
+        skills: snap.skills.length,
+      }
+    );
   }
   return ok;
 }
@@ -343,9 +377,12 @@ function buildDaemonLogger(): GatewayLogger {
  * Only the BotCord channel is supported today; `channels[]` in the
  * translated gateway config has exactly one entry (`botcord-main`).
  */
-export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHandle> {
+export async function startDaemon(
+  opts: DaemonRuntimeOptions
+): Promise<DaemonHandle> {
   const logger = opts.log ?? buildDaemonLogger();
-  const errorReporter = opts.errorReporter ?? createDaemonErrorReporter({ log: logger });
+  const errorReporter =
+    opts.errorReporter ?? createDaemonErrorReporter({ log: logger });
   await initializeErrorReporterSafely(errorReporter, logger);
   const uninstallProcessErrorHooks = installProcessErrorReportingHooks({
     reporter: errorReporter,
@@ -354,436 +391,459 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
     daemonInstanceId: process.env.BOTCORD_DAEMON_INSTANCE_ID ?? null,
   });
   try {
-  if (opts.failAfterProcessErrorHooks) throw opts.failAfterProcessErrorHooks;
-  const userAuth =
-    opts.userAuth === undefined
-      ? tryLoadUserAuth(logger)
-      : opts.userAuth;
-  const expectedHubUrl = opts.hubBaseUrl ?? userAuth?.current?.hubUrl;
+    if (opts.failAfterProcessErrorHooks) throw opts.failAfterProcessErrorHooks;
+    const userAuth =
+      opts.userAuth === undefined ? tryLoadUserAuth(logger) : opts.userAuth;
+    const expectedHubUrl = opts.hubBaseUrl ?? userAuth?.current?.hubUrl;
 
-  // Resolve boot agents: explicit `agents` config wins; otherwise scan the
-  // credentials directory. A zero-agent result is valid in P1 — the daemon
-  // still starts with zero channels so operators can drop credentials in
-  // and restart without re-running `init`.
-  const boot = opts.bootAgents ?? resolveBootAgents(opts.config, { expectedHubUrl });
-  for (const w of boot.warnings) {
-    logger.warn("daemon.discovery.warning", { message: w });
-  }
-  const agentIds = boot.agents.map((a) => a.agentId);
-  const { credentialPathByAgentId, agentRuntimes } = backfillBootAgents(
-    boot.agents,
-    { logger },
-  );
-
-  const gwConfig = toGatewayConfig(opts.config, { agentIds, agentRuntimes });
-  const skillIndexOptionsForAgent = (agentId: string): SkillIndexOptions => {
-    const meta = agentRuntimes[agentId];
-    return {
-      runtime: meta?.runtime ?? opts.config.defaultRoute.adapter,
-      ...(meta?.hermesProfile ? { hermesProfile: meta.hermesProfile } : {}),
-    };
-  };
-
-  // Per-agent hub URL — read from each credential file at boot. Used to
-  // populate `BOTCORD_HUB` for runtime CLI subprocesses so the bundled
-  // `botcord` CLI talks to the same hub the agent is registered against,
-  // even when a single daemon hosts agents from different hubs.
-  const hubUrlByAgentId = new Map<string, string>();
-  for (const a of boot.agents) {
-    if (a.hubUrl) hubUrlByAgentId.set(a.agentId, a.hubUrl);
-  }
-  const fallbackHubUrl = opts.hubBaseUrl;
-  const resolveHubUrl = (accountId: string): string | undefined =>
-    hubUrlByAgentId.get(accountId) ?? fallbackHubUrl;
-
-  // ActivityTracker lives at the daemon layer (not the gateway core). We
-  // expose it to the gateway via (a) the `buildSystemContext` hook so the
-  // cross-room digest reflects current activity, and (b) the `onInbound`
-  // observer so incoming messages get recorded before the turn runs —
-  // mirroring the pre-P0.5 dispatcher's "record-before-adapter-run" ordering.
-  const activityTracker = new ActivityTracker();
-
-  // Shared room-context fetcher — one BotCordClient per accountId, created
-  // lazily and reused across turns so JWT refreshes amortize. The builder
-  // wrapping it adds a TTL cache on top so group rooms don't hit Hub every
-  // turn.
-  const roomContextFetcher = createRoomContextFetcher({
-    credentialPathByAgentId,
-    ...(opts.credentialsPath ? { defaultCredentialsPath: opts.credentialsPath } : {}),
-    ...(opts.hubBaseUrl ? { hubBaseUrl: opts.hubBaseUrl } : {}),
-    log: logger,
-  });
-  const roomContextBuilder = createRoomStaticContextBuilder({
-    fetchRoomInfo: roomContextFetcher,
-    log: logger,
-  });
-  const buildRuntimeRecoveryContext = createRecentRoomMessagesRecoveryBuilder({
-    credentialPathByAgentId,
-    ...(opts.credentialsPath ? { defaultCredentialsPath: opts.credentialsPath } : {}),
-    ...(opts.hubBaseUrl ? { hubBaseUrl: opts.hubBaseUrl } : {}),
-    limit: 20,
-    log: logger,
-  });
-
-  // Cache one system-context builder per configured agentId. The gateway
-  // calls this with each inbound message and we pick the right builder by
-  // `message.accountId` — so per-agent working memory + activity digests
-  // stay scoped when a single daemon hosts multiple agents.
-  type PerAgentBuilder = (
-    msg: GatewayInboundMessage,
-  ) => Promise<string | undefined> | string | undefined;
-  const scBuilders = new Map<string, PerAgentBuilder>();
-  const loopRiskBuilder = (msg: GatewayInboundMessage): string | null =>
-    buildLoopRiskPrompt({
-      sessionKey: loopRiskSessionKey({
-        accountId: msg.accountId,
-        conversationId: msg.conversation.id,
-        threadId: msg.conversation.threadId ?? null,
-      }),
-    });
-  for (const aid of agentIds) {
-    scBuilders.set(
-      aid,
-      createDaemonSystemContextBuilder({
-        agentId: aid,
-        activityTracker,
-        roomContextBuilder,
-        loopRiskBuilder,
-        skillIndexOptions: () => skillIndexOptionsForAgent(aid),
-      }),
-    );
-  }
-  const buildSystemContext = (
-    message: GatewayInboundMessage,
-  ): Promise<string | undefined> | string | undefined => {
-    const b = scBuilders.get(message.accountId);
-    if (b) return b(message);
-    // Unknown accountId (shouldn't happen in practice): fall back to the
-    // first configured agent so we still emit *something* rather than
-    // silently dropping the context block. When no agents are bound the
-    // daemon has no context to surface — return undefined.
-    const first = agentIds[0];
-    if (!first) return undefined;
-    const fallback = scBuilders.get(first);
-    return fallback ? fallback(message) : undefined;
-  };
-  const buildMemoryContext = (message: GatewayInboundMessage) =>
-    readWorkingMemorySnapshot(message.accountId);
-
-  // Observer runs after ack + before runtime.run. Keeping the side effect
-  // outside the system-context builder (option A) means the builder stays
-  // pure — a cleaner contract the gateway can also expose to non-daemon
-  // callers in the future.
-  const recordActivity = createActivityRecorder({
-    activityTracker,
-    ...(agentIds[0] ? { fallbackAgentId: agentIds[0] } : {}),
-  });
-  const onInbound = (msg: GatewayInboundMessage): void => {
-    recordActivity(msg);
-    // Feed the loop-risk tracker with the sanitized inbound text so
-    // detectShortAckTail + detectHighTurnRate have a timeline.
-    recordLoopRiskInbound({
-      sessionKey: loopRiskSessionKey({
-        accountId: msg.accountId,
-        conversationId: msg.conversation.id,
-        threadId: msg.conversation.threadId ?? null,
-      }),
-      text: msg.text,
-      timestamp: msg.receivedAt,
-    });
-  };
-  const onOutbound = (out: GatewayOutboundMessage): void => {
-    recordLoopRiskOutbound({
-      sessionKey: loopRiskSessionKey({
-        accountId: out.accountId,
-        conversationId: out.conversationId,
-        threadId: out.threadId ?? null,
-      }),
-      text: out.text,
-    });
-  };
-
-  // Per-agent attention policy cache (design §4.2 / §5). It is seeded from
-  // `provision_agent` / `policy_updated` frames when available and falls back
-  // to Hub on cold misses, so daemon restarts preserve dashboard policy.
-  const fetchAttentionPolicy = createAttentionPolicyFetcher({
-    credentialPathByAgentId,
-    defaultCredentialsPath: opts.credentialsPath,
-    hubBaseUrl: opts.hubBaseUrl,
-    log: logger,
-  });
-  const policyResolver = new PolicyResolver({
-    fetchGlobal: async (agentId: string) =>
-      fetchAttentionPolicy({ agentId, roomId: null }),
-    fetchEffective: async (agentId: string, roomId: string) =>
-      fetchAttentionPolicy({ agentId, roomId }),
-  });
-
-  // Display-name lookup for the mention text-fallback. Populated from boot
-  // credentials; multi-agent daemons can reuse the same map via accountId.
-  const displayNameByAgent = new Map<string, string>();
-  for (const a of boot.agents) {
-    if (a.displayName) displayNameByAgent.set(a.agentId, a.displayName);
-  }
-
-  // Attention gate: compose `messages.mentioned` (sender-supplied — distrust)
-  // with a local `@<display_name>` / `@<agent_id>` text scan, resolve the
-  // effective policy, then defer to the protocol-core `shouldWake` decision.
-  const attentionGate = async (msg: GatewayInboundMessage): Promise<boolean> => {
-    const policy: DaemonAttentionPolicy = await policyResolver.resolve(
-      msg.accountId,
-      msg.conversation.id,
-    );
-    if (policy.mode === "allowed_senders") {
-      return (policy.allowedSenderIds ?? []).includes(msg.sender.id);
+    // Resolve boot agents: explicit `agents` config wins; otherwise scan the
+    // credentials directory. A zero-agent result is valid in P1 — the daemon
+    // still starts with zero channels so operators can drop credentials in
+    // and restart without re-running `init`.
+    const boot =
+      opts.bootAgents ?? resolveBootAgents(opts.config, { expectedHubUrl });
+    for (const w of boot.warnings) {
+      logger.warn("daemon.discovery.warning", { message: w });
     }
-    const localMention = scanMention(msg.text, {
-      agentId: msg.accountId,
-      displayName: displayNameByAgent.get(msg.accountId),
-    });
-    return shouldWake(policy as AttentionPolicy, {
-      mentioned: msg.mentioned === true || localMention,
-      text: msg.text,
-    });
-  };
+    const agentIds = boot.agents.map((a) => a.agentId);
+    const { credentialPathByAgentId, agentRuntimes } = backfillBootAgents(
+      boot.agents,
+      { logger }
+    );
 
-  // Boot-seeded per-agent caches (`credentialPathByAgentId`,
-  // `hubUrlByAgentId`, `displayNameByAgent`, `scBuilders`) are scoped to
-  // the agents present at startup. Without this hook, agents added later
-  // via `provision_agent` or openclaw-adoption stay missing from those
-  // caches until the next daemon restart — `room-context-fetcher` then
-  // logs `daemon.room-context.no-credentials` on every turn for the new
-  // agent and the system context loses its `[BotCord Room]` block (member
-  // names, rule, role).
-  const onAgentInstalled: OnAgentInstalledHook = (info) => {
-    // Re-provision (e.g. credential rotation) overwrites in place so the
-    // next room-context fetch re-loads the BotCordClient against the new
-    // credential file.
-    credentialPathByAgentId.set(info.agentId, info.credentialsFile);
-    if (info.runtime || info.hermesProfile) {
-      const next = {
-        ...(agentRuntimes[info.agentId] ?? {}),
-        ...(info.runtime ? { runtime: info.runtime } : {}),
-        ...(info.hermesProfile ? { hermesProfile: info.hermesProfile } : {}),
+    const gwConfig = toGatewayConfig(opts.config, { agentIds, agentRuntimes });
+    const skillIndexOptionsForAgent = (agentId: string): SkillIndexOptions => {
+      const meta = agentRuntimes[agentId];
+      return {
+        runtime: meta?.runtime ?? opts.config.defaultRoute.adapter,
+        ...(meta?.hermesProfile ? { hermesProfile: meta.hermesProfile } : {}),
       };
-      if (info.runtime && !info.hermesProfile) {
-        delete next.hermesProfile;
-      }
-      agentRuntimes[info.agentId] = next;
+    };
+
+    // Per-agent hub URL — read from each credential file at boot. Used to
+    // populate `BOTCORD_HUB` for runtime CLI subprocesses so the bundled
+    // `botcord` CLI talks to the same hub the agent is registered against,
+    // even when a single daemon hosts agents from different hubs.
+    const hubUrlByAgentId = new Map<string, string>();
+    for (const a of boot.agents) {
+      if (a.hubUrl) hubUrlByAgentId.set(a.agentId, a.hubUrl);
     }
-    if (info.hubUrl) hubUrlByAgentId.set(info.agentId, info.hubUrl);
-    if (info.displayName) displayNameByAgent.set(info.agentId, info.displayName);
-    if (!scBuilders.has(info.agentId)) {
+    const fallbackHubUrl = opts.hubBaseUrl;
+    const resolveHubUrl = (accountId: string): string | undefined =>
+      hubUrlByAgentId.get(accountId) ?? fallbackHubUrl;
+
+    // ActivityTracker lives at the daemon layer (not the gateway core). We
+    // expose it to the gateway via (a) the `buildSystemContext` hook so the
+    // cross-room digest reflects current activity, and (b) the `onInbound`
+    // observer so incoming messages get recorded before the turn runs —
+    // mirroring the pre-P0.5 dispatcher's "record-before-adapter-run" ordering.
+    const activityTracker = new ActivityTracker();
+
+    // Shared room-context fetcher — one BotCordClient per accountId, created
+    // lazily and reused across turns so JWT refreshes amortize. The builder
+    // wrapping it adds a TTL cache on top so group rooms don't hit Hub every
+    // turn.
+    const roomContextFetcher = createRoomContextFetcher({
+      credentialPathByAgentId,
+      ...(opts.credentialsPath
+        ? { defaultCredentialsPath: opts.credentialsPath }
+        : {}),
+      ...(opts.hubBaseUrl ? { hubBaseUrl: opts.hubBaseUrl } : {}),
+      log: logger,
+    });
+    const roomContextBuilder = createRoomStaticContextBuilder({
+      fetchRoomInfo: roomContextFetcher,
+      log: logger,
+    });
+    const buildRuntimeRecoveryContext = createRecentRoomMessagesRecoveryBuilder(
+      {
+        credentialPathByAgentId,
+        ...(opts.credentialsPath
+          ? { defaultCredentialsPath: opts.credentialsPath }
+          : {}),
+        ...(opts.hubBaseUrl ? { hubBaseUrl: opts.hubBaseUrl } : {}),
+        limit: 20,
+        log: logger,
+      }
+    );
+
+    // Cache one system-context builder per configured agentId. The gateway
+    // calls this with each inbound message and we pick the right builder by
+    // `message.accountId` — so per-agent working memory + activity digests
+    // stay scoped when a single daemon hosts multiple agents.
+    type PerAgentBuilder = (
+      msg: GatewayInboundMessage
+    ) => Promise<string | undefined> | string | undefined;
+    const scBuilders = new Map<string, PerAgentBuilder>();
+    const loopRiskBuilder = (msg: GatewayInboundMessage): string | null =>
+      buildLoopRiskPrompt({
+        sessionKey: loopRiskSessionKey({
+          accountId: msg.accountId,
+          conversationId: msg.conversation.id,
+          threadId: msg.conversation.threadId ?? null,
+        }),
+      });
+    for (const aid of agentIds) {
       scBuilders.set(
-        info.agentId,
+        aid,
         createDaemonSystemContextBuilder({
-          agentId: info.agentId,
+          agentId: aid,
           activityTracker,
           roomContextBuilder,
           loopRiskBuilder,
-          skillIndexOptions: () => skillIndexOptionsForAgent(info.agentId),
-        }),
+          skillIndexOptions: () => skillIndexOptionsForAgent(aid),
+        })
       );
     }
-  };
+    const buildSystemContext = (
+      message: GatewayInboundMessage
+    ): Promise<string | undefined> | string | undefined => {
+      const b = scBuilders.get(message.accountId);
+      if (b) return b(message);
+      // Unknown accountId (shouldn't happen in practice): fall back to the
+      // first configured agent so we still emit *something* rather than
+      // silently dropping the context block. When no agents are bound the
+      // daemon has no context to surface — return undefined.
+      const first = agentIds[0];
+      if (!first) return undefined;
+      const fallback = scBuilders.get(first);
+      return fallback ? fallback(message) : undefined;
+    };
+    const buildMemoryContext = (message: GatewayInboundMessage) =>
+      readWorkingMemorySnapshot(message.accountId);
 
-  let controlChannel: ControlChannel | null = null;
-  let gateway: Gateway;
-  const pushLiveRuntimeSnapshot = (): void => {
-    if (!controlChannel) return;
-    const pushed = pushRuntimeSnapshot(controlChannel, gateway.snapshot());
-    logger.info("control-channel: live runtime_snapshot push", { ok: pushed });
-  };
-
-  gateway = new Gateway({
-    config: gwConfig,
-    sessionStorePath: opts.sessionStorePath ?? SESSIONS_PATH,
-    createChannel: (chCfg: GatewayChannelConfig): ChannelAdapter =>
-      createDaemonChannel(chCfg, {
-        credentialPathByAgentId,
-        defaultCredentialsPath: opts.credentialsPath,
-        hubBaseUrl: opts.hubBaseUrl,
-      }),
-    log: logger,
-    turnTimeoutMs: DEFAULT_TURN_TIMEOUT_MS,
-    buildSystemContext,
-    buildMemoryContext,
-    buildRuntimeRecoveryContext,
-    onInbound,
-    onOutbound,
-    onRuntimeCircuitBreakerChange: pushLiveRuntimeSnapshot,
-    errorReporter,
-    composeUserTurn: composeBotCordUserTurn,
-    attentionGate,
-    resolveHubUrl,
-    transcriptEnabled: resolveTranscriptEnabled(
-      process.env.BOTCORD_TRANSCRIPT,
-      opts.config.transcript?.enabled,
-    ),
-  });
-
-  logger.info("daemon starting", {
-    agents: agentIds,
-    source: boot.source,
-    credentialsDir: boot.credentialsDir,
-    configPath: opts.configPath,
-    sessionsPath: opts.sessionStorePath ?? SESSIONS_PATH,
-    channels: gwConfig.channels.map((c) => c.id),
-    routeCount: gwConfig.routes?.length ?? 0,
-  });
-
-  if (agentIds.length === 0) {
-    logger.warn("daemon starting with no channels", {
-      source: boot.source,
-      credentialsDir: boot.credentialsDir,
-      hint: "drop a credentials JSON in the discovery dir and restart, or run `botcord-daemon start --agent <ag_xxx>` (only seeds config on first run)",
+    // Observer runs after ack + before runtime.run. Keeping the side effect
+    // outside the system-context builder (option A) means the builder stays
+    // pure — a cleaner contract the gateway can also expose to non-daemon
+    // callers in the future.
+    const recordActivity = createActivityRecorder({
+      activityTracker,
+      ...(agentIds[0] ? { fallbackAgentId: agentIds[0] } : {}),
     });
-  }
-
-  await gateway.start();
-  logger.info("daemon started", { agents: agentIds });
-
-  if (openclawAutoProvisionEnabled(opts.config)) {
-    try {
-      const adopted = await adoptDiscoveredOpenclawAgents({
-        gateway,
-        cfg: opts.config,
-        onAgentInstalled,
+    const onInbound = (msg: GatewayInboundMessage): void => {
+      recordActivity(msg);
+      // Feed the loop-risk tracker with the sanitized inbound text so
+      // detectShortAckTail + detectHighTurnRate have a timeline.
+      recordLoopRiskInbound({
+        sessionKey: loopRiskSessionKey({
+          accountId: msg.accountId,
+          conversationId: msg.conversation.id,
+          threadId: msg.conversation.threadId ?? null,
+        }),
+        text: msg.text,
+        timestamp: msg.receivedAt,
       });
-      if (
-        adopted.adopted.length > 0 ||
-        adopted.failed.length > 0 ||
-        adopted.skipped.length > 0
-      ) {
-        logger.info("openclaw auto-provision completed", {
-          adopted: adopted.adopted,
-          skipped: adopted.skipped,
-          failed: adopted.failed,
-        });
-      }
-    } catch (err) {
-      logger.warn("openclaw auto-provision failed; continuing", {
-        error: err instanceof Error ? err.message : String(err),
+    };
+    const onOutbound = (out: GatewayOutboundMessage): void => {
+      recordLoopRiskOutbound({
+        sessionKey: loopRiskSessionKey({
+          accountId: out.accountId,
+          conversationId: out.conversationId,
+          threadId: out.threadId ?? null,
+        }),
+        text: out.text,
       });
+    };
+
+    // Per-agent attention policy cache (design §4.2 / §5). It is seeded from
+    // `provision_agent` / `policy_updated` frames when available and falls back
+    // to Hub on cold misses, so daemon restarts preserve dashboard policy.
+    const fetchAttentionPolicy = createAttentionPolicyFetcher({
+      credentialPathByAgentId,
+      defaultCredentialsPath: opts.credentialsPath,
+      hubBaseUrl: opts.hubBaseUrl,
+      log: logger,
+    });
+    const policyResolver = new PolicyResolver({
+      fetchGlobal: async (agentId: string) =>
+        fetchAttentionPolicy({ agentId, roomId: null }),
+      fetchEffective: async (agentId: string, roomId: string) =>
+        fetchAttentionPolicy({ agentId, roomId }),
+    });
+
+    // Display-name lookup for the mention text-fallback. Populated from boot
+    // credentials; multi-agent daemons can reuse the same map via accountId.
+    const displayNameByAgent = new Map<string, string>();
+    for (const a of boot.agents) {
+      if (a.displayName) displayNameByAgent.set(a.agentId, a.displayName);
     }
-  }
 
-  // Control channel is optional — daemon still runs (data-plane only)
-  // when user-auth hasn't been set up yet. Operators can `login` later
-  // without restarting, but for P0 we require a restart to pick it up.
-  if (userAuth?.current && !opts.disableControlChannel) {
-    logger.info("control-channel: enabling", {
-      userId: userAuth.current.userId,
-      hubUrl: userAuth.current.hubUrl,
-    });
-    const provisioner = createProvisioner({ gateway, policyResolver, onAgentInstalled });
-    controlChannel = new ControlChannel({
-      auth: userAuth,
-      handle: async (frame) => {
-        if (frame.type === "collect_diagnostics") {
-          logger.info("diagnostics: collect requested", { frameId: frame.id });
-          const bundle = await createDiagnosticBundle();
-          const upload = await uploadDiagnosticBundle({ auth: userAuth, bundle });
-          logger.info("diagnostics: uploaded", {
-            frameId: frame.id,
-            bundleId: upload.bundleId,
-            sizeBytes: upload.sizeBytes,
-            localPath: bundle.path,
-          });
-          return {
-            ok: true,
-            result: {
-              bundle_id: upload.bundleId,
-              filename: upload.filename,
-              size_bytes: upload.sizeBytes,
-              expires_at: upload.expiresAt ?? null,
-              local_path: bundle.path,
-            },
-          };
+    // Attention gate: compose `messages.mentioned` (sender-supplied — distrust)
+    // with a local `@<display_name>` / `@<agent_id>` text scan, resolve the
+    // effective policy, then defer to the protocol-core `shouldWake` decision.
+    const attentionGate = async (
+      msg: GatewayInboundMessage
+    ): Promise<boolean> => {
+      const policy: DaemonAttentionPolicy = await policyResolver.resolve(
+        msg.accountId,
+        msg.conversation.id
+      );
+      if (policy.mode === "allowed_senders") {
+        return (policy.allowedSenderIds ?? []).includes(msg.sender.id);
+      }
+      const localMention = applyLocalMention(msg, {
+        agentId: msg.accountId,
+        displayName: displayNameByAgent.get(msg.accountId),
+      });
+      return shouldWake(policy as AttentionPolicy, {
+        mentioned: msg.mentioned === true || localMention,
+        text: msg.text,
+      });
+    };
+
+    // Boot-seeded per-agent caches (`credentialPathByAgentId`,
+    // `hubUrlByAgentId`, `displayNameByAgent`, `scBuilders`) are scoped to
+    // the agents present at startup. Without this hook, agents added later
+    // via `provision_agent` or openclaw-adoption stay missing from those
+    // caches until the next daemon restart — `room-context-fetcher` then
+    // logs `daemon.room-context.no-credentials` on every turn for the new
+    // agent and the system context loses its `[BotCord Room]` block (member
+    // names, rule, role).
+    const onAgentInstalled: OnAgentInstalledHook = (info) => {
+      // Re-provision (e.g. credential rotation) overwrites in place so the
+      // next room-context fetch re-loads the BotCordClient against the new
+      // credential file.
+      credentialPathByAgentId.set(info.agentId, info.credentialsFile);
+      if (info.runtime || info.hermesProfile) {
+        const next = {
+          ...(agentRuntimes[info.agentId] ?? {}),
+          ...(info.runtime ? { runtime: info.runtime } : {}),
+          ...(info.hermesProfile ? { hermesProfile: info.hermesProfile } : {}),
+        };
+        if (info.runtime && !info.hermesProfile) {
+          delete next.hermesProfile;
         }
-        return provisioner(frame);
-      },
-    });
-    try {
-      await controlChannel.start();
-      // Plan §8.5 P0 — push one runtime snapshot immediately after connect
-      // so Hub's `daemon_instances.runtimes_json` is populated for the
-      // dashboard even before any user action. No periodic refresh in P0.
+        agentRuntimes[info.agentId] = next;
+      }
+      if (info.hubUrl) hubUrlByAgentId.set(info.agentId, info.hubUrl);
+      if (info.displayName)
+        displayNameByAgent.set(info.agentId, info.displayName);
+      if (!scBuilders.has(info.agentId)) {
+        scBuilders.set(
+          info.agentId,
+          createDaemonSystemContextBuilder({
+            agentId: info.agentId,
+            activityTracker,
+            roomContextBuilder,
+            loopRiskBuilder,
+            skillIndexOptions: () => skillIndexOptionsForAgent(info.agentId),
+          })
+        );
+      }
+    };
+
+    let controlChannel: ControlChannel | null = null;
+    let gateway: Gateway;
+    const pushLiveRuntimeSnapshot = (): void => {
+      if (!controlChannel) return;
       const pushed = pushRuntimeSnapshot(controlChannel, gateway.snapshot());
-      logger.info("control-channel: initial runtime_snapshot push", {
+      logger.info("control-channel: live runtime_snapshot push", {
         ok: pushed,
       });
-      for (const agentId of agentIds) {
-        const skillIndexOptions = skillIndexOptionsForAgent(agentId);
-        const skillsPushed = pushAgentSkillSnapshot(controlChannel, agentId, skillIndexOptions);
-        logger.info("control-channel: initial agent_skill_snapshot push", {
-          agentId,
-          runtime: skillIndexOptions.runtime,
-          hermesProfile: skillIndexOptions.hermesProfile ?? null,
-          ok: skillsPushed,
+    };
+
+    gateway = new Gateway({
+      config: gwConfig,
+      sessionStorePath: opts.sessionStorePath ?? SESSIONS_PATH,
+      createChannel: (chCfg: GatewayChannelConfig): ChannelAdapter =>
+        createDaemonChannel(chCfg, {
+          credentialPathByAgentId,
+          defaultCredentialsPath: opts.credentialsPath,
+          hubBaseUrl: opts.hubBaseUrl,
+        }),
+      log: logger,
+      turnTimeoutMs: DEFAULT_TURN_TIMEOUT_MS,
+      buildSystemContext,
+      buildMemoryContext,
+      buildRuntimeRecoveryContext,
+      onInbound,
+      onOutbound,
+      onRuntimeCircuitBreakerChange: pushLiveRuntimeSnapshot,
+      errorReporter,
+      composeUserTurn: composeBotCordUserTurn,
+      attentionGate,
+      resolveHubUrl,
+      transcriptEnabled: resolveTranscriptEnabled(
+        process.env.BOTCORD_TRANSCRIPT,
+        opts.config.transcript?.enabled
+      ),
+    });
+
+    logger.info("daemon starting", {
+      agents: agentIds,
+      source: boot.source,
+      credentialsDir: boot.credentialsDir,
+      configPath: opts.configPath,
+      sessionsPath: opts.sessionStorePath ?? SESSIONS_PATH,
+      channels: gwConfig.channels.map((c) => c.id),
+      routeCount: gwConfig.routes?.length ?? 0,
+    });
+
+    if (agentIds.length === 0) {
+      logger.warn("daemon starting with no channels", {
+        source: boot.source,
+        credentialsDir: boot.credentialsDir,
+        hint: "drop a credentials JSON in the discovery dir and restart, or run `botcord-daemon start --agent <ag_xxx>` (only seeds config on first run)",
+      });
+    }
+
+    await gateway.start();
+    logger.info("daemon started", { agents: agentIds });
+
+    if (openclawAutoProvisionEnabled(opts.config)) {
+      try {
+        const adopted = await adoptDiscoveredOpenclawAgents({
+          gateway,
+          cfg: opts.config,
+          onAgentInstalled,
+        });
+        if (
+          adopted.adopted.length > 0 ||
+          adopted.failed.length > 0 ||
+          adopted.skipped.length > 0
+        ) {
+          logger.info("openclaw auto-provision completed", {
+            adopted: adopted.adopted,
+            skipped: adopted.skipped,
+            failed: adopted.failed,
+          });
+        }
+      } catch (err) {
+        logger.warn("openclaw auto-provision failed; continuing", {
+          error: err instanceof Error ? err.message : String(err),
         });
       }
-    } catch (err) {
-      logger.warn("control-channel failed to start; continuing without it", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      // start() schedules its own reconnect; we swallow the initial
-      // failure so the daemon boots either way.
     }
-  } else if (!userAuth?.current) {
-    logger.info("control-channel skipped: no user-auth record", {
-      hint: "run `botcord-daemon start` to enable Hub control plane (device-code login)",
-    });
-  }
 
-  // Background runtime auto-update: one round now (async, never blocks
-  // startup), then every 24h. When a round actually changed a version,
-  // refresh the probe cache and push a live runtime_snapshot so the Hub
-  // sees the new versions without a daemon restart.
-  const runtimeUpdater = startRuntimeAutoUpdate({
-    log: logger,
-    onCompleted: (results) => {
-      if (results.some((r) => r.status === "updated")) {
-        clearRuntimeProbeCache();
-        pushLiveRuntimeSnapshot();
+    // Control channel is optional — daemon still runs (data-plane only)
+    // when user-auth hasn't been set up yet. Operators can `login` later
+    // without restarting, but for P0 we require a restart to pick it up.
+    if (userAuth?.current && !opts.disableControlChannel) {
+      logger.info("control-channel: enabling", {
+        userId: userAuth.current.userId,
+        hubUrl: userAuth.current.hubUrl,
+      });
+      const provisioner = createProvisioner({
+        gateway,
+        policyResolver,
+        onAgentInstalled,
+      });
+      controlChannel = new ControlChannel({
+        auth: userAuth,
+        handle: async (frame) => {
+          if (frame.type === "collect_diagnostics") {
+            logger.info("diagnostics: collect requested", {
+              frameId: frame.id,
+            });
+            const bundle = await createDiagnosticBundle();
+            const upload = await uploadDiagnosticBundle({
+              auth: userAuth,
+              bundle,
+            });
+            logger.info("diagnostics: uploaded", {
+              frameId: frame.id,
+              bundleId: upload.bundleId,
+              sizeBytes: upload.sizeBytes,
+              localPath: bundle.path,
+            });
+            return {
+              ok: true,
+              result: {
+                bundle_id: upload.bundleId,
+                filename: upload.filename,
+                size_bytes: upload.sizeBytes,
+                expires_at: upload.expiresAt ?? null,
+                local_path: bundle.path,
+              },
+            };
+          }
+          return provisioner(frame);
+        },
+      });
+      try {
+        await controlChannel.start();
+        // Plan §8.5 P0 — push one runtime snapshot immediately after connect
+        // so Hub's `daemon_instances.runtimes_json` is populated for the
+        // dashboard even before any user action. No periodic refresh in P0.
+        const pushed = pushRuntimeSnapshot(controlChannel, gateway.snapshot());
+        logger.info("control-channel: initial runtime_snapshot push", {
+          ok: pushed,
+        });
+        for (const agentId of agentIds) {
+          const skillIndexOptions = skillIndexOptionsForAgent(agentId);
+          const skillsPushed = pushAgentSkillSnapshot(
+            controlChannel,
+            agentId,
+            skillIndexOptions
+          );
+          logger.info("control-channel: initial agent_skill_snapshot push", {
+            agentId,
+            runtime: skillIndexOptions.runtime,
+            hermesProfile: skillIndexOptions.hermesProfile ?? null,
+            ok: skillsPushed,
+          });
+        }
+      } catch (err) {
+        logger.warn("control-channel failed to start; continuing without it", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        // start() schedules its own reconnect; we swallow the initial
+        // failure so the daemon boots either way.
       }
-    },
-  });
+    } else if (!userAuth?.current) {
+      logger.info("control-channel skipped: no user-auth record", {
+        hint: "run `botcord-daemon start` to enable Hub control plane (device-code login)",
+      });
+    }
 
-  const snapshotWriter = new SnapshotWriter({
-    path: opts.snapshotPath ?? SNAPSHOT_PATH,
-    intervalMs: opts.snapshotIntervalMs ?? resolveSnapshotIntervalMs(),
-    snapshot: () => gateway.snapshot(),
-    log: logger,
-  });
-  snapshotWriter.start();
-
-  let stopping: Promise<void> | null = null;
-  const stop = (reason?: string): Promise<void> => {
-    if (stopping) return stopping;
-    logger.info("daemon stopping", { reason: reason ?? null });
-    runtimeUpdater.stop();
-    snapshotWriter.stop();
-    // Write one final snapshot so `status` doesn't briefly see stale data,
-    // then delete the file on the way out.
-    snapshotWriter.writeFinal();
-    uninstallProcessErrorHooks();
-    const controlStopP = controlChannel
-      ? controlChannel.stop().catch(() => undefined)
-      : Promise.resolve();
-    stopping = Promise.all([controlStopP, gateway.stop(reason)]).then(
-      () => undefined,
-    ).finally(() => {
-      snapshotWriter.remove();
-      logger.info("daemon stopped", { reason: reason ?? null });
+    // Background runtime auto-update: one round now (async, never blocks
+    // startup), then every 24h. When a round actually changed a version,
+    // refresh the probe cache and push a live runtime_snapshot so the Hub
+    // sees the new versions without a daemon restart.
+    const runtimeUpdater = startRuntimeAutoUpdate({
+      log: logger,
+      onCompleted: (results) => {
+        if (results.some((r) => r.status === "updated")) {
+          clearRuntimeProbeCache();
+          pushLiveRuntimeSnapshot();
+        }
+      },
     });
-    return stopping;
-  };
 
-  return {
-    stop,
-    snapshot: () => gateway.snapshot(),
-  };
+    const snapshotWriter = new SnapshotWriter({
+      path: opts.snapshotPath ?? SNAPSHOT_PATH,
+      intervalMs: opts.snapshotIntervalMs ?? resolveSnapshotIntervalMs(),
+      snapshot: () => gateway.snapshot(),
+      log: logger,
+    });
+    snapshotWriter.start();
+
+    let stopping: Promise<void> | null = null;
+    const stop = (reason?: string): Promise<void> => {
+      if (stopping) return stopping;
+      logger.info("daemon stopping", { reason: reason ?? null });
+      runtimeUpdater.stop();
+      snapshotWriter.stop();
+      // Write one final snapshot so `status` doesn't briefly see stale data,
+      // then delete the file on the way out.
+      snapshotWriter.writeFinal();
+      uninstallProcessErrorHooks();
+      const controlStopP = controlChannel
+        ? controlChannel.stop().catch(() => undefined)
+        : Promise.resolve();
+      stopping = Promise.all([controlStopP, gateway.stop(reason)])
+        .then(() => undefined)
+        .finally(() => {
+          snapshotWriter.remove();
+          logger.info("daemon stopped", { reason: reason ?? null });
+        });
+      return stopping;
+    };
+
+    return {
+      stop,
+      snapshot: () => gateway.snapshot(),
+    };
   } catch (err) {
     uninstallProcessErrorHooks();
     throw err;
@@ -796,7 +856,19 @@ export async function startDaemon(opts: DaemonRuntimeOptions): Promise<DaemonHan
  */
 export interface BootBackfillResult {
   credentialPathByAgentId: Map<string, string>;
-  agentRuntimes: Record<string, { runtime?: string; runtimeModel?: string; reasoningEffort?: string; thinking?: boolean; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string }>;
+  agentRuntimes: Record<
+    string,
+    {
+      runtime?: string;
+      runtimeModel?: string;
+      reasoningEffort?: string;
+      thinking?: boolean;
+      cwd?: string;
+      openclawGateway?: string;
+      openclawAgent?: string;
+      hermesProfile?: string;
+    }
+  >;
 }
 
 /**
@@ -811,14 +883,27 @@ export function backfillBootAgents(
   opts: {
     logger: GatewayLogger;
     ensure?: typeof ensureAgentWorkspace;
-  },
+  }
 ): BootBackfillResult {
   const ensure = opts.ensure ?? ensureAgentWorkspace;
   const credentialPathByAgentId = new Map<string, string>();
-  const agentRuntimes: Record<string, { runtime?: string; runtimeModel?: string; reasoningEffort?: string; thinking?: boolean; cwd?: string; openclawGateway?: string; openclawAgent?: string; hermesProfile?: string }> = {};
+  const agentRuntimes: Record<
+    string,
+    {
+      runtime?: string;
+      runtimeModel?: string;
+      reasoningEffort?: string;
+      thinking?: boolean;
+      cwd?: string;
+      openclawGateway?: string;
+      openclawAgent?: string;
+      hermesProfile?: string;
+    }
+  > = {};
   const failed: string[] = [];
   for (const a of agents) {
-    if (a.credentialsFile) credentialPathByAgentId.set(a.agentId, a.credentialsFile);
+    if (a.credentialsFile)
+      credentialPathByAgentId.set(a.agentId, a.credentialsFile);
     if (
       a.runtime ||
       a.runtimeModel ||
