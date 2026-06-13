@@ -1,5 +1,11 @@
 # @botcord/daemon
 
+## 0.4.2
+
+### Patch Changes
+
+- 010a506: Fix Kimi CLI work-dir compatibility by probing for `--work-dir` support before adding the flag. Older Kimi CLI builds now run with the daemon-provided child process cwd instead of failing on an unknown `--work-dir` option, while newer builds still receive the explicit work-dir flag.
+
 ## 0.4.0
 
 ### Minor Changes
