@@ -1,9 +1,15 @@
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { shouldWake } from "@botcord/protocol-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Dispatcher, pickMessageStatusTarget, type RuntimeFactory } from "../dispatcher.js";
+import {
+  Dispatcher,
+  pickMessageStatusTarget,
+  type RuntimeFactory,
+} from "../dispatcher.js";
 import { SessionStore } from "../session-store.js";
+import { applyLocalMention } from "../../mention-scan.js";
 import type {
   ChannelAdapter,
   ChannelMessageStatusContext,
@@ -33,10 +39,14 @@ interface FakeChannelOptions {
   withStream?: boolean;
   withTyping?: boolean;
   withMessageStatus?: boolean;
-  sendImpl?: (ctx: ChannelSendContext) => Promise<ChannelSendResult> | ChannelSendResult;
+  sendImpl?: (
+    ctx: ChannelSendContext
+  ) => Promise<ChannelSendResult> | ChannelSendResult;
   streamImpl?: (ctx: ChannelStreamBlockContext) => Promise<void> | void;
   typingImpl?: (ctx: ChannelTypingContext) => Promise<void> | void;
-  messageStatusImpl?: (ctx: ChannelMessageStatusContext) => Promise<void> | void;
+  messageStatusImpl?: (
+    ctx: ChannelMessageStatusContext
+  ) => Promise<void> | void;
 }
 
 class FakeChannel implements ChannelAdapter {
@@ -142,7 +152,7 @@ class FakeRuntime implements RuntimeAdapter {
         options.signal.addEventListener(
           "abort",
           () => reject(new Error("aborted")),
-          { once: true },
+          { once: true }
         );
       });
     }
@@ -155,7 +165,7 @@ class FakeRuntime implements RuntimeAdapter {
             clearTimeout(t);
             reject(new Error("aborted"));
           },
-          { once: true },
+          { once: true }
         );
       });
     }
@@ -194,7 +204,9 @@ class CaptureTranscript implements TranscriptWriter {
   }
 }
 
-function makeMessage(partial: Partial<GatewayInboundMessage> = {}): GatewayInboundMessage {
+function makeMessage(
+  partial: Partial<GatewayInboundMessage> = {}
+): GatewayInboundMessage {
   return {
     id: partial.id ?? "hub_msg_abc",
     channel: partial.channel ?? "botcord",
@@ -218,7 +230,7 @@ function makeEnvelope(
   ack?: {
     accept: () => Promise<void>;
     reject?: (reason: string) => Promise<void>;
-  },
+  }
 ): GatewayInboundEnvelope {
   return { message: makeMessage(partial), ack };
 }
@@ -254,9 +266,10 @@ describe("pickMessageStatusTarget", () => {
   });
 });
 
-function cloudRunRaw(
-  budget: { max_wall_time_seconds?: number; max_tool_calls?: number },
-): Record<string, unknown> {
+function cloudRunRaw(budget: {
+  max_wall_time_seconds?: number;
+  max_tool_calls?: number;
+}): Record<string, unknown> {
   return {
     envelope: {
       type: "cloud_run",
@@ -310,8 +323,13 @@ describe("Dispatcher", () => {
     turnTimeoutMs?: number;
     runtimeAuthFailureThreshold?: number;
     runtimeAuthFailureCooldownMs?: number;
-    buildRuntimeRecoveryContext?: (message: GatewayInboundMessage) => Promise<string | null> | string | null;
+    buildRuntimeRecoveryContext?: (
+      message: GatewayInboundMessage
+    ) => Promise<string | null> | string | null;
     transcript?: TranscriptWriter;
+    attentionGate?: (msg: GatewayInboundMessage) => boolean | Promise<boolean>;
+    composeUserTurn?: (msg: GatewayInboundMessage) => string;
+    buildSystemContext?: (msg: GatewayInboundMessage) => string | undefined;
     maxResumeInputTokens?: number;
     maxResumeTurns?: number;
   }) {
@@ -330,6 +348,9 @@ describe("Dispatcher", () => {
       runtimeAuthFailureCooldownMs: args.runtimeAuthFailureCooldownMs,
       buildRuntimeRecoveryContext: args.buildRuntimeRecoveryContext,
       transcript: args.transcript,
+      attentionGate: args.attentionGate,
+      composeUserTurn: args.composeUserTurn,
+      buildSystemContext: args.buildSystemContext,
       ...(args.maxResumeInputTokens !== undefined
         ? { maxResumeInputTokens: args.maxResumeInputTokens }
         : {}),
@@ -355,7 +376,7 @@ describe("Dispatcher", () => {
     });
     const accept = vi.fn(async () => {});
     await dispatcher.handle(
-      makeEnvelope({ sender: { id: "ag_me", kind: "agent" } }, { accept }),
+      makeEnvelope({ sender: { id: "ag_me", kind: "agent" } }, { accept })
     );
     expect(accept).toHaveBeenCalledTimes(1);
     expect(runtime.calls.length).toBe(0);
@@ -373,7 +394,7 @@ describe("Dispatcher", () => {
         id: "msg_1",
         conversation: { id: "rm_oc_1", kind: "direct", threadId: "t_1" },
         trace: { id: "trace_1", streamable: false },
-      }),
+      })
     );
 
     expect(runtime.calls.length).toBe(1);
@@ -399,7 +420,9 @@ describe("Dispatcher", () => {
       inputCacheHitTokens: 9000,
       inputCacheMissTokens: 1000,
     });
-    const { dispatcher, store } = await scaffold({ runtimeFactory: () => runtime });
+    const { dispatcher, store } = await scaffold({
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(makeEnvelope({ id: "m1" }));
 
@@ -476,7 +499,11 @@ describe("Dispatcher", () => {
     });
 
     await dispatcher.handle(makeEnvelope({ id: "m1" }));
-    await store.set({ ...store.all()[0], turnCount: 9999, lastInputTokens: 9_000_000 });
+    await store.set({
+      ...store.all()[0],
+      turnCount: 9999,
+      lastInputTokens: 9_000_000,
+    });
 
     await dispatcher.handle(makeEnvelope({ id: "m2" }));
 
@@ -494,7 +521,7 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "msg_cloud_budget",
         raw: cloudRunRaw({ max_wall_time_seconds: 12, max_tool_calls: 7 }),
-      }),
+      })
     );
 
     expect(runtime.calls.length).toBe(1);
@@ -521,17 +548,22 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "msg_cloud_tool_budget",
         raw: cloudRunRaw({ max_tool_calls: 1 }),
-      }),
+      })
     );
 
     expect(channel.sends.length).toBe(1);
-    expect(channel.sends[0].message.text).toContain("Cloud run budget exceeded");
+    expect(channel.sends[0].message.text).toContain(
+      "Cloud run budget exceeded"
+    );
     expect(store.all().length).toBe(0);
   });
 
   it("sends replies to the provider reply id when it differs from the internal message id", async () => {
     const runtime = new FakeRuntime({ reply: "ok" });
-    const feishuChannel = new FakeChannel({ id: "gw_feishu_1", type: "feishu" });
+    const feishuChannel = new FakeChannel({
+      id: "gw_feishu_1",
+      type: "feishu",
+    });
     const { dispatcher, channel } = await scaffold({
       runtimeFactory: () => runtime,
       channel: feishuChannel,
@@ -546,7 +578,7 @@ describe("Dispatcher", () => {
         replyTo: "om_provider_raw",
         channel: "gw_feishu_1",
         conversation: { id: "feishu:user:oc_chat", kind: "direct" },
-      }),
+      })
     );
 
     expect(channel.sends.length).toBe(1);
@@ -567,13 +599,13 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "msg_1",
         conversation: { id: "rm_1", kind: "group" },
-      }),
+      })
     );
     await dispatcher.handle(
       makeEnvelope({
         id: "msg_2",
         conversation: { id: "rm_1", kind: "group" },
-      }),
+      })
     );
     expect(seen).toEqual([null, "sid-2"]);
   });
@@ -583,21 +615,31 @@ describe("Dispatcher", () => {
     const runtimeFactory: RuntimeFactory = () => {
       callNo += 1;
       // Turn 1: normal success, writes sid-1.
-      if (callNo === 1) return new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+      if (callNo === 1)
+        return new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
       // Turn 2: simulate Claude Code's "--resume <missing-uuid>" failure:
       //   adapter wipes newSessionId and sets error.
-      return new FakeRuntime({ newSessionId: "", errorText: "No conversation found" });
+      return new FakeRuntime({
+        newSessionId: "",
+        errorText: "No conversation found",
+      });
     };
     const { dispatcher, store } = await scaffold({ runtimeFactory });
 
     await dispatcher.handle(
-      makeEnvelope({ id: "msg_1", conversation: { id: "rm_x", kind: "direct" } }),
+      makeEnvelope({
+        id: "msg_1",
+        conversation: { id: "rm_x", kind: "direct" },
+      })
     );
     expect(store.all().length).toBe(1);
     expect(store.all()[0].runtimeSessionId).toBe("sid-1");
 
     await dispatcher.handle(
-      makeEnvelope({ id: "msg_2", conversation: { id: "rm_x", kind: "direct" } }),
+      makeEnvelope({
+        id: "msg_2",
+        conversation: { id: "rm_x", kind: "direct" },
+      })
     );
     // Stale entry must be gone so the next turn starts fresh instead of
     // re-resuming the missing UUID forever.
@@ -608,7 +650,8 @@ describe("Dispatcher", () => {
     let callNo = 0;
     const runtimeFactory: RuntimeFactory = () => {
       callNo += 1;
-      if (callNo === 1) return new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+      if (callNo === 1)
+        return new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
       return new FakeRuntime({
         reply: "",
         newSessionId: "sid-1",
@@ -618,12 +661,18 @@ describe("Dispatcher", () => {
     const { dispatcher, store, channel } = await scaffold({ runtimeFactory });
 
     await dispatcher.handle(
-      makeEnvelope({ id: "msg_1", conversation: { id: "rm_x", kind: "direct" } }),
+      makeEnvelope({
+        id: "msg_1",
+        conversation: { id: "rm_x", kind: "direct" },
+      })
     );
     expect(store.all()[0].runtimeSessionId).toBe("sid-1");
 
     await dispatcher.handle(
-      makeEnvelope({ id: "msg_2", conversation: { id: "rm_x", kind: "direct" } }),
+      makeEnvelope({
+        id: "msg_2",
+        conversation: { id: "rm_x", kind: "direct" },
+      })
     );
 
     expect(store.all().length).toBe(0);
@@ -640,7 +689,8 @@ describe("Dispatcher", () => {
           return {
             text: "",
             newSessionId: "sid-1",
-            error: "Codex context compaction failed: maximum context length exceeded",
+            error:
+              "Codex context compaction failed: maximum context length exceeded",
           };
         }
         expect(opts.sessionId).toBe(null);
@@ -655,19 +705,28 @@ describe("Dispatcher", () => {
     const runtimeFactory: RuntimeFactory = () => {
       factoryCall += 1;
       if (factoryCall === 1) {
-        return new FakeRuntime({ id: "codex", reply: "ok", newSessionId: "sid-1" });
+        return new FakeRuntime({
+          id: "codex",
+          reply: "ok",
+          newSessionId: "sid-1",
+        });
       }
       return recoveryRuntime;
     };
     const { dispatcher, store, channel } = await scaffold({
-      config: baseConfig({ defaultRoute: { runtime: "codex", cwd: "/tmp/default" } }),
+      config: baseConfig({
+        defaultRoute: { runtime: "codex", cwd: "/tmp/default" },
+      }),
       runtimeFactory,
       buildRuntimeRecoveryContext: () =>
         "[Recent Room Messages]\n- Alice: deploy is failing\n- Bot: I am checking logs",
     });
 
     await dispatcher.handle(
-      makeEnvelope({ id: "msg_1", conversation: { id: "rm_oc_recover", kind: "direct" } }),
+      makeEnvelope({
+        id: "msg_1",
+        conversation: { id: "rm_oc_recover", kind: "direct" },
+      })
     );
     expect(store.all()[0].runtimeSessionId).toBe("sid-1");
 
@@ -676,19 +735,23 @@ describe("Dispatcher", () => {
         id: "msg_2",
         text: "continue",
         conversation: { id: "rm_oc_recover", kind: "direct" },
-      }),
+      })
     );
 
     expect(recoveryRuntime.run).toHaveBeenCalledTimes(2);
     expect(store.all()[0].runtimeSessionId).toBe("sid-2");
-    expect(channel.sends.map((s) => s.message.text)).toEqual(["ok", "recovered"]);
+    expect(channel.sends.map((s) => s.message.text)).toEqual([
+      "ok",
+      "recovered",
+    ]);
   });
 
   it("treats auth failure text as an error and does not persist the failed session", async () => {
     let callNo = 0;
     const runtimeFactory: RuntimeFactory = () => {
       callNo += 1;
-      if (callNo === 1) return new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
+      if (callNo === 1)
+        return new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
       return new FakeRuntime({
         reply: "Failed to authenticate. API Error: 403 Request not allowed",
         newSessionId: "sid-bad",
@@ -697,12 +760,18 @@ describe("Dispatcher", () => {
     const { dispatcher, store, channel } = await scaffold({ runtimeFactory });
 
     await dispatcher.handle(
-      makeEnvelope({ id: "msg_1", conversation: { id: "rm_oc_auth", kind: "direct" } }),
+      makeEnvelope({
+        id: "msg_1",
+        conversation: { id: "rm_oc_auth", kind: "direct" },
+      })
     );
     expect(store.all()[0].runtimeSessionId).toBe("sid-1");
 
     await dispatcher.handle(
-      makeEnvelope({ id: "msg_2", conversation: { id: "rm_oc_auth", kind: "direct" } }),
+      makeEnvelope({
+        id: "msg_2",
+        conversation: { id: "rm_oc_auth", kind: "direct" },
+      })
     );
 
     expect(store.all().length).toBe(0);
@@ -769,42 +838,59 @@ describe("Dispatcher", () => {
       log: silentLogger(),
       composeUserTurn: (msg) => {
         const raw = msg.raw as { batch?: Array<{ text?: string }> };
-        return (raw.batch ?? [{ text: msg.text }]).map((m) => m.text).join("\n");
+        return (raw.batch ?? [{ text: msg.text }])
+          .map((m) => m.text)
+          .join("\n");
       },
     });
     const acceptMedia = vi.fn(async () => {});
     const acceptText = vi.fn(async () => {});
 
-    await dispatcher.handle(makeEnvelope({
-      id: "h_media",
-      text: '{"attachments":[{"filename":"a.png"}]}\nAttachments\na.png',
-      raw: {
-        hub_msg_id: "h_media",
-        text: '{"attachments":[{"filename":"a.png"}]}\nAttachments\na.png',
-        envelope: {
-          type: "message",
-          payload: { attachments: [{ filename: "a.png", url: "/hub/files/f_1" }] },
+    await dispatcher.handle(
+      makeEnvelope(
+        {
+          id: "h_media",
+          text: '{"attachments":[{"filename":"a.png"}]}\nAttachments\na.png',
+          raw: {
+            hub_msg_id: "h_media",
+            text: '{"attachments":[{"filename":"a.png"}]}\nAttachments\na.png',
+            envelope: {
+              type: "message",
+              payload: {
+                attachments: [{ filename: "a.png", url: "/hub/files/f_1" }],
+              },
+            },
+          },
         },
-      },
-    }, { accept: acceptMedia }));
+        { accept: acceptMedia }
+      )
+    );
 
     expect(acceptMedia).toHaveBeenCalledTimes(1);
     expect(runtime.calls.length).toBe(0);
 
-    await dispatcher.handle(makeEnvelope({
-      id: "h_text",
-      text: "please inspect this",
-      raw: {
-        hub_msg_id: "h_text",
-        text: "please inspect this",
-        envelope: { type: "message", payload: { text: "please inspect this" } },
-      },
-    }, { accept: acceptText }));
+    await dispatcher.handle(
+      makeEnvelope(
+        {
+          id: "h_text",
+          text: "please inspect this",
+          raw: {
+            hub_msg_id: "h_text",
+            text: "please inspect this",
+            envelope: {
+              type: "message",
+              payload: { text: "please inspect this" },
+            },
+          },
+        },
+        { accept: acceptText }
+      )
+    );
 
     expect(acceptText).toHaveBeenCalledTimes(1);
     expect(runtime.calls.length).toBe(1);
     expect(runtime.calls[0].text).toBe(
-      '{"attachments":[{"filename":"a.png"}]}\nAttachments\na.png\nplease inspect this',
+      '{"attachments":[{"filename":"a.png"}]}\nAttachments\na.png\nplease inspect this'
     );
   });
 
@@ -829,7 +915,10 @@ describe("Dispatcher", () => {
   });
 
   it("fires onOutbound after a reply is dispatched", async () => {
-    const runtime = new FakeRuntime({ reply: "hello back", newSessionId: "sid-1" });
+    const runtime = new FakeRuntime({
+      reply: "hello back",
+      newSessionId: "sid-1",
+    });
     const { store, dir } = await makeStore();
     tempDirs.push(dir);
     const channel = new FakeChannel();
@@ -849,7 +938,10 @@ describe("Dispatcher", () => {
   });
 
   it("does not crash when onOutbound throws", async () => {
-    const runtime = new FakeRuntime({ reply: "hello back", newSessionId: "sid-1" });
+    const runtime = new FakeRuntime({
+      reply: "hello back",
+      newSessionId: "sid-1",
+    });
     const { store, dir } = await makeStore();
     tempDirs.push(dir);
     const channel = new FakeChannel();
@@ -870,10 +962,15 @@ describe("Dispatcher", () => {
 
   it("does not crash when an errored turn has no prior session entry", async () => {
     const runtime = new FakeRuntime({ newSessionId: "", errorText: "boom" });
-    const { dispatcher, store } = await scaffold({ runtimeFactory: () => runtime });
+    const { dispatcher, store } = await scaffold({
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ id: "msg_1", conversation: { id: "rm_y", kind: "direct" } }),
+      makeEnvelope({
+        id: "msg_1",
+        conversation: { id: "rm_y", kind: "direct" },
+      })
     );
     expect(store.all().length).toBe(0);
   });
@@ -886,7 +983,11 @@ describe("Dispatcher", () => {
     });
     const channel = new FakeChannel();
     const transcript = new CaptureTranscript();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime, transcript });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+      transcript,
+    });
 
     await dispatcher.handle(makeEnvelope({ id: "msg_error" }));
 
@@ -918,7 +1019,10 @@ describe("Dispatcher", () => {
 
   it("cancel-previous: prior turn is aborted and does not write session, new turn writes", async () => {
     const prior = new FakeRuntime({ hang: true, newSessionId: "prior-sid" });
-    const newer = new FakeRuntime({ reply: "newer", newSessionId: "newer-sid" });
+    const newer = new FakeRuntime({
+      reply: "newer",
+      newSessionId: "newer-sid",
+    });
     let callNo = 0;
     const runtimeFactory: RuntimeFactory = () => {
       callNo += 1;
@@ -931,7 +1035,7 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "msg_1",
         conversation: { id: "rm_oc_a", kind: "direct" },
-      }),
+      })
     );
     // Give the prior run a tick to register.
     await Promise.resolve();
@@ -941,7 +1045,7 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "msg_2",
         conversation: { id: "rm_oc_a", kind: "direct" },
-      }),
+      })
     );
 
     await first.catch(() => undefined);
@@ -982,13 +1086,13 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "m1",
         conversation: { id: "rm_oc_g1", kind: "group" },
-      }),
+      })
     );
     const p2 = dispatcher.handle(
       makeEnvelope({
         id: "m2",
         conversation: { id: "rm_oc_g1", kind: "group" },
-      }),
+      })
     );
     await Promise.all([p1, p2]);
 
@@ -1026,13 +1130,13 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "m1",
         conversation: { id: "rm_a", kind: "group" },
-      }),
+      })
     );
     const p2 = dispatcher.handle(
       makeEnvelope({
         id: "m2",
         conversation: { id: "rm_b", kind: "group" },
-      }),
+      })
     );
     await Promise.all([p1, p2]);
     expect(maxConcurrent).toBe(2);
@@ -1047,12 +1151,15 @@ describe("Dispatcher", () => {
     ];
     const runtime = new FakeRuntime({ blocks, newSessionId: "sid" });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
       makeEnvelope({
         trace: { id: "trace_abc", streamable: true },
-      }),
+      })
     );
     // streamBlock is fire-and-forget; give microtasks a chance.
     await new Promise((r) => setTimeout(r, 5));
@@ -1060,17 +1167,22 @@ describe("Dispatcher", () => {
     expect(channel.streams[0].traceId).toBe("trace_abc");
     // Dispatcher re-sequences on the wire so synthesized thinking blocks
     // interleave cleanly. Two assistant_text blocks → wire seq 1, 2.
-    expect(channel.streams.map((s) => (s.block as StreamBlock).seq)).toEqual([1, 2]);
+    expect(channel.streams.map((s) => (s.block as StreamBlock).seq)).toEqual([
+      1, 2,
+    ]);
   });
 
   it("streaming: does not forward blocks when streamable is false", async () => {
     const blocks: StreamBlock[] = [{ raw: {}, kind: "assistant_text", seq: 1 }];
     const runtime = new FakeRuntime({ blocks, newSessionId: "sid" });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "trace_abc", streamable: false } }),
+      makeEnvelope({ trace: { id: "trace_abc", streamable: false } })
     );
     await new Promise((r) => setTimeout(r, 5));
     expect(channel.streams.length).toBe(0);
@@ -1078,12 +1190,19 @@ describe("Dispatcher", () => {
 
   it("channel without streamBlock: blocks dropped silently, turn still completes", async () => {
     const blocks: StreamBlock[] = [{ raw: {}, kind: "assistant_text", seq: 1 }];
-    const runtime = new FakeRuntime({ blocks, newSessionId: "sid", reply: "ok" });
+    const runtime = new FakeRuntime({
+      blocks,
+      newSessionId: "sid",
+      reply: "ok",
+    });
     const channel = new FakeChannel({ withStream: false });
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "t1", streamable: true } }),
+      makeEnvelope({ trace: { id: "t1", streamable: true } })
     );
     expect(channel.sends.length).toBe(1);
     expect(channel.sends[0].message.text).toBe("ok");
@@ -1105,10 +1224,13 @@ describe("Dispatcher", () => {
       newSessionId: "sid",
     });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "trace_t", streamable: true } }),
+      makeEnvelope({ trace: { id: "trace_t", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
@@ -1121,10 +1243,13 @@ describe("Dispatcher", () => {
   it("typing: does not require channel streamBlock support", async () => {
     const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
     const channel = new FakeChannel({ withStream: false });
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "trace_t", streamable: true } }),
+      makeEnvelope({ trace: { id: "trace_t", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
@@ -1137,11 +1262,15 @@ describe("Dispatcher", () => {
     const channel = new FakeChannel({ id: "gw_provider", type: "telegram" });
     const { dispatcher } = await scaffold({
       channel,
-      runtimeFactory: () => new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
+      runtimeFactory: () =>
+        new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
     });
 
     await dispatcher.handle(
-      makeEnvelope({ channel: "gw_provider", trace: { id: "t1", streamable: false } }),
+      makeEnvelope({
+        channel: "gw_provider",
+        trace: { id: "t1", streamable: false },
+      })
     );
     expect(channel.typings.length).toBe(1);
   });
@@ -1150,11 +1279,12 @@ describe("Dispatcher", () => {
     const channel = new FakeChannel({ type: "botcord" });
     const { dispatcher } = await scaffold({
       channel,
-      runtimeFactory: () => new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
+      runtimeFactory: () =>
+        new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
     });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "t1", streamable: false } }),
+      makeEnvelope({ trace: { id: "t1", streamable: false } })
     );
     expect(channel.typings.length).toBe(0);
   });
@@ -1163,15 +1293,22 @@ describe("Dispatcher", () => {
     vi.useFakeTimers();
     try {
       const channel = new FakeChannel({ id: "gw_tg", type: "telegram" });
-      const runtime = new FakeRuntime({ delayMs: 8500, reply: "ok", newSessionId: "sid" });
-      const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+      const runtime = new FakeRuntime({
+        delayMs: 8500,
+        reply: "ok",
+        newSessionId: "sid",
+      });
+      const { dispatcher } = await scaffold({
+        channel,
+        runtimeFactory: () => runtime,
+      });
 
       const pending = dispatcher.handle(
         makeEnvelope({
           channel: "gw_tg",
           conversation: { id: "telegram:user:42", kind: "direct" },
           trace: { id: "telegram:42:1", streamable: true },
-        }),
+        })
       );
 
       await vi.advanceTimersByTimeAsync(0);
@@ -1198,11 +1335,12 @@ describe("Dispatcher", () => {
     const channel = new FakeChannel({ withTyping: false });
     const { dispatcher } = await scaffold({
       channel,
-      runtimeFactory: () => new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
+      runtimeFactory: () =>
+        new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
     });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "t1", streamable: true } }),
+      makeEnvelope({ trace: { id: "t1", streamable: true } })
     );
     expect(channel.typings.length).toBe(0);
   });
@@ -1214,17 +1352,23 @@ describe("Dispatcher", () => {
       },
     });
     const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "t1", streamable: true } }),
+      makeEnvelope({ trace: { id: "t1", streamable: true } })
     );
     expect(channel.sends.length).toBe(1);
     expect(channel.sends[0].message.text).toBe("ok");
   });
 
   it("message status: marks BotCord group trigger before runtime and clears after completion", async () => {
-    const channel = new FakeChannel({ type: "botcord", withMessageStatus: true });
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
     const observed: string[][] = [];
     const runtime = new FakeRuntime({
       observeRun: () => {
@@ -1233,30 +1377,426 @@ describe("Dispatcher", () => {
       reply: "ok",
       newSessionId: "sid",
     });
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
       makeEnvelope({
+        text: "@ag_me please review this",
+        mentioned: true,
         conversation: { id: "rm_team", kind: "group" },
         raw: { envelope: { msg_id: "msg_trigger" } },
         trace: { id: "trace_group", streamable: false },
-      }),
+      })
     );
 
     expect(observed[0]).toEqual(["started"]);
-    expect(channel.messageStatuses.map((ctx) => ctx.phase)).toEqual(["started", "cleared"]);
+    expect(channel.messageStatuses.map((ctx) => ctx.phase)).toEqual([
+      "started",
+      "cleared",
+    ]);
     expect(channel.messageStatuses[0].conversationId).toBe("rm_team");
     expect(channel.messageStatuses[0].messageId).toBe("msg_trigger");
     expect(channel.messageStatuses[0].kind).toBe("replying");
     expect(channel.messageStatuses[0].emoji).toBe("⏳");
-    expect(channel.messageStatuses[1].turnId).toBe(channel.messageStatuses[0].turnId);
+    expect(channel.messageStatuses[1].turnId).toBe(
+      channel.messageStatuses[0].turnId
+    );
+  });
+
+  it("message status: skips unmentioned BotCord group noise even though the runtime runs", async () => {
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        text: "general room update",
+        mentioned: false,
+        conversation: { id: "rm_team", kind: "group" },
+        raw: { envelope: { msg_id: "msg_noise" } },
+        trace: { id: "trace_noise", streamable: false },
+      })
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    expect(channel.messageStatuses.length).toBe(0);
+  });
+
+  it("message status: treats local @agent_id text mention as mentioned", async () => {
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        text: "@ag_me please review this",
+        mentioned: false,
+        conversation: { id: "rm_team", kind: "group" },
+        raw: { envelope: { msg_id: "msg_local_mention" } },
+        trace: { id: "trace_local_mention", streamable: false },
+      })
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    expect(channel.messageStatuses.map((ctx) => ctx.phase)).toEqual([
+      "started",
+      "cleared",
+    ]);
+    expect(channel.messageStatuses[0].messageId).toBe("msg_local_mention");
+    expect(channel.messageStatuses[0].kind).toBe("replying");
+  });
+
+  it("message status: attention gate display-name fallback updates status, context, and turn text", async () => {
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+      config: baseConfig({
+        defaultRoute: {
+          runtime: "claude-code",
+          cwd: "/tmp/default",
+          queueMode: "cancel-previous",
+        },
+      }),
+      attentionGate: (msg) => {
+        applyLocalMention(msg, {
+          agentId: msg.accountId,
+          displayName: "Botcord CTO",
+        });
+        return true;
+      },
+      composeUserTurn: (msg) =>
+        `[BotCord Message] | mentioned: ${
+          msg.mentioned === true ? "true" : "false"
+        }\n${msg.text}`,
+      buildSystemContext: (msg) =>
+        `[BotCord Room-Type Awareness]\nmentioned: ${
+          msg.mentioned === true ? "true" : "false"
+        }`,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        text: "@Botcord CTO please review this",
+        mentioned: false,
+        conversation: { id: "rm_team", kind: "group" },
+        raw: { envelope: { msg_id: "msg_display_name_mention" } },
+        trace: { id: "trace_display_name_mention", streamable: false },
+      })
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    expect(runtime.calls[0].text).toContain("mentioned: true");
+    expect(runtime.calls[0].systemContext).toContain("mentioned: true");
+    expect(channel.messageStatuses.map((ctx) => ctx.phase)).toEqual([
+      "started",
+      "cleared",
+    ]);
+    expect(channel.messageStatuses[0].messageId).toBe(
+      "msg_display_name_mention"
+    );
+    expect(channel.messageStatuses[0].kind).toBe("replying");
+  });
+
+  it("message status: attention gate wakes mention_only turns from raw batch local mention", async () => {
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+      attentionGate: (msg) => {
+        const localMention = applyLocalMention(msg, {
+          agentId: msg.accountId,
+          displayName: "Botcord CTO",
+        });
+        return shouldWake(
+          { mode: "mention_only", keywords: [] },
+          { mentioned: msg.mentioned === true || localMention, text: msg.text }
+        );
+      },
+      composeUserTurn: (msg) =>
+        `[BotCord Message] | mentioned: ${
+          msg.mentioned === true ? "true" : "false"
+        }\n${msg.text}`,
+      buildSystemContext: (msg) =>
+        `[BotCord Room-Type Awareness]\nmentioned: ${
+          msg.mentioned === true ? "true" : "false"
+        }`,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        text: "latest representative message",
+        mentioned: false,
+        conversation: { id: "rm_team", kind: "group" },
+        raw: {
+          envelope: { msg_id: "msg_latest" },
+          batch: [
+            {
+              mentioned: false,
+              envelope: {
+                msg_id: "msg_batch_mention",
+                payload: { text: "@Botcord CTO please review this" },
+              },
+            },
+            {
+              mentioned: false,
+              envelope: {
+                msg_id: "msg_latest",
+                payload: { text: "latest representative message" },
+              },
+            },
+          ],
+        },
+        trace: { id: "trace_batch_display_name_mention", streamable: false },
+      })
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    expect(runtime.calls[0].text).toContain("mentioned: true");
+    expect(runtime.calls[0].systemContext).toContain("mentioned: true");
+    expect(channel.messageStatuses.map((ctx) => ctx.phase)).toEqual([
+      "started",
+      "cleared",
+    ]);
+    expect(channel.messageStatuses[0].messageId).toBe("msg_batch_mention");
+    expect(channel.messageStatuses[0].kind).toBe("replying");
+  });
+
+  it("message status: raw batch local @agent_id mention targets the matched entry", async () => {
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+      attentionGate: (msg) => {
+        const localMention = applyLocalMention(msg, {
+          agentId: msg.accountId,
+          displayName: "Botcord CTO",
+        });
+        return shouldWake(
+          { mode: "mention_only", keywords: [] },
+          { mentioned: msg.mentioned === true || localMention, text: msg.text }
+        );
+      },
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        text: "latest representative message",
+        mentioned: false,
+        conversation: { id: "rm_team", kind: "group" },
+        raw: {
+          envelope: { msg_id: "msg_latest_agent_id" },
+          batch: [
+            {
+              mentioned: false,
+              envelope: {
+                msg_id: "msg_batch_agent_id_mention",
+                payload: { text: "@ag_me please verify this" },
+              },
+            },
+            {
+              mentioned: false,
+              envelope: {
+                msg_id: "msg_latest_agent_id",
+                payload: { text: "latest representative message" },
+              },
+            },
+          ],
+        },
+        trace: { id: "trace_batch_agent_id_mention", streamable: false },
+      })
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    expect(channel.messageStatuses.map((ctx) => ctx.phase)).toEqual([
+      "started",
+      "cleared",
+    ]);
+    expect(channel.messageStatuses[0].messageId).toBe(
+      "msg_batch_agent_id_mention"
+    );
+    expect(channel.messageStatuses[0].kind).toBe("replying");
+  });
+
+  it("message status: skips FYI mentions that do not look action-bearing", async () => {
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        text: "@ag_me FYI only, no action needed",
+        mentioned: true,
+        conversation: { id: "rm_team", kind: "group" },
+        raw: { envelope: { msg_id: "msg_fyi" } },
+        trace: { id: "trace_fyi", streamable: false },
+      })
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    expect(channel.messageStatuses.length).toBe(0);
+  });
+
+  it("message status: skips explicit no-action mentions despite weak action words", async () => {
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        text: "@ag_me FYI, please note, no action needed",
+        mentioned: true,
+        conversation: { id: "rm_team", kind: "group" },
+        raw: { envelope: { msg_id: "msg_fyi_please_note" } },
+        trace: { id: "trace_fyi_please_note", streamable: false },
+      })
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    expect(channel.messageStatuses.length).toBe(0);
+  });
+
+  it("message status: skips hyphenated no-action mentions despite weak action words", async () => {
+    for (const [text, traceId] of [
+      ["@ag_me please note, no-reply", "trace_hyphen_no_reply"],
+      ["@ag_me please note, no-action", "trace_hyphen_no_action"],
+      ["@ag_me please note, context-only", "trace_hyphen_context_only"],
+    ] as const) {
+      const channel = new FakeChannel({
+        type: "botcord",
+        withMessageStatus: true,
+      });
+      const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+      const { dispatcher } = await scaffold({
+        channel,
+        runtimeFactory: () => runtime,
+      });
+
+      await dispatcher.handle(
+        makeEnvelope({
+          text,
+          mentioned: true,
+          conversation: { id: "rm_team", kind: "group" },
+          raw: { envelope: { msg_id: `${traceId}_msg` } },
+          trace: { id: traceId, streamable: false },
+        })
+      );
+
+      expect(runtime.calls.length).toBe(1);
+      expect(channel.messageStatuses.length).toBe(0);
+    }
+  });
+
+  it("message status: allows explicit no-action text when a strong action is present", async () => {
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        text: "@ag_me FYI, no action needed from others, please review this blocker",
+        mentioned: true,
+        conversation: { id: "rm_team", kind: "group" },
+        raw: { envelope: { msg_id: "msg_strong_action" } },
+        trace: { id: "trace_strong_action", streamable: false },
+      })
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    expect(channel.messageStatuses.map((ctx) => ctx.phase)).toEqual([
+      "started",
+      "cleared",
+    ]);
+    expect(channel.messageStatuses[0].messageId).toBe("msg_strong_action");
+    expect(channel.messageStatuses[0].kind).toBe("replying");
+  });
+
+  it("message status: allows hyphenated no-action text when a strong action is present", async () => {
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
+    const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        text: "@ag_me FYI, no-action from others, please verify this deploy",
+        mentioned: true,
+        conversation: { id: "rm_team", kind: "group" },
+        raw: { envelope: { msg_id: "msg_hyphen_strong_action" } },
+        trace: { id: "trace_hyphen_strong_action", streamable: false },
+      })
+    );
+
+    expect(runtime.calls.length).toBe(1);
+    expect(channel.messageStatuses.map((ctx) => ctx.phase)).toEqual([
+      "started",
+      "cleared",
+    ]);
+    expect(channel.messageStatuses[0].messageId).toBe(
+      "msg_hyphen_strong_action"
+    );
+    expect(channel.messageStatuses[0].kind).toBe("replying");
   });
 
   it("message status: skips owner-chat rooms", async () => {
-    const channel = new FakeChannel({ type: "botcord", withMessageStatus: true });
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
     const { dispatcher } = await scaffold({
       channel,
-      runtimeFactory: () => new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
+      runtimeFactory: () =>
+        new FakeRuntime({ reply: "ok", newSessionId: "sid" }),
     });
 
     await dispatcher.handle(
@@ -1264,7 +1804,7 @@ describe("Dispatcher", () => {
         conversation: { id: "rm_oc_team", kind: "group" },
         raw: { envelope: { msg_id: "msg_owner_chat" } },
         trace: { id: "trace_owner", streamable: true },
-      }),
+      })
     );
 
     expect(channel.messageStatuses.length).toBe(0);
@@ -1275,12 +1815,19 @@ describe("Dispatcher", () => {
       { raw: { type: "system", subtype: "init" }, kind: "system", seq: 1 },
       { raw: { type: "assistant" }, kind: "assistant_text", seq: 2 },
     ];
-    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const runtime = new FakeRuntime({
+      blocks,
+      reply: "ok",
+      newSessionId: "sid",
+    });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
@@ -1288,7 +1835,9 @@ describe("Dispatcher", () => {
     expect(channel.streams.length).toBe(3);
     const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
     expect(kinds).toEqual(["thinking", "system", "assistant_text"]);
-    expect(channel.streams.map((s) => (s.block as StreamBlock).seq)).toEqual([1, 2, 3]);
+    expect(channel.streams.map((s) => (s.block as StreamBlock).seq)).toEqual([
+      1, 2, 3,
+    ]);
     const thinkingRaw = channel.streams[0].block as StreamBlock;
     expect((thinkingRaw.raw as { phase: string }).phase).toBe("started");
     expect((thinkingRaw.raw as { source: string }).source).toBe("dispatcher");
@@ -1298,17 +1847,26 @@ describe("Dispatcher", () => {
     const blocks: StreamBlock[] = [
       { raw: { type: "assistant" }, kind: "assistant_text", seq: 1 },
     ];
-    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const runtime = new FakeRuntime({
+      blocks,
+      reply: "ok",
+      newSessionId: "sid",
+    });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
     expect(channel.streams.length).toBe(1);
-    expect((channel.streams[0].block as StreamBlock).kind).toBe("assistant_text");
+    expect((channel.streams[0].block as StreamBlock).kind).toBe(
+      "assistant_text"
+    );
   });
 
   it("thinking: re-enters thinking on tool_use after assistant_text exits it, then closes on terminal", async () => {
@@ -1316,19 +1874,31 @@ describe("Dispatcher", () => {
       { raw: { type: "assistant" }, kind: "assistant_text", seq: 1 },
       { raw: { type: "tool" }, kind: "tool_use", seq: 2 },
     ];
-    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const runtime = new FakeRuntime({
+      blocks,
+      reply: "ok",
+      newSessionId: "sid",
+    });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
     // [assistant_text, synthesized thinking.started, tool_use, terminal thinking.stopped]
     expect(channel.streams.length).toBe(4);
     const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
-    expect(kinds).toEqual(["assistant_text", "thinking", "tool_use", "thinking"]);
+    expect(kinds).toEqual([
+      "assistant_text",
+      "thinking",
+      "tool_use",
+      "thinking",
+    ]);
     const terminal = channel.streams[3].block as StreamBlock;
     expect((terminal.raw as { phase: string }).phase).toBe("stopped");
   });
@@ -1340,16 +1910,22 @@ describe("Dispatcher", () => {
           kind: "status",
           event: { kind: "thinking", phase: "started", label: "Searching web" },
         },
-        { kind: "block", block: { raw: { type: "tool" }, kind: "tool_use", seq: 1 } },
+        {
+          kind: "block",
+          block: { raw: { type: "tool" }, kind: "tool_use", seq: 1 },
+        },
       ],
       reply: "ok",
       newSessionId: "sid",
     });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
@@ -1372,10 +1948,13 @@ describe("Dispatcher", () => {
       newSessionId: "sid",
     });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
@@ -1397,7 +1976,7 @@ describe("Dispatcher", () => {
     });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
 
     // Timeout reply is sent in owner-chat.
@@ -1422,17 +2001,22 @@ describe("Dispatcher", () => {
     ];
     const runtime = new FakeRuntime({ blocks, reply: "", newSessionId: "sid" });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
     // [synth thinking.started, tool_use, terminal thinking.stopped]
     const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
     expect(kinds).toEqual(["thinking", "tool_use", "thinking"]);
-    expect((channel.streams[2].block as StreamBlock).raw as { phase: string }).toMatchObject({
+    expect(
+      (channel.streams[2].block as StreamBlock).raw as { phase: string }
+    ).toMatchObject({
       phase: "stopped",
     });
   });
@@ -1450,9 +2034,13 @@ describe("Dispatcher", () => {
         opts.onBlock?.({ raw: {}, kind: "system", seq: 1 });
         // Wait for caller-side abort. Reject to simulate the runtime exiting.
         return new Promise<RuntimeRunResult>((_resolve, reject) => {
-          opts.signal.addEventListener("abort", () => reject(new Error("aborted")), {
-            once: true,
-          });
+          opts.signal.addEventListener(
+            "abort",
+            () => reject(new Error("aborted")),
+            {
+              once: true,
+            }
+          );
         });
       },
     };
@@ -1464,7 +2052,7 @@ describe("Dispatcher", () => {
     });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     // Timeout has fired by now → controller.signal.aborted=true.
     const beforeLate = channel.streams.length;
@@ -1491,7 +2079,7 @@ describe("Dispatcher", () => {
         id: "m1",
         conversation: { id: "rm_oc_dbnc", kind: "direct" },
         trace: { id: "tr1", streamable: true },
-      }),
+      })
     );
     expect(channel.typings.length).toBe(1);
 
@@ -1502,7 +2090,7 @@ describe("Dispatcher", () => {
         id: "m2",
         conversation: { id: "rm_oc_dbnc", kind: "direct" },
         trace: { id: "tr2", streamable: true },
-      }),
+      })
     );
     expect(channel.typings.length).toBe(1);
   });
@@ -1510,15 +2098,21 @@ describe("Dispatcher", () => {
   it("typing: synchronous throw from channel.typing is logged but does not break turn", async () => {
     const channel = new FakeChannel();
     // Replace typing with a sync-throwing function (non-async).
-    (channel as unknown as { typing: (ctx: ChannelTypingContext) => Promise<void> }).typing =
-      ((_ctx: ChannelTypingContext) => {
-        throw new Error("sync boom");
-      }) as unknown as (ctx: ChannelTypingContext) => Promise<void>;
+    (
+      channel as unknown as {
+        typing: (ctx: ChannelTypingContext) => Promise<void>;
+      }
+    ).typing = ((_ctx: ChannelTypingContext) => {
+      throw new Error("sync boom");
+    }) as unknown as (ctx: ChannelTypingContext) => Promise<void>;
     const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     expect(channel.sends.length).toBe(1);
     expect(channel.sends[0].message.text).toBe("ok");
@@ -1533,12 +2127,19 @@ describe("Dispatcher", () => {
       { raw: { type: "turn.completed" }, kind: "system", seq: 2 },
       { raw: { type: "result" }, kind: "other", seq: 3 },
     ];
-    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const runtime = new FakeRuntime({
+      blocks,
+      reply: "ok",
+      newSessionId: "sid",
+    });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
@@ -1554,18 +2155,30 @@ describe("Dispatcher", () => {
       { raw: { type: "assistant" }, kind: "assistant_text", seq: 1 },
       { raw: { type: "tool" }, kind: "tool_use", seq: 2 },
     ];
-    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const runtime = new FakeRuntime({
+      blocks,
+      reply: "ok",
+      newSessionId: "sid",
+    });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
     const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
     // [assistant_text, synth thinking.started, tool_use, terminal thinking.stopped]
-    expect(kinds).toEqual(["assistant_text", "thinking", "tool_use", "thinking"]);
+    expect(kinds).toEqual([
+      "assistant_text",
+      "thinking",
+      "tool_use",
+      "thinking",
+    ]);
   });
 
   it("thinking: runtime onStatus(thinking.stopped) forwards to wire and prevents finally double-emit", async () => {
@@ -1573,17 +2186,23 @@ describe("Dispatcher", () => {
     // tells us thinking is over BEFORE the dispatcher's finally runs.
     const runtime = new FakeRuntime({
       events: [
-        { kind: "block", block: { raw: { type: "tool" }, kind: "tool_use", seq: 1 } },
+        {
+          kind: "block",
+          block: { raw: { type: "tool" }, kind: "tool_use", seq: 1 },
+        },
         { kind: "status", event: { kind: "thinking", phase: "stopped" } },
       ],
       reply: "ok",
       newSessionId: "sid",
     });
     const channel = new FakeChannel();
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
@@ -1592,8 +2211,9 @@ describe("Dispatcher", () => {
     const kinds = channel.streams.map((s) => (s.block as StreamBlock).kind);
     expect(kinds).toEqual(["thinking", "tool_use", "thinking"]);
     const stoppedFrames = channel.streams.filter(
-      (s) => (s.block as StreamBlock).kind === "thinking" &&
-        ((s.block as StreamBlock).raw as { phase: string }).phase === "stopped",
+      (s) =>
+        (s.block as StreamBlock).kind === "thinking" &&
+        ((s.block as StreamBlock).raw as { phase: string }).phase === "stopped"
     );
     expect(stoppedFrames.length).toBe(1);
   });
@@ -1612,7 +2232,8 @@ describe("Dispatcher", () => {
     });
     const newer = new FakeRuntime({ reply: "newer", newSessionId: "sid-new" });
     let callNo = 0;
-    const runtimeFactory: RuntimeFactory = () => (++callNo === 1 ? prior : newer);
+    const runtimeFactory: RuntimeFactory = () =>
+      ++callNo === 1 ? prior : newer;
     const channel = new FakeChannel();
     const { dispatcher } = await scaffold({ channel, runtimeFactory });
 
@@ -1623,10 +2244,14 @@ describe("Dispatcher", () => {
         id: "m_prior",
         conversation: { id: "rm_oc_cancel", kind: "direct" },
         trace: { id: "tr_prior", streamable: true },
-      }),
+      })
     );
     while (!priorObserved) await new Promise((r) => setTimeout(r, 1));
-    priorObserved!.onBlock?.({ raw: { type: "system" }, kind: "system", seq: 1 });
+    priorObserved!.onBlock?.({
+      raw: { type: "system" },
+      kind: "system",
+      seq: 1,
+    });
     await new Promise((r) => setTimeout(r, 5));
     const beforeSupersede = channel.streams.length;
 
@@ -1636,7 +2261,7 @@ describe("Dispatcher", () => {
         id: "m_newer",
         conversation: { id: "rm_oc_cancel", kind: "direct" },
         trace: { id: "tr_newer", streamable: true },
-      }),
+      })
     );
     await first.catch(() => undefined);
     await new Promise((r) => setTimeout(r, 5));
@@ -1663,14 +2288,17 @@ describe("Dispatcher", () => {
     // contract: rapid same-room pings within the 2s debounce coalesce to one.
     const channel = new FakeChannel();
     const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid" });
-    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    const { dispatcher } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+    });
 
     await dispatcher.handle(
       makeEnvelope({
         id: "hot1",
         conversation: { id: "rm_oc_hot", kind: "direct" },
         trace: { id: "trh1", streamable: true },
-      }),
+      })
     );
     expect(channel.typings.length).toBe(1);
 
@@ -1679,7 +2307,7 @@ describe("Dispatcher", () => {
         id: "hot2",
         conversation: { id: "rm_oc_hot", kind: "direct" },
         trace: { id: "trh2", streamable: true },
-      }),
+      })
     );
     expect(channel.typings.length).toBe(1);
   });
@@ -1689,7 +2317,11 @@ describe("Dispatcher", () => {
       { raw: { type: "system" }, kind: "system", seq: 1 },
       { raw: { type: "tool" }, kind: "tool_use", seq: 2 },
     ];
-    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const runtime = new FakeRuntime({
+      blocks,
+      reply: "ok",
+      newSessionId: "sid",
+    });
     const channel = new FakeChannel();
     const records: import("../transcript.js").TranscriptRecord[] = [];
     const { store, dir } = await makeStore();
@@ -1701,17 +2333,24 @@ describe("Dispatcher", () => {
       runtime: () => runtime,
       sessionStore: store,
       log: silentLogger(),
-      transcript: { enabled: true, rootDir: dir, write: (rec) => records.push(rec) },
+      transcript: {
+        enabled: true,
+        rootDir: dir,
+        write: (rec) => records.push(rec),
+      },
     });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: true } }),
+      makeEnvelope({ trace: { id: "tr", streamable: true } })
     );
     await new Promise((r) => setTimeout(r, 5));
 
     const outbound = records.find((r) => r.kind === "outbound");
     expect(outbound).toBeDefined();
-    const blockTypes = (outbound as { blocks?: Array<{ type: string }> }).blocks?.map((b) => b.type) ?? [];
+    const blockTypes =
+      (outbound as { blocks?: Array<{ type: string }> }).blocks?.map(
+        (b) => b.type
+      ) ?? [];
     // Only the runtime-emitted blocks land in the transcript; synth thinking is intentionally skipped.
     expect(blockTypes).toEqual(["system", "tool_use"]);
   });
@@ -1731,7 +2370,11 @@ describe("Dispatcher", () => {
         seq: 7,
       },
     ];
-    const runtime = new FakeRuntime({ blocks, reply: "ok", newSessionId: "sid" });
+    const runtime = new FakeRuntime({
+      blocks,
+      reply: "ok",
+      newSessionId: "sid",
+    });
     const channel = new FakeChannel();
     const records: import("../transcript.js").TranscriptRecord[] = [];
     const { store, dir } = await makeStore();
@@ -1743,11 +2386,15 @@ describe("Dispatcher", () => {
       runtime: () => runtime,
       sessionStore: store,
       log: silentLogger(),
-      transcript: { enabled: true, rootDir: dir, write: (rec) => records.push(rec) },
+      transcript: {
+        enabled: true,
+        rootDir: dir,
+        write: (rec) => records.push(rec),
+      },
     });
 
     await dispatcher.handle(
-      makeEnvelope({ trace: { id: "tr", streamable: false } }),
+      makeEnvelope({ trace: { id: "tr", streamable: false } })
     );
 
     expect(channel.streams).toHaveLength(0);
@@ -1761,17 +2408,25 @@ describe("Dispatcher", () => {
   });
 
   it("runtime throws: sends redacted error reply, does not write session", async () => {
-    const runtime = new FakeRuntime({ throwError: "boom Authorization: Bearer secret-token token=abc123" });
+    const runtime = new FakeRuntime({
+      throwError: "boom Authorization: Bearer secret-token token=abc123",
+    });
     const channel = new FakeChannel();
     const transcript = new CaptureTranscript();
-    const { dispatcher, store } = await scaffold({ channel, runtimeFactory: () => runtime, transcript });
+    const { dispatcher, store } = await scaffold({
+      channel,
+      runtimeFactory: () => runtime,
+      transcript,
+    });
 
     await dispatcher.handle(makeEnvelope({ id: "m1" }));
     expect(channel.sends.length).toBe(1);
     expect(channel.sends[0].message.type).toBe("error");
     expect(channel.sends[0].message.text).toContain("Runtime error");
     expect(channel.sends[0].message.text).toContain("boom");
-    expect(channel.sends[0].message.text).toContain("Authorization: Bearer [REDACTED]");
+    expect(channel.sends[0].message.text).toContain(
+      "Authorization: Bearer [REDACTED]"
+    );
     expect(channel.sends[0].message.text).toContain("token=[REDACTED]");
     expect(channel.sends[0].message.text).not.toContain("secret-token");
     expect(channel.sends[0].message.text).not.toContain("abc123");
@@ -1827,7 +2482,7 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "m1",
         conversation: { id: "rm_oc_x", kind: "direct" },
-      }),
+      })
     );
     // Let the turn begin.
     await Promise.resolve();
@@ -1888,7 +2543,7 @@ describe("Dispatcher", () => {
     const { dispatcher } = await scaffold({ config, runtimeFactory });
 
     await dispatcher.handle(
-      makeEnvelope({ conversation: { id: "rm_oc_z", kind: "direct" } }),
+      makeEnvelope({ conversation: { id: "rm_oc_z", kind: "direct" } })
     );
     expect(seenIds).toEqual(["claude-code"]);
     expect(calls[0].cwd).toBe("/tmp/match");
@@ -1953,7 +2608,7 @@ describe("Dispatcher", () => {
           room_name: "Team",
           room_rule: "Only reply when useful.",
         },
-      }),
+      })
     );
 
     expect(observed?.systemRules).toHaveLength(1);
@@ -2079,7 +2734,7 @@ describe("Dispatcher", () => {
     expect(channel.sends[0].message.text).toBe("ok");
     const warnMessages = warnSpy.mock.calls.map((c) => c[0]);
     expect(
-      warnMessages.some((m: string) => m.includes("buildSystemContext threw")),
+      warnMessages.some((m: string) => m.includes("buildSystemContext threw"))
     ).toBe(true);
   });
 
@@ -2112,10 +2767,14 @@ describe("Dispatcher", () => {
     memoryVersion = "wm-sha256:v2";
     await dispatcher.handle(makeEnvelope({ id: "msg_2", text: "second" }));
     expect(seenText[1]).toContain("[BotCord Memory Update Notice]");
-    expect(seenText[1]).toContain("previous: wm-sha256:v1, current: wm-sha256:v2");
+    expect(seenText[1]).toContain(
+      "previous: wm-sha256:v1, current: wm-sha256:v2"
+    );
     expect(seenText[1]).toContain("retrieve the latest working memory");
     expect(seenText[1]).toContain("botcord-daemon memory get");
-    expect(seenText[1]).not.toContain("[BotCord Working Memory]\nversion wm-sha256:v2");
+    expect(seenText[1]).not.toContain(
+      "[BotCord Working Memory]\nversion wm-sha256:v2"
+    );
     expect(seenText[1]).toContain("[Current Message]\nsecond");
     expect(store.all()[0].memoryVersion).toBe("wm-sha256:v2");
   });
@@ -2207,7 +2866,9 @@ describe("Dispatcher", () => {
     expect(channel.sends.length).toBe(1);
     expect(channel.sends[0].message.text).toBe("ok");
     const warnMessages = warnSpy.mock.calls.map((c) => c[0]);
-    expect(warnMessages.some((m: string) => m.includes("onInbound"))).toBe(true);
+    expect(warnMessages.some((m: string) => m.includes("onInbound"))).toBe(
+      true
+    );
   });
 
   it("unset queueMode + direct conversation → cancel-previous", async () => {
@@ -2225,7 +2886,7 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "m1",
         conversation: { id: "rm_oc_dm", kind: "direct" },
-      }),
+      })
     );
     await Promise.resolve();
     await Promise.resolve();
@@ -2233,7 +2894,7 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "m2",
         conversation: { id: "rm_oc_dm", kind: "direct" },
-      }),
+      })
     );
     await p1.catch(() => undefined);
 
@@ -2280,7 +2941,7 @@ describe("Dispatcher", () => {
               opts.signal.addEventListener(
                 "abort",
                 () => reject(new Error("aborted")),
-                { once: true },
+                { once: true }
               );
               g.gate.then(resolve);
             });
@@ -2304,7 +2965,7 @@ describe("Dispatcher", () => {
         id: "m1",
         text: "one",
         conversation: { id: "rm_oc_race", kind: "direct" },
-      }),
+      })
     );
     await vi.waitFor(() => {
       expect(allGates.length).toBeGreaterThanOrEqual(1);
@@ -2319,14 +2980,14 @@ describe("Dispatcher", () => {
         id: "m2",
         text: "two",
         conversation: { id: "rm_oc_race", kind: "direct" },
-      }),
+      })
     );
     const p3 = dispatcher.handle(
       makeEnvelope({
         id: "m3",
         text: "three",
         conversation: { id: "rm_oc_race", kind: "direct" },
-      }),
+      })
     );
 
     // Wait for the newest runtime to start. It may be the 2nd or 3rd
@@ -2335,9 +2996,7 @@ describe("Dispatcher", () => {
     await vi.waitFor(() => {
       expect(allGates.length).toBeGreaterThanOrEqual(2);
       // At least one gate after index 0 should have started.
-      const anyLaterStarted = allGates
-        .slice(1)
-        .some(() => true); // placeholder; real check below via Promise.race
+      const anyLaterStarted = allGates.slice(1).some(() => true); // placeholder; real check below via Promise.race
       expect(anyLaterStarted).toBe(true);
     });
     await Promise.race(allGates.slice(1).map((g) => g.started));
@@ -2379,7 +3038,10 @@ describe("Dispatcher", () => {
         return aResult;
       },
     };
-    const runtimeB = new FakeRuntime({ reply: "B-reply", newSessionId: "sid-B" });
+    const runtimeB = new FakeRuntime({
+      reply: "B-reply",
+      newSessionId: "sid-B",
+    });
     let callNo = 0;
     const runtimeFactory: RuntimeFactory = () => {
       callNo += 1;
@@ -2394,7 +3056,7 @@ describe("Dispatcher", () => {
         id: "msgA",
         text: "A",
         conversation: { id: "rm_oc_race2", kind: "direct" },
-      }),
+      })
     );
     // Let the dispatcher reach `await runtime.run`.
     await Promise.resolve();
@@ -2407,7 +3069,7 @@ describe("Dispatcher", () => {
         id: "msgB",
         text: "B",
         conversation: { id: "rm_oc_race2", kind: "direct" },
-      }),
+      })
     );
     // Give runCancelPrevious a tick to reach the abort + await prev.done.
     await Promise.resolve();
@@ -2466,7 +3128,7 @@ describe("Dispatcher", () => {
         id: "msgA",
         text: "A",
         conversation: { id: "rm_oc_race3", kind: "direct" },
-      }),
+      })
     );
     await Promise.resolve();
     await Promise.resolve();
@@ -2477,7 +3139,7 @@ describe("Dispatcher", () => {
         id: "msgB",
         text: "B",
         conversation: { id: "rm_oc_race3", kind: "direct" },
-      }),
+      })
     );
     await Promise.resolve();
     await Promise.resolve();
@@ -2527,9 +3189,17 @@ describe("Dispatcher", () => {
     const workDir = await mkdtemp(path.join(tmpdir(), "dispatcher-artifacts-"));
     tempDirs.push(workDir);
     await mkdir(path.join(workDir, "output"), { recursive: true });
-    await mkdir(path.join(workDir, "social-card-botcord-agent-hub"), { recursive: true });
-    await writeFile(path.join(workDir, "output", "xhs-01-cover.png"), "png-bytes");
-    await writeFile(path.join(workDir, "social-card-botcord-agent-hub", "index.html"), "<html></html>");
+    await mkdir(path.join(workDir, "social-card-botcord-agent-hub"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(workDir, "output", "xhs-01-cover.png"),
+      "png-bytes"
+    );
+    await writeFile(
+      path.join(workDir, "social-card-botcord-agent-hub", "index.html"),
+      "<html></html>"
+    );
 
     const runtime = new FakeRuntime({
       reply: [
@@ -2544,11 +3214,15 @@ describe("Dispatcher", () => {
       newSessionId: "sid-1",
     });
     const { dispatcher, channel } = await scaffold({
-      config: baseConfig({ defaultRoute: { runtime: "claude-code", cwd: workDir } }),
+      config: baseConfig({
+        defaultRoute: { runtime: "claude-code", cwd: workDir },
+      }),
       runtimeFactory: () => runtime,
     });
 
-    await dispatcher.handle(makeEnvelope({ conversation: { id: "rm_oc_1", kind: "direct" } }));
+    await dispatcher.handle(
+      makeEnvelope({ conversation: { id: "rm_oc_1", kind: "direct" } })
+    );
 
     const realWorkDir = await realpath(workDir);
     expect(channel.sends.length).toBe(1);
@@ -2561,7 +3235,11 @@ describe("Dispatcher", () => {
         kind: "image",
       },
       {
-        filePath: path.join(realWorkDir, "social-card-botcord-agent-hub", "index.html"),
+        filePath: path.join(
+          realWorkDir,
+          "social-card-botcord-agent-hub",
+          "index.html"
+        ),
         filename: "index.html",
         contentType: "text/html",
         sourcePath: "social-card-botcord-agent-hub/index.html",
@@ -2571,7 +3249,10 @@ describe("Dispatcher", () => {
   });
 
   it("non-owner-chat room: discards result.text, agent must use botcord_send", async () => {
-    const runtime = new FakeRuntime({ reply: "would-be-reply", newSessionId: "sid-1" });
+    const runtime = new FakeRuntime({
+      reply: "would-be-reply",
+      newSessionId: "sid-1",
+    });
     const { dispatcher, channel, store } = await scaffold({
       runtimeFactory: () => runtime,
     });
@@ -2580,7 +3261,7 @@ describe("Dispatcher", () => {
       makeEnvelope({
         id: "msg_1",
         conversation: { id: "rm_g_other", kind: "group" },
-      }),
+      })
     );
 
     expect(runtime.calls.length).toBe(1);
@@ -2601,7 +3282,7 @@ describe("Dispatcher", () => {
         makeEnvelope({
           id: "m_to",
           conversation: { id: "rm_g_other", kind: "group" },
-        }),
+        })
       );
       await vi.advanceTimersByTimeAsync(501);
       await p;
@@ -2626,7 +3307,7 @@ describe("Dispatcher", () => {
         id: "feishu:om_internal_err",
         replyTo: "om_provider_err",
         conversation: { id: "rm_g_other", kind: "group" },
-      }),
+      })
     );
     expect(channel.sends.length).toBe(1);
     expect(channel.sends[0].message.type).toBe("error");
@@ -2658,7 +3339,11 @@ describe("Dispatcher", () => {
     const channel = new FakeChannel();
     const dispatcher = new Dispatcher({
       config: baseConfig({
-        defaultRoute: { runtime: "claude-code", cwd: "/tmp/d", queueMode: "serial" },
+        defaultRoute: {
+          runtime: "claude-code",
+          cwd: "/tmp/d",
+          queueMode: "serial",
+        },
       }),
       channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
       runtime: runtimeFactory,
@@ -2679,7 +3364,7 @@ describe("Dispatcher", () => {
         text: "hello",
         raw: { hub_msg_id: "m1", text: "hello" },
         conversation: { id: "rm_grp_x", kind: "group" },
-      }),
+      })
     );
     // Let the worker start runtime.run for m1.
     await Promise.resolve();
@@ -2691,7 +3376,7 @@ describe("Dispatcher", () => {
         text: "second",
         raw: { hub_msg_id: "m2", text: "second" },
         conversation: { id: "rm_grp_x", kind: "group" },
-      }),
+      })
     );
     const p3 = dispatcher.handle(
       makeEnvelope({
@@ -2699,7 +3384,7 @@ describe("Dispatcher", () => {
         text: "third",
         raw: { hub_msg_id: "m3", text: "third" },
         conversation: { id: "rm_grp_x", kind: "group" },
-      }),
+      })
     );
     await Promise.all([p1, p2, p3]);
 
@@ -2723,7 +3408,11 @@ describe("Dispatcher", () => {
     const channel = new FakeChannel();
     const dispatcher = new Dispatcher({
       config: baseConfig({
-        defaultRoute: { runtime: "claude-code", cwd: "/tmp/d", queueMode: "serial" },
+        defaultRoute: {
+          runtime: "claude-code",
+          cwd: "/tmp/d",
+          queueMode: "serial",
+        },
       }),
       channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
       runtime: runtimeFactory,
@@ -2741,7 +3430,7 @@ describe("Dispatcher", () => {
         text: "a",
         mentioned: false,
         conversation: { id: "rm_grp_y", kind: "group" },
-      }),
+      })
     );
     await Promise.resolve();
     await Promise.resolve();
@@ -2752,7 +3441,7 @@ describe("Dispatcher", () => {
         text: "a2",
         mentioned: true,
         conversation: { id: "rm_grp_y", kind: "group" },
-      }),
+      })
     );
     const p3 = dispatcher.handle(
       makeEnvelope({
@@ -2760,10 +3449,107 @@ describe("Dispatcher", () => {
         text: "b",
         mentioned: false,
         conversation: { id: "rm_grp_y", kind: "group" },
-      }),
+      })
     );
     await Promise.all([p1, p2, p3]);
     expect(captured.mentioned).toBe(true);
+  });
+
+  it("serial coalesce: preserves local mention on single raw entry for status target", async () => {
+    let capturedBatch: Array<{ mentioned?: unknown; envelope?: unknown }> = [];
+    const runtimeFactory: RuntimeFactory = () =>
+      new FakeRuntime({ reply: "ok", delayMs: 20, newSessionId: "sid" });
+    const { store, dir } = await makeStore();
+    tempDirs.push(dir);
+    const channel = new FakeChannel({
+      type: "botcord",
+      withMessageStatus: true,
+    });
+    const dispatcher = new Dispatcher({
+      config: baseConfig({
+        defaultRoute: {
+          runtime: "claude-code",
+          cwd: "/tmp/d",
+          queueMode: "serial",
+        },
+      }),
+      channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
+      runtime: runtimeFactory,
+      sessionStore: store,
+      log: silentLogger(),
+      attentionGate: (msg) => {
+        applyLocalMention(msg, {
+          agentId: msg.accountId,
+          displayName: "Botcord CTO",
+        });
+        return true;
+      },
+      composeUserTurn: (msg) => {
+        if (msg.id === "m_latest") {
+          const raw = msg.raw as {
+            batch?: Array<{ mentioned?: unknown; envelope?: unknown }>;
+          };
+          capturedBatch = raw.batch ?? [];
+        }
+        return msg.text ?? "";
+      },
+    });
+
+    const p1 = dispatcher.handle(
+      makeEnvelope({
+        id: "m_initial",
+        text: "initial turn",
+        raw: {
+          hub_msg_id: "m_initial",
+          text: "initial turn",
+          envelope: { msg_id: "msg_initial" },
+        },
+        conversation: { id: "rm_grp_local_mention", kind: "group" },
+      })
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    const p2 = dispatcher.handle(
+      makeEnvelope({
+        id: "m_mention",
+        text: "@ag_me please review this",
+        mentioned: false,
+        raw: {
+          hub_msg_id: "m_mention",
+          text: "@ag_me please review this",
+          mentioned: false,
+          envelope: { msg_id: "msg_serial_mention" },
+        },
+        conversation: { id: "rm_grp_local_mention", kind: "group" },
+      })
+    );
+    const p3 = dispatcher.handle(
+      makeEnvelope({
+        id: "m_latest",
+        text: "latest noise",
+        mentioned: false,
+        raw: {
+          hub_msg_id: "m_latest",
+          text: "latest noise",
+          mentioned: false,
+          envelope: { msg_id: "msg_serial_latest" },
+        },
+        conversation: { id: "rm_grp_local_mention", kind: "group" },
+      })
+    );
+
+    await Promise.all([p1, p2, p3]);
+
+    expect(capturedBatch.map((entry) => entry.mentioned)).toEqual([
+      true,
+      false,
+    ]);
+    expect(channel.messageStatuses.map((ctx) => ctx.phase)).toEqual([
+      "started",
+      "cleared",
+    ]);
+    expect(channel.messageStatuses[0].messageId).toBe("msg_serial_mention");
+    expect(channel.messageStatuses[0].kind).toBe("replying");
   });
 
   it("serial coalesce: buffer overflow drops oldest entries (>40 backlog)", async () => {
@@ -2798,14 +3584,20 @@ describe("Dispatcher", () => {
     const channel = new FakeChannel();
     const dispatcher = new Dispatcher({
       config: baseConfig({
-        defaultRoute: { runtime: "claude-code", cwd: "/tmp/d", queueMode: "serial" },
+        defaultRoute: {
+          runtime: "claude-code",
+          cwd: "/tmp/d",
+          queueMode: "serial",
+        },
       }),
       channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
       runtime: runtimeFactory,
       sessionStore: store,
       log: silentLogger(),
       composeUserTurn: (msg) => {
-        const raw = msg.raw as { batch?: Array<{ hub_msg_id?: string }> } | null;
+        const raw = msg.raw as {
+          batch?: Array<{ hub_msg_id?: string }>;
+        } | null;
         const ids = Array.isArray(raw?.batch)
           ? raw!.batch!.map((b) => b.hub_msg_id ?? "?")
           : [msg.id];
@@ -2825,8 +3617,8 @@ describe("Dispatcher", () => {
           text: "first",
           raw: { hub_msg_id: "m_first", text: "first" },
           conversation: { id: "rm_grp_overflow", kind: "group" },
-        }),
-      ),
+        })
+      )
     );
     // Yield twice so the worker observes the first entry and starts runtime.
     await Promise.resolve();
@@ -2840,8 +3632,8 @@ describe("Dispatcher", () => {
             text: `msg-${i}`,
             raw: { hub_msg_id: `m_${i}`, text: `msg-${i}` },
             conversation: { id: "rm_grp_overflow", kind: "group" },
-          }),
-        ),
+          })
+        )
       );
     }
     // Release turn 1 so the worker drains the (capped) backlog.
@@ -2875,7 +3667,11 @@ describe("Dispatcher", () => {
     const channel = new FakeChannel();
     const dispatcher = new Dispatcher({
       config: baseConfig({
-        defaultRoute: { runtime: "claude-code", cwd: "/tmp/d", queueMode: "serial" },
+        defaultRoute: {
+          runtime: "claude-code",
+          cwd: "/tmp/d",
+          queueMode: "serial",
+        },
       }),
       channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),
       runtime: runtimeFactory,
@@ -2897,7 +3693,7 @@ describe("Dispatcher", () => {
         text: "lead",
         raw: { hub_msg_id: "m_lead", text: "lead" },
         conversation: { id: "rm_grp_chars", kind: "group" },
-      }),
+      })
     );
     await Promise.resolve();
     await Promise.resolve();
@@ -2910,8 +3706,8 @@ describe("Dispatcher", () => {
             text: big,
             raw: { hub_msg_id: `mb_${i}`, text: big },
             conversation: { id: "rm_grp_chars", kind: "group" },
-          }),
-        ),
+          })
+        )
       );
     }
     await Promise.all(arrivals);
@@ -2944,7 +3740,9 @@ describe("Dispatcher", () => {
       onInbound,
       attentionGate,
     });
-    await dispatcher.handle(makeEnvelope({ id: "m_gated", text: "hello" }, { accept }));
+    await dispatcher.handle(
+      makeEnvelope({ id: "m_gated", text: "hello" }, { accept })
+    );
     expect(accept).toHaveBeenCalledTimes(1);
     expect(onInbound).toHaveBeenCalledTimes(1);
     expect(attentionGate).toHaveBeenCalledTimes(1);
@@ -3004,7 +3802,7 @@ describe("Dispatcher", () => {
         // the gating predicate.
         conversation: { id: "rm_dashroom", kind: "direct" },
         raw: { source_type: "dashboard_user_chat" },
-      }),
+      })
     );
     expect(channel.sends.length).toBe(1);
     expect(channel.sends[0].message.text).toBe("ok");

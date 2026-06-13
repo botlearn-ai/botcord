@@ -25,15 +25,22 @@
  *     `systemContext: undefined` to the runtime (adapter then skips the
  *     injection flag).
  */
-import type { GatewayInboundMessage, SystemContextBuilder } from "./gateway/index.js";
+import type {
+  GatewayInboundMessage,
+  SystemContextBuilder,
+} from "./gateway/index.js";
 import type { ActivityTracker } from "./activity-tracker.js";
 import { buildCrossRoomDigest } from "./cross-room.js";
-import { buildWorkingMemoryPrompt, readWorkingMemory } from "./working-memory.js";
+import {
+  buildWorkingMemoryPrompt,
+  readWorkingMemory,
+} from "./working-memory.js";
 import { readIdentity } from "./agent-workspace.js";
 import { classifyActivitySender } from "./sender-classify.js";
 import { log } from "./log.js";
 import { buildSoftSkillIndexPrompt } from "./skill-index.js";
 import type { SkillIndexOptions } from "./skill-index.js";
+import { effectiveMention } from "./mention-scan.js";
 
 /**
  * Async per-turn room-context builder (see `room-context.ts`). Returns the
@@ -41,7 +48,7 @@ import type { SkillIndexOptions } from "./skill-index.js";
  * to inject (DM, owner-chat, fetch failure, etc.).
  */
 export type RoomStaticContextBuilder = (
-  message: GatewayInboundMessage,
+  message: GatewayInboundMessage
 ) => Promise<string | null>;
 
 /**
@@ -62,7 +69,9 @@ function buildOwnerChatSceneContext(): string {
   ].join("\n");
 }
 
-function buildGroupRoomEnvironmentContext(message: GatewayInboundMessage): string | null {
+function buildGroupRoomEnvironmentContext(
+  message: GatewayInboundMessage
+): string | null {
   if (message.conversation.kind !== "group") return null;
   return [
     "[BotCord Runtime Environment]",
@@ -70,6 +79,60 @@ function buildGroupRoomEnvironmentContext(message: GatewayInboundMessage): strin
     "Other room members can read your messages and any uploaded/attached files, but they cannot access this machine's local filesystem, container paths, or absolute paths such as /var/..., /tmp/..., or /Users/....",
     "Do not present a local file path as a useful report link or deliverable in group chat. If an artifact needs to be shared, upload or attach it through the available BotCord file/attachment mechanism, then refer to the uploaded attachment or summarize the content in the message.",
   ].join("\n");
+}
+
+function rawSourceType(message: GatewayInboundMessage): string | null {
+  const raw = message.raw;
+  if (!raw || typeof raw !== "object") return null;
+  const sourceType = (raw as { source_type?: unknown }).source_type;
+  return typeof sourceType === "string" && sourceType ? sourceType : null;
+}
+
+function buildRoomAwarenessContext(message: GatewayInboundMessage): string {
+  const sourceType = rawSourceType(message);
+  const sender = classifyActivitySender(message);
+  const roomType =
+    sender.kind === "owner"
+      ? "owner_dm"
+      : sourceType === "botcord_schedule"
+      ? "scheduler"
+      : message.conversation.kind === "group"
+      ? "team_room"
+      : message.conversation.id.startsWith("rm_dm_")
+      ? "user_dm"
+      : "cross_room_or_external";
+
+  const lines = [
+    "[BotCord Room-Type Awareness]",
+    `room_type: ${roomType}`,
+    `conversation_kind: ${message.conversation.kind}`,
+    `mentioned: ${effectiveMention(message) ? "true" : "false"}`,
+    "Treat mentions as routing context, not as a mandatory public reply requirement. A mention can be an FYI, attribution, or action request; decide which from the message content, room policy, and working memory.",
+    "Public replies in shared rooms are appropriate only for new facts, blockers, approval requests, execution results, review findings, or explicit action requests. Pure acknowledgements, thanks, receipt confirmations, or duplicate status should use working memory/tool side effects or exactly NO_REPLY.",
+    "NO_REPLY is a normal first-class outcome in team rooms when no public response is needed.",
+    "Cross-room awareness and room digests are context only. Do not answer another room from the current room unless a pending task or explicit owner-approved workflow requires that handoff.",
+  ];
+
+  if (roomType === "team_room") {
+    lines.push(
+      "Shared-room spokesperson convention: prefer a single public summary from the person or agent responsible for the relevant area. Others should avoid duplicate confirmations, boundary restatements, or courtesy acknowledgements.",
+      "If another responsible spokesperson has already handled the point, stay silent or update memory instead of adding a courtesy acknowledgement."
+    );
+  } else if (roomType === "scheduler") {
+    lines.push(
+      "Scheduler turns are proactive work triggers. Execute the scheduled task, then reply publicly only if the schedule expects a report, needs approval, hits a blocker, or produces a useful result."
+    );
+  } else if (roomType === "owner_dm") {
+    lines.push(
+      "Owner-DM turns are private and trusted; answer normally unless the conversation has naturally concluded."
+    );
+  } else if (roomType === "user_dm") {
+    lines.push(
+      "User-DM turns are direct conversations; answer normally when useful, and use NO_REPLY only when no response is needed."
+    );
+  }
+
+  return lines.join("\n");
 }
 
 /** Dependencies injected by the daemon bootstrap. */
@@ -148,11 +211,16 @@ function buildIdentityPrompt(agentId: string): string | null {
  * as the pre-P1 daemon builder). Both shapes satisfy `SystemContextBuilder`.
  */
 export function createDaemonSystemContextBuilder(
-  deps: SystemContextDeps,
-): (message: GatewayInboundMessage) => Promise<string | undefined> | string | undefined {
-  const gatherSyncBlocks = (message: GatewayInboundMessage): {
+  deps: SystemContextDeps
+): (
+  message: GatewayInboundMessage
+) => Promise<string | undefined> | string | undefined {
+  const gatherSyncBlocks = (
+    message: GatewayInboundMessage
+  ): {
     identity: string | null;
     ownerScene: string | null;
+    roomAwareness: string | null;
     environment: string | null;
     memory: string | null;
     digest: string | null;
@@ -163,7 +231,10 @@ export function createDaemonSystemContextBuilder(
       classifyActivitySender(message).kind === "owner"
         ? buildOwnerChatSceneContext()
         : null;
-    const environment = ownerScene ? null : buildGroupRoomEnvironmentContext(message);
+    const roomAwareness = buildRoomAwarenessContext(message);
+    const environment = ownerScene
+      ? null
+      : buildGroupRoomEnvironmentContext(message);
 
     const wm = safeReadWorkingMemory(deps.agentId);
     const memory = buildWorkingMemoryPrompt({ workingMemory: wm });
@@ -177,12 +248,14 @@ export function createDaemonSystemContextBuilder(
         }) || null
       : null;
 
-    return { identity, ownerScene, environment, memory, digest };
+    return { identity, ownerScene, roomAwareness, environment, memory, digest };
   };
 
-  const assemble = (parts: Array<string | null | undefined>): string | undefined => {
+  const assemble = (
+    parts: Array<string | null | undefined>
+  ): string | undefined => {
     const filtered = parts.filter(
-      (p): p is string => typeof p === "string" && p.length > 0,
+      (p): p is string => typeof p === "string" && p.length > 0
     );
     return filtered.length > 0 ? filtered.join("\n\n") : undefined;
   };
@@ -192,11 +265,14 @@ export function createDaemonSystemContextBuilder(
     try {
       return deps.loopRiskBuilder(message);
     } catch (err) {
-      log.warn("system-context: loopRiskBuilder threw — skipping loop-risk block", {
-        agentId: deps.agentId,
-        roomId: message.conversation.id,
-        err: err instanceof Error ? err.message : String(err),
-      });
+      log.warn(
+        "system-context: loopRiskBuilder threw — skipping loop-risk block",
+        {
+          agentId: deps.agentId,
+          roomId: message.conversation.id,
+          err: err instanceof Error ? err.message : String(err),
+        }
+      );
       return null;
     }
   };
@@ -204,26 +280,50 @@ export function createDaemonSystemContextBuilder(
   const buildSkillIndex = (message: GatewayInboundMessage): string | null => {
     try {
       if (deps.skillIndexBuilder) return deps.skillIndexBuilder(message);
-      return buildSoftSkillIndexPrompt(deps.agentId, deps.skillIndexOptions?.(message) ?? {});
+      return buildSoftSkillIndexPrompt(
+        deps.agentId,
+        deps.skillIndexOptions?.(message) ?? {}
+      );
     } catch (err) {
-      log.warn("system-context: skill index build failed — skipping skill block", {
-        agentId: deps.agentId,
-        roomId: message.conversation.id,
-        err: err instanceof Error ? err.message : String(err),
-      });
+      log.warn(
+        "system-context: skill index build failed — skipping skill block",
+        {
+          agentId: deps.agentId,
+          roomId: message.conversation.id,
+          err: err instanceof Error ? err.message : String(err),
+        }
+      );
       return null;
     }
   };
 
   if (!deps.roomContextBuilder) {
-    const syncBuilder = (message: GatewayInboundMessage): string | undefined => {
-      const { identity, ownerScene, environment, memory, digest } = gatherSyncBlocks(message);
+    const syncBuilder = (
+      message: GatewayInboundMessage
+    ): string | undefined => {
+      const {
+        identity,
+        ownerScene,
+        roomAwareness,
+        environment,
+        memory,
+        digest,
+      } = gatherSyncBlocks(message);
       // Loop-risk sits at the end so its "reply NO_REPLY unless…" guidance
       // is the last thing the model sees before the user turn body.
       // Identity sits at the very front so it frames every other block.
       const skillIndex = buildSkillIndex(message);
       const loopRisk = runLoopRisk(message);
-      return assemble([identity, ownerScene, environment, memory, digest, skillIndex, loopRisk]);
+      return assemble([
+        identity,
+        ownerScene,
+        roomAwareness,
+        environment,
+        memory,
+        digest,
+        skillIndex,
+        loopRisk,
+      ]);
     };
     // Compile-time witness that the narrower sync signature still satisfies
     // `SystemContextBuilder` (which allows async). Prevents the two contracts
@@ -235,9 +335,10 @@ export function createDaemonSystemContextBuilder(
 
   const roomBuilder = deps.roomContextBuilder;
   const asyncBuilder = async (
-    message: GatewayInboundMessage,
+    message: GatewayInboundMessage
   ): Promise<string | undefined> => {
-    const { identity, ownerScene, environment, memory, digest } = gatherSyncBlocks(message);
+    const { identity, ownerScene, roomAwareness, environment, memory, digest } =
+      gatherSyncBlocks(message);
     // Room context landing order: after owner-scene / memory, before digest —
     // "what room am I in" belongs with the session's own identity, while the
     // cross-room digest deliberately describes OTHER rooms and should stay
@@ -247,15 +348,28 @@ export function createDaemonSystemContextBuilder(
     try {
       roomBlock = await roomBuilder(message);
     } catch (err) {
-      log.warn("system-context: roomContextBuilder threw — skipping room block", {
-        agentId: deps.agentId,
-        roomId: message.conversation.id,
-        err: err instanceof Error ? err.message : String(err),
-      });
+      log.warn(
+        "system-context: roomContextBuilder threw — skipping room block",
+        {
+          agentId: deps.agentId,
+          roomId: message.conversation.id,
+          err: err instanceof Error ? err.message : String(err),
+        }
+      );
     }
     const skillIndex = buildSkillIndex(message);
     const loopRisk = runLoopRisk(message);
-    return assemble([identity, ownerScene, environment, memory, roomBlock, digest, skillIndex, loopRisk]);
+    return assemble([
+      identity,
+      ownerScene,
+      roomAwareness,
+      environment,
+      memory,
+      roomBlock,
+      digest,
+      skillIndex,
+      loopRisk,
+    ]);
   };
   const _typecheck: SystemContextBuilder = asyncBuilder;
   void _typecheck;
