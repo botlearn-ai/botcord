@@ -952,7 +952,10 @@ export default function DashboardApp() {
   const handleSendFriendRequestFromCard = () => {
     if (!selectedAgentForCard) return;
     if (isSelectedAgentOwned) return;
-    if (sessionStore.sessionMode !== "authed-ready") {
+    // Contact requests go through the Human path (require_user), so any
+    // authenticated user can send — owning an agent is not required. Only
+    // bounce true guests to login.
+    if (sessionStore.sessionMode === "guest") {
       router.push("/login");
       return;
     }
