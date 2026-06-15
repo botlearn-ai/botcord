@@ -216,6 +216,7 @@ async def notify_oc_ws_message(
     hub_msg_id: str,
     sender_id: str,
     text: str,
+    trace_id: str | None = None,
     created_at: datetime.datetime | None = None,
     attachments: list[dict[str, Any]] | None = None,
     reply_preview: dict[str, Any] | None = None,
@@ -242,19 +243,28 @@ async def notify_oc_ws_message(
         else datetime.datetime.now(datetime.timezone.utc).isoformat()
     )
 
-    # W1: Pop ALL traces for the matching user/agent pairs, not just the first.
-    # Attach the most recent one as trace_id in the message ext.
-    matched_traces: list[str] = []
-    for tid, sub in list(_oc_trace_subs.items()):
-        if sub in target_keys:
-            matched_traces.append(tid)
-
-    # Use the most recent trace_id (last added)
-    trace_id: str | None = matched_traces[-1] if matched_traces else None
-
-    # Clean up all matched traces
-    for tid in matched_traces:
-        _cleanup_trace(tid)
+    # Prefer the caller-supplied trace_id (bound to this reply's originating
+    # run). When present, clean up exactly that run and leave any other
+    # in-flight traces (e.g. a concurrent owner-chat turn) untouched.
+    #
+    # Legacy fallback (no explicit trace_id): pop ALL traces for the matching
+    # user/agent pairs and attach the most recent one. This can mis-attribute
+    # the reply when turns overlap, but is the best a trace-less sender allows.
+    if trace_id is not None:
+        traces_to_complete = [trace_id]
+        if trace_id in _oc_trace_subs:
+            _cleanup_trace(trace_id)
+    else:
+        matched_traces: list[str] = []
+        for tid, sub in list(_oc_trace_subs.items()):
+            if sub in target_keys:
+                matched_traces.append(tid)
+        # Use the most recent trace_id (last added)
+        trace_id = matched_traces[-1] if matched_traces else None
+        traces_to_complete = matched_traces
+        # Clean up all matched traces
+        for tid in matched_traces:
+            _cleanup_trace(tid)
 
     msg_data: dict[str, Any] = {
         "type": "message",
@@ -279,7 +289,7 @@ async def notify_oc_ws_message(
 
     # Mark matched in-flight runs completed in Redis and shorten their TTL
     # (no-op when Redis is disabled).
-    for tid in matched_traces:
+    for tid in traces_to_complete:
         await owner_chat_cache.mark_run_completed(tid, final_msg_id=hub_msg_id)
 
 

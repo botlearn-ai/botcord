@@ -215,6 +215,7 @@ export class BotCordClient {
       ttlSec?: number;
       attachments?: MessageAttachment[];
       mentions?: string[];
+      traceId?: string | null;
     },
   ): Promise<SendResponse> {
     const payload: Record<string, unknown> = { text };
@@ -239,6 +240,12 @@ export class BotCordClient {
     if (options?.mentions && options.mentions.length > 0) {
       body.mentions = options.mentions;
     }
+    // Non-signed correlation hint: lets the Hub bind the owner-chat reply to
+    // the originating run (== trigger hub_msg_id) instead of guessing the
+    // most-recent registered trace. Ignored by the signature check.
+    if (options?.traceId) {
+      body.trace_id = options.traceId;
+    }
 
     const topicQuery = options?.topic ? `?topic=${encodeURIComponent(options.topic)}` : "";
     const resp = await this.hubFetch(`/hub/send${topicQuery}`, {
@@ -252,7 +259,13 @@ export class BotCordClient {
     to: string,
     type: "result" | "error",
     text: string,
-    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[]; errorRef?: string },
+    options?: {
+      replyTo?: string;
+      topic?: string;
+      attachments?: MessageAttachment[];
+      errorRef?: string;
+      traceId?: string | null;
+    },
   ): Promise<SendResponse> {
     const payload: Record<string, unknown> =
       type === "error"
@@ -279,10 +292,15 @@ export class BotCordClient {
       topic: options?.topic,
     });
 
+    const body: Record<string, unknown> = { ...envelope };
+    if (options?.traceId) {
+      body.trace_id = options.traceId;
+    }
+
     const topicQuery = options?.topic ? `?topic=${encodeURIComponent(options.topic)}` : "";
     const resp = await this.hubFetch(`/hub/send${topicQuery}`, {
       method: "POST",
-      body: JSON.stringify(envelope),
+      body: JSON.stringify(body),
     });
     return (await resp.json()) as SendResponse;
   }

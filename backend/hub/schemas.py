@@ -42,6 +42,10 @@ class MessageEnvelope(BaseModel):
     payload_hash: str
     sig: Signature
     mentions: list[str] | None = None
+    # Non-signed correlation hint set by the sender (e.g. the daemon binding an
+    # owner-chat reply to its originating run). Excluded from the signing input
+    # (see ``crypto.build_signing_input``) so it never affects verification.
+    trace_id: str | None = None
 
     def to_text(
         self,
