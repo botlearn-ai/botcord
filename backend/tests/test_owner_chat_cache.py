@@ -275,6 +275,41 @@ async def test_mark_completed_shortens_ttl(fake_redis):
 
 
 @pytest.mark.asyncio
+async def test_mark_completed_no_final_msg_id(fake_redis):
+    # stream-end path completes a reply-less run without a final_msg_id.
+    await owner_chat_cache.write_run_metadata(
+        "h_t4b", user_id="usr1", agent_id="ag_1", room_id="rm_oc_x", trigger_msg_id="h_t4b",
+    )
+    await owner_chat_cache.mark_run_completed("h_t4b")
+    h = fake_redis.hashes["owner_chat_run:h_t4b"]
+    assert h["status"] == "completed"
+    # final_msg_id stays at its initial empty value (not clobbered with junk).
+    assert h["final_msg_id"] == ""
+    assert fake_redis.ttls["owner_chat_run:h_t4b"] == owner_chat_cache.hub_config.OWNER_CHAT_RUN_COMPLETED_TTL_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_mark_completed_first_wins(fake_redis):
+    # The reply path completes with a real id; a later stream-end must not
+    # clobber it (or re-open the run).
+    await owner_chat_cache.write_run_metadata(
+        "h_t4c", user_id="usr1", agent_id="ag_1", room_id="rm_oc_x", trigger_msg_id="h_t4c",
+    )
+    await owner_chat_cache.mark_run_completed("h_t4c", final_msg_id="h_real")
+    await owner_chat_cache.mark_run_completed("h_t4c")  # late stream-end, no id
+    h = fake_redis.hashes["owner_chat_run:h_t4c"]
+    assert h["status"] == "completed"
+    assert h["final_msg_id"] == "h_real"
+
+
+@pytest.mark.asyncio
+async def test_mark_completed_missing_run_is_noop(fake_redis):
+    # No key yet (expired / never created) — must not create a phantom run.
+    await owner_chat_cache.mark_run_completed("h_gone")
+    assert "owner_chat_run:h_gone" not in fake_redis.hashes
+
+
+@pytest.mark.asyncio
 async def test_load_run_shapes_events(fake_redis):
     await owner_chat_cache.write_run_metadata(
         "h_t5", user_id="usr1", agent_id="ag_1", room_id="rm_oc_x", trigger_msg_id="h_t5",
@@ -437,3 +472,80 @@ async def test_stream_block_works_redis_disabled(
     finally:
         owner_chat_ws._oc_trace_subs.pop(trace_id, None)
         owner_chat_ws._oc_trace_block_count.pop(trace_id, None)
+
+
+# ---------------------------------------------------------------------------
+# /hub/stream-end — closes a reply-less run so it isn't restored on refresh
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_end_completes_run(
+    client: AsyncClient, db_session: AsyncSession, fake_redis,
+):
+    from hub.routers import owner_chat_ws
+    from hub.routers.dashboard_chat import _build_owner_chat_room_id
+
+    agent_id, token = await _register_and_verify(client, "EndAgent")
+    user_id = await _claim_agent(db_session, agent_id, "se")
+    room_id = _build_owner_chat_room_id(user_id, agent_id)
+
+    trace_id = "h_endtrace"
+    await owner_chat_cache.write_run_metadata(
+        trace_id, user_id=user_id, agent_id=agent_id, room_id=room_id, trigger_msg_id=trace_id,
+    )
+    owner_chat_ws._oc_trace_subs[trace_id] = (user_id, agent_id)
+    owner_chat_ws._oc_trace_block_count[trace_id] = 0
+    try:
+        resp = await client.post(
+            "/hub/stream-end",
+            json={"trace_id": trace_id},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 204
+        # Run is now completed and the local subscription cleaned up.
+        assert fake_redis.hashes[f"owner_chat_run:{trace_id}"]["status"] == "completed"
+        assert trace_id not in owner_chat_ws._oc_trace_subs
+    finally:
+        owner_chat_ws._oc_trace_subs.pop(trace_id, None)
+        owner_chat_ws._oc_trace_block_count.pop(trace_id, None)
+
+
+@pytest.mark.asyncio
+async def test_stream_end_wrong_owner_is_noop(
+    client: AsyncClient, db_session: AsyncSession, fake_redis,
+):
+    """A run owned by another agent must not be completed by this caller."""
+    agent_id, token = await _register_and_verify(client, "EndScopeAgent")
+    await _claim_agent(db_session, agent_id, "ses")
+
+    trace_id = "h_otherend"
+    await owner_chat_cache.write_run_metadata(
+        trace_id, user_id="usrZ", agent_id="ag_other", room_id="rm_oc_other", trigger_msg_id=trace_id,
+    )
+    resp = await client.post(
+        "/hub/stream-end",
+        json={"trace_id": trace_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 204
+    # Not this agent's run — left untouched (still running).
+    assert fake_redis.hashes[f"owner_chat_run:{trace_id}"]["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_stream_end_redis_disabled_noop(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch,
+):
+    monkeypatch.setattr(owner_chat_cache.hub_config, "BOTCORD_REDIS_URL", None)
+    monkeypatch.setattr(owner_chat_cache, "_redis_client", None)
+
+    agent_id, token = await _register_and_verify(client, "EndDisabledAgent")
+    await _claim_agent(db_session, agent_id, "sed")
+
+    resp = await client.post(
+        "/hub/stream-end",
+        json={"trace_id": "h_whatever"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 204

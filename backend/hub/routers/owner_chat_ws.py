@@ -790,6 +790,45 @@ async def receive_stream_block(
 
 
 # ---------------------------------------------------------------------------
+# Stream end HTTP endpoint (called by connected agents)
+# ---------------------------------------------------------------------------
+
+
+class StreamEndBody(BaseModel):
+    trace_id: str = Field(..., max_length=48)
+
+
+@router.post("/hub/stream-end", status_code=204)
+async def receive_stream_end(
+    body: StreamEndBody,
+    agent_id: str = Depends(get_current_agent),
+):
+    """Signal that an owner-chat run has ended (turn terminated).
+
+    The daemon fires this on every terminal turn path, so runs that produced no
+    owner-chat reply (autonomous work, empty/gated final text, timeout) still
+    get marked completed instead of dangling at ``status="running"`` for the
+    full run TTL — which is what made stale reasoning resurface on every
+    dashboard refresh. ``mark_run_completed`` is first-wins, so when the agent
+    *did* reply this is a harmless no-op (the reply path already completed it).
+    """
+    # Authorize: the run must belong to the calling agent. The in-memory
+    # subscription map only covers this Hub instance (the run may have been
+    # registered on another), so fall back to the Redis run metadata, mirroring
+    # the get_run_stream_blocks ownership check.
+    sub = _oc_trace_subs.get(body.trace_id)
+    if sub is not None:
+        if sub[1] != agent_id:
+            return
+    else:
+        run = await owner_chat_cache.load_run(body.trace_id)
+        if run is not None and run.get("agent_id") != agent_id:
+            return
+    await owner_chat_cache.mark_run_completed(body.trace_id)
+    _cleanup_trace(body.trace_id)
+
+
+# ---------------------------------------------------------------------------
 # Notify owner HTTP endpoint (called by connected agents)
 # ---------------------------------------------------------------------------
 
