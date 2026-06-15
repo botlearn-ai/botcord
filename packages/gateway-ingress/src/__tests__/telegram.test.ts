@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { IngressLogger } from "../log.js";
 import { noopLogger } from "../log.js";
 import { createTelegramProvider } from "../providers/telegram.js";
 import type { ProviderRuntimeContext } from "../providers/types.js";
@@ -50,6 +51,10 @@ function makeCtx(secret: Record<string, unknown>, abort: AbortController): {
   };
   return { ctx, emits, cursors, activity };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("Telegram provider adapter", () => {
   it("polls getUpdates, normalizes a message, advances cursor only after emit", async () => {
@@ -154,6 +159,66 @@ describe("Telegram provider adapter", () => {
     expect(sendCalls[0]!.body).toMatchObject({ chat_id: "42", text: "ack" });
   });
 
+  it("throws only safe observable error details when sendMessage fetch rejects", async () => {
+    const secretToken = "secret-token";
+    const failure = new TypeError(
+      `fetch failed for https://api.telegram.org/bot${secretToken}/sendMessage`,
+    );
+    (failure as { cause?: unknown }).cause = {
+      code: "ENOTFOUND",
+      errno: -3008,
+      hostname: "api.telegram.org",
+      url: `https://api.telegram.org/bot${secretToken}/sendMessage`,
+    };
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/getUpdates")) {
+        return new Promise<Response>((_res, rej) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => rej(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        });
+      }
+      throw failure;
+    }) as unknown as typeof fetch;
+
+    const provider = createTelegramProvider({
+      gatewayId: conn.id,
+      fetchImpl,
+      pollTimeoutSeconds: 0,
+    });
+    const abort = new AbortController();
+    const { ctx, activity } = makeCtx({ botToken: secretToken }, abort);
+    const running = provider.start(ctx);
+    // Let start() install the token + config.
+    await new Promise((r) => setTimeout(r, 20));
+
+    let thrown: unknown;
+    try {
+      await provider.send({
+        gatewayId: conn.id,
+        conversationId: "telegram:user:42",
+        text: "ack",
+        final: true,
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    abort.abort();
+    await running;
+
+    expect(String(thrown)).toBe("TypeError: fetch_failed");
+    const observable = JSON.stringify({
+      persistedDeliveryLastError: String(thrown),
+      persistedEventLastError: `provider_send_failed: ${String(thrown)}`,
+      activity,
+    });
+    expect(observable).not.toContain("api.telegram.org");
+    expect(observable).not.toContain(secretToken);
+    expect(observable).not.toContain("https://");
+  });
+
   it("rejects messages from disallowed sender or chat", async () => {
     const responses = [
       {
@@ -201,5 +266,73 @@ describe("Telegram provider adapter", () => {
     await running;
     expect(emits).toHaveLength(0);
     expect(cursors[0]).toEqual({ offset: 2 });
+  });
+
+  it("records and logs safe metadata when getUpdates fetch rejects", async () => {
+    vi.useFakeTimers();
+
+    const errors: { message: string; meta?: Record<string, unknown> }[] = [];
+    const logger: IngressLogger = {
+      ...noopLogger,
+      error(message, meta) {
+        errors.push({ message, meta });
+      },
+    };
+    const abort = new AbortController();
+    const calls: string[] = [];
+    const failure = new TypeError(
+      "fetch failed for https://api.telegram.org/botsecret-token/getUpdates",
+    );
+    (failure as { cause?: unknown }).cause = {
+      code: "ENOTFOUND",
+      errno: -3008,
+      hostname: "api.telegram.org",
+      url: "https://api.telegram.org/botsecret-token/getUpdates",
+    };
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push(url);
+      if (calls.length === 1) throw failure;
+      return new Promise<Response>((_res, rej) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => rej(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    }) as unknown as typeof fetch;
+
+    const provider = createTelegramProvider({
+      gatewayId: conn.id,
+      fetchImpl,
+      pollTimeoutSeconds: 25,
+    });
+    const { ctx, activity } = makeCtx({ botToken: "secret-token" }, abort);
+    ctx.log = logger;
+
+    const running = provider.start(ctx);
+    await vi.waitFor(() => {
+      expect(activity.some((patch) => patch.lastError === "TypeError: fetch_failed")).toBe(true);
+    });
+    expect(errors).toEqual([
+      {
+        message: "telegram poll failed",
+        meta: {
+          name: "TypeError",
+          message: "fetch_failed",
+          cause: { code: "ENOTFOUND", errno: -3008 },
+        },
+      },
+    ]);
+    const observable = JSON.stringify({ errors, activity });
+    expect(observable).not.toContain("api.telegram.org");
+    expect(observable).not.toContain("secret-token");
+    expect(observable).not.toContain("https://");
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.waitFor(() => {
+      expect(calls).toHaveLength(2);
+    });
+    abort.abort();
+    await running;
   });
 });

@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 
 import type { IngressLogger } from "./log.js";
+import { safeObservableStatusError } from "./observable-error.js";
 import type { IngressOrchestrator } from "./orchestrator.js";
 import type { ProviderRunner } from "./provider-runner.js";
 import type { IngressStore } from "./storage/store.js";
@@ -33,14 +34,22 @@ export async function startHealthServer(opts: HealthServerOptions): Promise<Heal
       return;
     }
     if (req.url === "/status") {
-      const conns = opts.store.listConnections().map((c) => ({
-        id: c.id,
-        agentId: c.agentId,
-        provider: c.provider,
-        status: c.status,
-        enabled: c.enabled,
-        running: opts.runner.isRunning(c.id),
-      }));
+      const conns = opts.store.listConnections().map((c) => {
+        const state = opts.store.getState(c.id);
+        return {
+          id: c.id,
+          agentId: c.agentId,
+          provider: c.provider,
+          status: c.status,
+          enabled: c.enabled,
+          running: opts.runner.isRunning(c.id),
+          ...(Number.isFinite(state?.lastPollAt) ? { lastPollAt: state!.lastPollAt } : {}),
+          ...(Number.isFinite(state?.lastInboundAt) ? { lastInboundAt: state!.lastInboundAt } : {}),
+          ...(typeof state?.lastError === "string" || state?.lastError === null
+            ? { lastError: safeObservableStatusError(state.lastError) }
+            : {}),
+        };
+      });
       const queued = opts.store.listEventsByStatus("queued", "delivering").length;
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, connections: conns, pending: queued }));

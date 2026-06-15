@@ -1,4 +1,5 @@
 import type { GatewayInboundMessage } from "@botcord/protocol-core";
+import { safeObservableErrorMeta, safeObservableErrorSummary } from "../observable-error.js";
 import type { OutboundSendRequest, OutboundSendResult } from "../types.js";
 import type {
   OutboundTypingRequest,
@@ -82,11 +83,6 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
   let allowedSenderIds = new Set<string>();
   let allowedChatIds = new Set<string>();
 
-  function redactToken(input: string): string {
-    if (!botToken || !input) return input;
-    return input.split(botToken).join("***");
-  }
-
   async function callApi<T>(
     method: string,
     params: Record<string, unknown>,
@@ -106,8 +102,9 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
       });
     } catch (err) {
       const e = err as Error;
-      const next = new Error(redactToken(e.message ?? String(err)));
+      const next = new Error(e.message ?? String(err));
       next.name = e.name ?? "Error";
+      (next as { cause?: unknown }).cause = (e as { cause?: unknown }).cause;
       throw next;
     } finally {
       lease.cleanup();
@@ -222,9 +219,15 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
         ctx.markActivity({ lastPollAt: Date.now() });
         if (!resp.ok) {
           ctx.log.warn("telegram getUpdates non-ok", {
-            description: redactToken(resp.description ?? ""),
+            description: safeObservableErrorSummary(
+              new Error(resp.description ?? "getUpdates failed"),
+            ),
           });
-          ctx.markActivity({ lastError: redactToken(resp.description ?? "getUpdates failed") });
+          ctx.markActivity({
+            lastError: safeObservableErrorSummary(
+              new Error(resp.description ?? "getUpdates failed"),
+            ),
+          });
           await sleep(POLL_BACKOFF_MS, abortAggregate.signal);
           continue;
         }
@@ -247,7 +250,7 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
           } catch (err) {
             failed = true;
             ctx.log.error("telegram emit threw — keeping cursor", {
-              err: redactToken(String(err)),
+              err: safeObservableErrorSummary(err),
             });
             break;
           }
@@ -263,8 +266,8 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
           await sleep(TRANSIENT_BACKOFF_MS, abortAggregate.signal);
           continue;
         }
-        ctx.log.error("telegram poll failed", { err: redactToken(String(err)) });
-        ctx.markActivity({ lastError: redactToken(String(err)) });
+        ctx.log.error("telegram poll failed", safeObservableErrorMeta(err));
+        ctx.markActivity({ lastError: safeObservableErrorSummary(err) });
         await sleep(POLL_BACKOFF_MS, abortAggregate.signal);
       }
     }
@@ -281,14 +284,21 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
     const chunks = splitText(request.text, splitAt);
     let lastMessageId: string | null = null;
     for (const chunk of chunks) {
-      const resp = await callApi<TelegramMessage>(
-        "sendMessage",
-        { chat_id: chatId, text: chunk, disable_web_page_preview: true },
-        15_000,
-      );
+      let resp: TelegramApiResult<TelegramMessage>;
+      try {
+        resp = await callApi<TelegramMessage>(
+          "sendMessage",
+          { chat_id: chatId, text: chunk, disable_web_page_preview: true },
+          15_000,
+        );
+      } catch (err) {
+        throw safeObservableError(err);
+      }
       if (!resp.ok) {
         throw new Error(
-          `telegram sendMessage failed: ${redactToken(resp.description ?? "unknown")}`,
+          safeObservableErrorSummary(
+            new Error(`telegram sendMessage failed: ${resp.description ?? "unknown"}`),
+          ),
         );
       }
       if (resp.result?.message_id !== undefined) {
@@ -309,7 +319,7 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
     try {
       await callApi("sendChatAction", { chat_id: chatId, action: "typing" }, 10_000);
     } catch (err) {
-      activeCtx?.log.debug("telegram typing failed", { err: redactToken(String(err)) });
+      activeCtx?.log.debug("telegram typing failed", { err: safeObservableErrorSummary(err) });
     }
   }
 
@@ -325,6 +335,13 @@ export function createTelegramProvider(opts: TelegramProviderOptions): ProviderA
     send,
     typing,
   };
+}
+
+function safeObservableError(err: unknown): Error {
+  const meta = safeObservableErrorMeta(err);
+  const safe = new Error(meta.message);
+  safe.name = meta.name;
+  return safe;
 }
 
 /** Factory used by `ProviderRunner.registerFactory("telegram", …)`. */
