@@ -133,7 +133,7 @@ export function TopicCard({
   sourceName?: string;
   sourceId?: string;
   mentionCandidates?: MentionTextCandidate[];
-  onPreviewAttachment?: (attachment: Attachment) => void;
+  onPreviewAttachment?: (attachment: Attachment, previewAttachments?: Attachment[]) => void;
   onOpen: () => void;
 }) {
   const topicStatusConfig = useTopicStatusConfig();
@@ -298,7 +298,7 @@ function EmptyRoomGuide({
 export default function MessageList({
   onPreviewAttachment,
 }: {
-  onPreviewAttachment?: (attachment: Attachment) => void;
+  onPreviewAttachment?: (attachment: Attachment, previewAttachments?: Attachment[]) => void;
 } = {}) {
   const locale = useLanguage();
   const t = messageList[locale];

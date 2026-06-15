@@ -35,6 +35,21 @@ export function isImageAttachment(attachment: Attachment): boolean {
   return /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(name);
 }
 
+export function getPreviewableImageAttachments(attachments: Attachment[]): Attachment[] {
+  return attachments.filter((attachment) => isImageAttachment(attachment) && isPreviewableAttachment(attachment));
+}
+
+export function attachmentIdentity(attachment: Attachment): string {
+  return `${attachment.url}\n${attachment.filename || ""}`;
+}
+
+export function attachmentGalleryIndex(attachments: Attachment[], attachment: Attachment): number {
+  const identity = attachmentIdentity(attachment);
+  const index = attachments.findIndex((item) => attachmentIdentity(item) === identity);
+  if (index >= 0) return index;
+  return attachments.findIndex((item) => item.url === attachment.url);
+}
+
 function attachmentImageFailureKey(url: string): string {
   return url.trim();
 }
@@ -53,7 +68,8 @@ export function hasFailedAttachmentImageUrl(url: string): boolean {
 
 interface AttachmentItemProps {
   attachment: Attachment;
-  onPreview?: (attachment: Attachment) => void;
+  previewAttachments?: Attachment[];
+  onPreview?: (attachment: Attachment, previewAttachments?: Attachment[]) => void;
 }
 
 function AttachmentFileLink({
@@ -63,7 +79,7 @@ function AttachmentFileLink({
 }: {
   attachment: Attachment;
   attachmentUrl: string;
-  onPreview?: (attachment: Attachment) => void;
+  onPreview?: (attachment: Attachment, previewAttachments?: Attachment[]) => void;
 }) {
   const canPreview = Boolean(onPreview && isPreviewableAttachment(attachment));
   const content = (
@@ -103,7 +119,7 @@ function AttachmentFileLink({
   );
 }
 
-export default function AttachmentItem({ attachment, onPreview }: AttachmentItemProps) {
+export default function AttachmentItem({ attachment, previewAttachments, onPreview }: AttachmentItemProps) {
   const attachmentUrl = resolveAttachmentUrl(attachment.url);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [imageFailed, setImageFailed] = useState(() => hasFailedAttachmentImageUrl(attachmentUrl));
@@ -131,7 +147,7 @@ export default function AttachmentItem({ attachment, onPreview }: AttachmentItem
             onClick={(event) => {
               event.stopPropagation();
               if (onPreview) {
-                onPreview(attachment);
+                onPreview(attachment, previewAttachments);
               } else {
                 setPreviewOpen(true);
               }

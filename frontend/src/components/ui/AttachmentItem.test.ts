@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachmentGalleryIndex,
+  getPreviewableImageAttachments,
   hasFailedAttachmentImageUrl,
   isImageAttachment,
   rememberFailedAttachmentImageUrl,
@@ -27,6 +29,23 @@ describe("AttachmentItem helpers", () => {
       filename: "report.pdf",
       url: "/hub/files/f_789",
     })).toBe(false);
+  });
+
+  it("keeps only previewable images in preview navigation context", () => {
+    const attachments = [
+      { filename: "one.png", url: "/hub/files/f_one", content_type: "image/png" },
+      { filename: "report.pdf", url: "/hub/files/f_pdf", content_type: "application/pdf" },
+      { filename: "two.webp", url: "/hub/files/f_two" },
+    ];
+
+    const gallery = getPreviewableImageAttachments(attachments);
+
+    expect(gallery).toEqual([
+      attachments[0],
+      attachments[2],
+    ]);
+    expect(attachmentGalleryIndex(gallery, attachments[2])).toBe(1);
+    expect(attachmentGalleryIndex(gallery, attachments[1])).toBe(-1);
   });
 
   it("remembers failed image attachment URLs for the current session", () => {
