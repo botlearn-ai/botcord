@@ -1004,7 +1004,23 @@ export default function StreamBlocksView({
         return !!rowKey && !previousKeys.has(rowKey);
       });
 
-      cleanupAnime(rowAnimationRef.current);
+      // Stop the previous batch's animation WITHOUT reverting it. revert()
+      // restores those rows to their opacity:0 baseline (set imperatively
+      // below) — and since they are no longer "entering", they'd never be
+      // animated back to 1, leaving them invisible but still occupying height.
+      // During fast multi-block streaming this strands every row but the last
+      // at opacity:0, producing a large blank gap above the visible content.
+      rowAnimationRef.current?.pause();
+      rowAnimationRef.current = null;
+
+      // Force every already-settled row fully visible, clearing any
+      // opacity/transform left behind by an interrupted enter animation.
+      rows.forEach((row) => {
+        if (enteringRows.includes(row)) return;
+        row.style.opacity = "1";
+        row.style.transform = "translateY(0)";
+      });
+
       if (enteringRows.length > 0) {
         enteringRows.forEach((row) => {
           row.style.opacity = "0";
