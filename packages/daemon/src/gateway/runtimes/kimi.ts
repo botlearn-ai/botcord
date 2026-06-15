@@ -134,12 +134,13 @@ function sanitizeKimiExtraArgs(extraArgs: string[] | undefined): string[] {
   return out;
 }
 
-function parseKimiVersionMajor(version: string | null): number | null {
-  const match = version?.match(/\b(\d+)\.(\d+)\.(\d+)\b/);
-  if (!match) return null;
-  return Number.parseInt(match[1], 10);
-}
-
+// `--work-dir` is redundant with the child's spawn cwd — Kimi defaults its
+// working directory to the process cwd, which the base adapter already sets to
+// `opts.cwd`. We only pass the explicit flag when `kimi --help` *positively*
+// advertises it. If the probe can't confirm support (help times out on a cold
+// Python start, or exits non-zero), we conservatively omit the flag: relying on
+// cwd is always correct, whereas passing an unknown option crashes the turn
+// (`error: unknown option '--work-dir'` on Kimi builds that lack it).
 function probeKimiSupportsWorkDir(command: string): boolean {
   const cached = kimiWorkDirSupport.get(command);
   if (cached !== undefined) return cached;
@@ -153,8 +154,7 @@ function probeKimiSupportsWorkDir(command: string): boolean {
     });
     supported = /(?:^|\s)--work-dir(?:[=\s,]|$)/.test(help);
   } catch {
-    const major = parseKimiVersionMajor(readCommandVersion(command));
-    supported = major !== null && major >= 1;
+    supported = false;
   }
 
   kimiWorkDirSupport.set(command, supported);

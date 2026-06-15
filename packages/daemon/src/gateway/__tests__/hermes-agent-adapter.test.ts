@@ -527,4 +527,36 @@ describe("HermesAgentAdapter.spawnEnv attach mode", () => {
     expect(env.HERMES_HOME).toContain(path.join(".botcord", "agents", "ag_isolated"));
     expect(env.HERMES_HOME).not.toBe(hermesProfileHomeDir("default"));
   });
+
+  it("kills a hung turn via the idle watchdog instead of hanging forever", async () => {
+    // initialize + session/new reply normally (resets the idle clock), then
+    // session/prompt is swallowed with no reply and no further output — the
+    // exact hang shape we want the watchdog to catch.
+    const script = makeAcpServer(
+      "hung-prompt.js",
+      `
+        if (msg.method === "initialize") {
+          reply(msg, { protocolVersion: 1, agentCapabilities: {} });
+        } else if (msg.method === "session/new") {
+          reply(msg, { sessionId: "sess-hung" });
+        }
+        // session/prompt: intentionally drop — never reply, emit nothing.
+      `,
+    );
+    // Generous enough that the initialize + session/new handshake (which
+    // streams stdout and so keeps rearming the watchdog) always completes
+    // first — proving the timer fires on the prompt silence, not mid-handshake,
+    // even under heavy parallel test load.
+    const prev = process.env.BOTCORD_ACP_IDLE_TIMEOUT_MS;
+    process.env.BOTCORD_ACP_IDLE_TIMEOUT_MS = "2000";
+    try {
+      const res = await runAdapter(script);
+      expect(res.error).toBeDefined();
+      expect(res.error).toContain("idle timeout");
+      expect(res.newSessionId).toBe("sess-hung");
+    } finally {
+      if (prev === undefined) delete process.env.BOTCORD_ACP_IDLE_TIMEOUT_MS;
+      else process.env.BOTCORD_ACP_IDLE_TIMEOUT_MS = prev;
+    }
+  }, 15_000);
 });

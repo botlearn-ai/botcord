@@ -787,4 +787,48 @@ describe("OpenclawAcpAdapter.run", () => {
       "session/prompt",
     ]);
   });
+
+  it("rejects a hung prompt via the per-turn idle watchdog and sends cancel", async () => {
+    const child = new FakeChild();
+    const adapter = new OpenclawAcpAdapter({ spawnFn: makeSpawn(child) });
+    const gateway: ResolvedOpenclawGateway = {
+      name: "local",
+      url: "ws://127.0.0.1:1",
+      openclawAgent: "main",
+    };
+    const methods: string[] = [];
+    child.stdin.on("data", (chunk: Buffer) => {
+      for (const line of chunk.toString("utf8").split("\n").filter(Boolean)) {
+        const frame = JSON.parse(line);
+        methods.push(frame.method);
+        if (frame.method === "initialize") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { protocolVersion: 1 } }) + "\n");
+        } else if (frame.method === "session/new") {
+          child.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { sessionId: "sid-hung" } }) + "\n");
+        }
+        // session/prompt: never reply, never stream — the hang we guard against.
+      }
+    });
+    const prev = process.env.BOTCORD_ACP_IDLE_TIMEOUT_MS;
+    process.env.BOTCORD_ACP_IDLE_TIMEOUT_MS = "200";
+    try {
+      const res = await adapter.run({
+        text: "hi",
+        sessionId: null,
+        cwd: "/tmp",
+        accountId: "ag_alice",
+        signal: new AbortController().signal,
+        trustLevel: "owner",
+        gateway,
+      });
+      expect(res.error).toMatch(/idle timeout/);
+      // The child must NOT be killed — the pool handle is shared across turns.
+      expect(child.killed).toBe(false);
+      // We asked OpenClaw to cancel the hung session rather than abandoning it.
+      expect(methods).toContain("session/cancel");
+    } finally {
+      if (prev === undefined) delete process.env.BOTCORD_ACP_IDLE_TIMEOUT_MS;
+      else process.env.BOTCORD_ACP_IDLE_TIMEOUT_MS = prev;
+    }
+  }, 15_000);
 });

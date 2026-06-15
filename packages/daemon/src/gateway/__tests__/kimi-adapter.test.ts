@@ -148,6 +148,32 @@ process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify({a
     expect(res.error).toBeUndefined();
   });
 
+  it("omits --work-dir when the --help probe fails instead of guessing from version", async () => {
+    // Reproduces the prod crash: on a cold Python start `kimi --help` times out
+    // or exits non-zero, the probe can't confirm support, and we must fall back
+    // to cwd-only rather than passing an unknown option that crashes the turn.
+    const script = makeScript(
+      "work-dir-help-fails.js",
+      `
+const argv = process.argv.slice(2);
+if (argv.includes("--help")) {
+  process.stderr.write("boom\\n");
+  process.exit(2);
+}
+if (argv.includes("--work-dir")) {
+  process.stderr.write("error: unknown option '--work-dir'\\n");
+  process.exit(1);
+}
+process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify({argv, cwd:process.cwd()})}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script, "sid-123");
+    const seen = JSON.parse(res.text) as { argv: string[]; cwd: string };
+    expect(seen.argv).not.toContain("--work-dir");
+    expect(seen.cwd).toBe(realTmpRoot);
+    expect(res.error).toBeUndefined();
+  });
+
   it("drops non-Kimi inherited extraArgs and their values", async () => {
     const script = makeScript(
       "filter-foreign-argv.js",
