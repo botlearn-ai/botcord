@@ -80,13 +80,19 @@ export interface BotCordChannelClient {
   sendMessage(
     to: string,
     text: string,
-    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[] },
+    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[]; traceId?: string | null },
   ): Promise<{ hub_msg_id?: string; message_id?: string } & Record<string, unknown>>;
   sendTypedMessage?(
     to: string,
     type: "result" | "error",
     text: string,
-    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[]; errorRef?: string },
+    options?: {
+      replyTo?: string;
+      topic?: string;
+      attachments?: MessageAttachment[];
+      errorRef?: string;
+      traceId?: string | null;
+    },
   ): Promise<{ hub_msg_id?: string; message_id?: string } & Record<string, unknown>>;
   getHubUrl(): string;
   onTokenRefresh?: (token: string, expiresAt: number) => void;
@@ -1224,10 +1230,15 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         topic?: string;
         attachments?: MessageAttachment[];
         errorRef?: string;
+        traceId?: string | null;
       } = {};
       if (message.replyTo) options.replyTo = message.replyTo;
       if (message.threadId) options.topic = message.threadId;
       if (message.errorRef) options.errorRef = message.errorRef;
+      // Bind the reply to its originating run so owner-chat stream blocks
+      // (keyed by the same trace_id) merge into this message instead of
+      // orphaning into a separate placeholder.
+      if (message.traceId) options.traceId = message.traceId;
       const upload = await uploadOutboundAttachments(client, message.attachments ?? [], ctx.log);
       if (upload.attachments.length > 0) options.attachments = upload.attachments;
       const text = rewriteUploadedAttachmentPaths(message.text, upload.replacements);

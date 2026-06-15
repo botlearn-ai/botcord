@@ -1460,10 +1460,14 @@ async def _send_room_message(
         envelope.msg_id, envelope.from_, room_id, topic, receivers, _self_delivery,
     )
     envelope_data = envelope.model_dump(by_alias=True)
+    owner_chat_trace_id: str | None = None
     if is_owner_chat:
         from hub.routers.owner_chat_ws import current_owner_chat_trace_id
 
-        owner_chat_trace_id = current_owner_chat_trace_id(
+        # Prefer the sender-supplied trace_id (the daemon binds the reply to its
+        # originating run). Fall back to the most-recent registered trace only
+        # for legacy senders that don't stamp one.
+        owner_chat_trace_id = envelope.trace_id or current_owner_chat_trace_id(
             room_id=room_id,
             agent_id=envelope.from_,
         )
@@ -1616,6 +1620,7 @@ async def _send_room_message(
             room_id=room_id,
             hub_msg_id=first_hub_msg_id or "",
             sender_id=envelope.from_,
+            trace_id=owner_chat_trace_id,
             text=_oc_text,
             attachments=_oc_attachments if isinstance(_oc_attachments, list) else None,
             reply_preview=(

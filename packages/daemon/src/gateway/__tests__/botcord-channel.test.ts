@@ -124,6 +124,29 @@ describe("createBotCordChannel — send()", () => {
     expect(result.providerMessageId).toBe("m_provider");
   });
 
+  it("forwards traceId to client.sendMessage so the reply binds to its run", async () => {
+    const client = makeClient();
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+    });
+    await channel.send({
+      message: {
+        channel: "botcord",
+        accountId: "ag_self",
+        conversationId: "rm_oc_1",
+        text: "answer",
+        traceId: "h_trigger_abc",
+      },
+      log: silentLog,
+    });
+    expect(client.sendMessage).toHaveBeenCalledWith("rm_oc_1", "answer", {
+      traceId: "h_trigger_abc",
+    });
+  });
+
   it("uploads outbound attachments and includes them in sendMessage", async () => {
     const client = makeClient({
       uploadFile: vi.fn().mockResolvedValue({
