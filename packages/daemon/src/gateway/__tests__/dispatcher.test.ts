@@ -490,6 +490,46 @@ describe("Dispatcher", () => {
     expect(lastCall.text).toContain("[BotCord Runtime Recovery Notice]");
   });
 
+  it("retries Hermes-style stale sessions in a fresh session with recovery context", async () => {
+    class RetryRuntime implements RuntimeAdapter {
+      readonly id = "hermes-agent";
+      readonly calls: RuntimeRunOptions[] = [];
+
+      async run(options: RuntimeRunOptions): Promise<RuntimeRunResult> {
+        this.calls.push(options);
+        if (this.calls.length === 1) {
+          return { text: "seed", newSessionId: "sid-stale" };
+        }
+        if (options.sessionId === "sid-stale") {
+          return {
+            text: "",
+            newSessionId: "",
+            error: "acp error -32602: Invalid params: {\"session_id\":\"Session not found\"}",
+          };
+        }
+        return { text: "recovered", newSessionId: "sid-fresh" };
+      }
+    }
+
+    const runtime = new RetryRuntime();
+    const { dispatcher, channel, store } = await scaffold({
+      config: baseConfig({ defaultRoute: { runtime: "hermes-agent", cwd: "/tmp/hermes" } }),
+      runtimeFactory: () => runtime,
+      buildRuntimeRecoveryContext: () => "[Recent Room Messages]\n- peer: previous context",
+    });
+
+    await dispatcher.handle(makeEnvelope({ id: "m1" }));
+    await dispatcher.handle(makeEnvelope({ id: "m2" }));
+
+    expect(runtime.calls).toHaveLength(3);
+    expect(runtime.calls[1].sessionId).toBe("sid-stale");
+    expect(runtime.calls[2].sessionId).toBeNull();
+    expect(runtime.calls[2].text).toContain("[BotCord Runtime Recovery Notice]");
+    expect(runtime.calls[2].text).toContain("Session not found");
+    expect(channel.sends[channel.sends.length - 1].message.text).toBe("recovered");
+    expect(store.all()[0].runtimeSessionId).toBe("sid-fresh");
+  });
+
   it("never rotates when both thresholds are disabled", async () => {
     const runtime = new FakeRuntime({ reply: "ok", newSessionId: "sid-1" });
     const { dispatcher, store } = await scaffold({

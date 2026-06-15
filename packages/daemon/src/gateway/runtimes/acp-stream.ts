@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createAcpTraceLogger, type AcpTraceLogger } from "../../acp-logs.js";
 import { consoleLogger } from "../log.js";
+import { sliceUtf8Bytes, utf8ByteLength } from "./text-cap.js";
 import type {
   RuntimeAdapter,
   RuntimeProbeResult,
@@ -175,9 +176,7 @@ class AcpConnection {
           code: typeof msg.error.code === "number" ? msg.error.code : undefined,
           error: msg.error.message ?? "(no message)",
         });
-        const err = new Error(
-          `acp error ${msg.error.code ?? "?"}: ${msg.error.message ?? "(no message)"}`,
-        );
+        const err = new Error(`acp error ${msg.error.code ?? "?"}: ${formatRpcError(msg.error)}`);
         pending.reject(err);
       } else {
         this.trace?.write({
@@ -448,14 +447,18 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
         state.assistantTextCapped = true;
         return;
       }
-      if (text.length > budget) {
-        state.assistantTextChunks.push(text.slice(0, budget));
-        state.assistantTextBytes += budget;
+      const bytes = utf8ByteLength(text);
+      if (bytes > budget) {
+        const chunk = sliceUtf8Bytes(text, budget);
+        if (chunk) {
+          state.assistantTextChunks.push(chunk);
+          state.assistantTextBytes += utf8ByteLength(chunk);
+        }
         state.assistantTextCapped = true;
         return;
       }
       state.assistantTextChunks.push(text);
-      state.assistantTextBytes += text.length;
+      state.assistantTextBytes += bytes;
     };
 
     let seq = 0;
@@ -546,6 +549,9 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
                 : "") || opts.sessionId;
           }
         } catch (err) {
+          if (!isRecoverableSessionLoadError(err)) {
+            throw new Error(`session/load failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
           log.warn(`${this.id} session/load failed; falling back to new`, {
             err: err instanceof Error ? err.message : String(err),
           });
@@ -629,8 +635,8 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
     const rawText =
       state.finalText || state.assistantTextChunks.join("").trim();
     const text =
-      rawText.length > ASSISTANT_TEXT_CAP
-        ? rawText.slice(0, ASSISTANT_TEXT_CAP)
+      utf8ByteLength(rawText) > ASSISTANT_TEXT_CAP
+        ? sliceUtf8Bytes(rawText, ASSISTANT_TEXT_CAP)
         : rawText;
 
     return {
@@ -659,6 +665,47 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
       );
     });
   }
+}
+
+function formatRpcError(error: unknown): string {
+  if (!error || typeof error !== "object") return "(no message)";
+  const e = error as Record<string, unknown>;
+  const message = typeof e.message === "string" && e.message ? e.message : "(no message)";
+  const data = e.data;
+  if (data === undefined || data === null) return message;
+  let detail = "";
+  if (typeof data === "string") {
+    detail = data;
+  } else {
+    const dataObj = typeof data === "object" ? (data as Record<string, unknown>) : null;
+    const details = dataObj && typeof dataObj.details === "string" ? dataObj.details : "";
+    if (details) {
+      detail = details;
+    } else {
+      try {
+        detail = JSON.stringify(data);
+      } catch {
+        detail = String(data);
+      }
+    }
+  }
+  return detail ? `${message}: ${detail}` : message;
+}
+
+function isRecoverableSessionLoadError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    isSessionNotFoundError(err) ||
+    /\bnot\s+found\b/i.test(msg) ||
+    /method\s+not\s+found|unknown\s+method|not\s+implemented/i.test(msg)
+  );
+}
+
+function isSessionNotFoundError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /session(?:\s+[\w-]+)?\s+not\s+found|no\s+session\s+found|unknown\s+session/i.test(
+    msg,
+  );
 }
 
 function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {

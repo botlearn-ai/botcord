@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { buildCliEnv } from "../cli-resolver.js";
 import { consoleLogger } from "../log.js";
 import { safeCommand, sanitizeRuntimeFailureText, tailText } from "../runtime-failure.js";
+import { sliceUtf8Bytes, utf8ByteLength } from "./text-cap.js";
 import type {
   RuntimeAdapter,
   RuntimeProbeResult,
@@ -175,15 +176,19 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
         log.warn(`${this.id} assistant text exceeded ${ASSISTANT_TEXT_CAP} bytes; dropping further chunks`);
         return;
       }
-      if (text.length > budget) {
-        state.assistantTextChunks.push(text.slice(0, budget));
-        state.assistantTextBytes += budget;
+      const bytes = utf8ByteLength(text);
+      if (bytes > budget) {
+        const chunk = sliceUtf8Bytes(text, budget);
+        if (chunk) {
+          state.assistantTextChunks.push(chunk);
+          state.assistantTextBytes += utf8ByteLength(chunk);
+        }
         state.assistantTextCapped = true;
         log.warn(`${this.id} assistant text hit ${ASSISTANT_TEXT_CAP}-byte cap`);
         return;
       }
       state.assistantTextChunks.push(text);
-      state.assistantTextBytes += text.length;
+      state.assistantTextBytes += bytes;
     };
 
     let stderrTail = "";
@@ -257,8 +262,13 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
     }
 
     const rawText = state.finalText || state.assistantTextChunks.join("").trim();
+    if (code === 0 && !state.errorText && !rawText && looksLikeTerminalStderr(stderrTail)) {
+      state.errorText = `${this.id} reported an error on stderr: ${stderrTail.slice(-STDERR_ERROR_SNIPPET)}`;
+    }
     const text =
-      rawText.length > ASSISTANT_TEXT_CAP ? rawText.slice(0, ASSISTANT_TEXT_CAP) : rawText;
+      utf8ByteLength(rawText) > ASSISTANT_TEXT_CAP
+        ? sliceUtf8Bytes(rawText, ASSISTANT_TEXT_CAP)
+        : rawText;
 
     return {
       text,
@@ -291,4 +301,11 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
         : {}),
     };
   }
+}
+
+function looksLikeTerminalStderr(text: string): boolean {
+  if (!text.trim()) return false;
+  return /\b(error|failed|failure|exception|traceback|unauthorized|forbidden|authentication|permission denied)\b|rate limit|quota exceeded|invalid api key|api call failed/i.test(
+    text,
+  );
 }

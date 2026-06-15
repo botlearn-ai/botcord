@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { Buffer } from "node:buffer";
 import os from "node:os";
 import path from "node:path";
 import { KimiAdapter } from "../runtimes/kimi.js";
@@ -7,6 +8,7 @@ import { createRuntime, envVarForRuntime, listRuntimeIds } from "../runtimes/reg
 import type { RuntimeRunOptions } from "../types.js";
 
 const tmpRoot = mkdtempSync(path.join(os.tmpdir(), "gateway-kimi-"));
+const realTmpRoot = realpathSync(tmpRoot);
 
 function makeScript(name: string, body: string): string {
   const p = path.join(tmpRoot, name);
@@ -59,6 +61,33 @@ process.stdout.write(JSON.stringify({role:"assistant", content:"hello from kimi"
     expect(res.error).toBeUndefined();
   });
 
+  it("caps streamed assistant text by UTF-8 bytes without splitting characters", async () => {
+    const script = makeScript(
+      "large-utf8.js",
+      `
+const text = "你".repeat(400000);
+process.stdout.write(JSON.stringify({role:"assistant", content:text}) + "\\n");
+`,
+    );
+    const res = await runAdapter(script);
+    expect(res.error).toBeUndefined();
+    expect(Buffer.byteLength(res.text, "utf8")).toBeLessThanOrEqual(1024 * 1024);
+    expect(res.text).toMatch(/^你+$/);
+  });
+
+  it("surfaces terminal stderr errors when Kimi exits 0 without JSON output", async () => {
+    const script = makeScript(
+      "stderr-error.js",
+      `
+process.stderr.write("API call failed after 3 retries: rate limit exceeded\\n");
+process.exit(0);
+`,
+    );
+    const res = await runAdapter(script);
+    expect(res.text).toBe("");
+    expect(res.error).toContain("API call failed");
+  });
+
   it("passes an existing session id through --session", async () => {
     const script = makeScript(
       "resume-argv.js",
@@ -93,7 +122,7 @@ process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify({a
     const seen = JSON.parse(res.text) as { argv: string[]; cwd: string };
     expect(seen.argv).toContain("--work-dir");
     expect(seen.argv[seen.argv.indexOf("--work-dir") + 1]).toBe(tmpRoot);
-    expect(seen.cwd).toBe(tmpRoot);
+    expect(seen.cwd).toBe(realTmpRoot);
   });
 
   it("omits --work-dir and relies on child cwd when the Kimi CLI lacks support", async () => {
@@ -115,7 +144,7 @@ process.stdout.write(JSON.stringify({role:"assistant", content:JSON.stringify({a
     const res = await runAdapter(script, "sid-123");
     const seen = JSON.parse(res.text) as { argv: string[]; cwd: string };
     expect(seen.argv).not.toContain("--work-dir");
-    expect(seen.cwd).toBe(tmpRoot);
+    expect(seen.cwd).toBe(realTmpRoot);
     expect(res.error).toBeUndefined();
   });
 
