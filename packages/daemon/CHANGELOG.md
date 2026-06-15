@@ -1,5 +1,21 @@
 # @botcord/daemon
 
+## 0.4.4
+
+### Patch Changes
+
+- d7b4755: Harden runtime stability against hangs and transient failures:
+
+  - Kimi: stop passing `--work-dir` when the CLI can't be confirmed to support it (the `--help` probe timing out or exiting non-zero no longer falls back to a version guess that crashes builds without the flag — the spawn cwd already sets the working directory).
+  - Hermes / OpenClaw (ACP): add a per-turn no-output watchdog (`BOTCORD_ACP_IDLE_TIMEOUT_MS`, default 10m). A hung prompt is now cancelled and surfaced as an error in minutes instead of sitting dead until the 30-minute turn timeout. OpenClaw rejects the hung turn without killing the shared pooled child.
+  - Dispatcher: retry a turn once on a transient runtime failure (connection blip, 5xx, ACP `-32603` internal error), but only when the runtime emitted no output that turn, so the retry can never duplicate a tool call or sent message.
+
+- 037feb3: Fix deepseek-tui server process leak: spawn `deepseek serve` in its own process group and SIGTERM the whole group on shutdown (the resolved binary is a dispatcher that re-spawns the real deepseek-tui server, which previously survived); also kill all pooled servers on daemon exit so restarts no longer orphan them.
+- 8f15832: Bind owner-chat agent replies to their originating run via an explicit `trace_id`, so streamed reasoning blocks merge into the final answer instead of orphaning into a separate collapsed block below the message. The daemon now forwards the run's `trace_id` (the trigger `hub_msg_id`) on the outbound reply, and `BotCordClient.sendMessage`/`sendTypedMessage` accept a `traceId` option that is sent as a non-signed `trace_id` field on `/hub/send`. The Hub honors this explicit trace instead of guessing the most-recently-registered one, which previously mis-attributed replies when owner-chat turns overlapped.
+- 8c10e5d: Raise replying status-reaction TTL from 3 to 30 minutes (matching the turn hard timeout) so the indicator no longer disappears mid-turn, and retry the clear DELETE once so a transient failure doesn't leave a stale reaction for the full TTL.
+- Updated dependencies [8f15832]
+  - @botcord/protocol-core@0.2.16
+
 ## 0.4.2
 
 ### Patch Changes
