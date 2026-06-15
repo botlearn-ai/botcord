@@ -425,7 +425,8 @@ describe("useOwnerChatStore stream-cache restore", () => {
   });
 
   it("restoreActiveRuns fetches + restores only uncovered user-message traces", async () => {
-    // A confirmed user message whose reply is still in flight.
+    // A confirmed user message whose reply is still in flight. Recent
+    // timestamp so it passes the restore age gate.
     useOwnerChatStore.getState().upsertMessage(
       makeOwnerChatMessage({
         clientId: "u1",
@@ -433,6 +434,7 @@ describe("useOwnerChatStore stream-cache restore", () => {
         sender: "user",
         status: "confirmed",
         text: "do a thing",
+        createdAt: new Date().toISOString(),
       }),
     );
     mocks.getRunStreamBlocks.mockResolvedValue(runningRun());
@@ -445,6 +447,29 @@ describe("useOwnerChatStore stream-cache restore", () => {
       .getState()
       .messages.find((m) => m.traceId === "msg_trace" && m.status === "streaming");
     expect(streaming).toBeTruthy();
+  });
+
+  it("restoreActiveRuns skips uncovered user messages older than the restore window", async () => {
+    // An uncovered run that never produced a reply (autonomous work) stays
+    // "running" for the full run TTL; stale ones must not be resurrected.
+    useOwnerChatStore.getState().upsertMessage(
+      makeOwnerChatMessage({
+        clientId: "u1",
+        hubMsgId: "msg_trace",
+        sender: "user",
+        status: "confirmed",
+        text: "do a thing",
+        createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      }),
+    );
+    mocks.getRunStreamBlocks.mockResolvedValue(runningRun());
+
+    await useOwnerChatStore.getState().restoreActiveRuns("ag_bot");
+
+    expect(mocks.getRunStreamBlocks).not.toHaveBeenCalled();
+    expect(
+      useOwnerChatStore.getState().messages.some((m) => m.status === "streaming"),
+    ).toBe(false);
   });
 
   it("restoreActiveRuns skips user messages that already have an agent reply", async () => {
@@ -515,6 +540,7 @@ describe("useOwnerChatStore stream-cache restore", () => {
         sender: "user",
         status: "confirmed",
         text: "do a thing",
+        createdAt: new Date().toISOString(),
       }),
     );
     mocks.getRunStreamBlocks.mockRejectedValue(new Error("network"));
