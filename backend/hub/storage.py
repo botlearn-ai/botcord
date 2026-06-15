@@ -18,6 +18,10 @@ from hub.models import FileRecord
 
 logger = logging.getLogger(__name__)
 
+_SUPABASE_RETRYABLE_METHODS = {"GET", "DELETE"}
+_SUPABASE_STORAGE_MAX_ATTEMPTS = 2
+_SUPABASE_STORAGE_RETRY_BACKOFF_SECONDS = 0.2
+
 
 @dataclass(frozen=True)
 class StoredFileLocation:
@@ -172,36 +176,67 @@ async def _supabase_request(
         "apikey": hub_config.SUPABASE_SERVICE_ROLE_KEY,
         **(headers or {}),
     }
-    try:
-        async with httpx.AsyncClient(timeout=hub_config.SUPABASE_STORAGE_TIMEOUT_SECONDS) as client:
-            response = await client.request(
+    max_attempts = (
+        _SUPABASE_STORAGE_MAX_ATTEMPTS
+        if method.upper() in _SUPABASE_RETRYABLE_METHODS
+        else 1
+    )
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async with httpx.AsyncClient(timeout=hub_config.SUPABASE_STORAGE_TIMEOUT_SECONDS) as client:
+                response = await client.request(
+                    method,
+                    f"{hub_config.SUPABASE_URL}{path}",
+                    headers=request_headers,
+                    **kwargs,
+                )
+            break
+        except httpx.TimeoutException as exc:
+            if attempt < max_attempts:
+                logger.info(
+                    "Supabase storage request timed out; retrying: %s %s attempt=%d/%d err=%s",
+                    method,
+                    path,
+                    attempt,
+                    max_attempts,
+                    exc.__class__.__name__,
+                )
+                await asyncio.sleep(_SUPABASE_STORAGE_RETRY_BACKOFF_SECONDS)
+                continue
+            logger.warning(
+                "Supabase storage request timed out: %s %s attempts=%d err=%s",
                 method,
-                f"{hub_config.SUPABASE_URL}{path}",
-                headers=request_headers,
-                **kwargs,
+                path,
+                attempt,
+                exc.__class__.__name__,
             )
-    except httpx.TimeoutException as exc:
-        logger.warning(
-            "Supabase storage request timed out: %s %s err=%s",
-            method,
-            path,
-            exc.__class__.__name__,
-        )
-        raise HTTPException(
-            status_code=504,
-            detail="Supabase storage request timed out",
-        ) from exc
-    except (httpx.ConnectError, httpx.NetworkError, httpx.HTTPError) as exc:
-        logger.warning(
-            "Supabase storage request failed before response: %s %s err=%s",
-            method,
-            path,
-            exc.__class__.__name__,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail="Supabase storage request failed",
-        ) from exc
+            raise HTTPException(
+                status_code=504,
+                detail="Supabase storage request timed out",
+            ) from exc
+        except httpx.TransportError as exc:
+            if attempt < max_attempts:
+                logger.info(
+                    "Supabase storage request failed before response; retrying: %s %s attempt=%d/%d err=%s",
+                    method,
+                    path,
+                    attempt,
+                    max_attempts,
+                    exc.__class__.__name__,
+                )
+                await asyncio.sleep(_SUPABASE_STORAGE_RETRY_BACKOFF_SECONDS)
+                continue
+            logger.warning(
+                "Supabase storage request failed before response: %s %s attempts=%d err=%s",
+                method,
+                path,
+                attempt,
+                exc.__class__.__name__,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Supabase storage request failed",
+            ) from exc
 
     allowed = expected_statuses or {200}
     if response.status_code in allowed:
