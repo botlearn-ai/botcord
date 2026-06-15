@@ -17,7 +17,7 @@ import { messageBubble } from '@/lib/i18n/translations/dashboard';
 import { getActionMenuPosition } from "@/lib/message-action-menu";
 import { resolveMessageMentionTargets } from "@/lib/message-mentions";
 import { canRecallDashboardMessage, isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
-import AttachmentItem from "@/components/ui/AttachmentItem";
+import AttachmentItem, { getPreviewableImageAttachments } from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
 import MarkdownContent from "@/components/ui/MarkdownContent";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
@@ -42,7 +42,7 @@ interface MessageBubbleProps {
   sourceId?: string;
   /** Known participants used to resolve plain-text @display-name mentions. */
   mentionCandidates?: MentionTextCandidate[];
-  onPreviewAttachment?: (attachment: Attachment) => void;
+  onPreviewAttachment?: (attachment: Attachment, previewAttachments?: Attachment[]) => void;
 }
 
 const stateColors: Record<string, { color: string; icon: string }> = {
@@ -677,6 +677,7 @@ function MessageBubble({
   const attachments = Array.isArray(message.payload?.attachments)
     ? (message.payload.attachments as Attachment[])
     : [];
+  const imagePreviewAttachments = getPreviewableImageAttachments(attachments);
 
   const sc = stateConfig[message.state];
   const [, forceStatusReactionRender] = useState(0);
@@ -1144,6 +1145,7 @@ function MessageBubble({
               <AttachmentItem
                 key={`${att.filename}-${att.url}-${i}`}
                 attachment={att}
+                previewAttachments={imagePreviewAttachments}
                 onPreview={onPreviewAttachment}
               />
             ))}

@@ -31,6 +31,14 @@ import ExploreEntityCard from "./ExploreEntityCard";
 import type { Attachment, PublicHumanProfile, PublicRoom } from "@/lib/types";
 import { api } from "@/lib/api";
 import { animateIfMotion, animeStagger, cleanupAnime, prefersReducedMotion } from "@/lib/anime";
+import ImagePreviewOverlay from "@/components/ui/ImagePreviewOverlay";
+import {
+  attachmentGalleryIndex,
+  getPreviewableImageAttachments,
+  isImageAttachment,
+  rememberFailedAttachmentImageUrl,
+  resolveAttachmentUrl,
+} from "@/components/ui/AttachmentItem";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -44,6 +52,9 @@ import { DashboardMainSkeleton } from "./DashboardTabSkeleton";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 type ChatPaneTab = "messages" | "contacts" | "explore";
+type AttachmentPreviewState =
+  | { kind: "document"; attachment: Attachment }
+  | { kind: "image"; attachments: Attachment[]; index: number };
 
 function GridSkeletonCards() {
   return <DashboardMainSkeleton variant="explore" />;
@@ -740,7 +751,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
     getRoomSummary: state.getRoomSummary,
   })));
   const effectiveSidebarTab = sidebarTabOverride ?? sidebarTab;
-  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewState | null>(null);
   const visibleMessageRooms = useMemo(
     () => buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms }),
     [overview, recentVisitedRooms, token, humanRooms],
@@ -751,8 +762,25 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
   const showLoginModal = () => router.push("/login");
 
   useEffect(() => {
-    setPreviewAttachment(null);
+    setAttachmentPreview(null);
   }, [effectiveSidebarTab, openedRoomId]);
+
+  const handlePreviewAttachment = (attachment: Attachment, previewAttachments?: Attachment[]) => {
+    if (isImageAttachment(attachment)) {
+      const gallery = getPreviewableImageAttachments(
+        previewAttachments && previewAttachments.length > 0 ? previewAttachments : [attachment],
+      );
+      const index = attachmentGalleryIndex(gallery, attachment);
+      setAttachmentPreview({
+        kind: "image",
+        attachments: gallery.length > 0 ? gallery : [attachment],
+        index: index >= 0 ? index : 0,
+      });
+      return;
+    }
+
+    setAttachmentPreview({ kind: "document", attachment });
+  };
 
   if (effectiveSidebarTab === "explore") {
     return <ExploreMainPane onHumanOpen={onHumanOpen} />;
@@ -805,7 +833,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
                   loginHref={loginHref}
                 />
               ) : (
-                <MessageList onPreviewAttachment={setPreviewAttachment} />
+                <MessageList onPreviewAttachment={handlePreviewAttachment} />
               )
             ) : (
               <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-text-secondary">
@@ -845,13 +873,47 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
             </>
           )}
         </div>
-        {previewAttachment && (
+        {attachmentPreview?.kind === "document" && (
           <DocumentPreviewPane
-            attachment={previewAttachment}
-            onClose={() => setPreviewAttachment(null)}
+            attachment={attachmentPreview.attachment}
+            onClose={() => setAttachmentPreview(null)}
           />
         )}
       </div>
+      {attachmentPreview?.kind === "image" && (() => {
+        const attachment = attachmentPreview.attachments[attachmentPreview.index];
+        if (!attachment) return null;
+        const src = resolveAttachmentUrl(attachment.url);
+        const title = attachment.filename || "Image attachment";
+
+        return (
+          <ImagePreviewOverlay
+            src={src}
+            title={title}
+            currentIndex={attachmentPreview.index}
+            totalCount={attachmentPreview.attachments.length}
+            onPrevious={attachmentPreview.index > 0
+              ? () => setAttachmentPreview((preview) => (
+                  preview?.kind === "image"
+                    ? { ...preview, index: Math.max(0, preview.index - 1) }
+                    : preview
+                ))
+              : undefined}
+            onNext={attachmentPreview.index < attachmentPreview.attachments.length - 1
+              ? () => setAttachmentPreview((preview) => (
+                  preview?.kind === "image"
+                    ? { ...preview, index: Math.min(preview.attachments.length - 1, preview.index + 1) }
+                    : preview
+                ))
+              : undefined}
+            onClose={() => setAttachmentPreview(null)}
+            onImageError={() => {
+              rememberFailedAttachmentImageUrl(src);
+              setAttachmentPreview(null);
+            }}
+          />
+        );
+      })()}
       <TopicDrawer />
     </div>
   );

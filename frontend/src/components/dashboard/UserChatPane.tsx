@@ -25,7 +25,14 @@ import { useOwnerChatWs } from "@/hooks/useOwnerChatWs";
 import { messageList } from "@/lib/i18n/translations/dashboard";
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 import MarkdownContent, { normalizeMessageContent } from "@/components/ui/MarkdownContent";
-import AttachmentItem from "@/components/ui/AttachmentItem";
+import AttachmentItem, {
+  attachmentGalleryIndex,
+  getPreviewableImageAttachments,
+  isImageAttachment,
+  rememberFailedAttachmentImageUrl,
+  resolveAttachmentUrl,
+} from "@/components/ui/AttachmentItem";
+import ImagePreviewOverlay from "@/components/ui/ImagePreviewOverlay";
 import StreamBlocksView from "./StreamBlocksView";
 import DocumentPreviewPane from "./DocumentPreviewPane";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
@@ -48,6 +55,9 @@ import {
 import { animateFadeUp, animateIfMotion, animatePop, cleanupAnime } from "@/lib/anime";
 
 const OWNER_CHAT_ENTRANCE_SETTLE_MS = 1200;
+type AttachmentPreviewState =
+  | { kind: "document"; attachment: Attachment }
+  | { kind: "image"; attachments: Attachment[]; index: number };
 
 // ---------------------------------------------------------------------------
 // TypewriterText
@@ -119,7 +129,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const [actionMenuOpenId, setActionMenuOpenId] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
-  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewState | null>(null);
   const settingsLabel = locale === "zh" ? "Bot 设置" : "Bot settings";
   const replyLabel = locale === "zh" ? "回复" : "Reply";
   const forwardLabel = locale === "zh" ? "转发" : "Forward";
@@ -181,6 +191,23 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     }
   }, [scrollToBottom]);
 
+  const handlePreviewAttachment = useCallback((attachment: Attachment, previewAttachments?: Attachment[]) => {
+    if (isImageAttachment(attachment)) {
+      const gallery = getPreviewableImageAttachments(
+        previewAttachments && previewAttachments.length > 0 ? previewAttachments : [attachment],
+      );
+      const index = attachmentGalleryIndex(gallery, attachment);
+      setAttachmentPreview({
+        kind: "image",
+        attachments: gallery.length > 0 ? gallery : [attachment],
+        index: index >= 0 ? index : 0,
+      });
+      return;
+    }
+
+    setAttachmentPreview({ kind: "document", attachment });
+  }, []);
+
   // WS hook authenticates the selected owner-chat target explicitly.
   const { wsClientRef, streamedTraceIds } = useOwnerChatWs({
     activeAgentId: chatAgentId,
@@ -208,7 +235,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     setShowScrollToBottomButton(false);
     animatedRef.current.clear();
     entranceAnimatedRef.current.clear();
-    setPreviewAttachment(null);
+    setAttachmentPreview(null);
     useOwnerChatStore.getState().reset();
 
     (async () => {
@@ -960,7 +987,8 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                           <AttachmentItem
                             key={`${att.filename}-${att.url}-${idx}`}
                             attachment={att}
-                            onPreview={setPreviewAttachment}
+                            previewAttachments={getPreviewableImageAttachments(msg.attachments ?? [])}
+                            onPreview={handlePreviewAttachment}
                           />
                         ))}
                       </div>
@@ -1022,12 +1050,46 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
         </button>
       )}
       </div>
-      {previewAttachment && (
+      {attachmentPreview?.kind === "document" && (
         <DocumentPreviewPane
-          attachment={previewAttachment}
-          onClose={() => setPreviewAttachment(null)}
+          attachment={attachmentPreview.attachment}
+          onClose={() => setAttachmentPreview(null)}
         />
       )}
+      {attachmentPreview?.kind === "image" && (() => {
+        const attachment = attachmentPreview.attachments[attachmentPreview.index];
+        if (!attachment) return null;
+        const src = resolveAttachmentUrl(attachment.url);
+        const title = attachment.filename || "Image attachment";
+
+        return (
+          <ImagePreviewOverlay
+            src={src}
+            title={title}
+            currentIndex={attachmentPreview.index}
+            totalCount={attachmentPreview.attachments.length}
+            onPrevious={attachmentPreview.index > 0
+              ? () => setAttachmentPreview((preview) => (
+                  preview?.kind === "image"
+                    ? { ...preview, index: Math.max(0, preview.index - 1) }
+                    : preview
+                ))
+              : undefined}
+            onNext={attachmentPreview.index < attachmentPreview.attachments.length - 1
+              ? () => setAttachmentPreview((preview) => (
+                  preview?.kind === "image"
+                    ? { ...preview, index: Math.min(preview.attachments.length - 1, preview.index + 1) }
+                    : preview
+                ))
+              : undefined}
+            onClose={() => setAttachmentPreview(null)}
+            onImageError={() => {
+              rememberFailedAttachmentImageUrl(src);
+              setAttachmentPreview(null);
+            }}
+          />
+        );
+      })()}
       {forwardQuote && (
         <ForwardModal quoteText={forwardQuote} onClose={() => setForwardQuote(null)} />
       )}

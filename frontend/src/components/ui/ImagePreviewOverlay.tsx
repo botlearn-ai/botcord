@@ -1,14 +1,19 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, X } from "lucide-react";
 
 interface ImagePreviewOverlayProps {
   src: string;
   title: string;
   onClose: () => void;
   onImageError: () => void;
+  currentIndex?: number;
+  totalCount?: number;
+  onPrevious?: () => void;
+  onNext?: () => void;
 }
 
 export default function ImagePreviewOverlay({
@@ -16,7 +21,16 @@ export default function ImagePreviewOverlay({
   title,
   onClose,
   onImageError,
+  currentIndex,
+  totalCount,
+  onPrevious,
+  onNext,
 }: ImagePreviewOverlayProps) {
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const canGoPrevious = Boolean(onPrevious);
+  const canGoNext = Boolean(onNext);
+  const hasGallery = typeof currentIndex === "number" && typeof totalCount === "number" && totalCount > 1;
+
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -25,6 +39,12 @@ export default function ImagePreviewOverlay({
       if (event.key === "Escape") {
         event.preventDefault();
         onClose();
+      } else if (event.key === "ArrowLeft" && onPrevious) {
+        event.preventDefault();
+        onPrevious();
+      } else if (event.key === "ArrowRight" && onNext) {
+        event.preventDefault();
+        onNext();
       }
     };
 
@@ -33,7 +53,27 @@ export default function ImagePreviewOverlay({
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, onNext, onPrevious]);
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!hasGallery || (event.pointerType === "mouse" && event.button !== 0)) return;
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = pointerStartRef.current;
+    pointerStartRef.current = null;
+    if (!start) return;
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaY) > 80 || Math.abs(deltaY) > Math.abs(deltaX)) return;
+    if (deltaX > 0) {
+      onPrevious?.();
+    } else {
+      onNext?.();
+    }
+  };
 
   return createPortal(
     <div
@@ -44,9 +84,21 @@ export default function ImagePreviewOverlay({
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={() => {
+        pointerStartRef.current = null;
+      }}
     >
       <div className="flex min-h-14 items-center justify-between gap-3 border-b border-glass-border bg-deep-black/85 px-3 py-2 sm:px-5">
-        <span className="min-w-0 truncate text-sm font-medium text-text-primary">{title}</span>
+        <div className="min-w-0">
+          <span className="block truncate text-sm font-medium text-text-primary">{title}</span>
+          {hasGallery && (
+            <span className="block text-[11px] text-text-secondary/70">
+              {currentIndex + 1} / {totalCount}
+            </span>
+          )}
+        </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <a
             href={src}
@@ -71,13 +123,43 @@ export default function ImagePreviewOverlay({
           </button>
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-6">
+      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-3 sm:p-6">
+        {hasGallery && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onPrevious?.();
+            }}
+            disabled={!canGoPrevious}
+            className="absolute left-3 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/55 text-text-primary shadow-lg transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 sm:inline-flex"
+            aria-label="Previous image"
+            title="Previous image"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+        )}
         <img
           src={src}
           alt={title}
           className="max-h-[calc(100vh-6.5rem)] max-w-full object-contain shadow-2xl"
           onError={onImageError}
         />
+        {hasGallery && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onNext?.();
+            }}
+            disabled={!canGoNext}
+            className="absolute right-3 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/55 text-text-primary shadow-lg transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 sm:inline-flex"
+            aria-label="Next image"
+            title="Next image"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        )}
       </div>
     </div>,
     document.body,
