@@ -2768,6 +2768,20 @@ export class Dispatcher {
       // superseder is about to run its own typing/thinking lifecycle.
       finalizeThinkingIfActive();
       await sendReplyingStatus("cleared");
+      // Close out the streamed run so a reply-less turn (empty/gated final
+      // text, timeout, error, or cancel-previous) doesn't dangle as a
+      // restorable "running" run — which would otherwise replay its full
+      // reasoning trace on every dashboard refresh until the run TTL expires.
+      // Idempotent on the hub side: when a reply was sent, that path already
+      // completed the run and this is a no-op. Fire-and-forget.
+      if (canStream && typeof traceId === "string" && channel.streamEnd) {
+        await channel.streamEnd({
+          traceId,
+          accountId: msg.accountId,
+          conversationId: msg.conversation.id,
+          log: this.log,
+        });
+      }
       // Clear slot ownership AFTER the reply has been sent (or skipped).
       // Only then do cancel-previous arrivals stop finding this slot — which
       // is exactly what we want: while we're in the post-runtime window, a

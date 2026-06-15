@@ -26,9 +26,26 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 
 const MAX_BLOCKS_PER_TRACE = 200;
 
+// Backstop window for resurrecting in-flight runs on load/refresh. A run that
+// never produced an owner-chat reply stays uncovered indefinitely; restoring
+// such a trace replays its full reasoning trace as a standalone streaming
+// placeholder. The backend closes these runs at turn end, so this is a safety
+// net for the residual window where that signal was lost — comfortably longer
+// than a typical turn, well under the backend run TTL (1h).
+const RESTORE_MAX_AGE_MS = 15 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** True when a message is too old to be worth restoring an in-flight run for.
+ *  Unparseable/missing timestamps are treated as old (skip restore). */
+function isRestoreTooOld(createdAt: string | undefined, now: number): boolean {
+  if (!createdAt) return true;
+  const t = Date.parse(createdAt);
+  if (Number.isNaN(t)) return true;
+  return now - t > RESTORE_MAX_AGE_MS;
+}
 
 /** Extract streamed assistant text from stream blocks.
  *  Supports three shapes:
@@ -654,13 +671,17 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
     // Candidate in-flight traces: confirmed/delivered user messages whose
     // hub_msg_id (== trace_id) has no agent reply or streaming placeholder yet.
+    // Stale messages are skipped (see RESTORE_MAX_AGE_MS) so uncovered runs that
+    // never produced a reply don't get resurrected on every refresh.
+    const now = Date.now();
     const candidates = messages
       .filter(
         (m) =>
           m.sender === "user" &&
           m.hubMsgId &&
           (m.status === "confirmed" || m.status === "delivered") &&
-          !coveredTraceIds.has(m.hubMsgId),
+          !coveredTraceIds.has(m.hubMsgId) &&
+          !isRestoreTooOld(m.createdAt, now),
       )
       .map((m) => m.hubMsgId!);
 

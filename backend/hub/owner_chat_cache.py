@@ -267,23 +267,33 @@ async def append_event(trace_id: str, seq: int, block: dict) -> dict | None:
         return None
 
 
-async def mark_run_completed(trace_id: str, *, final_msg_id: str) -> None:
-    """Mark a run completed and shorten both keys to the completed TTL."""
+async def mark_run_completed(trace_id: str, *, final_msg_id: str = "") -> None:
+    """Mark a run completed and shorten both keys to the completed TTL.
+
+    First-wins: only a run still in ``status="running"`` is transitioned. This
+    lets two independent terminal signals race safely — the reply path (which
+    carries the real ``final_msg_id``) and the daemon's ``/hub/stream-end``
+    signal (which carries none, used when the turn produced no owner-chat
+    reply). Whichever lands first completes the run; the later one is a no-op
+    and never clobbers a recorded ``final_msg_id``.
+    """
     client = get_redis()
     if client is None:
         return
     try:
         run_key = _run_key(trace_id)
-        if not await client.exists(run_key):
+        # Returns None when the key is gone (expired / never created) — both
+        # cases fall through to the no-op below.
+        status = await client.hget(run_key, "status")
+        if status != "running":
             return
-        await client.hset(
-            run_key,
-            mapping={
-                "status": "completed",
-                "completed_at": _now_iso(),
-                "final_msg_id": final_msg_id,
-            },
-        )
+        mapping: dict[str, Any] = {
+            "status": "completed",
+            "completed_at": _now_iso(),
+        }
+        if final_msg_id:
+            mapping["final_msg_id"] = final_msg_id
+        await client.hset(run_key, mapping=mapping)
         ttl = hub_config.OWNER_CHAT_RUN_COMPLETED_TTL_SECONDS
         await client.expire(run_key, ttl)
         await client.expire(_events_key(trace_id), ttl)

@@ -18,6 +18,7 @@ import type {
   ChannelStatusSnapshot,
   ChannelStopContext,
   ChannelStreamBlockContext,
+  ChannelStreamEndContext,
   ChannelTypingContext,
   GatewayInboundEnvelope,
   GatewayInboundMessage,
@@ -1274,6 +1275,25 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         }
       } catch (err) {
         ctx.log.warn("botcord stream-block failed", { err: String(err) });
+      }
+    },
+
+    async streamEnd(ctx: ChannelStreamEndContext): Promise<void> {
+      const client = ensureClient();
+      const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
+      try {
+        const resp = await postControlWithRefresh(client, hubUrl, "/hub/stream-end", {
+          trace_id: ctx.traceId,
+        });
+        if (!resp.ok && resp.status !== 204) {
+          const body = await resp.text().catch(() => "");
+          ctx.log.warn("botcord stream-end non-ok", {
+            status: resp.status,
+            body: body.slice(0, 200),
+          });
+        }
+      } catch (err) {
+        ctx.log.warn("botcord stream-end failed", { err: String(err) });
       }
     },
 

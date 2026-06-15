@@ -275,6 +275,19 @@ export interface ChannelStreamBlockContext {
 }
 
 /**
+ * Context passed to `ChannelAdapter.streamEnd()` when a streamed turn reaches
+ * any terminal state. Lets the upstream close out the run's in-flight cache so
+ * a turn that streamed activity but produced no reply doesn't linger as a
+ * restorable run.
+ */
+export interface ChannelStreamEndContext {
+  traceId: string;
+  accountId: string;
+  conversationId: string;
+  log: GatewayLogger;
+}
+
+/**
  * Context passed to `ChannelAdapter.typing()` when the dispatcher signals
  * "agent has accepted this turn but no execution block has surfaced yet".
  * Adapters that bridge to a presence-style API (BotCord `/hub/typing`, etc.)
@@ -309,6 +322,12 @@ export interface ChannelAdapter {
   send(ctx: ChannelSendContext): Promise<ChannelSendResult>;
   status?(): ChannelStatusSnapshot;
   streamBlock?(ctx: ChannelStreamBlockContext): Promise<void>;
+  /**
+   * Optional terminal signal for a streamed turn. Fire-and-forget; failures
+   * must not break the turn. BotCord uses this to mark the owner-chat run
+   * completed so it isn't restored on refresh after a reply-less turn.
+   */
+  streamEnd?(ctx: ChannelStreamEndContext): Promise<void>;
   /**
    * Optional ephemeral "agent is responding" hint. Fire-and-forget; failures
    * must not break the turn. Channels without a presence concept should leave
