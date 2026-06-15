@@ -299,6 +299,41 @@ async def test_upload_success_supabase(client: AsyncClient, db_session: AsyncSes
 
 
 @pytest.mark.asyncio
+async def test_upload_supabase_timeout_does_not_retry_post(client: AsyncClient, monkeypatch):
+    from hub import storage
+
+    _enable_supabase_storage()
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+    calls: list[tuple[str, str]] = []
+
+    class FakeSupabaseClient:
+        def __init__(self, *, timeout):
+            assert timeout == 30
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def request(self, method, url, **kwargs):
+            calls.append((method, url))
+            raise httpx.ReadTimeout("timed out")
+
+    monkeypatch.setattr(storage.httpx, "AsyncClient", FakeSupabaseClient)
+
+    resp = await client.post(
+        "/hub/upload",
+        headers=_auth_header(token),
+        files={"file": ("report.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+    )
+
+    assert resp.status_code == 504
+    assert [method for method, _ in calls] == ["POST"]
+
+
+@pytest.mark.asyncio
 async def test_upload_supabase_uses_ascii_storage_key_for_unicode_filename(
     client: AsyncClient,
     db_session: AsyncSession,
@@ -476,7 +511,7 @@ async def test_download_success_supabase(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_download_supabase_timeout_returns_504(client: AsyncClient, monkeypatch):
+async def test_download_supabase_timeout_retries_and_succeeds(client: AsyncClient, monkeypatch):
     from hub import storage
 
     _enable_supabase_storage()
@@ -486,6 +521,7 @@ async def test_download_supabase_timeout_returns_504(client: AsyncClient, monkey
     side_effects = [
         _supabase_response(),
         httpx.ReadTimeout("timed out"),
+        _supabase_response(content=b"supabase bytes after retry"),
     ]
 
     class FakeSupabaseClient:
@@ -505,7 +541,63 @@ async def test_download_supabase_timeout_returns_504(client: AsyncClient, monkey
                 raise effect
             return effect
 
+    async def fake_sleep(delay):
+        assert delay == storage._SUPABASE_STORAGE_RETRY_BACKOFF_SECONDS
+
     monkeypatch.setattr(storage.httpx, "AsyncClient", FakeSupabaseClient)
+    monkeypatch.setattr(storage.asyncio, "sleep", fake_sleep)
+
+    upload_resp = await client.post(
+        "/hub/upload",
+        headers=_auth_header(token),
+        files={"file": ("report.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+    )
+    assert upload_resp.status_code == 200
+    file_id = upload_resp.json()["file_id"]
+
+    dl_resp = await client.get(f"/hub/files/{file_id}")
+
+    assert dl_resp.status_code == 200
+    assert dl_resp.content == b"supabase bytes after retry"
+    assert [method for method, _ in calls] == ["POST", "GET", "GET"]
+
+
+@pytest.mark.asyncio
+async def test_download_supabase_timeout_returns_504_after_retry(client: AsyncClient, monkeypatch):
+    from hub import storage
+
+    _enable_supabase_storage()
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+    calls: list[tuple[str, str]] = []
+    side_effects = [
+        _supabase_response(),
+        httpx.ReadTimeout("timed out"),
+        httpx.ReadTimeout("timed out again"),
+    ]
+
+    class FakeSupabaseClient:
+        def __init__(self, *, timeout):
+            assert timeout == 30
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def request(self, method, url, **kwargs):
+            calls.append((method, url))
+            effect = side_effects.pop(0)
+            if isinstance(effect, Exception):
+                raise effect
+            return effect
+
+    async def fake_sleep(delay):
+        assert delay == storage._SUPABASE_STORAGE_RETRY_BACKOFF_SECONDS
+
+    monkeypatch.setattr(storage.httpx, "AsyncClient", FakeSupabaseClient)
+    monkeypatch.setattr(storage.asyncio, "sleep", fake_sleep)
 
     upload_resp = await client.post(
         "/hub/upload",
@@ -518,7 +610,126 @@ async def test_download_supabase_timeout_returns_504(client: AsyncClient, monkey
     dl_resp = await client.get(f"/hub/files/{file_id}")
 
     assert dl_resp.status_code == 504
-    assert [method for method, _ in calls] == ["POST", "GET"]
+    assert [method for method, _ in calls] == ["POST", "GET", "GET"]
+
+
+@pytest.mark.asyncio
+async def test_supabase_get_transport_error_retries_and_succeeds(client: AsyncClient, monkeypatch):
+    from hub import storage
+
+    _enable_supabase_storage()
+    calls: list[tuple[str, str]] = []
+    side_effects = [
+        httpx.ConnectError("connection failed"),
+        _supabase_response(content=b"supabase bytes after retry"),
+    ]
+
+    class FakeSupabaseClient:
+        def __init__(self, *, timeout):
+            assert timeout == 30
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def request(self, method, url, **kwargs):
+            calls.append((method, url))
+            effect = side_effects.pop(0)
+            if isinstance(effect, Exception):
+                raise effect
+            return effect
+
+    async def fake_sleep(delay):
+        assert delay == storage._SUPABASE_STORAGE_RETRY_BACKOFF_SECONDS
+
+    monkeypatch.setattr(storage.httpx, "AsyncClient", FakeSupabaseClient)
+    monkeypatch.setattr(storage.asyncio, "sleep", fake_sleep)
+
+    resp = await storage._supabase_request("GET", "/storage/v1/object/bucket/key")
+
+    assert resp.content == b"supabase bytes after retry"
+    assert [method for method, _ in calls] == ["GET", "GET"]
+
+
+@pytest.mark.asyncio
+async def test_supabase_delete_transport_error_retries_and_succeeds(client: AsyncClient, monkeypatch):
+    from hub import storage
+
+    _enable_supabase_storage()
+    calls: list[tuple[str, str]] = []
+    side_effects = [
+        httpx.ConnectError("connection failed"),
+        _supabase_response(),
+    ]
+
+    class FakeSupabaseClient:
+        def __init__(self, *, timeout):
+            assert timeout == 30
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def request(self, method, url, **kwargs):
+            calls.append((method, url))
+            effect = side_effects.pop(0)
+            if isinstance(effect, Exception):
+                raise effect
+            return effect
+
+    async def fake_sleep(delay):
+        assert delay == storage._SUPABASE_STORAGE_RETRY_BACKOFF_SECONDS
+
+    monkeypatch.setattr(storage.httpx, "AsyncClient", FakeSupabaseClient)
+    monkeypatch.setattr(storage.asyncio, "sleep", fake_sleep)
+
+    resp = await storage._supabase_request(
+        "DELETE",
+        "/storage/v1/object/bucket",
+        json={"prefixes": ["key"]},
+    )
+
+    assert resp.status_code == 200
+    assert [method for method, _ in calls] == ["DELETE", "DELETE"]
+
+
+@pytest.mark.asyncio
+async def test_supabase_get_http_status_error_does_not_retry(client: AsyncClient, monkeypatch):
+    from hub import storage
+
+    _enable_supabase_storage()
+    calls: list[tuple[str, str]] = []
+    request = httpx.Request("GET", "https://project.supabase.co/storage/v1/object/bucket/key")
+    response = httpx.Response(500, request=request)
+
+    class FakeSupabaseClient:
+        def __init__(self, *, timeout):
+            assert timeout == 30
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def request(self, method, url, **kwargs):
+            calls.append((method, url))
+            raise httpx.HTTPStatusError("server error", request=request, response=response)
+
+    async def fail_sleep(delay):
+        raise AssertionError("non-transport HTTP errors must not be retried")
+
+    monkeypatch.setattr(storage.httpx, "AsyncClient", FakeSupabaseClient)
+    monkeypatch.setattr(storage.asyncio, "sleep", fail_sleep)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await storage._supabase_request("GET", "/storage/v1/object/bucket/key")
+
+    assert [method for method, _ in calls] == ["GET"]
 
 
 # ===========================================================================
