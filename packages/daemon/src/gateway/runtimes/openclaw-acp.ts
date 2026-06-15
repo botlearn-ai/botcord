@@ -22,6 +22,23 @@ const ACP_PROTOCOL_VERSION = 1;
 const ACP_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 /** Cap for streamed assistant text per turn. */
 const ASSISTANT_TEXT_CAP = 1 * 1024 * 1024;
+/**
+ * Per-turn no-output watchdog. If a `session/prompt` produces no streamed
+ * notifications and no reply for this long, the gateway is treated as hung: we
+ * send `session/cancel` and reject the turn. Unlike the handle keepalive above,
+ * this guards a single in-flight turn — we never kill the pooled child, since
+ * other turns may share it. Reset on every notification for the turn; generous
+ * by default so a long-but-alive tool call is never cut off. 0 disables.
+ * Shares the `BOTCORD_ACP_IDLE_TIMEOUT_MS` knob with the hermes ACP adapter.
+ */
+const DEFAULT_TURN_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+function turnIdleTimeoutMs(): number {
+  const raw = process.env.BOTCORD_ACP_IDLE_TIMEOUT_MS;
+  if (raw === undefined || raw === "") return DEFAULT_TURN_IDLE_TIMEOUT_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : DEFAULT_TURN_IDLE_TIMEOUT_MS;
+}
 
 // ---------------------------------------------------------------------------
 // Module-level process pool — survives across adapter instances. The
@@ -234,7 +251,30 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       }
     };
 
+    // Per-turn no-output watchdog. `armTurnIdle` is (re)called when the prompt
+    // starts and on every notification for this turn; if it fires, the gateway
+    // is hung — we cancel and reject so the turn fails fast instead of hanging
+    // forever (the abort path only sends a fire-and-forget cancel and never
+    // unblocks the awaited prompt). The pooled child is left alive for other
+    // turns; the keepalive reaper reclaims it once inFlight hits 0.
+    const idleMs = turnIdleTimeoutMs();
+    let idleTimer: NodeJS.Timeout | undefined;
+    let onTurnIdle: (() => void) | undefined;
+    const clearTurnIdle = (): void => {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = undefined;
+      }
+    };
+    const armTurnIdle = (): void => {
+      if (idleMs <= 0) return;
+      clearTurnIdle();
+      idleTimer = setTimeout(() => onTurnIdle?.(), idleMs);
+      idleTimer.unref?.();
+    };
+
     const onNotification = (note: AcpNotification): void => {
+      armTurnIdle();
       const update = note.params?.update;
       if (update?.sessionUpdate === "agent_message_chunk") {
         const text = assistantTextFilter.push(extractText(update.content));
@@ -319,12 +359,48 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       };
       opts.signal?.addEventListener("abort", abortListener);
 
+      // Race the prompt against the per-turn idle watchdog. A late reply to an
+      // abandoned prompt is harmless: `settled` guards double-resolution and
+      // `routeMessage` still clears the pending entry when it eventually lands.
+      const guardedPrompt = (): Promise<any> =>
+        new Promise((resolve, reject) => {
+          let settled = false;
+          onTurnIdle = () => {
+            if (settled) return;
+            settled = true;
+            log.warn("openclaw-acp.turn-idle-timeout", {
+              accountId: opts.accountId,
+              sessionKey,
+              idleMs,
+            });
+            handle.trace?.write({
+              stream: "idle_timeout",
+              ...traceContext,
+              params: { idleMs },
+            });
+            sendNotification(handle, "session/cancel", { sessionId: acpSessionId });
+            reject(new Error(`openclaw-acp idle timeout: no output for ${idleMs}ms`));
+          };
+          armTurnIdle();
+          this.prompt(handle, { sessionId: acpSessionId, text: opts.text }).then(
+            (r) => {
+              if (settled) return;
+              settled = true;
+              clearTurnIdle();
+              resolve(r);
+            },
+            (e) => {
+              if (settled) return;
+              settled = true;
+              clearTurnIdle();
+              reject(e);
+            },
+          );
+        });
+
       let promptResult: any;
       try {
-        promptResult = await this.prompt(handle, {
-          sessionId: acpSessionId,
-          text: opts.text,
-        });
+        promptResult = await guardedPrompt();
       } catch (err) {
         // If the child says the session is gone (process restart, GC),
         // recreate it so the next turn doesn't hard-fail.
@@ -360,10 +436,7 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
               newSessionId: acpSessionId,
               sessionKey,
             });
-            promptResult = await this.prompt(handle, {
-              sessionId: acpSessionId,
-              text: opts.text,
-            });
+            promptResult = await guardedPrompt();
           } catch (err2) {
             throw new Error(`prompt failed after session reset: ${(err2 as Error).message}`);
           }
@@ -440,6 +513,7 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
           // ignore
         }
       }
+      clearTurnIdle();
       handle.subscribers.delete(acpSessionId);
       handle.inFlight = Math.max(0, handle.inFlight - 1);
       resetIdle(handle, key);

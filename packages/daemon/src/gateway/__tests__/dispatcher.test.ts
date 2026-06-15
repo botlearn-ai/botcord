@@ -786,6 +786,72 @@ describe("Dispatcher", () => {
     ]);
   });
 
+  it("retries once on a transient runtime failure when no output was emitted", async () => {
+    const runtime: RuntimeAdapter = {
+      id: "hermes-agent",
+      run: vi.fn(async (): Promise<RuntimeRunResult> => {
+        if ((runtime.run as any).mock.calls.length === 1) {
+          // Transient failure, no blocks emitted, no reply → safe to retry.
+          return {
+            text: "",
+            newSessionId: "sid-1",
+            error: "acp error -32603: Internal error",
+          };
+        }
+        return { text: "recovered", newSessionId: "sid-1" };
+      }) as RuntimeAdapter["run"],
+    };
+    const { dispatcher, channel } = await scaffold({
+      config: baseConfig({
+        defaultRoute: { runtime: "hermes-agent", cwd: "/tmp/default" },
+      }),
+      runtimeFactory: () => runtime,
+      transcript: new CaptureTranscript(),
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "m1",
+        conversation: { id: "rm_oc_transient", kind: "direct" },
+      })
+    );
+
+    expect(runtime.run).toHaveBeenCalledTimes(2);
+    expect(channel.sends.map((s) => s.message.text)).toEqual(["recovered"]);
+  }, 10_000);
+
+  it("does NOT retry a transient failure once the runtime has emitted output", async () => {
+    const runtime: RuntimeAdapter = {
+      id: "hermes-agent",
+      run: vi.fn(async (opts: RuntimeRunOptions): Promise<RuntimeRunResult> => {
+        // A tool ran (side effect) before the failure — retrying could duplicate it.
+        opts.onBlock?.({ raw: { name: "botcord_send" }, kind: "tool_use", seq: 1 });
+        return {
+          text: "",
+          newSessionId: "sid-1",
+          error: "acp error -32603: Internal error",
+        };
+      }) as RuntimeAdapter["run"],
+    };
+    const { dispatcher, channel } = await scaffold({
+      config: baseConfig({
+        defaultRoute: { runtime: "hermes-agent", cwd: "/tmp/default" },
+      }),
+      runtimeFactory: () => runtime,
+      transcript: new CaptureTranscript(),
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "m1",
+        conversation: { id: "rm_oc_no_retry", kind: "direct" },
+      })
+    );
+
+    expect(runtime.run).toHaveBeenCalledTimes(1);
+    expect(channel.sends[channel.sends.length - 1].message.type).toBe("error");
+  });
+
   it("treats auth failure text as an error and does not persist the failed session", async () => {
     let callNo = 0;
     const runtimeFactory: RuntimeFactory = () => {

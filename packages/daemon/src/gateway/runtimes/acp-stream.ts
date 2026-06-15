@@ -37,6 +37,25 @@ const KILL_GRACE_MS = 5_000;
 const INITIALIZE_TIMEOUT_MS = 30_000;
 /** Short drain window for late `session/update` chunks after a prompt RPC error. */
 const PROMPT_ERROR_DRAIN_MS = 750;
+/**
+ * No-output watchdog: if the ACP child produces zero stdout/stderr traffic for
+ * this long while a turn is in flight, treat it as hung and kill it. ACP agents
+ * stream `session/update` frames (tool calls, thought chunks, message chunks)
+ * frequently, so a long silence is a genuine hang (e.g. hermes raising an
+ * internal error that never returns an RPC reply) rather than slow-but-alive
+ * work. Without this, a stuck turn sits dead until the dispatcher's 30-min
+ * outer turn timeout. The default is intentionally generous to never cut off a
+ * legitimately long tool call; override per deployment, 0 disables.
+ */
+const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+function acpIdleTimeoutMs(): number {
+  const raw = process.env.BOTCORD_ACP_IDLE_TIMEOUT_MS;
+  if (raw === undefined || raw === "") return DEFAULT_IDLE_TIMEOUT_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : DEFAULT_IDLE_TIMEOUT_MS;
+}
+
 /** ACP protocol version this client targets. */
 export const ACP_PROTOCOL_VERSION = 1;
 
@@ -404,7 +423,7 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
     });
 
     let killTimer: ReturnType<typeof setTimeout> | null = null;
-    const onAbort = () => {
+    const forceKill = () => {
       if (child.killed) return;
       try {
         child.stdin.end();
@@ -424,14 +443,8 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
       }, KILL_GRACE_MS);
       if (typeof killTimer.unref === "function") killTimer.unref();
     };
+    const onAbort = () => forceKill();
     opts.signal.addEventListener("abort", onAbort, { once: true });
-
-    let stderrTail = "";
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => {
-      stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CAP);
-      trace?.write({ stream: "stderr", pid: child.pid, chunk });
-    });
 
     const state: AcpRunState = {
       finalText: "",
@@ -439,6 +452,48 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
       assistantTextBytes: 0,
       assistantTextCapped: false,
     };
+
+    // No-output watchdog. `armIdle` is (re)called on every stdout/stderr chunk,
+    // so the timer only fires after a full window of silence. A hung ACP child
+    // (e.g. an internal error that never produces an RPC reply or a final
+    // `session/update`) is then killed here, surfacing as an error instead of
+    // sitting dead until the dispatcher's 30-min outer turn timeout. We stamp
+    // `errorText` BEFORE killing so it wins over the "stdout closed" rejection
+    // the kill triggers on the in-flight prompt RPC.
+    const idleMs = acpIdleTimeoutMs();
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearIdle = () => {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+      }
+    };
+    const armIdle = () => {
+      if (idleMs <= 0 || child.killed) return;
+      clearIdle();
+      idleTimer = setTimeout(() => {
+        if (child.killed) return;
+        log.warn(`${this.id} no ACP output for ${idleMs}ms; killing hung turn`);
+        trace?.write({ stream: "idle_timeout", pid: child.pid, params: { idleMs } });
+        state.errorText =
+          state.errorText ??
+          `${this.id} idle timeout: no output for ${idleMs}ms`;
+        forceKill();
+      }, idleMs);
+      if (typeof idleTimer.unref === "function") idleTimer.unref();
+    };
+
+    let stderrTail = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      armIdle();
+      stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CAP);
+      trace?.write({ stream: "stderr", pid: child.pid, chunk });
+    });
+    // Rearm on stdout too — AcpConnection installs its own `data` listener for
+    // framing; this second listener only resets the watchdog (listeners coexist).
+    child.stdout.on("data", () => armIdle());
+    armIdle();
 
     const appendAssistantText = (text: string): void => {
       if (!text || state.assistantTextCapped) return;
@@ -624,6 +679,7 @@ export abstract class AcpRuntimeAdapter implements RuntimeAdapter {
     } finally {
       opts.signal.removeEventListener("abort", onAbort);
       if (killTimer) clearTimeout(killTimer);
+      clearIdle();
     }
 
     if (code !== 0 && !state.errorText) {

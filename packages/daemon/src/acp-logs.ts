@@ -21,6 +21,7 @@ export type AcpTraceStream =
   | "stderr"
   | "stdout_non_json"
   | "turn_context"
+  | "idle_timeout"
   | "rpc_in"
   | "rpc_out";
 

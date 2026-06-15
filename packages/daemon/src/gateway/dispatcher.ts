@@ -15,6 +15,7 @@ import {
 import {
   formatUsageLimitMessage,
   looksLikeRuntimeAuthFailure,
+  looksLikeTransientRuntimeError,
   looksLikeUsageLimit,
 } from "./runtime-errors.js";
 import { resolveRoute } from "./router.js";
@@ -57,6 +58,8 @@ import type {
 } from "./types.js";
 
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
+/** Backoff before a single transient-failure retry (see {@link looksLikeTransientRuntimeError}). */
+const TRANSIENT_RETRY_BACKOFF_MS = 1000;
 const DEFAULT_RUNTIME_AUTH_FAILURE_THRESHOLD = 3;
 const DEFAULT_RUNTIME_AUTH_FAILURE_COOLDOWN_MS = 10 * 60 * 1000;
 
@@ -283,6 +286,21 @@ function extractCloudRunBudget(
   return out.maxWallTimeMs !== undefined || out.maxToolCalls !== undefined
     ? out
     : undefined;
+}
+
+/** Resolve after `ms`, or immediately when `signal` aborts. Never rejects. */
+function sleepUnlessAborted(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const t = setTimeout(done, ms);
+    if (typeof t.unref === "function") t.unref();
+    function done(): void {
+      signal.removeEventListener("abort", done);
+      clearTimeout(t);
+      resolve();
+    }
+    signal.addEventListener("abort", done, { once: true });
+  });
 }
 
 function looksLikeRecoverableSessionFailure(error: string): boolean {
@@ -2238,6 +2256,26 @@ export class Dispatcher {
           !slot.timedOut &&
           !slot.budgetExceeded;
 
+        // Narrow, side-effect-safe retry for transient failures (connection
+        // blips, 5xx, ACP internal errors). Gated on `slot.blocks.length === 0`
+        // (and `shouldObserveBlocks`, so the count is meaningful): if the
+        // runtime emitted no block this turn it ran no tools and sent nothing,
+        // so re-running the same prompt on the same session cannot duplicate a
+        // side effect. Resumes the same session — a transient blip doesn't
+        // warrant a fresh-session reset.
+        const shouldRetryTransient =
+          !shouldRetryFresh &&
+          shouldObserveBlocks &&
+          slot.blocks.length === 0 &&
+          !!firstError &&
+          !firstReply &&
+          !looksLikeRuntimeAuthFailure(firstError) &&
+          !looksLikeUsageLimit(firstError) &&
+          looksLikeTransientRuntimeError(firstError) &&
+          !controller.signal.aborted &&
+          !slot.timedOut &&
+          !slot.budgetExceeded;
+
         if (shouldRetryFresh) {
           try {
             await this.sessionStore.delete(key);
@@ -2282,6 +2320,23 @@ export class Dispatcher {
             }
           );
           result = await runRuntime(runtimeText, null);
+        } else if (shouldRetryTransient) {
+          this.log.info(
+            "dispatcher: retrying transient runtime failure once (no output emitted)",
+            {
+              agentId: msg.accountId,
+              roomId: msg.conversation.id,
+              topicId: msg.conversation.threadId ?? null,
+              turnId,
+              queueKey,
+              runtime: route.runtime,
+              error: firstError,
+            }
+          );
+          await sleepUnlessAborted(TRANSIENT_RETRY_BACKOFF_MS, controller.signal);
+          if (!controller.signal.aborted && !slot.timedOut && !slot.budgetExceeded) {
+            result = await runRuntime(runtimeText, activeSessionId);
+          }
         }
       } catch (err) {
         threw = err;

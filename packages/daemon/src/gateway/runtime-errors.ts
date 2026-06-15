@@ -15,6 +15,30 @@ export function looksLikeRuntimeAuthFailure(text: string): boolean {
 }
 
 /**
+ * Transient (worth-one-retry) runtime failures: connection blips, 5xx-class
+ * gateway errors, and JSON-RPC internal errors (ACP code -32603, e.g. hermes
+ * raising an internal error mid-prompt). Intentionally narrow — a non-zero exit
+ * code, bad config, or unknown CLI option is permanent and must NOT match, or
+ * the dispatcher would loop on it. The caller additionally gates retries on
+ * "no output was produced yet" so retrying cannot duplicate side effects.
+ */
+const TRANSIENT_RUNTIME_ERROR_PATTERNS: RegExp[] = [
+  /\b(?:ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|EPIPE)\b/i,
+  /\bsocket hang ?up\b/i,
+  /\bconnection (?:refused|reset|closed|timed out)\b/i,
+  /\b-32603\b/,
+  /\binternal error\b/i,
+  /\b(?:bad gateway|service unavailable|gateway timeout|temporarily unavailable)\b/i,
+  /\b50[0234]\b/,
+];
+
+export function looksLikeTransientRuntimeError(text: string): boolean {
+  const s = text?.trim();
+  if (!s) return false;
+  return TRANSIENT_RUNTIME_ERROR_PATTERNS.some((re) => re.test(s));
+}
+
+/**
  * Usage / rate-limit exhaustion is reported by runtimes as ordinary error text,
  * not a distinct status. Claude Code emits "Claude usage limit reached. Your
  * limit will reset at 2pm (America/New_York)"; Codex emits "You've reached your
