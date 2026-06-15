@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { sanitizeUntrustedContent, splitText } from "@botcord/protocol-core";
 import type { GatewayInboundMessage } from "@botcord/protocol-core";
 
+import { safeObservableErrorMeta, safeObservableErrorSummary } from "../observable-error.js";
 import type { OutboundSendRequest, OutboundSendResult } from "../types.js";
 import type {
   OutboundTypingRequest,
@@ -113,11 +114,6 @@ function wechatHeaders(botToken: string): Record<string, string> {
     "X-WECHAT-UIN": wechatUinHeader(),
     Authorization: `Bearer ${botToken}`,
   };
-}
-
-function redactToken(input: string, token: string | undefined): string {
-  if (!token || !input) return input;
-  return input.split(token).join("[REDACTED]");
 }
 
 export interface WechatProviderOptions {
@@ -339,7 +335,7 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
           } catch (err) {
             emitFailed = true;
             ctx.log.error("wechat emit threw — leaving cursor unchanged", {
-              err: redactToken(String(err), botToken),
+              err: safeObservableErrorSummary(err),
             });
             break;
           }
@@ -355,9 +351,8 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
           await sleep(TRANSIENT_BACKOFF_MS, abortAggregate.signal);
           continue;
         }
-        const errStr = redactToken(String(err), botToken);
-        ctx.log.error("wechat poll failed", { err: errStr });
-        ctx.markActivity({ lastError: errStr });
+        ctx.log.error("wechat poll failed", safeObservableErrorMeta(err));
+        ctx.markActivity({ lastError: safeObservableErrorSummary(err) });
         await sleep(POLL_BACKOFF_MS, abortAggregate.signal);
       }
     }
@@ -408,7 +403,7 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
       );
     } catch (err) {
       activeCtx?.log.debug("wechat typing failed", {
-        err: redactToken(String(err), botToken),
+        err: safeObservableErrorSummary(err),
       });
     }
   }
@@ -421,10 +416,7 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
     // orchestrator surfaces the failure.
     const trace = lookupTraceByConversation(request.conversationId);
     if (!trace) {
-      throw new Error(
-        `wechat send: no context_token for conversation ${request.conversationId} ` +
-          `(expired or never bound — iLink does not support unsolicited replies)`,
-      );
+      throw new Error("wechat send: no_context_token");
     }
     const chunks = request.text.length > 0 ? splitText(request.text, splitAt) : [];
     let lastClientId: string | null = null;
@@ -441,14 +433,19 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
           item_list: [{ type: 1, text_item: { text: chunk } }],
         },
       };
-      const resp = await callApi<WechatGenericResp>(
-        "ilink/bot/sendmessage",
-        body,
-        15_000,
-      );
+      let resp: WechatGenericResp;
+      try {
+        resp = await callApi<WechatGenericResp>(
+          "ilink/bot/sendmessage",
+          body,
+          15_000,
+        );
+      } catch (err) {
+        throw safeObservableError(err);
+      }
       if (resp.ret !== 0 && resp.ret !== undefined) {
         throw new Error(
-          redactToken(`wechat sendmessage failed: ret=${resp.ret}`, botToken),
+          safeObservableErrorSummary(new Error(`wechat sendmessage failed: ret=${resp.ret}`)),
         );
       }
       lastClientId = `wechat:${trace.fromUserId}:${clientId}`;
@@ -473,6 +470,13 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
 
 export const wechatProviderFactory: ProviderAdapterFactory = (gatewayId) =>
   createWechatProvider({ gatewayId });
+
+function safeObservableError(err: unknown): Error {
+  const meta = safeObservableErrorMeta(err);
+  const safe = new Error(meta.message);
+  safe.name = meta.name;
+  return safe;
+}
 
 // ---------------------------------------------------------------------------
 // Local helpers
