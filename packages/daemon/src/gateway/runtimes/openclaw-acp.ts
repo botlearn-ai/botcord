@@ -6,6 +6,7 @@ import {
   type ProbeDeps,
 } from "./probe.js";
 import { consoleLogger } from "../log.js";
+import { sliceUtf8Bytes } from "./text-cap.js";
 import type {
   RuntimeAdapter,
   RuntimeProbeResult,
@@ -240,6 +241,11 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
         if (text && !capped) {
           const bytes = Buffer.byteLength(text, "utf8");
           if (assistantBytes + bytes > ASSISTANT_TEXT_CAP) {
+            const chunk = sliceUtf8Bytes(text, ASSISTANT_TEXT_CAP - assistantBytes);
+            if (chunk) {
+              assistantText += chunk;
+              assistantBytes += Buffer.byteLength(chunk, "utf8");
+            }
             capped = true;
           } else {
             assistantText += text;
@@ -372,16 +378,21 @@ export class OpenclawAcpAdapter implements RuntimeAdapter {
       const tailText = assistantTextFilter.flush();
       if (tailText && !capped) {
         const bytes = Buffer.byteLength(tailText, "utf8");
-        if (assistantBytes + bytes <= ASSISTANT_TEXT_CAP) {
-          assistantText += tailText;
-          assistantBytes += bytes;
+        const textForBlock =
+          assistantBytes + bytes <= ASSISTANT_TEXT_CAP
+            ? tailText
+            : sliceUtf8Bytes(tailText, ASSISTANT_TEXT_CAP - assistantBytes);
+        if (textForBlock) {
+          assistantText += textForBlock;
+          assistantBytes += Buffer.byteLength(textForBlock, "utf8");
+          if (textForBlock !== tailText) capped = true;
           seq += 1;
           emitBlock({
             raw: {
               method: "session/update",
               params: {
                 sessionId: acpSessionId,
-                update: { sessionUpdate: "agent_message_chunk", content: [{ type: "text", text: tailText }] },
+                update: { sessionUpdate: "agent_message_chunk", content: [{ type: "text", text: textForBlock }] },
               },
             },
             kind: "assistant_text",

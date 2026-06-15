@@ -183,6 +183,53 @@ describe("HermesAgentAdapter", () => {
     expect(res.error).toBeUndefined();
   });
 
+  it("session/load non-recoverable failure does not silently fall back to session/new", async () => {
+    const script = makeAcpServer(
+      "load-internal-error.js",
+      `
+        if (msg.method === "initialize") {
+          reply(msg, { protocolVersion: 1 });
+        } else if (msg.method === "session/load") {
+          err(msg, -32603, "database unavailable");
+        } else if (msg.method === "session/new") {
+          reply(msg, { sessionId: "should-not-be-used" });
+        }
+      `,
+    );
+    const res = await runAdapter(script, { sessionId: "sess-existing" });
+    expect(res.newSessionId).toBe("sess-existing");
+    expect(res.text).toBe("");
+    expect(res.error).toContain("session/load failed");
+    expect(res.error).toContain("database unavailable");
+  });
+
+  it("includes JSON-RPC error data in ACP prompt failures", async () => {
+    const script = makeAcpServer(
+      "prompt-error-data.js",
+      `
+        if (msg.method === "initialize") {
+          reply(msg, { protocolVersion: 1 });
+        } else if (msg.method === "session/new") {
+          reply(msg, { sessionId: "sess-error-data" });
+        } else if (msg.method === "session/prompt") {
+          send({
+            jsonrpc: "2.0",
+            id: msg.id,
+            error: {
+              code: -32602,
+              message: "Invalid params",
+              data: { session_id: "Session not found" }
+            }
+          });
+          process.exit(0);
+        }
+      `,
+    );
+    const res = await runAdapter(script);
+    expect(res.error).toContain("Invalid params");
+    expect(res.error).toContain("Session not found");
+  });
+
   it("drains late assistant text after a prompt RPC error before closing stdin", async () => {
     const script = makeAcpServer(
       "late-after-error.js",

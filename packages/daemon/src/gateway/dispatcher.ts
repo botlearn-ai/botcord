@@ -291,6 +291,13 @@ function looksLikeRecoverableSessionFailure(error: string): boolean {
   );
 }
 
+const FRESH_RETRY_SESSION_FAILURE_RUNTIMES = new Set([
+  "codex",
+  "hermes-agent",
+  "openclaw-acp",
+  "kimi-cli",
+]);
+
 function buildRuntimeRecoveryPrompt(args: {
   userTurn: string;
   runtimeLabel: string;
@@ -2221,7 +2228,7 @@ export class Dispatcher {
         const firstError = result.error ?? "";
         const firstReply = (result.text || "").trim();
         const shouldRetryFresh =
-          route.runtime === "codex" &&
+          FRESH_RETRY_SESSION_FAILURE_RUNTIMES.has(route.runtime) &&
           !!activeSessionId &&
           !!firstError &&
           !firstReply &&
@@ -2264,13 +2271,14 @@ export class Dispatcher {
             recoveryContext,
           });
           this.log.info(
-            "dispatcher: retrying codex turn in a fresh session with recovery context",
+            "dispatcher: retrying runtime turn in a fresh session with recovery context",
             {
               agentId: msg.accountId,
               roomId: msg.conversation.id,
               topicId: msg.conversation.threadId ?? null,
               turnId,
               queueKey,
+              runtime: route.runtime,
             }
           );
           result = await runRuntime(runtimeText, null);
