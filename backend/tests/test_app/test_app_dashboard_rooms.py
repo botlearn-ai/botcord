@@ -589,6 +589,7 @@ async def test_status_reaction_realtime_includes_owned_agent_human_watcher(
     assert recipients == {seed["agent1"], owner_human_id}
     assert {event["type"] for event in published} == {"message_status_reaction"}
     assert all(event["room_id"] == room.room_id for event in published)
+    assert {event["hub_msg_id"] for event in published} == {"m_rm_msg000"}
 
 
 @pytest.mark.asyncio
@@ -627,3 +628,41 @@ async def test_status_reaction_realtime_skips_muted_agent_owner_human(
     )
 
     assert published == []
+
+
+@pytest.mark.asyncio
+async def test_status_reaction_realtime_clear_includes_hub_msg_id(
+    seed: dict, db_session: AsyncSession, monkeypatch
+):
+    from hub.routers import hub as hub_router
+
+    published: list[dict] = []
+
+    async def fake_publish(_db: AsyncSession, event: dict):
+        published.append(event)
+
+    monkeypatch.setattr(hub_router, "_publish_agent_realtime_event", fake_publish)
+    room = await db_session.scalar(
+        select(Room)
+        .where(Room.room_id == "rm_priv0001")
+        .options(selectinload(Room.members))
+    )
+    assert room is not None
+
+    await hub_router._broadcast_message_status_reaction(
+        db_session,
+        room=room,
+        payload={
+            "room_id": room.room_id,
+            "msg_id": "m_rm_msg000",
+            "actor_id": seed["agent1"],
+            "kind": "replying",
+            "emoji": "replying",
+            "state": "cleared",
+            "turn_id": "turn_1",
+        },
+    )
+
+    assert published
+    assert {event["type"] for event in published} == {"message_status_reaction"}
+    assert {event["hub_msg_id"] for event in published} == {"m_rm_msg000"}

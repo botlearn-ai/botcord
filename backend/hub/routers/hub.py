@@ -2390,6 +2390,7 @@ async def _broadcast_message_status_reaction(
             type="message_status_reaction",
             agent_id=recipient_id,
             room_id=room.room_id,
+            hub_msg_id=payload.get("msg_id") if isinstance(payload.get("msg_id"), str) else None,
             ext=payload,
         )
         try:
