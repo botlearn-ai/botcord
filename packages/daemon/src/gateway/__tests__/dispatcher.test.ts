@@ -859,6 +859,42 @@ describe("Dispatcher", () => {
     expect(channel.sends.map((s) => s.message.text)).toEqual(["recovered"]);
   }, 10_000);
 
+  it("does NOT retry a transient failure after an unclassified runtime block", async () => {
+    const runtime: RuntimeAdapter = {
+      id: "codex",
+      run: vi.fn(async (opts: RuntimeRunOptions): Promise<RuntimeRunResult> => {
+        opts.onBlock?.({
+          raw: { type: "progress", message: "side effect may have happened" },
+          kind: "other",
+          seq: 1,
+        });
+        return {
+          text: "",
+          newSessionId: "sid-1",
+          error:
+            "error while calling https://chatgpt.com/backend-api/: stream disconnected before completion",
+        };
+      }) as RuntimeAdapter["run"],
+    };
+    const { dispatcher, channel } = await scaffold({
+      config: baseConfig({
+        defaultRoute: { runtime: "codex", cwd: "/tmp/default" },
+      }),
+      runtimeFactory: () => runtime,
+      transcript: new CaptureTranscript(),
+    });
+
+    await dispatcher.handle(
+      makeEnvelope({
+        id: "m1",
+        conversation: { id: "rm_oc_stream_disconnect_other", kind: "direct" },
+      })
+    );
+
+    expect(runtime.run).toHaveBeenCalledTimes(1);
+    expect(channel.sends[channel.sends.length - 1].message.type).toBe("error");
+  }, 10_000);
+
   it("does NOT retry a transient failure once the runtime has emitted output", async () => {
     const runtime: RuntimeAdapter = {
       id: "hermes-agent",

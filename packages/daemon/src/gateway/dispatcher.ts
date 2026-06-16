@@ -216,11 +216,11 @@ function summarizeStreamBlock(block: StreamBlock): TranscriptBlockSummary {
   return summary;
 }
 
-function hasRetryUnsafeRuntimeBlock(blocks: TranscriptBlockSummary[]): boolean {
-  return blocks.some((block) =>
-    block.type === "assistant_text" ||
-    block.type === "tool_use" ||
-    block.type === "tool_result"
+function hasOnlyRetrySafeLifecycleBlocks(
+  blocks: TranscriptBlockSummary[]
+): boolean {
+  return blocks.every(
+    (block) => block.type === "system" || block.type === "thinking"
   );
 }
 
@@ -2274,7 +2274,7 @@ export class Dispatcher {
         const shouldRetryTransient =
           !shouldRetryFresh &&
           shouldObserveBlocks &&
-          !hasRetryUnsafeRuntimeBlock(slot.blocks) &&
+          hasOnlyRetrySafeLifecycleBlocks(slot.blocks) &&
           !!firstError &&
           !firstReply &&
           !looksLikeRuntimeAuthFailure(firstError) &&
