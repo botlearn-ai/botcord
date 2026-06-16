@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractUsageLimitReset,
   formatUsageLimitMessage,
+  looksLikeTransientRuntimeError,
   looksLikeUsageLimit,
 } from "../runtime-errors.js";
 
@@ -29,6 +30,21 @@ describe("looksLikeUsageLimit", () => {
     expect(looksLikeUsageLimit("TypeError: cannot read property 'x' of undefined")).toBe(false);
     expect(looksLikeUsageLimit("codex exited with code 1: segfault")).toBe(false);
     expect(looksLikeUsageLimit("Connection reset by peer")).toBe(false);
+  });
+});
+
+describe("looksLikeTransientRuntimeError", () => {
+  it("matches upstream stream disconnects surfaced by hosted runtimes", () => {
+    expect(
+      looksLikeTransientRuntimeError(
+        "error while calling https://chatgpt.com/backend-api/: stream disconnected before completion",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not match ordinary runtime failures", () => {
+    expect(looksLikeTransientRuntimeError("missing API key")).toBe(false);
+    expect(looksLikeTransientRuntimeError("unsupported command option --foo")).toBe(false);
   });
 });
 

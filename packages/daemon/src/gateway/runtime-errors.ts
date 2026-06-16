@@ -26,6 +26,7 @@ const TRANSIENT_RUNTIME_ERROR_PATTERNS: RegExp[] = [
   /\b(?:ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|EPIPE)\b/i,
   /\bsocket hang ?up\b/i,
   /\bconnection (?:refused|reset|closed|timed out)\b/i,
+  /\bstream disconnected before completion\b/i,
   /\b-32603\b/,
   /\binternal error\b/i,
   /\b(?:bad gateway|service unavailable|gateway timeout|temporarily unavailable)\b/i,

@@ -216,6 +216,14 @@ function summarizeStreamBlock(block: StreamBlock): TranscriptBlockSummary {
   return summary;
 }
 
+function hasRetryUnsafeRuntimeBlock(blocks: TranscriptBlockSummary[]): boolean {
+  return blocks.some((block) =>
+    block.type === "assistant_text" ||
+    block.type === "tool_use" ||
+    block.type === "tool_result"
+  );
+}
+
 function redactAndCap(
   value: unknown,
   budget = TRANSCRIPT_BLOCK_RAW_LIMIT
@@ -2257,16 +2265,16 @@ export class Dispatcher {
           !slot.budgetExceeded;
 
         // Narrow, side-effect-safe retry for transient failures (connection
-        // blips, 5xx, ACP internal errors). Gated on `slot.blocks.length === 0`
-        // (and `shouldObserveBlocks`, so the count is meaningful): if the
-        // runtime emitted no block this turn it ran no tools and sent nothing,
-        // so re-running the same prompt on the same session cannot duplicate a
-        // side effect. Resumes the same session — a transient blip doesn't
-        // warrant a fresh-session reset.
+        // blips, 5xx, ACP internal errors). Gated on observed blocks (and
+        // `shouldObserveBlocks`, so the count is meaningful): assistant/tool
+        // blocks may already have produced visible output or side effects, but
+        // lifecycle-only system/thinking blocks are safe to retry after.
+        // Resumes the same session — a transient blip doesn't warrant a
+        // fresh-session reset.
         const shouldRetryTransient =
           !shouldRetryFresh &&
           shouldObserveBlocks &&
-          slot.blocks.length === 0 &&
+          !hasRetryUnsafeRuntimeBlock(slot.blocks) &&
           !!firstError &&
           !firstReply &&
           !looksLikeRuntimeAuthFailure(firstError) &&
