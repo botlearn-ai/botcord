@@ -45,6 +45,7 @@ interface AgentRuntimeFile {
   id: string;
   name: string;
   scope: "workspace" | "memory" | "hermes" | "openclaw";
+  relativePath?: string;
   runtime?: string;
   profile?: string;
   size?: number;

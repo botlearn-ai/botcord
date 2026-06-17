@@ -79,11 +79,12 @@ export const CONTROL_FRAME_TYPES = {
    */
   RESTART_DAEMON: "restart_daemon",
   /**
-   * Hub→daemon: list/read the small allowlisted Markdown files that belong to
-   * one BotCord agent's local runtime/profile binding. The Hub authorizes the
-   * dashboard user before sending this frame; the daemon accepts only
-   * `agentId`, resolves local credentials, and never accepts arbitrary paths
-   * from the client.
+   * Hub→daemon: list/read files that belong to one BotCord agent's local
+   * runtime/profile binding. Workspace scope returns every regular file under
+   * the agent workspace; runtime/profile scopes remain daemon allowlisted. The
+   * Hub authorizes the dashboard user before sending this frame; the daemon
+   * accepts only `agentId`/daemon-issued `fileId`, resolves local credentials,
+   * and never accepts arbitrary paths from the client.
    */
   LIST_AGENT_FILES: "list_agent_files",
   /**
@@ -404,10 +405,12 @@ export interface AgentRuntimeFile {
    * read one file; they must not construct filesystem paths.
    */
   id: string;
-  /** Display filename, e.g. `SOUL.md` or `memory/working-memory.json`. */
+  /** Display filename, e.g. `workspace/notes/today.md` or `memory/working-memory.json`. */
   name: string;
   /** Logical source bucket for UI grouping. */
   scope: "workspace" | "memory" | "hermes" | "openclaw";
+  /** Path relative to the file's source root. Uses `/` separators. */
+  relativePath?: string;
   /** Runtime that exposed this file. */
   runtime?: string;
   /** Runtime profile binding, when applicable. */

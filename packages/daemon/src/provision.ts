@@ -4,7 +4,16 @@
  * side effects (register agent, write credentials, load route, add/remove
  * gateway channel) and return an ack payload.
  */
-import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  type Dirent,
+} from "node:fs";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -888,6 +897,7 @@ interface AgentRuntimeFile {
   id: string;
   name: string;
   scope: "workspace" | "memory" | "hermes" | "openclaw";
+  relativePath?: string;
   runtime?: string;
   profile?: string;
   size?: number;
@@ -957,7 +967,7 @@ function addWorkspaceFiles(
   runtime?: string,
 ): void {
   const root = agentWorkspaceDir(agentId);
-  for (const file of ["AGENTS.md", "CLAUDE.md", "identity.md", "task.md"]) {
+  for (const file of listWorkspaceRelativeFiles(root)) {
     out.push({
       id: `workspace:${file}`,
       name: `workspace/${file}`,
@@ -967,6 +977,38 @@ function addWorkspaceFiles(
       ...(runtime ? { runtime } : {}),
     });
   }
+}
+
+function listWorkspaceRelativeFiles(root: string): string[] {
+  const rootResolved = path.resolve(root);
+  const out: string[] = [];
+
+  function visit(relativeDir: string): void {
+    const dir = relativeDir ? path.join(rootResolved, relativeDir) : rootResolved;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw err;
+    }
+
+    for (const entry of entries) {
+      const relativePath = relativeDir ? path.join(relativeDir, entry.name) : entry.name;
+      const normalized = relativePath.split(path.sep).join("/");
+      const resolved = path.resolve(rootResolved, relativePath);
+      if (resolved !== rootResolved && !resolved.startsWith(rootResolved + path.sep)) continue;
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        visit(relativePath);
+        continue;
+      }
+      if (entry.isFile()) out.push(normalized);
+    }
+  }
+
+  visit("");
+  return out.sort((a, b) => a.localeCompare(b));
 }
 
 function addWorkingMemoryFile(
@@ -1065,6 +1107,7 @@ function readRuntimeFileCandidate(candidate: RuntimeFileCandidate): AgentRuntime
     id: candidate.id,
     name: candidate.name,
     scope: candidate.scope,
+    relativePath: candidate.relativePath.split(path.sep).join("/"),
     ...(candidate.runtime ? { runtime: candidate.runtime } : {}),
     ...(candidate.profile ? { profile: candidate.profile } : {}),
   };

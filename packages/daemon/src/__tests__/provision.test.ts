@@ -200,7 +200,7 @@ describe("list_agent_files handler", () => {
     }
   });
 
-  it("returns allowlisted workspace and attached hermes profile files for the requested agent", async () => {
+  it("returns workspace files recursively and attached hermes profile files for the requested agent", async () => {
     const os = await import("node:os");
     const fs = await import("node:fs");
     const nodePath = await import("node:path");
@@ -227,9 +227,16 @@ describe("list_agent_files handler", () => {
       const workspace = nodePath.join(tmp, ".botcord", "agents", "ag_hermes", "workspace");
       const memoryDir = nodePath.join(tmp, ".botcord", "memory", "ag_hermes");
       fs.mkdirSync(workspace, { recursive: true });
+      fs.mkdirSync(nodePath.join(workspace, "notes", "daily"), { recursive: true });
       fs.mkdirSync(memoryDir, { recursive: true });
       fs.writeFileSync(nodePath.join(memoryDir, "working-memory.json"), '{"sections":{}}\n');
       fs.writeFileSync(nodePath.join(workspace, "task.md"), "# Task\n");
+      fs.writeFileSync(nodePath.join(workspace, "notes", "daily", "plan.md"), "# Plan\n");
+      fs.writeFileSync(nodePath.join(tmp, "outside-secret.md"), "# Outside\n");
+      fs.symlinkSync(
+        nodePath.join(tmp, "outside-secret.md"),
+        nodePath.join(workspace, "linked-secret.md"),
+      );
 
       const hermesMem = nodePath.join(tmp, ".hermes", "memories");
       fs.mkdirSync(hermesMem, { recursive: true });
@@ -250,9 +257,12 @@ describe("list_agent_files handler", () => {
       const byName = Object.fromEntries(result.files.map((f: any) => [f.name, f]));
       expect(byName["memory/working-memory.json"].content).toBe('{"sections":{}}\n');
       expect(byName["workspace/task.md"].content).toBe("# Task\n");
+      expect(byName["workspace/notes/daily/plan.md"].relativePath).toBe("notes/daily/plan.md");
+      expect(byName["workspace/notes/daily/plan.md"].content).toBe("# Plan\n");
       expect(byName["hermes/default/SOUL.md"].content).toBe("# Soul\n");
       expect(byName["hermes/default/memories/MEMORY.md"].content).toBe("# Hermes Memory\n");
       expect(result.files.some((f: any) => f.name.includes("credentials"))).toBe(false);
+      expect(result.files.some((f: any) => f.name === "workspace/linked-secret.md")).toBe(false);
     } finally {
       if (prevHome === undefined) delete process.env.HOME;
       else process.env.HOME = prevHome;

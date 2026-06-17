@@ -51,6 +51,7 @@ class AgentRuntimeFileOut(BaseModel):
     id: str
     name: str
     scope: Literal["workspace", "memory", "hermes", "openclaw"]
+    relativePath: str | None = None
     runtime: str | None = None
     profile: str | None = None
     size: int | None = None
