@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { GatewayInboundMessage } from "@botcord/protocol-core";
 import type { IngressLogger } from "../log.js";
@@ -119,6 +119,56 @@ describe("WeChat provider adapter", () => {
     expect(observable).not.toContain("ilinkai.weixin.qq.com");
     expect(observable).not.toContain(secretToken);
     expect(observable).not.toContain("https://");
+  });
+
+  it("clears a prior poll error after getupdates succeeds again", async () => {
+    vi.useFakeTimers();
+    try {
+      let pollCount = 0;
+      const fetchImpl = (async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/ilink/bot/getupdates")) {
+          pollCount += 1;
+          if (pollCount === 1) {
+            throw new TypeError("fetch failed");
+          }
+          if (pollCount === 2) {
+            return new Response(
+              JSON.stringify({ ret: 0, get_updates_buf: "buf-ok", msgs: [] }),
+              { status: 200 },
+            );
+          }
+          return new Promise<Response>((_res, rej) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => rej(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        }
+        return new Response("{}", { status: 200 });
+      }) as unknown as typeof fetch;
+
+      const provider = createWechatProvider({
+        gatewayId: conn.id,
+        fetchImpl,
+      });
+      const abort = new AbortController();
+      const { ctx, activity } = makeCtx({ botToken: "secret-token" }, abort);
+      const running = provider.start(ctx);
+
+      await vi.waitFor(() => {
+        expect(activity.some((patch) => patch.lastError === "TypeError: fetch_failed")).toBe(true);
+      });
+      await vi.advanceTimersByTimeAsync(3_000);
+      await vi.waitFor(() => {
+        expect(activity.some((patch) => patch.lastError === null)).toBe(true);
+      });
+
+      abort.abort();
+      await running;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("polls getupdates, normalizes text, advances cursor only after emit", async () => {

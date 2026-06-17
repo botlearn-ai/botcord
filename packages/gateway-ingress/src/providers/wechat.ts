@@ -311,7 +311,7 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
           (POLL_TIMEOUT_S + 10) * 1000,
           abortAggregate.signal,
         );
-        ctx.markActivity({ lastPollAt: Date.now() });
+        ctx.markActivity({ lastPollAt: Date.now(), lastError: null });
         const msgs = Array.isArray(resp.msgs) ? resp.msgs : [];
         const nextBuf =
           typeof resp.get_updates_buf === "string" ? resp.get_updates_buf : updatesBuf;
