@@ -14,7 +14,7 @@ import { IngressOrchestrator } from "../orchestrator.js";
 import { ProviderRunner } from "../provider-runner.js";
 import { RuntimeSessionManager } from "../runtime/session.js";
 import { createWechatSetupAdapter } from "../setup/providers/wechat.js";
-import { startSetupServer, type SetupServer } from "../setup/server.js";
+import { isFetchBlockedPort, startSetupServer, type SetupServer } from "../setup/server.js";
 import { InMemorySetupSessionStore } from "../setup/sessions.js";
 import type { ProviderSetupAdapter } from "../setup/types.js";
 import { MemorySecretStore } from "../storage/secrets.js";
@@ -382,6 +382,15 @@ describe("setup-server — WeChat full flow", () => {
       { timeoutSeconds: 6, mode: "top-level-timeout" },
       { timeoutSeconds: 2, mode: "nested-wins" },
     ]);
+  });
+});
+
+describe("setup-server — ephemeral ports", () => {
+  it("recognizes ports that fetch rejects before connecting", () => {
+    expect(isFetchBlockedPort(6000)).toBe(true);
+    expect(isFetchBlockedPort(6667)).toBe(true);
+    expect(isFetchBlockedPort(10080)).toBe(true);
+    expect(isFetchBlockedPort(49152)).toBe(false);
   });
 });
 

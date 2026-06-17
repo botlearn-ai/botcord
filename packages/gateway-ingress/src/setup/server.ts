@@ -66,6 +66,19 @@ export interface SetupServer {
 
 const SUPPORTED_PROVIDERS: Set<RuntimeGatewayProvider> = new Set(["wechat", "feishu", "telegram"]);
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MiB; setup payloads are small.
+const MAX_EPHEMERAL_BIND_ATTEMPTS = 10;
+const FETCH_BLOCKED_PORTS: ReadonlySet<number> = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79,
+  87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137,
+  139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532,
+  540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720,
+  1723, 2049, 3659, 4045, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668,
+  6669, 6697, 10080,
+]);
+
+export function isFetchBlockedPort(port: number): boolean {
+  return FETCH_BLOCKED_PORTS.has(port);
+}
 
 export async function startSetupServer(opts: SetupServerOptions): Promise<SetupServer> {
   const now = opts.now ?? (() => Date.now());
@@ -77,33 +90,59 @@ export async function startSetupServer(opts: SetupServerOptions): Promise<SetupS
     now,
   };
 
-  const server: Server = createServer((req, res) => {
-    handle(req, res, opts, ctx).catch((err) => {
-      opts.log.error("setup server unhandled error", { err: redact(String(err)) });
-      sendError(res, new SetupError("internal", "internal server error"));
+  for (let attempt = 1; attempt <= MAX_EPHEMERAL_BIND_ATTEMPTS; attempt += 1) {
+    const server: Server = createServer((req, res) => {
+      handle(req, res, opts, ctx).catch((err) => {
+        opts.log.error("setup server unhandled error", { err: redact(String(err)) });
+        sendError(res, new SetupError("internal", "internal server error"));
+      });
     });
-  });
 
-  const url = await new Promise<string>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(opts.port, opts.host, () => {
+    const { url, port } = await listenSetupServer(server, opts.host, opts.port);
+    if (opts.port === 0 && isFetchBlockedPort(port)) {
+      opts.log.warn("setup server skipped fetch-blocked ephemeral port", {
+        port,
+        attempt,
+      });
+      await closeServer(server);
+      continue;
+    }
+
+    opts.log.info("ingress setup server", { url });
+
+    return {
+      url,
+      async close(): Promise<void> {
+        await closeServer(server);
+      },
+    };
+  }
+
+  throw new Error("failed to bind setup server to a fetch-safe ephemeral port");
+}
+
+async function listenSetupServer(
+  server: Server,
+  host: string,
+  port: number,
+): Promise<{ url: string; port: number }> {
+  return new Promise<{ url: string; port: number }>((resolve, reject) => {
+    const onError = (err: Error) => reject(err);
+    server.once("error", onError);
+    server.listen(port, host, () => {
+      server.off("error", onError);
       const addr = server.address();
       if (addr && typeof addr === "object") {
-        resolve(`http://${opts.host}:${addr.port}`);
+        resolve({ url: `http://${host}:${addr.port}`, port: addr.port });
       } else {
-        resolve(`http://${opts.host}:${opts.port}`);
+        resolve({ url: `http://${host}:${port}`, port });
       }
     });
   });
+}
 
-  opts.log.info("ingress setup server", { url });
-
-  return {
-    url,
-    async close(): Promise<void> {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    },
-  };
+async function closeServer(server: Server): Promise<void> {
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
 // ---------------------------------------------------------------------------
