@@ -1,6 +1,26 @@
 import pytest
+from pydantic import ValidationError
 
+from hub.schemas import MessageStatusReactionRequest
 from hub.services import message_status_reactions
+
+
+def test_request_schema_accepts_daemon_replying_ttl():
+    # The daemon (botcord.ts REPLYING_STATUS_TTL_SEC) sends 1800s for the
+    # "replying" backstop; the request schema must accept it or every
+    # status-reaction call 422s and the ⏳ indicator never appears.
+    req = MessageStatusReactionRequest(
+        room_id="rm_1", turn_id="turn_1", ttl_sec=1800
+    )
+    assert req.ttl_sec == 1800
+    assert req.ttl_sec <= message_status_reactions.MAX_STATUS_TTL_SECONDS
+
+    with pytest.raises(ValidationError):
+        MessageStatusReactionRequest(
+            room_id="rm_1",
+            turn_id="turn_1",
+            ttl_sec=message_status_reactions.MAX_STATUS_TTL_SECONDS + 1,
+        )
 
 
 class FakeRedis:
