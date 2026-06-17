@@ -1,5 +1,16 @@
 # @botcord/daemon
 
+## 0.4.5
+
+### Patch Changes
+
+- 65c578d: Signal the Hub at the end of every streamed owner-chat turn (`POST /hub/stream-end`) so runs that produced no owner-chat reply (autonomous work, empty/gated final text, timeout) are marked completed instead of dangling as restorable "running" runs. Without this, the dashboard resurrected their full reasoning trace on every refresh until the run TTL expired.
+- 8cd4512: Recursively list every regular file under an agent workspace through `list_agent_files`, expose `relativePath` in file metadata, and skip symlinks so workspace listing does not follow paths outside the workspace.
+
+### Updated Dependencies
+
+- @botcord/protocol-core@0.2.17
+
 ## 0.4.4
 
 ### Patch Changes

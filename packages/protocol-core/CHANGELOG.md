@@ -1,5 +1,11 @@
 # @botcord/protocol-core
 
+## 0.2.17
+
+### Patch Changes
+
+- 8cd4512: Add `relativePath` to daemon runtime file metadata so dashboard and API consumers can distinguish workspace file paths while keeping daemon-issued file ids opaque.
+
 ## 0.2.16
 
 ### Patch Changes
