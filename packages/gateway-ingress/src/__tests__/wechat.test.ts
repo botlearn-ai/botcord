@@ -183,7 +183,7 @@ describe("WeChat provider adapter", () => {
       name: "malformed JSON",
       response: () => new Response("<html>bad gateway</html>", { status: 500 }),
     },
-  ])("keeps a prior poll error after getupdates returns $name", async ({ response }) => {
+  ])("records a sanitized poll error after getupdates returns $name", async ({ response }) => {
     vi.useFakeTimers();
     try {
       let pollCount = 0;
@@ -222,6 +222,7 @@ describe("WeChat provider adapter", () => {
       });
 
       expect(activity.some((patch) => patch.lastError === null)).toBe(false);
+      expect(activity.some((patch) => patch.lastError === "Error: getupdates_failed")).toBe(true);
 
       abort.abort();
       await running;

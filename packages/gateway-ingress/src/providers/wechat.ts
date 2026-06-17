@@ -315,10 +315,16 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
           (POLL_TIMEOUT_S + 10) * 1000,
           abortAggregate.signal,
         );
+        const lastPollAt = Date.now();
         ctx.markActivity(
           isSuccessfulGetUpdates(resp)
-            ? { lastPollAt: Date.now(), lastError: null }
-            : { lastPollAt: Date.now() },
+            ? { lastPollAt, lastError: null }
+            : {
+                lastPollAt,
+                lastError: safeObservableErrorSummary(
+                  new Error(`wechat getupdates failed: ret=${resp.ret ?? "missing"}`),
+                ),
+              },
         );
         const msgs = Array.isArray(resp.msgs) ? resp.msgs : [];
         const nextBuf =
