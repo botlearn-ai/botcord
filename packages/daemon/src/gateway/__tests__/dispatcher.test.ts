@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   Dispatcher,
   pickMessageStatusTarget,
+  shouldShowReplyingStatus,
   type RuntimeFactory,
 } from "../dispatcher.js";
 import { SessionStore } from "../session-store.js";
@@ -263,6 +264,56 @@ describe("pickMessageStatusTarget", () => {
     });
 
     expect(pickMessageStatusTarget(msg)).toBe("msg_2");
+  });
+});
+
+describe("shouldShowReplyingStatus", () => {
+  function groupMention(text: string): GatewayInboundMessage {
+    return makeMessage({
+      conversation: { id: "rm_group_1", kind: "group" },
+      mentioned: true,
+      text,
+    });
+  }
+
+  it("shows for English action mentions", () => {
+    expect(shouldShowReplyingStatus(groupMention("@me can you deploy this?"))).toBe(
+      true
+    );
+  });
+
+  it("shows for CJK action requests without an English keyword or '?'", () => {
+    // Regression: zh-only team rooms saw no replying reaction because the gate
+    // only matched English keywords / "?". See dispatcher CJK_ACTION.
+    for (const text of [
+      "什么结论了",
+      "帮忙改一下日志",
+      "请部署一下",
+      "这个能不能搞定",
+      "麻烦排查下报错",
+    ]) {
+      expect(shouldShowReplyingStatus(groupMention(text))).toBe(true);
+    }
+  });
+
+  it("stays suppressed for CJK FYI / no-action and acknowledgements", () => {
+    for (const text of [
+      "仅供参考，不用处理",
+      "已经修复了，周知",
+      "我同步一下进展",
+      "收到，谢谢",
+    ]) {
+      expect(shouldShowReplyingStatus(groupMention(text))).toBe(false);
+    }
+  });
+
+  it("never shows outside group rooms", () => {
+    const dm = makeMessage({
+      conversation: { id: "rm_oc_1", kind: "direct" },
+      mentioned: true,
+      text: "请部署一下",
+    });
+    expect(shouldShowReplyingStatus(dm)).toBe(false);
   });
 });
 

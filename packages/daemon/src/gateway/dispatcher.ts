@@ -409,12 +409,31 @@ function rawEntryText(entry: unknown): string {
   return "";
 }
 
-const FYI_MENTION_RE =
-  /\b(?:fyi|for your awareness|for visibility|heads up|cc\b|no[- ]action|no[- ]reply(?: needed)?|no[- ]response(?: needed)?|just sharing|just noting|ack only|context[- ]only)\b/i;
-const STRONG_ACTION_MENTION_RE =
-  /\b(?:can you|could you|would you|need you|take a look|review|fix|implement|publish|deploy|restart|verify|investigate|check|confirm|approve|blocker|blocked|error|failed|failure|incident|rollback|release|ship|merge)\b|[?？]/i;
-const ACTION_MENTION_RE =
-  /\b(?:please|pls|can you|could you|would you|need you|take a look|review|fix|implement|publish|deploy|restart|verify|investigate|check|confirm|approve|blocker|blocked|error|failed|failure|incident|rollback|release|ship|merge)\b|[?？]/i;
+// CJK callers rarely include an English keyword or a "?" — e.g. zh-only team
+// rooms say "什么结论了" / "帮忙改一下" with no Latin token. Gate the replying
+// status on CJK action verbs / question markers too, otherwise those rooms
+// never see the reaction. CJK has no word boundaries, so these fragments match
+// as bare substrings; a lookbehind drops negated / already-done verbs ("不用处理",
+// "已经修复") so FYI suppression still works.
+const CJK_NEG = "不用|无需|不需要|不必|不想|暂不|先不|别|勿|没必要|已经|已|刚刚|刚|正在|正";
+const CJK_ACTION =
+  `(?<!${CJK_NEG})(?:请|麻烦|帮忙|帮我|帮个忙|处理|修复|修一下|改一下|改下|调整|看一下|看下|看看|瞧瞧|检查|确认|核对|核实|排查|调查|审查|审核|复核|评审|部署|发布|上线|重启|回滚|合并|推进|跟进|落实|执行|安排|搞定|搞一下|弄一下|验证|复现|定位|优化|解决)`;
+const CJK_QUESTION =
+  "吗|呢|嘛|是否|能否|可否|是不是|能不能|可不可以|行不行|怎么|怎样|咋办|如何|为什么|为何|啥|什么|多少|哪个|哪些|何时|多久";
+const CJK_FYI =
+  "仅供参考|供参考|仅参考|周知|知会|抄送|备忘|知悉即可|看到即可|仅通知|仅同步|仅周知|不用回复|无需回复|不用回|无需回|不用处理|无需处理|不需要处理";
+const FYI_MENTION_RE = new RegExp(
+  `\\b(?:fyi|for your awareness|for visibility|heads up|cc\\b|no[- ]action|no[- ]reply(?: needed)?|no[- ]response(?: needed)?|just sharing|just noting|ack only|context[- ]only)\\b|${CJK_FYI}`,
+  "i",
+);
+const STRONG_ACTION_MENTION_RE = new RegExp(
+  `\\b(?:can you|could you|would you|need you|take a look|review|fix|implement|publish|deploy|restart|verify|investigate|check|confirm|approve|blocker|blocked|error|failed|failure|incident|rollback|release|ship|merge)\\b|[?？]|${CJK_ACTION}|${CJK_QUESTION}`,
+  "i",
+);
+const ACTION_MENTION_RE = new RegExp(
+  `\\b(?:please|pls|can you|could you|would you|need you|take a look|review|fix|implement|publish|deploy|restart|verify|investigate|check|confirm|approve|blocker|blocked|error|failed|failure|incident|rollback|release|ship|merge)\\b|[?？]|${CJK_ACTION}|${CJK_QUESTION}`,
+  "i",
+);
 
 /**
  * Status reactions are visible room noise. Only show "replying" when a
