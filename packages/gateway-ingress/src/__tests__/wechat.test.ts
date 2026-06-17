@@ -171,6 +171,65 @@ describe("WeChat provider adapter", () => {
     }
   });
 
+  it.each([
+    {
+      name: "non-zero ret",
+      response: () =>
+        new Response(JSON.stringify({ ret: 40001, get_updates_buf: "buf-denied", msgs: [] }), {
+          status: 200,
+        }),
+    },
+    {
+      name: "malformed JSON",
+      response: () => new Response("<html>bad gateway</html>", { status: 500 }),
+    },
+  ])("keeps a prior poll error after getupdates returns $name", async ({ response }) => {
+    vi.useFakeTimers();
+    try {
+      let pollCount = 0;
+      const fetchImpl = (async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/ilink/bot/getupdates")) {
+          pollCount += 1;
+          if (pollCount === 1) {
+            throw new TypeError("fetch failed");
+          }
+          if (pollCount === 2) return response();
+          return new Promise<Response>((_res, rej) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => rej(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          });
+        }
+        return new Response("{}", { status: 200 });
+      }) as unknown as typeof fetch;
+
+      const provider = createWechatProvider({
+        gatewayId: conn.id,
+        fetchImpl,
+      });
+      const abort = new AbortController();
+      const { ctx, activity } = makeCtx({ botToken: "secret-token" }, abort);
+      const running = provider.start(ctx);
+
+      await vi.waitFor(() => {
+        expect(activity.some((patch) => patch.lastError === "TypeError: fetch_failed")).toBe(true);
+      });
+      await vi.advanceTimersByTimeAsync(3_000);
+      await vi.waitFor(() => {
+        expect(pollCount).toBeGreaterThanOrEqual(2);
+      });
+
+      expect(activity.some((patch) => patch.lastError === null)).toBe(false);
+
+      abort.abort();
+      await running;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("polls getupdates, normalizes text, advances cursor only after emit", async () => {
     let pollCount = 0;
     const fetchImpl = (async (url: string, init?: RequestInit) => {

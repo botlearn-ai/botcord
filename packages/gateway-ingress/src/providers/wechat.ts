@@ -268,6 +268,10 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
     return { message: normalized, providerEventId: `wechat:${channelId}:${clientId}` };
   }
 
+  function isSuccessfulGetUpdates(resp: WechatGetUpdatesResp): boolean {
+    return resp.ret === 0;
+  }
+
   async function loop(ctx: ProviderRuntimeContext): Promise<void> {
     activeCtx = ctx;
     const secret = ctx.secret as WechatSecret;
@@ -311,7 +315,11 @@ export function createWechatProvider(opts: WechatProviderOptions): ProviderAdapt
           (POLL_TIMEOUT_S + 10) * 1000,
           abortAggregate.signal,
         );
-        ctx.markActivity({ lastPollAt: Date.now(), lastError: null });
+        ctx.markActivity(
+          isSuccessfulGetUpdates(resp)
+            ? { lastPollAt: Date.now(), lastError: null }
+            : { lastPollAt: Date.now() },
+        );
         const msgs = Array.isArray(resp.msgs) ? resp.msgs : [];
         const nextBuf =
           typeof resp.get_updates_buf === "string" ? resp.get_updates_buf : updatesBuf;
