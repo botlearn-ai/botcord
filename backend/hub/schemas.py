@@ -832,7 +832,10 @@ class MessageStatusReactionRequest(BaseModel):
     kind: Literal["replying"] = "replying"
     emoji: str = Field(default="⏳", min_length=1, max_length=16)
     turn_id: str = Field(..., min_length=1, max_length=128)
-    ttl_sec: int = Field(default=180, ge=5, le=600)
+    # Upper bound must match MAX_STATUS_TTL_SECONDS in
+    # hub.services.message_status_reactions; the daemon sends 1800 (30min) for
+    # the "replying" backstop TTL, and a stricter cap here 422s every call.
+    ttl_sec: int = Field(default=180, ge=5, le=1800)
 
 
 class MessageStatusReactionClearRequest(BaseModel):
