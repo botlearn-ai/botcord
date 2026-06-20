@@ -28,6 +28,7 @@ from app.auth_room import (
     effective_human_can_invite,
     effective_human_room_role,
     load_owned_agent_ids,
+    strongest_room_role,
     viewer_can_admin_room,
 )
 from app.routers.dashboard import _build_rooms_from_sql
@@ -370,6 +371,47 @@ async def _effective_human_role(
     ) or role
 
 
+async def _effective_human_roles_for_rooms(
+    db: AsyncSession,
+    rows: list[tuple[Room, RoomRole | str]],
+    *,
+    owned_agent_ids: set[str],
+) -> dict[str, RoomRole | str]:
+    """Return effective human roles for a batch of rooms.
+
+    ``effective_human_room_role`` is intentionally room-scoped for permission
+    checks, but the list endpoint needs the same calculation across every
+    returned room. Loading owned-bot memberships once avoids one room_members
+    role query per room.
+    """
+    roles_by_room: dict[str, list[RoomRole | str | None]] = {}
+    room_ids: list[str] = []
+    for room, human_role in rows:
+        room_ids.append(room.room_id)
+        candidates: list[RoomRole | str | None] = [human_role]
+        if room.owner_type == ParticipantType.agent and room.owner_id in owned_agent_ids:
+            candidates.append(RoomRole.owner)
+        roles_by_room[room.room_id] = candidates
+
+    if room_ids and owned_agent_ids:
+        owned_role_rows = await db.execute(
+            select(RoomMember.room_id, RoomMember.role).where(
+                RoomMember.room_id.in_(room_ids),
+                RoomMember.participant_type == ParticipantType.agent,
+                RoomMember.agent_id.in_(owned_agent_ids),
+            )
+        )
+        for room_id, role in owned_role_rows.all():
+            roles_by_room.setdefault(room_id, []).append(role)
+
+    effective_roles: dict[str, RoomRole | str] = {}
+    for room, human_role in rows:
+        effective_roles[room.room_id] = strongest_room_role(
+            roles_by_room.get(room.room_id, [human_role])
+        ) or human_role
+    return effective_roles
+
+
 def _serialize_human_room_summary(
     room: Room,
     my_role: RoomRole | str,
@@ -667,15 +709,15 @@ async def list_human_rooms(
         member_counts = {room_id: int(count or 0) for room_id, count in count_result.all()}
         previews_by_room = await _build_member_previews(db, room_ids)
     owned_agent_ids = await _load_owned_agent_ids(db, ctx.user_id)
+    effective_roles = await _effective_human_roles_for_rooms(
+        db, rows, owned_agent_ids=owned_agent_ids
+    )
     rooms = []
     for room, role in rows:
-        effective_role = await _effective_human_role(
-            db, role, room, ctx.user_id, owned_agent_ids
-        )
         rooms.append(
             _serialize_human_room_summary(
                 room,
-                effective_role,
+                effective_roles.get(room.room_id, role),
                 member_count=member_counts.get(room.room_id, 0),
                 members_preview=previews_by_room.get(room.room_id)
                 if member_counts.get(room.room_id, 0) > 2 else None,

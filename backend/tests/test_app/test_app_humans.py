@@ -26,7 +26,7 @@ import jwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import TextClause
 
@@ -459,6 +459,74 @@ async def test_human_effective_role_uses_highest_owned_bot_role(
     )
     assert patch.status_code == 200, patch.text
     assert patch.json()["my_role"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_list_human_rooms_batches_owned_bot_role_lookup(
+    client, seed, db_session: AsyncSession
+):
+    owned_bot = Agent(
+        agent_id="ag_batchadmin",
+        display_name="Batch Admin Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+    )
+    db_session.add(owned_bot)
+    room_ids = [f"rm_batchrole{i}" for i in range(3)]
+    for idx, room_id in enumerate(room_ids):
+        room = Room(
+            room_id=room_id,
+            name=f"Batch Room {idx}",
+            description="",
+            owner_id="hu_external01",
+            owner_type=ParticipantType.human,
+            visibility=RoomVisibility.private,
+            join_policy=RoomJoinPolicy.invite_only,
+        )
+        db_session.add(room)
+        db_session.add_all([
+            RoomMember(
+                room_id=room_id,
+                agent_id=seed["human_id"],
+                participant_type=ParticipantType.human,
+                role=RoomRole.member,
+            ),
+            RoomMember(
+                room_id=room_id,
+                agent_id=owned_bot.agent_id,
+                participant_type=ParticipantType.agent,
+                role=RoomRole.admin if idx < 2 else RoomRole.member,
+            ),
+        ])
+    await db_session.commit()
+
+    statements: list[str] = []
+
+    def _capture_statement(_conn, _cursor, statement, _parameters, _context, _executemany):
+        normalized = " ".join(statement.lower().split())
+        if (
+            "from room_members" in normalized
+            and "room_members.role" in normalized
+            and "room_members.agent_id in" in normalized
+        ):
+            statements.append(normalized)
+
+    engine = db_session.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", _capture_statement)
+    try:
+        resp = await client.get(
+            "/api/humans/me/rooms",
+            headers={"Authorization": f"Bearer {seed['token']}"},
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", _capture_statement)
+
+    assert resp.status_code == 200, resp.text
+    rooms = {room["room_id"]: room for room in resp.json()["rooms"]}
+    assert rooms["rm_batchrole0"]["my_role"] == "admin"
+    assert rooms["rm_batchrole1"]["my_role"] == "admin"
+    assert rooms["rm_batchrole2"]["my_role"] == "member"
+    assert len(statements) == 1
 
 
 @pytest.mark.asyncio
