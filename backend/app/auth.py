@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 import jwt
 from jwt import PyJWKClient
 from fastapi import Depends, Header, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func as sa_func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -243,16 +244,31 @@ async def _load_user_and_roles(
         db.add(user)
 
         # Assign "member" role if it exists
-        role_result = await db.execute(
-            select(Role).where(Role.name == "member")
-        )
+        with db.no_autoflush:
+            role_result = await db.execute(
+                select(Role).where(Role.name == "member")
+            )
         member_role = role_result.scalar_one_or_none()
         if member_role:
             db.add(UserRole(user_id=user.id, role_id=member_role.id))
 
-        await db.commit()
-        await db.refresh(user)
-        _logger.info("Auto-created local user %s for supabase_user_id %s", user.id, supabase_user_id)
+        try:
+            await db.commit()
+            await db.refresh(user)
+            _logger.info("Auto-created local user %s for supabase_user_id %s", user.id, supabase_user_id)
+        except IntegrityError:
+            await db.rollback()
+            result = await db.execute(
+                select(User).where(User.supabase_user_id == uid)
+            )
+            user = result.scalar_one_or_none()
+            if user is None:
+                raise
+            _logger.info(
+                "Loaded concurrently auto-created local user %s for supabase_user_id %s",
+                user.id,
+                supabase_user_id,
+            )
 
     if jwt_has_beta_access and not user.beta_access:
         user.beta_access = True

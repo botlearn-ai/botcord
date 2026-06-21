@@ -8,6 +8,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from unittest.mock import AsyncMock
 
@@ -208,6 +209,93 @@ async def test_get_me_auto_creates_user(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert data["display_name"] == "User"  # fallback display name
+
+
+@pytest.mark.asyncio
+async def test_get_me_auto_create_duplicate_bootstrap_selects_existing_user(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch,
+):
+    supabase_uuid = uuid.uuid4()
+    role_id = uuid.uuid4()
+    role = Role(
+        id=role_id,
+        name="member",
+        display_name="Member",
+        is_system=True,
+        priority=0,
+    )
+    db_session.add(role)
+    await db_session.commit()
+
+    original_commit = db_session.commit
+    original_rollback = db_session.rollback
+    winner_id = uuid.uuid4()
+    raced = False
+
+    async def _commit_with_duplicate_bootstrap_race():
+        nonlocal raced
+        pending_user = next(
+            (
+                obj
+                for obj in db_session.new
+                if isinstance(obj, User) and obj.supabase_user_id == supabase_uuid
+            ),
+            None,
+        )
+        if raced or pending_user is None:
+            await original_commit()
+            return
+
+        raced = True
+        await original_rollback()
+        db_session.add(
+            User(
+                id=winner_id,
+                supabase_user_id=supabase_uuid,
+                display_name="Race Winner",
+                email="race@example.com",
+                status="active",
+            )
+        )
+        db_session.add(
+            UserRole(
+                id=uuid.uuid4(),
+                user_id=winner_id,
+                role_id=role_id,
+            )
+        )
+        await original_commit()
+        raise IntegrityError(
+            "INSERT INTO public.users",
+            {},
+            Exception("duplicate key value violates unique constraint"),
+        )
+
+    monkeypatch.setattr(db_session, "commit", _commit_with_duplicate_bootstrap_race)
+
+    token = _make_supabase_token(str(supabase_uuid), email="race@example.com")
+    resp = await client.get(
+        "/api/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    assert raced is True
+    data = resp.json()
+    assert data["id"] == str(winner_id)
+    assert data["display_name"] == "Race Winner"
+    assert data["email"] == "race@example.com"
+    assert data["roles"] == ["member"]
+
+    users = (
+        await db_session.execute(
+            select(User).where(User.supabase_user_id == supabase_uuid)
+        )
+    ).scalars().all()
+    assert len(users) == 1
+    assert users[0].id == winner_id
 
 
 @pytest.mark.asyncio
