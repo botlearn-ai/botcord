@@ -212,6 +212,48 @@ async def test_get_me_auto_creates_user(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_get_me_auto_creates_user_with_existing_member_role(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    role = Role(
+        id=uuid.uuid4(),
+        name="member",
+        display_name="Member",
+        is_system=True,
+        priority=0,
+    )
+    db_session.add(role)
+    await db_session.commit()
+
+    supabase_uuid = uuid.uuid4()
+    token = _make_supabase_token(str(supabase_uuid), email="new@example.com")
+    resp = await client.get(
+        "/api/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["roles"] == ["member"]
+
+    user = (
+        await db_session.execute(
+            select(User).where(User.supabase_user_id == supabase_uuid)
+        )
+    ).scalar_one()
+    user_role = (
+        await db_session.execute(
+            select(UserRole).where(
+                UserRole.user_id == user.id,
+                UserRole.role_id == role.id,
+            )
+        )
+    ).scalar_one()
+    assert user_role.user_id == user.id
+
+
+@pytest.mark.asyncio
 async def test_get_me_auto_create_duplicate_bootstrap_selects_existing_user(
     client: AsyncClient,
     db_session: AsyncSession,
@@ -229,12 +271,13 @@ async def test_get_me_auto_create_duplicate_bootstrap_selects_existing_user(
     db_session.add(role)
     await db_session.commit()
 
+    original_flush = db_session.flush
     original_commit = db_session.commit
     original_rollback = db_session.rollback
     winner_id = uuid.uuid4()
     raced = False
 
-    async def _commit_with_duplicate_bootstrap_race():
+    async def _flush_with_duplicate_bootstrap_race(objects=None):
         nonlocal raced
         pending_user = next(
             (
@@ -245,7 +288,7 @@ async def test_get_me_auto_create_duplicate_bootstrap_selects_existing_user(
             None,
         )
         if raced or pending_user is None:
-            await original_commit()
+            await original_flush(objects)
             return
 
         raced = True
@@ -266,6 +309,7 @@ async def test_get_me_auto_create_duplicate_bootstrap_selects_existing_user(
                 role_id=role_id,
             )
         )
+        await original_flush()
         await original_commit()
         raise IntegrityError(
             "INSERT INTO public.users",
@@ -273,7 +317,7 @@ async def test_get_me_auto_create_duplicate_bootstrap_selects_existing_user(
             Exception("duplicate key value violates unique constraint"),
         )
 
-    monkeypatch.setattr(db_session, "commit", _commit_with_duplicate_bootstrap_race)
+    monkeypatch.setattr(db_session, "flush", _flush_with_duplicate_bootstrap_race)
 
     token = _make_supabase_token(str(supabase_uuid), email="race@example.com")
     resp = await client.get(
