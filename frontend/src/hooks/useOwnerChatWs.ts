@@ -160,6 +160,16 @@ export function useOwnerChatWs({
         store.getState().upsertMessage(notifMsg);
       },
 
+      onRunFailed: (err) => {
+        store.getState().failRun({
+          hubMsgId: err.hub_msg_id ?? null,
+          traceId: err.trace_id ?? err.hub_msg_id ?? null,
+          error: err.error?.message || err.message || "Cloud agent is temporarily unavailable. Please retry in a moment.",
+          code: err.error?.code || null,
+          createdAt: err.created_at || null,
+        });
+      },
+
       onStatusChange: (connected) => {
         if (connected) {
           store.getState().setWsConnected(true);

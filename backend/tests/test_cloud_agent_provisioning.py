@@ -18,12 +18,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import hub.services.cloud_agent as cloud_agent_module
-from hub.enums import AttentionMode
+from hub.enums import AttentionMode, MessageState
 from hub.models import (
     Agent,
     Base,
     CloudAgentInstance,
     CloudDaemonInstance,
+    MessageRecord,
 )
 from hub.routers.cloud_daemon_control import (
     CloudDaemonDispatchError,
@@ -470,6 +471,64 @@ async def test_resume_ready_agent_offline_rotates_key_for_reprovision(db_session
 
 
 @pytest.mark.asyncio
+async def test_resume_paused_agent_with_stale_online_conn_rotates_key(
+    db_session,
+):
+    client = FakeE2BSandboxClient()
+    service = _make_e2b_service(client=client)
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+
+    conn, ws = await _register_fake_conn(
+        view.cloud_daemon_instance_id, "dm_stale_online"
+    )
+    try:
+        t = asyncio.create_task(
+            _ack_frame_when_sent(conn, ws, expected_type="provision_agent")
+        )
+        await service.provision_pending_for_cloud_daemon(
+            db_session, cloud_daemon_instance_id=view.cloud_daemon_instance_id
+        )
+        await t
+
+        cai = await db_session.scalar(
+            select(CloudAgentInstance).where(
+                CloudAgentInstance.agent_id == view.agent_id
+            )
+        )
+        cdi = await db_session.scalar(
+            select(CloudDaemonInstance).where(
+                CloudDaemonInstance.id == view.cloud_daemon_instance_id
+            )
+        )
+        assert cai is not None
+        assert cdi is not None
+        assert "provisioning" not in (cai.metadata_json or {})
+
+        # Simulate an idle-paused sandbox while the old control WS is still
+        # registered. This used to skip _ensure_provisioning_metadata because
+        # daemon_online=True, then fail as missing_credentials on replay.
+        cai.status = "paused"
+        cdi.status = "paused"
+        await db_session.commit()
+
+        resumed = await service.resume_cloud_agent(
+            db_session, user_id=user_id, agent_id=view.agent_id
+        )
+
+        assert resumed.status == "provisioning"
+        await db_session.refresh(cai)
+        provisioning = (cai.metadata_json or {}).get("provisioning")
+        assert provisioning["private_key_b64"]
+        assert provisioning["public_key_b64"]
+        assert provisioning["key_id"]
+    finally:
+        await _registry_for_tests().unregister(conn)
+
+
+@pytest.mark.asyncio
 async def test_resume_while_starting_reuses_inflight_start(db_session):
     client = FakeE2BSandboxClient()
     service = _make_e2b_service(client=client)
@@ -530,6 +589,90 @@ async def test_provision_dispatch_offline_records_error(db_session):
     )
     assert refreshed.status == "provisioning"
     assert refreshed.error_code == "cloud_daemon_offline"
+
+
+@pytest.mark.asyncio
+async def test_missing_credentials_fails_pending_owner_chat_and_reports(
+    db_session,
+    monkeypatch,
+):
+    service = _make_e2b_service()
+    user_id = uuid.uuid4()
+    view = await service.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+
+    row = (
+        await db_session.execute(
+            select(CloudAgentInstance, Agent, CloudDaemonInstance)
+            .join(Agent, Agent.agent_id == CloudAgentInstance.agent_id)
+            .join(
+                CloudDaemonInstance,
+                CloudDaemonInstance.id == CloudAgentInstance.cloud_daemon_instance_id,
+            )
+            .where(CloudAgentInstance.agent_id == view.agent_id)
+        )
+    ).one()
+    cai, agent, cdi = row
+    cai.status = "ready"
+    cai.metadata_json = {}
+    record = MessageRecord(
+        hub_msg_id="h_owner_missing_credentials",
+        msg_id=str(uuid.uuid4()),
+        sender_id=view.agent_id,
+        receiver_id=view.agent_id,
+        room_id="rm_oc_missing_credentials",
+        state=MessageState.queued,
+        envelope_json=json.dumps(
+            {
+                "type": "message",
+                "payload": {"text": "hello"},
+            }
+        ),
+        ttl_sec=3600,
+        mentioned=True,
+        source_type="dashboard_user_chat",
+        source_session_kind="owner_chat",
+    )
+    db_session.add(record)
+    await db_session.commit()
+
+    from hub.routers import owner_chat_ws
+
+    sent_errors: list[dict] = []
+    captured: list[tuple[str, str]] = []
+
+    async def _fake_notify_oc_ws_error(**kwargs):
+        sent_errors.append(kwargs)
+
+    monkeypatch.setattr(owner_chat_ws, "notify_oc_ws_error", _fake_notify_oc_ws_error)
+    monkeypatch.setattr(
+        cloud_agent_module.sentry_sdk,
+        "capture_message",
+        lambda message, level=None: captured.append((message, level)),
+    )
+
+    await service._provision_one(db_session, cai, agent, cdi)
+
+    await db_session.refresh(cai)
+    await db_session.refresh(record)
+    assert cai.status == "failed"
+    assert cai.error_code == "missing_credentials"
+    assert record.state == MessageState.failed
+    assert record.last_error == "missing_credentials"
+    assert sent_errors == [
+        {
+            "room_id": "rm_oc_missing_credentials",
+            "hub_msg_id": "h_owner_missing_credentials",
+            "trace_id": "h_owner_missing_credentials",
+            "code": "missing_credentials",
+            "message": "Cloud agent is temporarily unavailable. Please retry in a moment.",
+            "retryable": True,
+        }
+    ]
+    assert captured == [
+        ("cloud agent terminal provisioning failure", "error")
+    ]
 
 
 @pytest.mark.asyncio

@@ -330,6 +330,7 @@ export function dashboardMsgToOwnerChat(
   agentName: string,
 ): OwnerChatMessage {
   const isUser = msg.source_type === "dashboard_user_chat";
+  const failedUserMessage = isUser && msg.state === "failed";
   return {
     clientId: msg.hub_msg_id,
     hubMsgId: msg.hub_msg_id,
@@ -338,7 +339,8 @@ export function dashboardMsgToOwnerChat(
     payload: msg.payload,
     attachments: (msg.payload?.attachments as Attachment[] | undefined) ?? undefined,
     streamBlocks: [],
-    status: "delivered",
+    status: failedUserMessage ? "failed" : "delivered",
+    error: failedUserMessage ? "Cloud agent is temporarily unavailable. Please retry in a moment." : undefined,
     createdAt: msg.created_at,
     senderName: isUser ? "You" : (msg.sender_name || agentName),
     type:
@@ -348,6 +350,7 @@ export function dashboardMsgToOwnerChat(
           ? "error"
           : "message",
     traceId: !isUser ? dashboardMessageTraceId(msg) : undefined,
+    sendText: failedUserMessage ? msg.text || "" : undefined,
     replyPreview: msg.reply_preview ?? undefined,
   };
 }
@@ -360,6 +363,21 @@ export interface OwnerChatWsMessage {
   text: string;
   created_at: string;
   ext?: Record<string, unknown>;
+}
+
+export interface OwnerChatWsError {
+  type: "error";
+  message: string;
+  hub_msg_id?: string;
+  trace_id?: string;
+  room_id?: string;
+  client_msg_id?: string;
+  created_at?: string;
+  error?: {
+    code?: string;
+    message?: string;
+    retryable?: boolean;
+  };
 }
 
 export interface OwnerChatNotification {

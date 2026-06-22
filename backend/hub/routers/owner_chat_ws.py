@@ -37,7 +37,7 @@ from hub.routers.hub import (
     build_message_realtime_event,
     notify_inbox,
 )
-from hub.services.cloud_agent import resume_cloud_agent_for_inbox
+from hub.services.cloud_agent import CloudAgentError, resume_cloud_agent_for_inbox
 from hub.validators import normalize_file_url
 from hub import owner_chat_cache
 
@@ -80,6 +80,12 @@ def _oc_ws_connection_counts(key: tuple[str, str] | None = None) -> dict[str, in
     if key is not None:
         counts["pair_connections"] = len(_oc_ws_connections.get(key, set()))
     return counts
+
+
+def _owner_chat_cloud_error_message(code: str | None) -> str:
+    if code == "not_ready":
+        return "Cloud agent is still starting. Please retry in a moment."
+    return "Cloud agent is temporarily unavailable. Please retry in a moment."
 
 
 def _register_ws(user_id: str, agent_id: str, ws: WebSocket) -> None:
@@ -291,6 +297,53 @@ async def notify_oc_ws_message(
     # (no-op when Redis is disabled).
     for tid in traces_to_complete:
         await owner_chat_cache.mark_run_completed(tid, final_msg_id=hub_msg_id)
+
+
+async def notify_oc_ws_error(
+    *,
+    room_id: str,
+    hub_msg_id: str,
+    code: str,
+    message: str,
+    trace_id: str | None = None,
+    retryable: bool = True,
+    created_at: datetime.datetime | None = None,
+) -> None:
+    """Push a terminal owner-chat run error to connected clients.
+
+    ``hub_msg_id`` is the trigger message id. Clients use it to mark the
+    user turn failed and stop any local typing/streaming placeholder.
+    """
+    target_keys: list[tuple[str, str]] = []
+    for (uid, aid), ws_set in _oc_ws_connections.items():
+        if ws_set and _build_owner_chat_room_id(uid, aid) == room_id:
+            target_keys.append((uid, aid))
+
+    effective_trace_id = trace_id or hub_msg_id
+    ts = (
+        created_at.isoformat()
+        if created_at
+        else datetime.datetime.now(datetime.timezone.utc).isoformat()
+    )
+    frame = {
+        "type": "error",
+        "hub_msg_id": hub_msg_id,
+        "trace_id": effective_trace_id,
+        "room_id": room_id,
+        "message": message,
+        "created_at": ts,
+        "error": {
+            "code": code,
+            "message": message,
+            "retryable": retryable,
+        },
+    }
+
+    for uid, aid in target_keys:
+        await _send_to_oc_ws(uid, aid, frame)
+
+    await owner_chat_cache.mark_run_failed(effective_trace_id)
+    _cleanup_trace(effective_trace_id)
 
 
 async def notify_oc_ws_typing(*, agent_id: str, room_id: str) -> None:
@@ -564,7 +617,59 @@ async def owner_chat_ws(ws: WebSocket):
                         previews = await _load_reply_previews(db, {canonical_reply_msg_id})
                         reply_preview = previews.get(canonical_reply_msg_id)
 
-                    cloud_resume_ok = await resume_cloud_agent_for_inbox(db, agent_id)
+                    try:
+                        cloud_resume_ok = await resume_cloud_agent_for_inbox(
+                            db,
+                            agent_id,
+                            raise_on_error=True,
+                        )
+                    except CloudAgentError as exc:
+                        logger.warning(
+                            "Owner-chat cloud resume failed before enqueue: "
+                            "agent=%s code=%s err=%s",
+                            agent_id,
+                            exc.code,
+                            exc.message,
+                        )
+                        resume_err: dict[str, Any] = {
+                            "type": "error",
+                            "message": _owner_chat_cloud_error_message(exc.code),
+                            "error": {
+                                "code": exc.code,
+                                "message": _owner_chat_cloud_error_message(exc.code),
+                                "retryable": True,
+                            },
+                        }
+                        if client_msg_id:
+                            resume_err["client_msg_id"] = str(client_msg_id)[:64]
+                        await ws.send_json(resume_err)
+                        continue
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error(
+                            "Owner-chat cloud resume crashed before enqueue: "
+                            "agent=%s err=%s",
+                            agent_id,
+                            exc,
+                            exc_info=True,
+                        )
+                        with sentry_sdk.new_scope() as scope:
+                            scope.set_tag("component", "owner_chat")
+                            scope.set_tag("agent_id", agent_id)
+                            scope.set_tag("owner_chat.error_code", "cloud_resume_failed")
+                            sentry_sdk.capture_exception(exc)
+                        resume_err = {
+                            "type": "error",
+                            "message": _owner_chat_cloud_error_message(None),
+                            "error": {
+                                "code": "cloud_resume_failed",
+                                "message": _owner_chat_cloud_error_message(None),
+                                "retryable": True,
+                            },
+                        }
+                        if client_msg_id:
+                            resume_err["client_msg_id"] = str(client_msg_id)[:64]
+                        await ws.send_json(resume_err)
+                        continue
 
                     # Create MessageRecord (same logic as dashboard_chat.send_chat_message)
                     msg_id = str(uuid.uuid4())

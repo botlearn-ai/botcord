@@ -171,6 +171,10 @@ function extractErrorMessage(body: Record<string, unknown>, fallback: string): s
   if (typeof body.error === "string") return body.error;
   const detail = body.detail;
   if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
   if (Array.isArray(detail)) {
     return detail.map((d: { msg?: string }) => d.msg ?? JSON.stringify(d)).join("; ");
   }

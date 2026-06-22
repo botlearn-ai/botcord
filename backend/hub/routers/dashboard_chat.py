@@ -9,7 +9,8 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, Request
+import sentry_sdk
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -249,11 +250,27 @@ async def send_chat_message(
                 agent_id=agent_id,
             )
         except (CloudAgentError, ValueError) as exc:
+            code = getattr(exc, "code", "cloud_resume_failed")
+            message = (
+                "Cloud agent is still starting. Please retry in a moment."
+                if code == "not_ready"
+                else "Cloud agent is temporarily unavailable. Please retry in a moment."
+            )
             logger.warning(
-                "Dashboard chat cloud resume skipped: agent=%s err=%s",
+                "Dashboard chat cloud resume failed before enqueue: "
+                "agent=%s code=%s err=%s",
                 agent_id,
+                code,
                 exc,
             )
+            raise HTTPException(
+                status_code=getattr(exc, "http_status", 409),
+                detail={
+                    "code": code,
+                    "message": message,
+                    "retryable": True,
+                },
+            ) from exc
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "Dashboard chat cloud resume failed: agent=%s err=%s",
@@ -261,6 +278,19 @@ async def send_chat_message(
                 exc,
                 exc_info=True,
             )
+            with sentry_sdk.new_scope() as scope:
+                scope.set_tag("component", "dashboard_chat")
+                scope.set_tag("agent_id", agent_id)
+                scope.set_tag("dashboard_chat.error_code", "cloud_resume_failed")
+                sentry_sdk.capture_exception(exc)
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "cloud_resume_failed",
+                    "message": "Cloud agent is temporarily unavailable. Please retry in a moment.",
+                    "retryable": True,
+                },
+            ) from exc
 
     # Ensure room exists
     room_id = await _ensure_owner_chat_room(db, user_id, agent_id, agent_display_name)

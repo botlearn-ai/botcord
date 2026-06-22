@@ -25,6 +25,7 @@ from dataclasses import dataclass
 import copy
 from typing import Any
 
+import sentry_sdk
 from nacl.signing import SigningKey as NaClSigningKey
 from sqlalchemy import func, or_, select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,6 +78,10 @@ from hub.services.wallet import get_or_create_wallet
 from hub.services.new_api import NewApiError, NewApiService
 
 logger = logging.getLogger(__name__)
+
+_OWNER_CHAT_CLOUD_AGENT_RETRY_MESSAGE = (
+    "Cloud agent is temporarily unavailable. Please retry in a moment."
+)
 
 
 class CloudAgentError(Exception):
@@ -806,12 +811,13 @@ class CloudAgentService:
                 await db.refresh(cdi)
                 await db.refresh(agent)
                 return _make_view(agent, cai, cdi)
-            if not daemon_online:
-                _ensure_provisioning_metadata(db, cai, agent)
-                cai.status = "provisioning"
-                cai.error_code = None
-                cai.error_message = None
-                await db.commit()
+            _ensure_provisioning_metadata(db, cai, agent)
+            cai.status = "provisioning"
+            cai.error_code = None
+            cai.error_message = None
+            cdi.error_code = None
+            cdi.error_message = None
+            await db.commit()
             launch_token = _cloud_daemon_launch_token_for_start(cdi)
             handle = await provider.create_or_resume(
                 cloud_daemon_instance_id=cdi.id,
@@ -1334,6 +1340,93 @@ class CloudAgentService:
                 changed = True
         if changed:
             await db.commit()
+
+    async def _fail_pending_owner_chat_messages(
+        self,
+        db: AsyncSession,
+        *,
+        agent_id: str,
+        code: str,
+        internal_message: str,
+        public_message: str = _OWNER_CHAT_CLOUD_AGENT_RETRY_MESSAGE,
+    ) -> int:
+        """Fail active owner-chat turns and notify live owner-chat clients.
+
+        Owner-chat callers often wait synchronously on the WS for a terminal
+        frame. Leaving the trigger message queued after a cloud-agent lifecycle
+        failure makes those callers wait for their outer timeout instead of
+        retrying immediately.
+        """
+        records = (
+            await db.execute(
+                select(MessageRecord).where(
+                    MessageRecord.receiver_id == agent_id,
+                    MessageRecord.source_type == "dashboard_user_chat",
+                    MessageRecord.source_session_kind == "owner_chat",
+                    MessageRecord.state.in_(
+                        (MessageState.queued, MessageState.processing)
+                    ),
+                )
+            )
+        ).scalars().all()
+        if not records:
+            return 0
+
+        for record in records:
+            record.state = MessageState.failed
+            record.last_error = code
+        await db.flush()
+
+        from hub.routers.owner_chat_ws import notify_oc_ws_error
+
+        for record in records:
+            if not record.room_id:
+                continue
+            await notify_oc_ws_error(
+                room_id=record.room_id,
+                hub_msg_id=record.hub_msg_id,
+                trace_id=record.hub_msg_id,
+                code=code,
+                message=public_message,
+                retryable=True,
+            )
+
+        logger.warning(
+            "failed pending owner-chat messages for cloud agent: "
+            "agent=%s code=%s count=%d err=%s",
+            agent_id,
+            code,
+            len(records),
+            internal_message,
+        )
+        return len(records)
+
+    def _report_cloud_agent_terminal_error(
+        self,
+        *,
+        agent_id: str,
+        cloud_daemon_instance_id: str,
+        code: str,
+        message: str,
+    ) -> None:
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("component", "cloud_agent")
+            scope.set_tag("cloud_agent.error_code", code)
+            scope.set_tag("agent_id", agent_id)
+            scope.set_tag("cloud_daemon_instance_id", cloud_daemon_instance_id)
+            scope.set_context(
+                "cloud_agent_failure",
+                {
+                    "agent_id": agent_id,
+                    "cloud_daemon_instance_id": cloud_daemon_instance_id,
+                    "code": code,
+                    "message": message,
+                },
+            )
+            sentry_sdk.capture_message(
+                "cloud agent terminal provisioning failure",
+                level="error",
+            )
 
     async def provision_pending_for_cloud_daemon(
         self,
@@ -1859,10 +1952,22 @@ class CloudAgentService:
         key_id = provisioning.get("key_id")
         public_key_b64 = provisioning.get("public_key_b64")
         if not private_key_b64 or not key_id:
+            code = "missing_credentials"
+            message = "cloud_agent_instances.metadata_json lacks provisioning credentials"
             cai.status = "failed"
-            cai.error_code = "missing_credentials"
-            cai.error_message = (
-                "cloud_agent_instances.metadata_json lacks provisioning credentials"
+            cai.error_code = code
+            cai.error_message = message
+            await self._fail_pending_owner_chat_messages(
+                db,
+                agent_id=cai.agent_id,
+                code=code,
+                internal_message=message,
+            )
+            self._report_cloud_agent_terminal_error(
+                agent_id=cai.agent_id,
+                cloud_daemon_instance_id=cdi.id,
+                code=code,
+                message=message,
             )
             await db.commit()
             return
@@ -1920,6 +2025,19 @@ class CloudAgentService:
             )
             cai.error_code = exc.code
             cai.error_message = exc.message
+            failed_count = await self._fail_pending_owner_chat_messages(
+                db,
+                agent_id=cai.agent_id,
+                code=exc.code,
+                internal_message=exc.message,
+            )
+            if failed_count:
+                self._report_cloud_agent_terminal_error(
+                    agent_id=cai.agent_id,
+                    cloud_daemon_instance_id=cdi.id,
+                    code=exc.code,
+                    message=exc.message,
+                )
             await db.commit()
             return
 
@@ -1927,6 +2045,19 @@ class CloudAgentService:
             err = ack.get("error") or {}
             cai.error_code = err.get("code") or "provision_rejected"
             cai.error_message = err.get("message") or "daemon rejected provision_agent"
+            failed_count = await self._fail_pending_owner_chat_messages(
+                db,
+                agent_id=cai.agent_id,
+                code=cai.error_code,
+                internal_message=cai.error_message,
+            )
+            if failed_count:
+                self._report_cloud_agent_terminal_error(
+                    agent_id=cai.agent_id,
+                    cloud_daemon_instance_id=cdi.id,
+                    code=cai.error_code,
+                    message=cai.error_message,
+                )
             await db.commit()
             return
 
@@ -2313,6 +2444,8 @@ async def _notify_inbox(agent_id: str, db: AsyncSession) -> int:
 async def resume_cloud_agent_for_inbox(
     db: AsyncSession,
     agent_id: str,
+    *,
+    raise_on_error: bool = False,
 ) -> bool:
     """Best-effort wakeup for a cloud-hosted agent with queued inbox work.
 
@@ -2324,6 +2457,8 @@ async def resume_cloud_agent_for_inbox(
         agent = await db.scalar(select(Agent).where(Agent.agent_id == agent_id))
     except Exception as exc:  # noqa: BLE001
         logger.debug("cloud inbox resume lookup failed: agent=%s err=%s", agent_id, exc)
+        if raise_on_error:
+            raise
         return False
 
     if agent is None or agent.hosting_kind != "cloud" or agent.user_id is None:
@@ -2343,6 +2478,8 @@ async def resume_cloud_agent_for_inbox(
             exc.code,
             exc.message,
         )
+        if raise_on_error:
+            raise
     except Exception as exc:  # noqa: BLE001
         logger.error(
             "cloud inbox resume failed: agent=%s err=%s",
@@ -2350,6 +2487,8 @@ async def resume_cloud_agent_for_inbox(
             exc,
             exc_info=True,
         )
+        if raise_on_error:
+            raise
     return False
 
 
