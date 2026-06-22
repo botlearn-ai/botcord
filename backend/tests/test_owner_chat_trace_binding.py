@@ -120,5 +120,60 @@ async def test_legacy_no_trace_id_falls_back_to_most_recent(
         owner_chat_ws._cleanup_trace(newer)
 
 
+@pytest.mark.asyncio
+async def test_error_frame_fails_explicit_trace_and_preserves_shape(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    user_id = "u_error"
+    agent_id = "ag_error"
+    room_id = owner_chat_ws._build_owner_chat_room_id(user_id, agent_id)
+    trace_id = "h_trigger_error"
+    owner_chat_ws._oc_trace_subs[trace_id] = (user_id, agent_id)
+    owner_chat_ws._oc_trace_block_count[trace_id] = 3
+
+    ws = _FakeWS()
+    owner_chat_ws._oc_ws_connections[(user_id, agent_id)] = {ws}
+
+    failed: list[str] = []
+
+    async def _fake_mark_failed(tid: str) -> None:
+        failed.append(tid)
+
+    monkeypatch.setattr(
+        owner_chat_ws.owner_chat_cache, "mark_run_failed", _fake_mark_failed
+    )
+
+    try:
+        await owner_chat_ws.notify_oc_ws_error(
+            room_id=room_id,
+            hub_msg_id=trace_id,
+            trace_id=trace_id,
+            code="missing_credentials",
+            message="Cloud agent is temporarily unavailable. Please retry in a moment.",
+        )
+
+        assert ws.sent == [
+            {
+                "type": "error",
+                "hub_msg_id": trace_id,
+                "trace_id": trace_id,
+                "room_id": room_id,
+                "message": "Cloud agent is temporarily unavailable. Please retry in a moment.",
+                "created_at": ws.sent[0]["created_at"],
+                "error": {
+                    "code": "missing_credentials",
+                    "message": "Cloud agent is temporarily unavailable. Please retry in a moment.",
+                    "retryable": True,
+                },
+            }
+        ]
+        assert failed == [trace_id]
+        assert trace_id not in owner_chat_ws._oc_trace_subs
+        assert trace_id not in owner_chat_ws._oc_trace_block_count
+    finally:
+        owner_chat_ws._oc_ws_connections.pop((user_id, agent_id), None)
+        owner_chat_ws._cleanup_trace(trace_id)
+
+
 async def _noop() -> None:
     return None

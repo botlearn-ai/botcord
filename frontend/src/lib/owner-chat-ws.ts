@@ -3,7 +3,7 @@
  * Connects to Hub's /dashboard/chat/ws for real-time messaging
  * and execution block streaming.
  */
-import type { OwnerChatWsMessage, OwnerChatNotification, StreamBlockEntry } from "./types";
+import type { OwnerChatWsError, OwnerChatWsMessage, OwnerChatNotification, StreamBlockEntry } from "./types";
 
 export interface OwnerChatWsOptions {
   hubBaseUrl: string;
@@ -13,6 +13,7 @@ export interface OwnerChatWsOptions {
   onStreamBlock: (block: StreamBlockEntry) => void;
   onTyping?: () => void;
   onNotification?: (notif: OwnerChatNotification) => void;
+  onRunFailed?: (error: OwnerChatWsError) => void;
   onAuthOk: (data: { agent_id: string; room_id: string }) => void;
   onStatusChange?: (connected: boolean) => void;
   onSendFailed?: (text: string, clientMsgId?: string) => void;
@@ -118,8 +119,12 @@ export function createOwnerChatWs(opts: OwnerChatWsOptions): OwnerChatWsClient {
 
           case "error":
             console.warn("[owner-chat-ws] Server error:", data.message);
-            // Server rejected a send — notify caller so pending msg can be marked failed
-            opts.onSendFailed?.(data.message || "Server error", data.client_msg_id);
+            if (data.hub_msg_id || data.trace_id) {
+              opts.onRunFailed?.(data as OwnerChatWsError);
+            } else {
+              // Server rejected a send — notify caller so pending msg can be marked failed
+              opts.onSendFailed?.(data.message || "Server error", data.client_msg_id);
+            }
             break;
         }
       };

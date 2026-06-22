@@ -198,6 +198,13 @@ export interface OwnerChatState {
   addOptimistic: (msg: OwnerChatMessage) => void;
   confirmOptimistic: (clientId: string, hubMsgId: string, createdAt: string, attachments?: Attachment[]) => void;
   failOptimistic: (clientId: string, error: string) => void;
+  failRun: (input: {
+    hubMsgId?: string | null;
+    traceId?: string | null;
+    error: string;
+    code?: string | null;
+    createdAt?: string | null;
+  }) => void;
   resetForRetry: (clientId: string) => void;
 
   // Server-delivered messages
@@ -403,6 +410,55 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           : m
       ),
     })),
+
+  failRun: ({ hubMsgId, traceId, error, code, createdAt }) => {
+    const errorId = `err_${traceId || hubMsgId || Date.now()}`;
+    set((state) => {
+      let hasErrorMessage = false;
+      const messages = state.messages
+        .map((m) => {
+          if (m.clientId === errorId) hasErrorMessage = true;
+          if (hubMsgId && m.sender === "user" && m.hubMsgId === hubMsgId) {
+            return {
+              ...m,
+              status: "failed" as const,
+              error,
+              sendText: m.sendText ?? m.text,
+            };
+          }
+          return m;
+        })
+        .filter((m) => !(traceId && m.status === "streaming" && m.traceId === traceId));
+
+      if (!hasErrorMessage) {
+        messages.push({
+          clientId: errorId,
+          hubMsgId: errorId,
+          sender: "agent",
+          text: error,
+          payload: {
+            error: {
+              code: code || "cloud_agent_unavailable",
+              message: error,
+              retryable: true,
+            },
+          },
+          streamBlocks: [],
+          status: "delivered",
+          createdAt: createdAt || new Date().toISOString(),
+          senderName: state.agentName,
+          type: "error",
+          traceId: traceId || undefined,
+        });
+      }
+
+      return {
+        messages,
+        agentTyping: false,
+        activeTraceId: state.activeTraceId === traceId ? null : state.activeTraceId,
+      };
+    });
+  },
 
   resetForRetry: (clientId) =>
     set((state) => ({

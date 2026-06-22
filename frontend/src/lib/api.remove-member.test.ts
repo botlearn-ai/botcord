@@ -65,4 +65,27 @@ describe("humansApi.removeRoomMember", () => {
     const { humansApi, ApiError } = await import("./api");
     await expect(humansApi.removeRoomMember("rm_x", "hu_x")).rejects.toBeInstanceOf(ApiError);
   });
+
+  it("surfaces structured FastAPI detail.message responses", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          detail: {
+            code: "cloud_resume_failed",
+            message: "Cloud agent is temporarily unavailable. Please retry in a moment.",
+            retryable: true,
+          },
+        }),
+        {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    const { api } = await import("./api");
+    await expect(api.sendUserChatMessage("hello", undefined, "ag_cloud")).rejects.toThrow(
+      "Cloud agent is temporarily unavailable. Please retry in a moment.",
+    );
+  });
 });

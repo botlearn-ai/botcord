@@ -212,6 +212,59 @@ describe("useOwnerChatStore empty message handling", () => {
   });
 });
 
+describe("useOwnerChatStore run failure handling", () => {
+  beforeEach(() => {
+    useOwnerChatStore.getState().reset();
+    useDashboardChatStore.setState({
+      ownedAgentRooms: [makeOwnedAgentRoom()],
+      optimisticOwnerChatRooms: {},
+    });
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+  });
+
+  it("marks the trigger message failed and appends an agent error", () => {
+    useOwnerChatStore.getState().addOptimistic(makeOwnerChatMessage({
+      clientId: "client_turn",
+      text: "hello",
+    }));
+    useOwnerChatStore.getState().confirmOptimistic(
+      "client_turn",
+      "h_turn",
+      "2026-05-19T09:00:01.000Z",
+    );
+
+    useOwnerChatStore.getState().failRun({
+      hubMsgId: "h_turn",
+      traceId: "h_turn",
+      error: "Cloud agent is temporarily unavailable. Please retry in a moment.",
+      code: "missing_credentials",
+      createdAt: "2026-05-19T09:00:02.000Z",
+    });
+
+    expect(useOwnerChatStore.getState().messages).toMatchObject([
+      {
+        clientId: "client_turn",
+        hubMsgId: "h_turn",
+        status: "failed",
+        error: "Cloud agent is temporarily unavailable. Please retry in a moment.",
+        sendText: "hello",
+      },
+      {
+        clientId: "err_h_turn",
+        type: "error",
+        sender: "agent",
+        text: "Cloud agent is temporarily unavailable. Please retry in a moment.",
+        payload: {
+          error: {
+            code: "missing_credentials",
+            retryable: true,
+          },
+        },
+      },
+    ]);
+  });
+});
+
 describe("useOwnerChatStore stream terminal handling", () => {
   beforeEach(() => {
     mocks.getRoomMessages.mockReset();
@@ -280,6 +333,31 @@ describe("useOwnerChatStore stream terminal handling", () => {
       status: "delivered",
       streamBlocks: [{ block: { kind: "other" } }],
     });
+  });
+
+  it("drops a streaming placeholder when the run fails", () => {
+    useOwnerChatStore.setState({ agentTyping: true, activeTraceId: "msg_trace" });
+    useOwnerChatStore.getState().appendStreamBlock({
+      trace_id: "msg_trace",
+      seq: 1,
+      created_at: "2026-05-19T09:00:00.000Z",
+      block: { kind: "thinking", payload: { phase: "updated", label: "Thinking" } },
+    });
+
+    useOwnerChatStore.getState().failRun({
+      hubMsgId: "msg_trace",
+      traceId: "msg_trace",
+      error: "Cloud agent is temporarily unavailable. Please retry in a moment.",
+    });
+
+    expect(useOwnerChatStore.getState().messages).toMatchObject([
+      {
+        clientId: "err_msg_trace",
+        type: "error",
+      },
+    ]);
+    expect(useOwnerChatStore.getState().agentTyping).toBe(false);
+    expect(useOwnerChatStore.getState().activeTraceId).toBeNull();
   });
 
   it("merges a traced API final message into an existing stream placeholder", () => {
