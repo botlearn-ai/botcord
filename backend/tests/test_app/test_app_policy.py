@@ -854,6 +854,185 @@ async def test_runtime_files_for_cloud_agent_retries_after_missing_credentials_a
 
 
 @pytest.mark.asyncio
+async def test_runtime_files_for_cloud_agent_retries_after_initial_ack_timeout(
+    client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_files as runtime_files_mod
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.hosting_kind = "cloud"
+    agent.daemon_instance_id = "dm_cloud_timeout_retry_files"
+    agent.runtime = "codex"
+    daemon = DaemonInstance(
+        id="dm_cloud_timeout_retry_files",
+        user_id=agent.user_id,
+        kind="cloud",
+        refresh_token_hash="hash",
+    )
+    cloud_daemon = CloudDaemonInstance(
+        id="cloud_dm_timeout_retry_files",
+        user_id=agent.user_id,
+        daemon_instance_id=daemon.id,
+        provider="e2b",
+        status="ready",
+        runtime="codex",
+        max_agents=1,
+        active_agent_count=1,
+    )
+    cloud_binding = CloudAgentInstance(
+        id="cloud_ag_timeout_retry_files",
+        user_id=agent.user_id,
+        agent_id=agent.agent_id,
+        cloud_daemon_instance_id=cloud_daemon.id,
+        daemon_instance_id=daemon.id,
+        runtime="codex",
+        model_profile="default",
+        status="ready",
+    )
+    db_session.add_all([daemon, cloud_daemon, cloud_binding])
+    await db_session.commit()
+
+    monkeypatch.setattr(runtime_files_mod, "is_cloud_daemon_online", lambda _id: True)
+
+    resume_calls = []
+
+    class FakeCloudAgentService:
+        async def resume_cloud_agent(self, db, *, user_id, agent_id):
+            resume_calls.append({"user_id": user_id, "agent_id": agent_id})
+            return None
+
+    monkeypatch.setattr(runtime_files_mod, "CloudAgentService", FakeCloudAgentService)
+
+    dispatch_calls = []
+
+    async def fake_send_cloud(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        dispatch_calls.append({
+            "cloud_daemon_instance_id": cloud_daemon_instance_id,
+            "type": type_,
+            "params": params,
+            "timeout_ms": timeout_ms,
+        })
+        if len(dispatch_calls) == 1:
+            raise runtime_files_mod.CloudDaemonDispatchError(
+                "cloud_daemon_ack_timeout",
+                "ack timeout after 5000ms",
+            )
+        return {
+            "ok": True,
+            "result": {
+                "agentId": "ag_owned",
+                "runtime": "codex",
+                "files": [
+                    {
+                        "id": "workspace:AGENTS.md",
+                        "name": "workspace/AGENTS.md",
+                        "scope": "workspace",
+                        "content": "# rules\n",
+                    }
+                ],
+            },
+        }
+
+    monkeypatch.setattr(runtime_files_mod, "send_cloud_control_frame", fake_send_cloud)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.get("/api/agents/ag_owned/runtime-files", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["files"][0]["content"] == "# rules\n"
+    assert resume_calls == []
+    assert dispatch_calls == [
+        {
+            "cloud_daemon_instance_id": "cloud_dm_timeout_retry_files",
+            "type": "list_agent_files",
+            "params": {"agentId": "ag_owned"},
+            "timeout_ms": 5000,
+        },
+        {
+            "cloud_daemon_instance_id": "cloud_dm_timeout_retry_files",
+            "type": "list_agent_files",
+            "params": {"agentId": "ag_owned"},
+            "timeout_ms": 5000,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_runtime_files_for_cloud_agent_keeps_504_after_persistent_ack_timeout(
+    client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_files as runtime_files_mod
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.hosting_kind = "cloud"
+    agent.daemon_instance_id = "dm_cloud_timeout_files"
+    agent.runtime = "codex"
+    daemon = DaemonInstance(
+        id="dm_cloud_timeout_files",
+        user_id=agent.user_id,
+        kind="cloud",
+        refresh_token_hash="hash",
+    )
+    cloud_daemon = CloudDaemonInstance(
+        id="cloud_dm_timeout_files",
+        user_id=agent.user_id,
+        daemon_instance_id=daemon.id,
+        provider="e2b",
+        status="ready",
+        runtime="codex",
+        max_agents=1,
+        active_agent_count=1,
+    )
+    cloud_binding = CloudAgentInstance(
+        id="cloud_ag_timeout_files",
+        user_id=agent.user_id,
+        agent_id=agent.agent_id,
+        cloud_daemon_instance_id=cloud_daemon.id,
+        daemon_instance_id=daemon.id,
+        runtime="codex",
+        model_profile="default",
+        status="ready",
+    )
+    db_session.add_all([daemon, cloud_daemon, cloud_binding])
+    await db_session.commit()
+
+    monkeypatch.setattr(runtime_files_mod, "is_cloud_daemon_online", lambda _id: True)
+
+    resume_calls = []
+
+    class FakeCloudAgentService:
+        async def resume_cloud_agent(self, db, *, user_id, agent_id):
+            resume_calls.append({"user_id": user_id, "agent_id": agent_id})
+            return None
+
+    monkeypatch.setattr(runtime_files_mod, "CloudAgentService", FakeCloudAgentService)
+
+    dispatch_calls = []
+
+    async def fake_send_cloud(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        dispatch_calls.append({
+            "cloud_daemon_instance_id": cloud_daemon_instance_id,
+            "type": type_,
+            "params": params,
+            "timeout_ms": timeout_ms,
+        })
+        raise runtime_files_mod.CloudDaemonDispatchError(
+            "cloud_daemon_ack_timeout",
+            "ack timeout after 5000ms",
+        )
+
+    monkeypatch.setattr(runtime_files_mod, "send_cloud_control_frame", fake_send_cloud)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.get("/api/agents/ag_owned/runtime-files", headers=headers)
+    assert r.status_code == 504, r.text
+    assert r.json()["detail"] == "daemon_ack_timeout"
+    assert resume_calls == []
+    assert len(dispatch_calls) == 2
+
+
+@pytest.mark.asyncio
 async def test_runtime_files_rejects_unowned_or_offline_agent(
     client, seed, db_session, monkeypatch
 ):
