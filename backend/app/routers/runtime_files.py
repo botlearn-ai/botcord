@@ -36,6 +36,7 @@ router = APIRouter(prefix="/api/agents", tags=["app-runtime-files"])
 
 _CLOUD_RUNTIME_FILES_RESUME_WAIT_SECONDS = 20.0
 _CLOUD_RUNTIME_FILES_RESUME_POLL_SECONDS = 0.5
+_RUNTIME_FILES_DISPATCH_TIMEOUT_MS = 5000
 _CLOUD_RUNTIME_FILES_DISPATCH_RETRY_CODES = {
     "cloud_daemon_offline",
     "cloud_daemon_disconnected",
@@ -128,7 +129,7 @@ async def _send_runtime_files_control_frame(
                 host.cloud_daemon_instance_id,
                 "list_agent_files",
                 params,
-                timeout_ms=5000,
+                timeout_ms=_RUNTIME_FILES_DISPATCH_TIMEOUT_MS,
             )
         except CloudDaemonDispatchError as exc:
             if exc.code in _CLOUD_RUNTIME_FILES_DISPATCH_RETRY_CODES:
@@ -152,7 +153,26 @@ async def _send_runtime_files_control_frame(
                         host.cloud_daemon_instance_id,
                         "list_agent_files",
                         params,
-                        timeout_ms=5000,
+                        timeout_ms=_RUNTIME_FILES_DISPATCH_TIMEOUT_MS,
+                    )
+                except CloudDaemonDispatchError as retry_exc:
+                    exc = retry_exc
+            elif exc.code == "cloud_daemon_ack_timeout":
+                logger.warning(
+                    "cloud runtime files daemon ack timed out during startup; "
+                    "retrying once: agent=%s daemon=%s cloud=%s frame=%s timeout_ms=%s",
+                    agent.agent_id,
+                    host.daemon_instance_id,
+                    host.cloud_daemon_instance_id,
+                    "list_agent_files",
+                    _RUNTIME_FILES_DISPATCH_TIMEOUT_MS,
+                )
+                try:
+                    return await send_cloud_control_frame(
+                        host.cloud_daemon_instance_id,
+                        "list_agent_files",
+                        params,
+                        timeout_ms=_RUNTIME_FILES_DISPATCH_TIMEOUT_MS,
                     )
                 except CloudDaemonDispatchError as retry_exc:
                     exc = retry_exc
@@ -170,7 +190,7 @@ async def _send_runtime_files_control_frame(
                     host.daemon_instance_id,
                     host.cloud_daemon_instance_id,
                     "list_agent_files",
-                    5000,
+                    _RUNTIME_FILES_DISPATCH_TIMEOUT_MS,
                 )
                 raise HTTPException(status_code=504, detail="daemon_ack_timeout") from exc
             raise HTTPException(
@@ -185,7 +205,7 @@ async def _send_runtime_files_control_frame(
             host.daemon_instance_id,
             "list_agent_files",
             params,
-            timeout_ms=5000,
+            timeout_ms=_RUNTIME_FILES_DISPATCH_TIMEOUT_MS,
         )
     except HTTPException as exc:
         if exc.status_code == 504 and exc.detail == "daemon_ack_timeout":
@@ -196,7 +216,7 @@ async def _send_runtime_files_control_frame(
                 host.daemon_instance_id,
                 host.cloud_daemon_instance_id,
                 "list_agent_files",
-                5000,
+                _RUNTIME_FILES_DISPATCH_TIMEOUT_MS,
             )
         raise
 
