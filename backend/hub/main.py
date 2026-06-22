@@ -190,14 +190,21 @@ if hub_config.SENTRY_DSN:
 
 app = FastAPI(title="BotCord Hub", version="1.0.1", lifespan=lifespan)
 
-_cors_origins = [
-    "http://localhost:4321",
-    "http://localhost:3000",
-    "https://botcord.vercel.app",
-    "https://preview.botcord.chat",
-    "https://botcord.chat",
-    "https://www.botcord.chat",
-]
+
+def _build_cors_origins(extra_origins: list[str]) -> list[str]:
+    origins = [
+        "http://localhost:4321",
+        "http://localhost:3000",
+        "https://botcord.vercel.app",
+        "https://preview.botcord.chat",
+        "https://botcord.chat",
+        "https://www.botcord.chat",
+        *(origin.strip().rstrip("/") for origin in extra_origins if origin.strip()),
+    ]
+    return list(dict.fromkeys(origins))
+
+
+_cors_origins = _build_cors_origins(hub_config.BOTLEARN_ALLOWED_ORIGINS)
 
 # Browsers treat http://localhost:P1 → http://localhost:P2 as cross-origin when P1 ≠ P2.
 # With allow_credentials=True, the reflected Origin must match exactly; a regex covers any
