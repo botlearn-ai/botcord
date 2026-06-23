@@ -138,3 +138,40 @@ async def test_dashboard_upload_with_agent_query_keeps_agent_uploader(
     )
     assert record is not None
     assert record.uploader_id == "ag_uploadowner"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("filename", "content_type"),
+    [
+        ("meeting.doc", "application/msword"),
+        ("meeting.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        ("sheet.xls", "application/vnd.ms-excel"),
+        ("sheet.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ],
+)
+async def test_dashboard_upload_allows_word_and_excel_mime_types(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    filename: str,
+    content_type: str,
+):
+    supabase_uid = uuid.uuid4()
+    user = User(
+        supabase_user_id=supabase_uid,
+        display_name="Office Upload",
+        email="office@example.com",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/dashboard/upload",
+        headers={"Authorization": f"Bearer {_make_token(str(supabase_uid))}"},
+        files={"file": (filename, io.BytesIO(b"office bytes"), content_type)},
+    )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["original_filename"] == filename
+    assert data["content_type"] == content_type

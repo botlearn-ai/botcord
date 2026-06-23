@@ -233,6 +233,34 @@ async def test_upload_image_mime_allowed(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("filename", "content_type"),
+    [
+        ("meeting.doc", "application/msword"),
+        ("meeting.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        ("sheet.xls", "application/vnd.ms-excel"),
+        ("sheet.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ],
+)
+async def test_upload_office_mime_allowed(
+    client: AsyncClient,
+    filename: str,
+    content_type: str,
+):
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+
+    resp = await client.post(
+        "/hub/upload",
+        headers=_auth_header(token),
+        files={"file": (filename, io.BytesIO(b"office bytes"), content_type)},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["content_type"] == content_type
+
+
+@pytest.mark.asyncio
 async def test_upload_multiple_files_same_agent(client: AsyncClient):
     """Same agent can upload multiple files, each gets a unique file_id."""
     sk, pubkey = _make_keypair()
