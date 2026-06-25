@@ -23,6 +23,28 @@ function mixedToolUseBlock(): StreamBlockEntry {
   };
 }
 
+function toolCallBlock({
+  traceId = "tr_many",
+  seq,
+  createdAt,
+  name,
+}: {
+  traceId?: string;
+  seq: number;
+  createdAt: string;
+  name: string;
+}): StreamBlockEntry {
+  return {
+    trace_id: traceId,
+    seq,
+    created_at: createdAt,
+    block: {
+      kind: "tool_call",
+      payload: { name, params: { cmd: name } },
+    },
+  };
+}
+
 describe("StreamBlocksView", () => {
   it("hides composing text when the tool card is collapsed (default)", () => {
     const html = renderToStaticMarkup(
@@ -190,5 +212,36 @@ describe("StreamBlocksView", () => {
     expect(html).not.toContain("turn.started");
     expect(html).toContain("exec_shell");
     expect(html).toContain("pwd");
+  });
+
+  it("collapses the oldest trace rows by timestamp when rows exceed the visible max", () => {
+    const blocks: StreamBlockEntry[] = [
+      toolCallBlock({
+        seq: 999,
+        createdAt: "2026-05-25T00:00:00.000Z",
+        name: "oldest_by_time",
+      }),
+    ];
+    for (let i = 1; i <= 20; i += 1) {
+      blocks.push(toolCallBlock({
+        seq: i,
+        createdAt: `2026-05-25T00:00:${String(i).padStart(2, "0")}.000Z`,
+        name: `newer_tool_${i}`,
+      }));
+    }
+
+    const html = renderToStaticMarkup(
+      React.createElement(StreamBlocksView, {
+        defaultExpanded: true,
+        blocks,
+      }),
+    );
+
+    expect(html).toContain("Max");
+    expect(html).toContain("1 older step");
+    expect(html).toContain("20 newest shown");
+    expect(html).not.toContain("oldest_by_time");
+    expect(html).toContain("newer_tool_1");
+    expect(html).toContain("newer_tool_20");
   });
 });

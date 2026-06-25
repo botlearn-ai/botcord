@@ -10,6 +10,9 @@ import ToolResultContent from "./ToolResultContent";
 type MotionAnimation = ReturnType<typeof animateIfMotion>;
 type MotionTimeline = ReturnType<typeof createTimelineIfMotion>;
 
+const DEFAULT_VISIBLE_BLOCK_MAX = 20;
+const VISIBLE_BLOCK_MAX_OPTIONS = [5, 10, 20, 50, 100];
+
 /** Icon for a tool_call based on tool name heuristics. */
 function ToolCallIcon({ name }: { name: string }) {
   const n = name.toLowerCase();
@@ -117,6 +120,44 @@ function summarizeResult(result: string): string {
     } catch { /* not valid JSON, use raw */ }
   }
   return result.length > 120 ? result.slice(0, 120) + "..." : result;
+}
+
+function streamBlockKey(block: StreamBlockEntry): string {
+  return `${block.trace_id}-${block.seq}`;
+}
+
+function streamBlockTime(block: StreamBlockEntry): number {
+  const time = Date.parse(block.created_at);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function compareStreamBlockTimeAsc(a: StreamBlockEntry, b: StreamBlockEntry): number {
+  const timeDiff = streamBlockTime(a) - streamBlockTime(b);
+  if (timeDiff !== 0) return timeDiff;
+  const seqDiff = a.seq - b.seq;
+  if (seqDiff !== 0) return seqDiff;
+  return a.trace_id.localeCompare(b.trace_id);
+}
+
+function partitionBlocksByVisibleMax(
+  blocks: StreamBlockEntry[],
+  maxVisible: number,
+): { olderBlocks: StreamBlockEntry[]; visibleBlocks: StreamBlockEntry[] } {
+  if (blocks.length <= maxVisible) {
+    return { olderBlocks: [], visibleBlocks: blocks };
+  }
+
+  const visibleKeys = new Set(
+    [...blocks]
+      .sort(compareStreamBlockTimeAsc)
+      .slice(-maxVisible)
+      .map(streamBlockKey),
+  );
+
+  return {
+    olderBlocks: blocks.filter((block) => !visibleKeys.has(streamBlockKey(block))),
+    visibleBlocks: blocks.filter((block) => visibleKeys.has(streamBlockKey(block))),
+  };
 }
 
 /** Normalize a stream block into a displayable view-model, handling both the
@@ -839,16 +880,20 @@ function StreamBlockItem({
 export default function StreamBlocksView({
   blocks,
   defaultExpanded,
+  defaultVisibleBlockMax = DEFAULT_VISIBLE_BLOCK_MAX,
   showComposing = false,
   onScrollRequest,
 }: {
   blocks: StreamBlockEntry[];
   defaultExpanded?: boolean;
+  defaultVisibleBlockMax?: number;
   showComposing?: boolean;
   onScrollRequest?: () => void;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
   const [renderExpandedContent, setRenderExpandedContent] = useState(defaultExpanded ?? false);
+  const [visibleBlockMax, setVisibleBlockMax] = useState(defaultVisibleBlockMax);
+  const [olderBlocksExpanded, setOlderBlocksExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const rowAnimationRef = useRef<MotionAnimation>(null);
   const panelAnimationRef = useRef<MotionTimeline>(null);
@@ -863,12 +908,14 @@ export default function StreamBlocksView({
   const toolNameById = buildToolNameById(blocks);
   const displayBlocks = executionBlocks.filter(
     (b) => normalizeBlock(b.block, { toolNameById }).kind !== "system",
-  );
+  ).sort(compareStreamBlockTimeAsc);
 
   const normalized = displayBlocks.map((b) => normalizeBlock(b.block, { toolNameById }).kind);
   const toolCallCount = normalized.filter((k) => k === "tool_call").length;
   const reasoningCount = normalized.filter((k) => k === "reasoning").length;
-  const displayBlockKeys = displayBlocks.map((block) => `${block.trace_id}-${block.seq}`);
+  const { olderBlocks, visibleBlocks } = partitionBlocksByVisibleMax(displayBlocks, visibleBlockMax);
+  const renderedBlocks = olderBlocksExpanded ? displayBlocks : visibleBlocks;
+  const displayBlockKeys = renderedBlocks.map(streamBlockKey);
   const displayBlockKeySignature = displayBlockKeys.join("|");
 
   /** Compose the streamed prose by walking every block — covers mixed
@@ -1083,21 +1130,79 @@ export default function StreamBlocksView({
       <div className="max-w-[85%] space-y-2">
         {displayBlocks.length > 0 && (
           <div className="rounded-lg border border-zinc-700/40 bg-zinc-900/40 overflow-hidden">
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
-            >
-              <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`} />
-              <Wrench className="w-3 h-3" />
-              <span>{summaryParts.join(", ")}</span>
-            </button>
+            <div className="flex items-center gap-2 px-3 py-1.5">
+              <button
+                onClick={() => setExpanded(!expanded)}
+                className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs text-zinc-400 hover:text-zinc-300 transition-colors"
+              >
+                <ChevronRight className={`w-3 h-3 shrink-0 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`} />
+                <Wrench className="w-3 h-3 shrink-0" />
+                <span className="truncate">{summaryParts.join(", ")}</span>
+              </button>
+              <label className="flex shrink-0 items-center gap-1.5 text-[10px] text-zinc-500">
+                <span>Max</span>
+                <select
+                  value={visibleBlockMax}
+                  onChange={(event) => {
+                    setVisibleBlockMax(Number(event.target.value));
+                    setOlderBlocksExpanded(false);
+                  }}
+                  className="h-6 rounded border border-zinc-700/60 bg-zinc-950/80 px-1.5 text-[10px] text-zinc-300 outline-none transition-colors hover:border-zinc-600 focus:border-cyan-500/70"
+                  aria-label="Maximum visible reasoning steps"
+                >
+                  {VISIBLE_BLOCK_MAX_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             {renderExpandedContent && (
               <div
                 ref={contentRef}
                 className="border-t border-zinc-800/60 px-3 py-1 divide-y divide-zinc-800/40 will-change-transform"
               >
-                {displayBlocks.map((block) => {
-                  const blockKey = `${block.trace_id}-${block.seq}`;
+                {olderBlocks.length > 0 && (
+                  <div className="py-1" data-stream-older-group>
+                    <button
+                      onClick={() => setOlderBlocksExpanded(!olderBlocksExpanded)}
+                      className="flex items-center gap-2 group text-left"
+                      aria-expanded={olderBlocksExpanded}
+                    >
+                      {olderBlocksExpanded
+                        ? <ChevronDown className="w-2.5 h-2.5 text-zinc-500" />
+                        : <ChevronRight className="w-2.5 h-2.5 text-zinc-500" />}
+                      <span className="text-[10px] font-medium text-zinc-500">
+                        {olderBlocks.length} older step{olderBlocks.length !== 1 ? "s" : ""}
+                      </span>
+                      <span className="text-[10px] text-zinc-600">
+                        {visibleBlockMax} newest shown
+                      </span>
+                    </button>
+                    {olderBlocksExpanded && (
+                      <div className="mt-1 divide-y divide-zinc-800/40 border-t border-zinc-800/40">
+                        {olderBlocks.map((block) => {
+                          const blockKey = streamBlockKey(block);
+                          return (
+                            <div
+                              key={blockKey}
+                              data-stream-block-row
+                              data-stream-block-key={blockKey}
+                            >
+                              <StreamBlockItem
+                                block={block}
+                                toolNameById={toolNameById}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {visibleBlocks.map((block) => {
+                  const blockKey = streamBlockKey(block);
                   return (
                     <div
                       key={blockKey}
