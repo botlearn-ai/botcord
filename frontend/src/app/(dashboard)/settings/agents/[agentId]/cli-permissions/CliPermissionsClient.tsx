@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: CLI-requested agent management scopes and optional daemon_instance_id
+ * [INPUT]: CLI-requested agent management scopes, optional daemon_instance_id, optional credential context
  * [OUTPUT]: Owner approval UI that creates management grants through the Hub API
  * [POS]: dashboard settings client for CLI agent credential authorization
  * [PROTOCOL]: update header on changes
@@ -14,6 +14,8 @@ import {
   CheckCircle2,
   Clock3,
   Hash,
+  KeyRound,
+  Laptop,
   Loader2,
   ShieldCheck,
   Terminal,
@@ -70,6 +72,13 @@ interface GrantListResponse {
   grants: AgentManagementGrant[];
 }
 
+interface CliRequestContext {
+  deviceName: string | null;
+  credentialKeyId: string | null;
+  credentialName: string | null;
+  credentialSavedAt: string | null;
+}
+
 function parseScopes(scopeParams: string[]): string[] {
   return Array.from(
     new Set(
@@ -91,6 +100,13 @@ function scopeDescription(scope: string): string {
 
 function formatDate(value: string | null): string {
   if (!value) return "No expiration";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+function formatTimestamp(value: string | null): string | null {
+  if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
@@ -259,14 +275,81 @@ function ScopeList({
   );
 }
 
+function RequestContextPanel({
+  requestContext,
+}: {
+  requestContext: CliRequestContext;
+}) {
+  const hasDeviceName = Boolean(requestContext.deviceName);
+  const savedAt = formatTimestamp(requestContext.credentialSavedAt);
+  const credentialLabel =
+    requestContext.credentialName || requestContext.credentialKeyId || "Not included";
+
+  return (
+    <div className="mb-5 border-y border-glass-border py-4">
+      <div className="flex items-start gap-2">
+        <Laptop className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
+        <div className="min-w-0">
+          <div className="text-xs font-medium uppercase tracking-normal text-text-secondary">
+            Requesting device
+          </div>
+          <div
+            className={`mt-1 break-words text-sm ${
+              hasDeviceName ? "text-text-primary" : "text-yellow-200"
+            }`}
+          >
+            {requestContext.deviceName || "Device not included in this link"}
+          </div>
+          <p className="mt-1 text-xs text-text-secondary">
+            {hasDeviceName
+              ? "Hostname reported by the CLI that printed this authorization link."
+              : "Older CLI links only identify the agent credential. Approve only if this matches the terminal command you just ran."}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="min-w-0">
+          <div className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-normal text-text-secondary">
+            <KeyRound className="h-3.5 w-3.5" />
+            Credential
+          </div>
+          <div className="truncate text-sm text-text-primary">{credentialLabel}</div>
+        </div>
+        <div className="min-w-0">
+          <div className="mb-1 text-xs font-medium uppercase tracking-normal text-text-secondary">
+            Key ID
+          </div>
+          <div className="truncate font-mono text-sm text-text-primary">
+            {requestContext.credentialKeyId || "Not included"}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="mb-1 text-xs font-medium uppercase tracking-normal text-text-secondary">
+            Credential saved
+          </div>
+          <div className="truncate text-sm text-text-primary">{savedAt || "Not included"}</div>
+        </div>
+      </div>
+
+      <p className="mt-3 text-xs text-text-secondary">
+        Approval creates a management grant for this agent and scope. Device fields
+        are shown as context and are not the enforcement boundary.
+      </p>
+    </div>
+  );
+}
+
 export default function CliPermissionsClient({
   agentId,
   scopeParams,
   daemonInstanceId,
+  requestContext,
 }: {
   agentId: string;
   scopeParams: string[];
   daemonInstanceId: string | null;
+  requestContext: CliRequestContext;
 }) {
   const requestedScopes = useMemo(() => parseScopes(scopeParams), [scopeParams]);
   const [expiresInDays, setExpiresInDays] = useState(30);
@@ -411,6 +494,8 @@ export default function CliPermissionsClient({
             </div>
           ) : null}
         </div>
+
+        <RequestContextPanel requestContext={requestContext} />
 
         {!hasScopes ? (
           <Notice tone="error" icon={<XCircle className="h-4 w-4" />}>
