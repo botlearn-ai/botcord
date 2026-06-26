@@ -255,12 +255,13 @@ describe("list_agent_files handler", () => {
       expect(result.agentId).toBe("ag_hermes");
       expect(result.runtime).toBe("hermes-agent");
       const byName = Object.fromEntries(result.files.map((f: any) => [f.name, f]));
-      expect(byName["memory/working-memory.json"].content).toBe('{"sections":{}}\n');
-      expect(byName["workspace/task.md"].content).toBe("# Task\n");
+      expect(byName["memory/working-memory.json"].content).toBeUndefined();
+      expect(byName["workspace/task.md"].content).toBeUndefined();
       expect(byName["workspace/notes/daily/plan.md"].relativePath).toBe("notes/daily/plan.md");
-      expect(byName["workspace/notes/daily/plan.md"].content).toBe("# Plan\n");
-      expect(byName["hermes/default/SOUL.md"].content).toBe("# Soul\n");
-      expect(byName["hermes/default/memories/MEMORY.md"].content).toBe("# Hermes Memory\n");
+      expect(byName["workspace/notes/daily/plan.md"].content).toBeUndefined();
+      expect(byName["hermes/default/SOUL.md"].content).toBeUndefined();
+      expect(byName["hermes/default/memories/MEMORY.md"].content).toBeUndefined();
+      expect(byName["workspace/task.md"].size).toBe(Buffer.byteLength("# Task\n"));
       expect(result.files.some((f: any) => f.name.includes("credentials"))).toBe(false);
       expect(result.files.some((f: any) => f.name === "workspace/linked-secret.md")).toBe(false);
     } finally {

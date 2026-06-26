@@ -394,7 +394,8 @@ export interface ListAgentFilesParams {
   agentId: string;
   /**
    * Optional file id from a previous `ListAgentFilesResult.files[]` entry.
-   * When omitted, the daemon returns metadata plus small file contents.
+   * When omitted, the daemon returns metadata only; clients must pass `fileId`
+   * to fetch file content.
    */
   fileId?: string;
 }
@@ -419,9 +420,9 @@ export interface AgentRuntimeFile {
   size?: number;
   /** Last modified timestamp as unix milliseconds when available. */
   mtimeMs?: number;
-  /** UTF-8 content. Present for readable Markdown files under the size cap. */
+  /** UTF-8 content. Present only when fetching a specific file by `fileId`. */
   content?: string;
-  /** Set when the file exists but content was intentionally not included. */
+  /** Set when requested content was intentionally not included. */
   truncated?: boolean;
   /** Read failure for this file only; other files may still be returned. */
   error?: string;

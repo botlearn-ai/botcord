@@ -22,6 +22,7 @@ import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
 import BotRuntimeCapabilitiesPanel from "./BotRuntimeCapabilitiesPanel";
 import AgentSkillsTab from "./AgentSkillsTab";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
+import { mergeRuntimeFileContentResult, runtimeFileNeedsContentLoad } from "@/lib/runtime-files";
 
 interface AgentSettingsDrawerProps {
   agentId: string;
@@ -50,7 +51,7 @@ interface AgentRuntimeFile {
   profile?: string;
   size?: number;
   mtimeMs?: number;
-  content?: string;
+  content?: string | null;
   truncated?: boolean;
   error?: string;
 }
@@ -326,6 +327,7 @@ export default function AgentSettingsDrawer({
   const [runtimeLabel, setRuntimeLabel] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [filesLoading, setFilesLoading] = useState(false);
+  const [selectedFileLoading, setSelectedFileLoading] = useState<string | null>(null);
   const [filesLoaded, setFilesLoaded] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -378,6 +380,38 @@ export default function AgentSettingsDrawer({
     }
   }, [agentId, loadGlobal, loadingPolicy, policy]);
 
+  const loadRuntimeFileContent = useCallback(
+    async (fileId: string) => {
+      setSelectedFileLoading(fileId);
+      try {
+        const res = await apiFetch(
+          `/api/agents/${encodeURIComponent(agentId)}/runtime-files?file_id=${encodeURIComponent(fileId)}`,
+          {
+            method: "GET",
+            cache: "no-store",
+          },
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(runtimeFilesErrorMessage(data, res.status, t));
+        }
+        const data = (await res.json()) as AgentRuntimeFilesResponse;
+        const file = Array.isArray(data.files) ? data.files[0] : null;
+        setRuntimeFiles((prev) =>
+          mergeRuntimeFileContentResult(prev, fileId, file, t.files.loadFailed),
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : t.files.loadFailed;
+        setRuntimeFiles((prev) =>
+          prev.map((entry) => (entry.id === fileId ? { ...entry, error: message } : entry)),
+        );
+      } finally {
+        setSelectedFileLoading((current) => (current === fileId ? null : current));
+      }
+    },
+    [agentId, t],
+  );
+
   const applyPolicy = useCallback(
     async (patch: AgentPolicyPatch) => {
       setPolicySaving(true);
@@ -428,6 +462,16 @@ export default function AgentSettingsDrawer({
   }, [filesLoaded, filesLoading, loadRuntimeFiles, tab]);
 
   const selectedFile = runtimeFiles.find((file) => file.id === selectedFileId) ?? null;
+
+  useEffect(() => {
+    if (
+      tab !== "files" ||
+      !runtimeFileNeedsContentLoad(selectedFile, selectedFileLoading)
+    ) {
+      return;
+    }
+    void loadRuntimeFileContent(selectedFile.id);
+  }, [loadRuntimeFileContent, selectedFile, selectedFileLoading, tab]);
 
   const closeWithMotion = useCallback(() => {
     cleanupAnime(animationRef.current);
@@ -862,7 +906,9 @@ export default function AgentSettingsDrawer({
                         </div>
                       </div>
                       <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed text-text-secondary">
-                        {selectedFile.error
+                        {selectedFileLoading === selectedFile.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : selectedFile.error
                           ? selectedFile.error
                           : selectedFile.truncated
                             ? t.files.previewTooLarge

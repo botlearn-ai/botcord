@@ -936,10 +936,13 @@ function listAgentRuntimeFiles(params: ListAgentFilesParams): ListAgentFilesResu
   const selected = params.fileId
     ? candidates.filter((candidate) => candidate.id === params.fileId)
     : candidates;
+  const includeContent = typeof params.fileId === "string" && params.fileId.length > 0;
   return {
     agentId,
     ...(credentials.runtime ? { runtime: credentials.runtime } : {}),
-    files: selected.map(readRuntimeFileCandidate).filter(Boolean) as AgentRuntimeFile[],
+    files: selected
+      .map((candidate) => readRuntimeFileCandidate(candidate, { includeContent }))
+      .filter(Boolean) as AgentRuntimeFile[],
   };
 }
 
@@ -1096,7 +1099,10 @@ function addOpenclawFiles(
   }
 }
 
-function readRuntimeFileCandidate(candidate: RuntimeFileCandidate): AgentRuntimeFile | null {
+function readRuntimeFileCandidate(
+  candidate: RuntimeFileCandidate,
+  opts: { includeContent: boolean },
+): AgentRuntimeFile | null {
   const resolved = path.resolve(candidate.root, candidate.relativePath);
   const root = path.resolve(candidate.root);
   if (resolved !== root && !resolved.startsWith(root + path.sep)) {
@@ -1122,16 +1128,19 @@ function readRuntimeFileCandidate(candidate: RuntimeFileCandidate): AgentRuntime
       base.truncated = true;
       return base;
     }
+    if (!opts.includeContent) return base;
     base.content = readFileSync(resolved, "utf8");
     return base;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       if (candidate.missingContent !== undefined) {
-        return {
+        const missingBase = {
           ...base,
           size: Buffer.byteLength(candidate.missingContent, "utf8"),
-          content: candidate.missingContent,
         };
+        return opts.includeContent
+          ? { ...missingBase, content: candidate.missingContent }
+          : missingBase;
       }
       return null;
     }

@@ -45,6 +45,7 @@ import { CompositeAvatar } from "./CompositeAvatar";
 import BotWalletTab from "./BotWalletTab";
 import DashboardSelect from "./DashboardSelect";
 import AgentSkillsTab from "./AgentSkillsTab";
+import { mergeRuntimeFileContentResult, runtimeFileNeedsContentLoad } from "@/lib/runtime-files";
 
 type TabKey = "overview" | "wallet" | "settings" | "skills" | "files";
 type BotDetailDrawerCopy = typeof botDetailDrawer["en"];
@@ -65,7 +66,8 @@ interface AgentRuntimeFile {
   runtime?: string;
   profile?: string;
   size?: number;
-  content?: string;
+  mtimeMs?: number;
+  content?: string | null;
   truncated?: boolean;
   error?: string;
 }
@@ -987,8 +989,41 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
   const [runtimeLabel, setRuntimeLabel] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedFileLoading, setSelectedFileLoading] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadFileContent = useCallback(
+    async (fileId: string) => {
+      setSelectedFileLoading(fileId);
+      try {
+        const res = await apiFetch(
+          `/api/agents/${encodeURIComponent(agentId)}/runtime-files?file_id=${encodeURIComponent(fileId)}`,
+          {
+            method: "GET",
+            cache: "no-store",
+          },
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(runtimeFilesErrorMessage(data, res.status, t));
+        }
+        const data = (await res.json()) as AgentRuntimeFilesResponse;
+        const file = Array.isArray(data.files) ? data.files[0] : null;
+        setFiles((prev) =>
+          mergeRuntimeFileContentResult(prev, fileId, file, t.files.loadFailed),
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : t.files.loadFailed;
+        setFiles((prev) =>
+          prev.map((entry) => (entry.id === fileId ? { ...entry, error: message } : entry)),
+        );
+      } finally {
+        setSelectedFileLoading((current) => (current === fileId ? null : current));
+      }
+    },
+    [agentId, t],
+  );
 
   const loadFiles = async () => {
     setLoading(true);
@@ -1026,6 +1061,13 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
   }, [agentId, loaded, loading]);
 
   const selectedFile = files.find((file) => file.id === selectedFileId) ?? null;
+
+  useEffect(() => {
+    if (!runtimeFileNeedsContentLoad(selectedFile, selectedFileLoading)) {
+      return;
+    }
+    void loadFileContent(selectedFile.id);
+  }, [loadFileContent, selectedFile, selectedFileLoading]);
 
   return (
     <div className="space-y-4">
@@ -1089,7 +1131,9 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
                 <div className="truncate text-xs font-medium text-text-primary">{selectedFile.name}</div>
               </div>
               <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed text-text-secondary">
-                {selectedFile.error
+                {selectedFileLoading === selectedFile.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : selectedFile.error
                   ? selectedFile.error
                   : selectedFile.truncated
                     ? t.files.previewTooLarge
