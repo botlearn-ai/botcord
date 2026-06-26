@@ -3649,9 +3649,20 @@ async def get_chat_room(
 
 # Allowed MIME type prefixes (mirrors hub/routers/files.py)
 _ALLOWED_MIME_PREFIXES = (
-    "text/", "image/", "audio/", "video/",
-    "application/pdf", "application/json", "application/xml",
-    "application/zip", "application/gzip", "application/octet-stream",
+    "text/",
+    "image/",
+    "audio/",
+    "video/",
+    "application/pdf",
+    "application/json",
+    "application/xml",
+    "application/zip",
+    "application/gzip",
+    "application/octet-stream",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
 
 

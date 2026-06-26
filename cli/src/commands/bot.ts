@@ -1,5 +1,7 @@
 import type { ParsedArgs } from "../args.js";
+import { addAuthorizationContextToDetail } from "../authorization-context.js";
 import { BotCordClient } from "../client.js";
+import type { StoredBotCordCredentials } from "../credentials.js";
 import { loadDefaultCredentials } from "../credentials.js";
 import { normalizeAndValidateHubUrl } from "../hub-url.js";
 import { outputError, outputErrorObject, outputJson } from "../output.js";
@@ -23,6 +25,7 @@ async function appPost(
   path: string,
   body: Record<string, unknown>,
   action: string,
+  credentials: StoredBotCordCredentials,
 ): Promise<unknown> {
   const resp = await fetch(`${hubUrl.replace(/\/+$/, "")}${path}`, {
     method: "POST",
@@ -43,7 +46,7 @@ async function appPost(
     outputErrorObject({
       error: detail.code || `${action}_failed`,
       status: resp.status,
-      ...detail,
+      ...addAuthorizationContextToDetail(detail, credentials),
     });
   }
   const text = json ? JSON.stringify(json) : await resp.text().catch(() => "");
@@ -120,7 +123,14 @@ Options:
     for (const key of Object.keys(body)) {
       if (body[key] === undefined) delete body[key];
     }
-    outputJson(await appPost(hubUrl, token, "/api/users/me/agents/provision", body, "bot_create"));
+    outputJson(await appPost(
+      hubUrl,
+      token,
+      "/api/users/me/agents/provision",
+      body,
+      "bot_create",
+      creds,
+    ));
     return;
   }
 
@@ -129,5 +139,12 @@ Options:
   for (const key of Object.keys(body)) {
     if (body[key] === undefined) delete body[key];
   }
-  outputJson(await appPost(hubUrl, token, "/api/cloud-agents", body, "bot_create"));
+  outputJson(await appPost(
+    hubUrl,
+    token,
+    "/api/cloud-agents",
+    body,
+    "bot_create",
+    creds,
+  ));
 }

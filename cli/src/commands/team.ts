@@ -1,5 +1,7 @@
 import type { ParsedArgs } from "../args.js";
+import { addAuthorizationContextToDetail } from "../authorization-context.js";
 import { BotCordClient } from "../client.js";
+import type { StoredBotCordCredentials } from "../credentials.js";
 import { loadDefaultCredentials } from "../credentials.js";
 import { normalizeAndValidateHubUrl } from "../hub-url.js";
 import { outputError, outputErrorObject, outputJson } from "../output.js";
@@ -30,6 +32,7 @@ async function appPost(
   token: string,
   path: string,
   body: Record<string, unknown>,
+  credentials: StoredBotCordCredentials,
 ): Promise<unknown> {
   const resp = await fetch(`${hubUrl.replace(/\/+$/, "")}${path}`, {
     method: "POST",
@@ -50,7 +53,7 @@ async function appPost(
     outputErrorObject({
       error: detail.code || "team_create_failed",
       status: resp.status,
-      ...detail,
+      ...addAuthorizationContextToDetail(detail, credentials),
     });
   }
   const text = json ? JSON.stringify(json) : await resp.text().catch(() => "");
@@ -108,5 +111,11 @@ Options:
   });
   const token = await client.ensureToken();
 
-  outputJson(await appPost(hubUrl, token, "/api/team-orchestration/provision", body));
+  outputJson(await appPost(
+    hubUrl,
+    token,
+    "/api/team-orchestration/provision",
+    body,
+    creds,
+  ));
 }
