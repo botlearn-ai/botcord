@@ -198,3 +198,79 @@ async def test_ws_heartbeat(client: AsyncClient):
                 assert msg["type"] == "heartbeat"
     finally:
         hub_mod._WS_HEARTBEAT_INTERVAL = original
+
+
+@pytest.mark.asyncio
+async def test_ws_allows_delayed_daemon_keepalive_before_idle_timeout(client: AsyncClient):
+    """A daemon ping delayed past two heartbeat ticks should not be ghosted early."""
+    sk, pub = _make_keypair()
+    agent_id, key_id, token = await _register_and_verify(client, sk, pub)
+
+    from starlette.testclient import TestClient
+    from hub.main import app
+    import hub.routers.hub as hub_mod
+
+    original_interval = hub_mod._WS_HEARTBEAT_INTERVAL
+    original_idle_timeout = hub_mod._WS_CLIENT_IDLE_TIMEOUT
+    hub_mod._WS_HEARTBEAT_INTERVAL = 0.05
+    hub_mod._WS_CLIENT_IDLE_TIMEOUT = 0.2
+
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect("/hub/ws") as ws:
+                ws.send_json({"type": "auth", "token": token})
+                auth_msg = ws.receive_json()
+                assert auth_msg["type"] == "auth_ok"
+
+                # Old behavior closed after two 0.05s receive timeouts. Sending a
+                # ping after that point but before the explicit idle timeout should
+                # still keep the connection alive.
+                time.sleep(0.12)
+                ws.send_json({"type": "ping"})
+
+                received_types = []
+                for _ in range(4):
+                    msg = ws.receive_json()
+                    received_types.append(msg["type"])
+                    if msg["type"] == "pong":
+                        break
+
+                assert "heartbeat" in received_types
+                assert "pong" in received_types
+    finally:
+        hub_mod._WS_HEARTBEAT_INTERVAL = original_interval
+        hub_mod._WS_CLIENT_IDLE_TIMEOUT = original_idle_timeout
+
+
+@pytest.mark.asyncio
+async def test_ws_closes_after_client_idle_timeout(client: AsyncClient):
+    """WebSocket should still close idle clients after the explicit idle budget."""
+    sk, pub = _make_keypair()
+    agent_id, key_id, token = await _register_and_verify(client, sk, pub)
+
+    from starlette.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+    from hub.main import app
+    import hub.routers.hub as hub_mod
+
+    original_interval = hub_mod._WS_HEARTBEAT_INTERVAL
+    original_idle_timeout = hub_mod._WS_CLIENT_IDLE_TIMEOUT
+    hub_mod._WS_HEARTBEAT_INTERVAL = 0.05
+    hub_mod._WS_CLIENT_IDLE_TIMEOUT = 0.1
+
+    try:
+        with TestClient(app) as tc:
+            with tc.websocket_connect("/hub/ws") as ws:
+                ws.send_json({"type": "auth", "token": token})
+                auth_msg = ws.receive_json()
+                assert auth_msg["type"] == "auth_ok"
+
+                heartbeat = ws.receive_json()
+                assert heartbeat["type"] == "heartbeat"
+
+                with pytest.raises(WebSocketDisconnect) as exc_info:
+                    ws.receive_json()
+                assert exc_info.value.code == 4002
+    finally:
+        hub_mod._WS_HEARTBEAT_INTERVAL = original_interval
+        hub_mod._WS_CLIENT_IDLE_TIMEOUT = original_idle_timeout

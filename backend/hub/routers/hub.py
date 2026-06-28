@@ -2581,8 +2581,8 @@ async def send_typing(
 # WebSocket /hub/ws — real-time inbox push
 # ---------------------------------------------------------------------------
 
-_WS_HEARTBEAT_INTERVAL = 15  # seconds — presence online_timeout is 45s
-_WS_MAX_SILENT_HEARTBEATS = 2  # close after ~30s of no client response
+_WS_HEARTBEAT_INTERVAL = 15  # seconds
+_WS_CLIENT_IDLE_TIMEOUT = 60  # seconds — daemon keepalive is every 20s
 
 
 @router.websocket("/ws")
@@ -2596,7 +2596,8 @@ async def websocket_inbox(ws: WebSocket):
          or closes with 4001 on auth failure
       4. Server sends {"type": "inbox_update"} when new messages arrive
       5. Client fetches messages via GET /hub/inbox (reuses existing REST API)
-      6. Server sends {"type": "heartbeat"} every 30s to keep connection alive
+      6. Server sends {"type": "heartbeat"} every 15s to keep connection alive
+      7. Server closes only after 60s without any client frame
     """
     await ws.accept()
     agent_id: str | None = None
@@ -2671,7 +2672,7 @@ async def websocket_inbox(ws: WebSocket):
         )
 
         # --- Main loop: heartbeat + listen for client messages ---
-        _silent_heartbeats = 0
+        last_client_message_at = time.monotonic()
 
         while True:
             try:
@@ -2679,7 +2680,7 @@ async def websocket_inbox(ws: WebSocket):
                 msg = await asyncio.wait_for(
                     ws.receive_json(), timeout=_WS_HEARTBEAT_INTERVAL
                 )
-                _silent_heartbeats = 0  # client is alive
+                last_client_message_at = time.monotonic()
                 # Refresh connection lease + last_seen on any client message
                 await _presence_call(
                     presence_service.mark_heartbeat, agent_id, connection_id
@@ -2689,11 +2690,17 @@ async def websocket_inbox(ws: WebSocket):
                     await ws.send_json({"type": "pong"})
             except asyncio.TimeoutError:
                 # No client message within interval — send heartbeat
-                _silent_heartbeats += 1
-                if _silent_heartbeats >= _WS_MAX_SILENT_HEARTBEATS:
+                idle_for = time.monotonic() - last_client_message_at
+                if idle_for >= _WS_CLIENT_IDLE_TIMEOUT:
+                    counts = _ws_connection_counts(agent_id)
                     logger.warning(
-                        "WebSocket ghost detected: agent=%s silent_heartbeats=%d, closing",
-                        agent_id, _silent_heartbeats,
+                        "WebSocket ghost detected: agent=%s connection_id=%s client_idle_seconds=%.1f idle_timeout_seconds=%d total_ws_connections=%d total_ws_agents=%d, closing",
+                        agent_id,
+                        connection_id,
+                        idle_for,
+                        _WS_CLIENT_IDLE_TIMEOUT,
+                        counts["total_connections"],
+                        counts["total_agents"],
                     )
                     await ws.close(code=4002, reason="Ghost connection: no client response")
                     break
