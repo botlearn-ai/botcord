@@ -23,6 +23,7 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 export interface WechatLoginOptions {
   baseUrl?: string;
   fetchImpl?: FetchLike;
+  timeoutMs?: number;
 }
 
 export interface WechatQrcode {
@@ -79,10 +80,15 @@ export async function getBotQrcode(opts: WechatLoginOptions = {}): Promise<Wecha
   assertSafeBaseUrl(opts.baseUrl);
   const base = (opts.baseUrl ?? DEFAULT_WECHAT_BASE_URL).replace(/\/+$/, "");
   const fetcher = opts.fetchImpl ?? (globalThis.fetch as FetchLike);
-  const res = await fetcher(`${base}/ilink/bot/get_bot_qrcode?bot_type=3`, {
-    method: "GET",
-    headers: wechatHeaders(),
-  });
+  const res = await fetchWithTimeout(
+    fetcher,
+    `${base}/ilink/bot/get_bot_qrcode?bot_type=3`,
+    {
+      method: "GET",
+      headers: wechatHeaders(),
+    },
+    opts.timeoutMs ?? 5_000,
+  );
   const data = (await safeJson(res)) ?? {};
   const qrcode = typeof data.qrcode === "string" ? data.qrcode : "";
   if (!qrcode) {
@@ -103,9 +109,11 @@ export async function getQrcodeStatus(
   assertSafeBaseUrl(opts.baseUrl);
   const base = (opts.baseUrl ?? DEFAULT_WECHAT_BASE_URL).replace(/\/+$/, "");
   const fetcher = opts.fetchImpl ?? (globalThis.fetch as FetchLike);
-  const res = await fetcher(
+  const res = await fetchWithTimeout(
+    fetcher,
     `${base}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcode)}`,
     { method: "GET", headers: wechatHeaders() },
+    opts.timeoutMs ?? 5_000,
   );
   const data = (await safeJson(res)) ?? {};
   const status = typeof data.status === "string" ? data.status : "unknown";
@@ -127,20 +135,33 @@ export async function getBotUpdates(
   assertSafeBaseUrl(opts.baseUrl);
   const base = (opts.baseUrl ?? DEFAULT_WECHAT_BASE_URL).replace(/\/+$/, "");
   const fetcher = opts.fetchImpl ?? (globalThis.fetch as FetchLike);
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), opts.timeoutMs ?? 5_000);
-  try {
-    const res = await fetcher(`${base}/ilink/bot/getupdates`, {
+  const res = await fetchWithTimeout(
+    fetcher,
+    `${base}/ilink/bot/getupdates`,
+    {
       method: "POST",
       headers: wechatHeaders(botToken),
       body: JSON.stringify({
         get_updates_buf: opts.updatesBuf ?? "",
         base_info: { channel_version: "1.0.2" },
       }),
-      signal: ac.signal,
-    });
-    const data = (await safeJson(res)) ?? {};
-    return data as WechatUpdatesResp;
+    },
+    opts.timeoutMs ?? 5_000,
+  );
+  const data = (await safeJson(res)) ?? {};
+  return data as WechatUpdatesResp;
+}
+
+async function fetchWithTimeout(
+  fetcher: FetchLike,
+  input: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    return await fetcher(input, { ...init, signal: ac.signal });
   } finally {
     clearTimeout(timer);
   }

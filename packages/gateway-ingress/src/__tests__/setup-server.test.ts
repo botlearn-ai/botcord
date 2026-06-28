@@ -327,6 +327,55 @@ describe("setup-server — WeChat full flow", () => {
     }
   });
 
+  it("returns provider_unreachable when WeChat login status provider call times out", async () => {
+    await h.server.close();
+    rmSync(h.dir, { recursive: true, force: true });
+
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.includes("/ilink/bot/get_bot_qrcode")) {
+        return new Response(JSON.stringify({ qrcode: "qr-timeout" }), { status: 200 });
+      }
+      if (url.includes("/ilink/bot/get_qrcode_status")) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        });
+      }
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    h = await buildHarness({
+      adapters: {
+        wechat: createWechatSetupAdapter({
+          fetchImpl,
+          baseUrl: "https://ilinkai.weixin.qq.com",
+          requestTimeoutMs: 5,
+        }),
+      },
+    });
+
+    const agentId = "ag_wc_status_timeout";
+    const baseCtx = { user_id: "usr_1", hosting_kind: "cloud" } as const;
+    const start = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/wechat/login/start`,
+      { body: { ...baseCtx } },
+    );
+    expect(start.status).toBe(200);
+
+    const status = await call(
+      h.url,
+      `/internal/gateway-ingress/agents/${agentId}/gateways/wechat/login/status`,
+      { body: { ...baseCtx, loginId: start.body.loginId } },
+    );
+
+    expect(status.status).toBe(502);
+    expect((status.body.error as { code: string }).code).toBe("provider_unreachable");
+  });
+
   it("merges top-level discover options without overriding nested options", async () => {
     const seen: Array<Record<string, unknown> | undefined> = [];
     await h.server.close();

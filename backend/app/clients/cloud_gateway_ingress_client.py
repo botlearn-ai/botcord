@@ -85,9 +85,10 @@ def _raise_for_ingress_error(
 ) -> None:
     """Translate ingress error responses into FastAPI HTTPException.
 
-    4xx → propagate the ingress code at the same status. 5xx → 502 with a
-    fixed ``cloud_gateway_ingress_unavailable`` code so callers can show a
-    consistent banner regardless of which provider failed.
+    4xx → propagate the ingress code at the same status. Expected provider
+    dependency outages from ingress are mapped to 424 so they do not look like
+    Hub/ingress availability incidents. Other 5xx → 502 with a fixed
+    ``cloud_gateway_ingress_unavailable`` code.
     """
     parsed: dict[str, Any] | None = None
     try:
@@ -121,6 +122,18 @@ def _raise_for_ingress_error(
             code,
         )
         raise HTTPException(status_code=response.status_code, detail=detail)
+
+    if code == "provider_unreachable":
+        logger.info(
+            "cloud-gateway provider unreachable via ingress: %s %s -> %d",
+            method,
+            path,
+            response.status_code,
+        )
+        raise HTTPException(
+            status_code=424,
+            detail={"code": "provider_unreachable", "ingress_message": message},
+        )
 
     logger.warning(
         "cloud-gateway ingress 5xx: %s %s -> %d code=%s",

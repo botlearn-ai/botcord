@@ -876,6 +876,39 @@ async def test_cloud_agent_setup_propagates_ingress_error_code(
 
 
 @pytest.mark.asyncio
+async def test_cloud_agent_setup_maps_provider_unreachable_as_dependency_failure(
+    client, seed, monkeypatch
+):
+    def responder(method, url, body):
+        return _FakeIngressResponse(
+            502,
+            {
+                "ok": False,
+                "error": {
+                    "code": "provider_unreachable",
+                    "message": "wechat updates endpoint unreachable",
+                },
+            },
+        )
+
+    _install_ingress(monkeypatch, responder)
+    _patch_daemon(monkeypatch, online=False)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post(
+        "/api/agents/ag_cloud/gateways/wechat/senders",
+        headers=headers,
+        json={"loginId": "wxl_provider_down"},
+    )
+
+    assert r.status_code == 424, r.text
+    detail = r.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["code"] == "provider_unreachable"
+    assert detail["ingress_message"] == "wechat updates endpoint unreachable"
+
+
+@pytest.mark.asyncio
 async def test_cloud_agent_setup_returns_502_when_ingress_unreachable(
     client, seed, monkeypatch
 ):
