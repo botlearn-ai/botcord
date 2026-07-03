@@ -3,6 +3,7 @@ import {
   extractUsageLimitReset,
   formatUsageLimitMessage,
   looksLikeTransientRuntimeError,
+  looksLikeRuntimeAuthFailure,
   looksLikeUsageLimit,
 } from "../runtime-errors.js";
 
@@ -14,6 +15,22 @@ const CLAUDE_PIPE = "Claude AI usage limit reached|1719345600";
 const CODEX_RELATIVE = "You've reached your 5-hour message limit. Try again in 3h 42m.";
 const CODEX_JSON = '{"type":"error","error":{"type":"usage_limit_reached","code":"insufficient_quota"}}';
 const RATE_LIMIT = "API Error: rate_limit_exceeded — please slow down";
+const COLONLESS_RATE_LIMIT = "API Error 429 rate_limit_exceeded";
+
+describe("looksLikeRuntimeAuthFailure", () => {
+  it("matches runtime API 4xx auth failures with or without the API Error colon", () => {
+    expect(looksLikeRuntimeAuthFailure("API Error: 401 Invalid authentication credentials")).toBe(true);
+    expect(looksLikeRuntimeAuthFailure("API Error 401 Invalid authentication credentials")).toBe(true);
+    expect(looksLikeRuntimeAuthFailure("Failed to authenticate. API Error 401 Invalid authentication credentials")).toBe(true);
+  });
+
+  it("does not match non-auth runtime output", () => {
+    expect(looksLikeRuntimeAuthFailure("API Error: rate_limit_exceeded — please slow down")).toBe(false);
+    expect(looksLikeRuntimeAuthFailure(COLONLESS_RATE_LIMIT)).toBe(false);
+    expect(looksLikeRuntimeAuthFailure("API Error 500 upstream unavailable")).toBe(false);
+    expect(looksLikeRuntimeAuthFailure("ordinary model reply")).toBe(false);
+  });
+});
 
 describe("looksLikeUsageLimit", () => {
   it("matches every runtime's quota-exhaustion phrasing", () => {
@@ -23,6 +40,7 @@ describe("looksLikeUsageLimit", () => {
     expect(looksLikeUsageLimit(CODEX_RELATIVE)).toBe(true);
     expect(looksLikeUsageLimit(CODEX_JSON)).toBe(true);
     expect(looksLikeUsageLimit(RATE_LIMIT)).toBe(true);
+    expect(looksLikeUsageLimit(COLONLESS_RATE_LIMIT)).toBe(true);
   });
 
   it("does not reclassify ordinary runtime failures", () => {
