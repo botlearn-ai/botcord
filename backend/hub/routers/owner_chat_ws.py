@@ -56,11 +56,16 @@ _MAX_STREAM_BLOCKS_PER_TRACE = 200
 # In-memory connection & trace state
 # ---------------------------------------------------------------------------
 
-# Owner-chat WS connections: (user_id, agent_id) -> set[WebSocket]
-_oc_ws_connections: dict[tuple[str, str], set[WebSocket]] = {}
+# Owner-chat WS connections. New scoped sessions key by (user_id, agent_id, room_id);
+# legacy tests and unscoped paths may still use (user_id, agent_id).
+OwnerChatConnectionKey = tuple[str, str] | tuple[str, str, str]
+_oc_ws_connections: dict[OwnerChatConnectionKey, set[WebSocket]] = {}
 
 # Stream block routing: trace_id -> (user_id, agent_id)
 _oc_trace_subs: dict[str, tuple[str, str]] = {}
+
+# Stream block routing room scope: trace_id -> room_id.
+_oc_trace_rooms: dict[str, str] = {}
 
 # Track block count per trace_id to enforce cap (W7)
 _oc_trace_block_count: dict[str, int] = {}
@@ -71,7 +76,7 @@ _oc_trace_block_count: dict[str, int] = {}
 # ---------------------------------------------------------------------------
 
 
-def _oc_ws_connection_counts(key: tuple[str, str] | None = None) -> dict[str, int]:
+def _oc_ws_connection_counts(key: OwnerChatConnectionKey | None = None) -> dict[str, int]:
     total_connections = sum(len(ws_set) for ws_set in _oc_ws_connections.values())
     counts = {
         "total_connections": total_connections,
@@ -82,21 +87,38 @@ def _oc_ws_connection_counts(key: tuple[str, str] | None = None) -> dict[str, in
     return counts
 
 
+def _connection_key(user_id: str, agent_id: str, room_id: str) -> OwnerChatConnectionKey:
+    return (user_id, agent_id, room_id)
+
+
+def _connection_key_parts(key: OwnerChatConnectionKey) -> tuple[str, str, str | None]:
+    if len(key) == 3:
+        return key[0], key[1], key[2]
+    return key[0], key[1], None
+
+
+def _connection_key_matches_room(key: OwnerChatConnectionKey, room_id: str) -> bool:
+    user_id, agent_id, key_room_id = _connection_key_parts(key)
+    if key_room_id is not None:
+        return key_room_id == room_id
+    return _build_owner_chat_room_id(user_id, agent_id) == room_id
+
+
 def _owner_chat_cloud_error_message(code: str | None) -> str:
     if code == "not_ready":
         return "Cloud agent is still starting. Please retry in a moment."
     return "Cloud agent is temporarily unavailable. Please retry in a moment."
 
 
-def _register_ws(user_id: str, agent_id: str, ws: WebSocket) -> None:
-    key = (user_id, agent_id)
+def _register_ws(user_id: str, agent_id: str, room_id: str, ws: WebSocket) -> None:
+    key = _connection_key(user_id, agent_id, room_id)
     if key not in _oc_ws_connections:
         _oc_ws_connections[key] = set()
     _oc_ws_connections[key].add(ws)
 
 
-def _unregister_ws(user_id: str, agent_id: str, ws: WebSocket) -> None:
-    key = (user_id, agent_id)
+def _unregister_ws(user_id: str, agent_id: str, room_id: str, ws: WebSocket) -> None:
+    key = _connection_key(user_id, agent_id, room_id)
     ws_set = _oc_ws_connections.get(key)
     if ws_set:
         ws_set.discard(ws)
@@ -106,18 +128,34 @@ def _unregister_ws(user_id: str, agent_id: str, ws: WebSocket) -> None:
     # W3: Clean up any trace subscriptions for this user/agent pair
     # when the last WS connection goes away.
     if not _oc_ws_connections.get(key):
-        stale = [tid for tid, sub in _oc_trace_subs.items() if sub == key]
+        stale = [
+            tid
+            for tid, sub in _oc_trace_subs.items()
+            if sub == (user_id, agent_id) and _oc_trace_rooms.get(tid) == room_id
+        ]
         for tid in stale:
             _oc_trace_subs.pop(tid, None)
+            _oc_trace_rooms.pop(tid, None)
             _oc_trace_block_count.pop(tid, None)
 
 
 async def _send_to_oc_ws(
-    user_id: str, agent_id: str, data: dict,
+    user_id: str, agent_id: str, data: dict, room_id: str | None = None,
 ) -> None:
     """Send a JSON message to all owner-chat WS connections for (user_id, agent_id)."""
-    key = (user_id, agent_id)
+    if room_id is None and isinstance(data.get("room_id"), str):
+        room_id = data["room_id"]
+    key: OwnerChatConnectionKey = (
+        _connection_key(user_id, agent_id, room_id) if room_id else (user_id, agent_id)
+    )
     ws_set = _oc_ws_connections.get(key)
+    if (
+        not ws_set
+        and room_id
+        and room_id == _build_owner_chat_room_id(user_id, agent_id)
+    ):
+        key = (user_id, agent_id)
+        ws_set = _oc_ws_connections.get(key)
     if not ws_set:
         return
     # W4: Snapshot the set to avoid mutation during async iteration.
@@ -158,6 +196,7 @@ owner_chat_cache.register_fanout_delivery(_send_to_oc_ws)
 def _cleanup_trace(trace_id: str) -> None:
     """Remove a trace subscription and its block counter."""
     _oc_trace_subs.pop(trace_id, None)
+    _oc_trace_rooms.pop(trace_id, None)
     _oc_trace_block_count.pop(trace_id, None)
 
 
@@ -177,6 +216,7 @@ async def register_owner_chat_run(
     ``trace_id`` is the ``hub_msg_id`` of the trigger message.
     """
     _oc_trace_subs[hub_msg_id] = (user_id, agent_id)
+    _oc_trace_rooms[hub_msg_id] = room_id
     _oc_trace_block_count[hub_msg_id] = 0
     await owner_chat_cache.write_run_metadata(
         hub_msg_id,
@@ -192,7 +232,10 @@ def current_owner_chat_trace_id(*, room_id: str, agent_id: str) -> str | None:
     matched_traces: list[str] = []
     for tid, sub in list(_oc_trace_subs.items()):
         user_id, sub_agent_id = sub
-        if sub_agent_id == agent_id and _build_owner_chat_room_id(user_id, sub_agent_id) == room_id:
+        trace_room_id = _oc_trace_rooms.get(tid) or _build_owner_chat_room_id(
+            user_id, sub_agent_id
+        )
+        if sub_agent_id == agent_id and trace_room_id == room_id:
             matched_traces.append(tid)
     return matched_traces[-1] if matched_traces else None
 
@@ -236,10 +279,10 @@ async def notify_oc_ws_message(
     present the frontend stamps it onto OwnerChatMessage.replyPreview so the
     quote block renders live, instead of waiting for the next REST reload.
     """
-    target_keys: list[tuple[str, str]] = []
-    for (uid, aid), ws_set in _oc_ws_connections.items():
-        if ws_set and _build_owner_chat_room_id(uid, aid) == room_id:
-            target_keys.append((uid, aid))
+    target_keys: list[OwnerChatConnectionKey] = []
+    for key, ws_set in _oc_ws_connections.items():
+        if ws_set and _connection_key_matches_room(key, room_id):
+            target_keys.append(key)
 
     if not target_keys:
         return
@@ -257,13 +300,21 @@ async def notify_oc_ws_message(
     # user/agent pairs and attach the most recent one. This can mis-attribute
     # the reply when turns overlap, but is the best a trace-less sender allows.
     if trace_id is not None:
-        traces_to_complete = [trace_id]
-        if trace_id in _oc_trace_subs:
+        trace_room_id = _oc_trace_rooms.get(trace_id)
+        traces_to_complete = (
+            [trace_id] if trace_room_id is None or trace_room_id == room_id else []
+        )
+        if trace_id in _oc_trace_subs and (trace_room_id is None or trace_room_id == room_id):
             _cleanup_trace(trace_id)
     else:
         matched_traces: list[str] = []
         for tid, sub in list(_oc_trace_subs.items()):
-            if sub in target_keys:
+            trace_room_id = _oc_trace_rooms.get(tid)
+            if trace_room_id is not None:
+                if trace_room_id == room_id:
+                    matched_traces.append(tid)
+                continue
+            if any(sub == _connection_key_parts(key)[:2] for key in target_keys):
                 matched_traces.append(tid)
         # Use the most recent trace_id (last added)
         trace_id = matched_traces[-1] if matched_traces else None
@@ -290,8 +341,9 @@ async def notify_oc_ws_message(
     if ext:
         msg_data["ext"] = ext
 
-    for uid, aid in target_keys:
-        await _send_to_oc_ws(uid, aid, msg_data)
+    for key in target_keys:
+        uid, aid, key_room_id = _connection_key_parts(key)
+        await _send_to_oc_ws(uid, aid, msg_data, room_id=key_room_id)
 
     # Mark matched in-flight runs completed in Redis and shorten their TTL
     # (no-op when Redis is disabled).
@@ -314,10 +366,10 @@ async def notify_oc_ws_error(
     ``hub_msg_id`` is the trigger message id. Clients use it to mark the
     user turn failed and stop any local typing/streaming placeholder.
     """
-    target_keys: list[tuple[str, str]] = []
-    for (uid, aid), ws_set in _oc_ws_connections.items():
-        if ws_set and _build_owner_chat_room_id(uid, aid) == room_id:
-            target_keys.append((uid, aid))
+    target_keys: list[OwnerChatConnectionKey] = []
+    for key, ws_set in _oc_ws_connections.items():
+        if ws_set and _connection_key_matches_room(key, room_id):
+            target_keys.append(key)
 
     effective_trace_id = trace_id or hub_msg_id
     ts = (
@@ -339,8 +391,9 @@ async def notify_oc_ws_error(
         },
     }
 
-    for uid, aid in target_keys:
-        await _send_to_oc_ws(uid, aid, frame)
+    for key in target_keys:
+        uid, aid, key_room_id = _connection_key_parts(key)
+        await _send_to_oc_ws(uid, aid, frame, room_id=key_room_id)
 
     await owner_chat_cache.mark_run_failed(effective_trace_id)
     _cleanup_trace(effective_trace_id)
@@ -355,12 +408,15 @@ async def notify_oc_ws_typing(*, agent_id: str, room_id: str) -> None:
     """
     # Snapshot keys to avoid RuntimeError if _send_to_oc_ws mutates the dict.
     targets = [
-        (uid, aid)
-        for (uid, aid), ws_set in _oc_ws_connections.items()
-        if ws_set and aid == agent_id and _build_owner_chat_room_id(uid, aid) == room_id
+        key
+        for key, ws_set in _oc_ws_connections.items()
+        if ws_set
+        and _connection_key_parts(key)[1] == agent_id
+        and _connection_key_matches_room(key, room_id)
     ]
-    for uid, aid in targets:
-        await _send_to_oc_ws(uid, aid, {"type": "typing", "room_id": room_id})
+    for key in targets:
+        uid, aid, key_room_id = _connection_key_parts(key)
+        await _send_to_oc_ws(uid, aid, {"type": "typing", "room_id": room_id}, room_id=key_room_id)
 
 
 # ---------------------------------------------------------------------------
@@ -431,6 +487,7 @@ async def owner_chat_ws(ws: WebSocket):
     await ws.accept()
     agent_id: str | None = None
     user_id: str | None = None
+    room_id: str | None = None
 
     try:
         # --- Auth phase ---
@@ -452,11 +509,15 @@ async def owner_chat_ws(ws: WebSocket):
         # this WS as its agent-chat gateway), or a dashboard Supabase JWT.
         botlearn_claims = _try_botlearn_session_claims(token)
         internal_uid: str | None = None
+        session_key: str | None = None
         if botlearn_claims is not None:
             if botlearn_claims["agent_id"] != req_agent_id:
                 await ws.close(code=4001, reason="Token not valid for this agent")
                 return
             internal_uid = str(botlearn_claims["user_id"])
+            raw_session_key = botlearn_claims.get("session_key")
+            if isinstance(raw_session_key, str) and raw_session_key.strip():
+                session_key = raw_session_key.strip()
         else:
             try:
                 supabase_uid = verify_supabase_token(token)
@@ -497,23 +558,40 @@ async def owner_chat_ws(ws: WebSocket):
             display_name = agent.display_name or agent_id
 
             # Ensure owner-chat room exists
-            room_id = await _ensure_owner_chat_room(db, user_id, agent_id, display_name)
+            room_id = await _ensure_owner_chat_room(
+                db,
+                user_id,
+                agent_id,
+                display_name,
+                session_key=session_key,
+            )
             await db.commit()
 
-        await ws.send_json({
+        auth_ok = {
             "type": "auth_ok",
             "agent_id": agent_id,
             "room_id": room_id,
-        })
-        logger.info("Owner-chat WS connected: user=%s agent=%s room=%s", user_id, agent_id, room_id)
-
-        # --- Register connection ---
-        _register_ws(user_id, agent_id, ws)
-        counts = _oc_ws_connection_counts((user_id, agent_id))
+        }
+        if session_key:
+            auth_ok["session_key"] = session_key
+        await ws.send_json(auth_ok)
         logger.info(
-            "Owner-chat WS registered: user=%s agent=%s pair_ws_connections=%d total_ws_connections=%d total_ws_pairs=%d",
+            "Owner-chat WS connected: user=%s agent=%s room=%s session_key=%s",
             user_id,
             agent_id,
+            room_id,
+            session_key,
+        )
+
+        # --- Register connection ---
+        _register_ws(user_id, agent_id, room_id, ws)
+        connection_key = _connection_key(user_id, agent_id, room_id)
+        counts = _oc_ws_connection_counts(connection_key)
+        logger.info(
+            "Owner-chat WS registered: user=%s agent=%s room=%s pair_ws_connections=%d total_ws_connections=%d total_ws_pairs=%d",
+            user_id,
+            agent_id,
+            room_id,
             counts["pair_connections"],
             counts["total_connections"],
             counts["total_pairs"],
@@ -797,8 +875,8 @@ async def owner_chat_ws(ws: WebSocket):
             scope.set_context(
                 "ws_connections",
                 (
-                    _oc_ws_connection_counts((user_id, agent_id))
-                    if user_id and agent_id
+                    _oc_ws_connection_counts(_connection_key(user_id, agent_id, room_id))
+                    if user_id and agent_id and room_id
                     else _oc_ws_connection_counts()
                 ),
             )
@@ -810,13 +888,15 @@ async def owner_chat_ws(ws: WebSocket):
                 exc_info=True,
             )
     finally:
-        if user_id and agent_id:
-            _unregister_ws(user_id, agent_id, ws)
-            counts = _oc_ws_connection_counts((user_id, agent_id))
+        if user_id and agent_id and room_id:
+            connection_key = _connection_key(user_id, agent_id, room_id)
+            _unregister_ws(user_id, agent_id, room_id, ws)
+            counts = _oc_ws_connection_counts(connection_key)
             logger.info(
-                "Owner-chat WS unregistered: user=%s agent=%s remaining_pair_ws=%d total_ws_connections=%d total_ws_pairs=%d",
+                "Owner-chat WS unregistered: user=%s agent=%s room=%s remaining_pair_ws=%d total_ws_connections=%d total_ws_pairs=%d",
                 user_id,
                 agent_id,
+                room_id,
                 counts["pair_connections"],
                 counts["total_connections"],
                 counts["total_pairs"],
@@ -845,6 +925,9 @@ async def receive_stream_block(
         return
 
     user_id, sub_agent_id = sub
+    room_id = _oc_trace_rooms.get(body.trace_id) or _build_owner_chat_room_id(
+        user_id, sub_agent_id
+    )
     if sub_agent_id != agent_id:
         return
 
@@ -870,13 +953,19 @@ async def receive_stream_block(
             broadcast_block = compact
 
     # Always deliver locally first (low latency, no self-skip wait).
-    await _send_to_oc_ws(user_id, sub_agent_id, {
-        "type": "stream_block",
-        "trace_id": body.trace_id,
-        "seq": body.seq,
-        "block": broadcast_block,
-        "created_at": now,
-    })
+    await _send_to_oc_ws(
+        user_id,
+        sub_agent_id,
+        {
+            "type": "stream_block",
+            "trace_id": body.trace_id,
+            "seq": body.seq,
+            "block": broadcast_block,
+            "created_at": now,
+            "room_id": room_id,
+        },
+        room_id=room_id,
+    )
 
     # When Redis is enabled, also publish fanout so other Hub instances holding
     # the browser WS can deliver. The subscriber loop skips events whose origin
@@ -887,7 +976,7 @@ async def receive_stream_block(
             "trace_id": body.trace_id,
             "user_id": user_id,
             "agent_id": sub_agent_id,
-            "room_id": _build_owner_chat_room_id(user_id, sub_agent_id),
+            "room_id": room_id,
             "seq": body.seq,
             "block": broadcast_block,
             "created_at": now,
