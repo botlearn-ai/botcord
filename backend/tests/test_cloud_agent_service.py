@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import uuid
 from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -1248,6 +1249,33 @@ async def test_pause_idempotent(db_session):
 
 
 @pytest.mark.asyncio
+async def test_manual_pause_invalidates_control_connection(db_session, monkeypatch):
+    user_id = uuid.uuid4()
+    svc, _fake = _make_service()
+    view = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    disconnect = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        cloud_agent_service,
+        "disconnect_cloud_daemon_control",
+        disconnect,
+    )
+
+    paused = await svc.pause_cloud_agent(
+        db_session,
+        user_id=user_id,
+        agent_id=view.agent_id,
+    )
+
+    assert paused.status == "paused"
+    disconnect.assert_awaited_once_with(
+        view.cloud_daemon_instance_id,
+        reason="cloud daemon manually paused",
+    )
+
+
+@pytest.mark.asyncio
 async def test_pause_only_pauses_daemon_when_last_agent_paused(db_session):
     user_id = uuid.uuid4()
     svc, fake = _make_service(max_per_user=4, max_agents_per_daemon=2)
@@ -1303,6 +1331,33 @@ async def test_idle_pause_pauses_ready_daemon_and_agents(db_session):
     assert cdi.last_paused_at.replace(tzinfo=datetime.timezone.utc) == future_now
     assert cdi.metadata_json["last_pause_reason"] == "idle_timeout"
     assert fake.calls(view.cloud_daemon_instance_id)["pause"] == 1
+
+
+@pytest.mark.asyncio
+async def test_idle_pause_invalidates_control_connection(db_session, monkeypatch):
+    user_id = uuid.uuid4()
+    svc, _fake = _make_service()
+    view = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    disconnect = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        cloud_agent_service,
+        "disconnect_cloud_daemon_control",
+        disconnect,
+    )
+
+    paused_count = await svc.pause_idle_cloud_daemons(
+        db_session,
+        idle_seconds=300,
+        now=datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+
+    assert paused_count == 1
+    disconnect.assert_awaited_once_with(
+        view.cloud_daemon_instance_id,
+        reason="cloud daemon idle-paused",
+    )
 
 
 @pytest.mark.asyncio

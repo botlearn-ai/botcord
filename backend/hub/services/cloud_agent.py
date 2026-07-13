@@ -65,6 +65,7 @@ from hub.models import (
 )
 from hub.routers.cloud_daemon_control import (
     CloudDaemonDispatchError,
+    disconnect_cloud_daemon_control,
     is_cloud_daemon_online,
     send_cloud_control_frame,
 )
@@ -693,6 +694,7 @@ class CloudAgentService:
         provider = self._get_provider()
         cai.status = "paused"
         await db.flush()
+        daemon_paused = False
 
         # Cloud daemon pause is a per-sandbox operation. Pause the sandbox
         # only once every non-deleted peer on it is also paused.
@@ -711,7 +713,13 @@ class CloudAgentService:
             )
             _apply_handle_to_rows(cdi, handle)
             cdi.last_paused_at = _now()
+            daemon_paused = True
         await db.commit()
+        if daemon_paused:
+            await disconnect_cloud_daemon_control(
+                cdi.id,
+                reason="cloud daemon manually paused",
+            )
         await db.refresh(cai)
         await db.refresh(cdi)
         return _make_view(agent, cai, cdi)
@@ -2199,6 +2207,10 @@ class CloudAgentService:
             agent.error_code = None
             agent.error_message = None
         await db.commit()
+        await disconnect_cloud_daemon_control(
+            cdi.id,
+            reason="cloud daemon idle-paused",
+        )
         logger.info(
             "idle-paused cloud daemon %s after %d idle agent(s)",
             cdi.id,
