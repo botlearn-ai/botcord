@@ -290,6 +290,28 @@ async def _send_runtime_skills_control_frame(
                     )
                 except CloudDaemonDispatchError as retry_exc:
                     exc = retry_exc
+            elif (
+                frame_type in _CLOUD_SKILLS_DISPATCH_RETRY_FRAME_TYPES
+                and exc.code == "cloud_daemon_ack_timeout"
+            ):
+                logger.warning(
+                    "cloud runtime skills daemon ack timed out during startup; retrying once: "
+                    "agent=%s daemon=%s cloud=%s frame=%s timeout_ms=%s",
+                    agent.agent_id,
+                    host.daemon_instance_id,
+                    host.cloud_daemon_instance_id,
+                    frame_type,
+                    timeout_ms,
+                )
+                try:
+                    return await send_cloud_control_frame(
+                        host.cloud_daemon_instance_id,
+                        frame_type,
+                        params,
+                        timeout_ms=timeout_ms,
+                    )
+                except CloudDaemonDispatchError as retry_exc:
+                    exc = retry_exc
             if exc.code in _CLOUD_SKILLS_DISPATCH_RETRY_CODES:
                 raise HTTPException(status_code=409, detail="daemon_offline") from exc
             if exc.code == "cloud_daemon_ack_timeout":
