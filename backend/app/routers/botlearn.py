@@ -20,10 +20,12 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import re
 import uuid as _uuid
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, WebSocket
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -91,12 +93,54 @@ def _auth_error_to_http(exc: BotlearnAuthError) -> HTTPException:
 # ---------------------------------------------------------------------------
 
 
+_BOTLEARN_SESSION_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{1,180}$")
+
+
+class BotlearnSessionIn(BaseModel):
+    session_key: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class BotlearnSessionOut(BaseModel):
     access_token: str
     expires_in: int
     agent_id: str
     installation_id: str
     ws_url: str
+
+
+def _normalize_botlearn_session_key(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_session_key", "message": "session_key must be a string"},
+        )
+    value = raw.strip()
+    if not value:
+        return None
+    if not _BOTLEARN_SESSION_KEY_RE.fullmatch(value):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_session_key",
+                "message": "session_key may only contain letters, digits, '.', '_', ':', and '-'",
+            },
+        )
+    return value
+
+
+def _resolve_botlearn_session_key(payload: BotlearnSessionIn | None) -> str | None:
+    if payload is None:
+        return None
+    explicit = _normalize_botlearn_session_key(payload.session_key)
+    if explicit:
+        return explicit
+    course_run_id = payload.metadata.get("course_run_id") or payload.metadata.get("courseRunId")
+    if course_run_id:
+        return _normalize_botlearn_session_key(f"course_run:{course_run_id}")
+    return None
 
 
 async def _find_or_create_user(
@@ -198,6 +242,7 @@ async def _find_revoked_installation_for_subject(
 @router.post("/session", response_model=BotlearnSessionOut)
 async def create_botlearn_session(
     request: Request,
+    payload: BotlearnSessionIn | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
     service: CloudAgentService = Depends(
         _cloud_agents_router.get_cloud_agent_service
@@ -262,12 +307,14 @@ async def create_botlearn_session(
         )
     await db.commit()
 
+    session_key = _resolve_botlearn_session_key(payload)
     access_token, expires_in = issue_botlearn_session_token(
         user_id=user.id,
         botlearn_subject=identity.subject,
         agent_id=agent_id,
         installation_id=installation.id,
         scopes=list(installation.scopes_json or DEFAULT_BOTLEARN_SCOPES),
+        session_key=session_key,
     )
     return BotlearnSessionOut(
         access_token=access_token,

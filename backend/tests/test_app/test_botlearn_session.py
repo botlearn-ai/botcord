@@ -215,6 +215,70 @@ async def test_session_exchange_creates_user_agent_and_token(
 
 
 @pytest.mark.asyncio
+async def test_session_exchange_signs_explicit_session_key(
+    client_factory, monkeypatch
+):
+    _configure_botlearn(monkeypatch)
+    client, _service = await client_factory()
+
+    r = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=_headers(_botlearn_token("botlearn-user-scoped")),
+        json={"session_key": "course_run:run-123"},
+    )
+    assert r.status_code == 200, r.text
+
+    claims = jwt.decode(
+        r.json()["access_token"],
+        JWT_SECRET,
+        algorithms=[JWT_ALGORITHM],
+        audience=BOTLEARN_SESSION_AUDIENCE,
+        issuer=BOTLEARN_SESSION_ISSUER,
+    )
+    assert claims["session_key"] == "course_run:run-123"
+
+
+@pytest.mark.asyncio
+async def test_session_exchange_derives_session_key_from_course_run_metadata(
+    client_factory, monkeypatch
+):
+    _configure_botlearn(monkeypatch)
+    client, _service = await client_factory()
+
+    r = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=_headers(_botlearn_token("botlearn-user-metadata-scope")),
+        json={"metadata": {"course_run_id": "run-456"}},
+    )
+    assert r.status_code == 200, r.text
+
+    claims = jwt.decode(
+        r.json()["access_token"],
+        JWT_SECRET,
+        algorithms=[JWT_ALGORITHM],
+        audience=BOTLEARN_SESSION_AUDIENCE,
+        issuer=BOTLEARN_SESSION_ISSUER,
+    )
+    assert claims["session_key"] == "course_run:run-456"
+
+
+@pytest.mark.asyncio
+async def test_session_exchange_rejects_invalid_session_key(
+    client_factory, monkeypatch
+):
+    _configure_botlearn(monkeypatch)
+    client, _service = await client_factory()
+
+    r = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=_headers(_botlearn_token("botlearn-user-bad-scope")),
+        json={"session_key": "../bad"},
+    )
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "invalid_session_key"
+
+
+@pytest.mark.asyncio
 async def test_session_exchange_is_idempotent_reuses_agent_and_installation(
     client_factory, db_session, monkeypatch
 ):

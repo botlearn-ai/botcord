@@ -255,6 +255,7 @@ def issue_botlearn_session_token(
     agent_id: str,
     installation_id: str,
     scopes: list[str],
+    session_key: str | None = None,
 ) -> tuple[str, int]:
     """Mint a short-lived BotCord integration session token.
 
@@ -275,6 +276,8 @@ def issue_botlearn_session_token(
         "iat": now,
         "exp": exp,
     }
+    if session_key:
+        payload["session_key"] = session_key
     token = pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return token, BOTLEARN_SESSION_TTL_SECONDS
 

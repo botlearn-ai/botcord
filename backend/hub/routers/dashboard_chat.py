@@ -87,13 +87,22 @@ class RunStreamBlocksResponse(BaseModel):
 _OWNER_CHAT_ROOM_PREFIX = "rm_oc_"
 
 
-def _build_owner_chat_room_id(user_id: str, agent_id: str) -> str:
+def _build_owner_chat_room_id(
+    user_id: str,
+    agent_id: str,
+    *,
+    session_key: str | None = None,
+) -> str:
     """Derive a deterministic room_id for an owner-agent chat.
 
-    Uses a SHA-256 hash of (user_id + agent_id) to produce a stable,
-    URL-safe room identifier.
+    Uses a SHA-256 hash of the owner and agent to produce a stable,
+    URL-safe room identifier. BotLearn integration sessions can additionally
+    scope the room by ``session_key`` so the same user/agent pair can maintain
+    isolated course-run conversations.
     """
     seed = f"owner_chat:{user_id}:{agent_id}"
+    if session_key:
+        seed += f":session:{session_key}"
     digest = hashlib.sha256(seed.encode()).hexdigest()[:16]
     return f"{_OWNER_CHAT_ROOM_PREFIX}{digest}"
 
@@ -158,9 +167,11 @@ async def _ensure_owner_chat_room(
     user_id: str,
     agent_id: str,
     agent_display_name: str,
+    *,
+    session_key: str | None = None,
 ) -> str:
     """Create or return the stable owner-agent chat room."""
-    room_id = _build_owner_chat_room_id(user_id, agent_id)
+    room_id = _build_owner_chat_room_id(user_id, agent_id, session_key=session_key)
 
     result = await db.execute(select(Room).where(Room.room_id == room_id))
     if result.scalar_one_or_none() is not None:

@@ -386,6 +386,7 @@ export function ensureAgentHermesWorkspace(
  *   - Claude Code: `<workspace>/.claude/skills/<name>/`
  *   - Codex:       `<codex-home>/skills/<name>/`
  *   - Hermes:      `<hermes-home>/skills/<name>/`
+ *   - Other:       `<workspace>/skills/<name>/`
  * Seeded fresh per `ensureAgent*` call (force-overwrite) so daemon
  * upgrades propagate.
  */
@@ -448,6 +449,15 @@ function seedClaudeCodeSkills(workspace: string): void {
 }
 
 /**
+ * Seed the generic workspace skill directory consumed by runtimes without
+ * their own native skill root (for example DeepSeek TUI). The daemon adds
+ * these skills to the soft skill index injected into the runtime context.
+ */
+function seedGenericWorkspaceSkills(workspace: string): void {
+  copyBundledSkills(path.join(workspace, "skills"));
+}
+
+/**
  * Seed Codex's `<CODEX_HOME>/skills/` discovery dir. The codex adapter
  * sets `CODEX_HOME=<agent>/codex-home/`, isolating per-agent skills from
  * the user's global `~/.codex/skills/` — so skills must be seeded here
@@ -507,6 +517,7 @@ export function ensureAgentWorkspace(agentId: string, seed: WorkspaceSeed): void
   writeIfMissing(path.join(workspace, "task.md"), TASK_MD);
   writeIfMissing(path.join(notes, ".gitkeep"), "");
   seedClaudeCodeSkills(workspace);
+  seedGenericWorkspaceSkills(workspace);
 }
 
 /** Patch fields accepted by {@link applyAgentIdentity}. `bio = null` clears it. */

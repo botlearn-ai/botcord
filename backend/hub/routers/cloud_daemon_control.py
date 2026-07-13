@@ -194,6 +194,42 @@ def is_cloud_daemon_online_by_daemon_id(daemon_instance_id: str) -> bool:
     return _REGISTRY.get_by_daemon(daemon_instance_id) is not None
 
 
+async def disconnect_cloud_daemon_control(
+    cloud_daemon_instance_id: str,
+    *,
+    reason: str = "cloud daemon paused",
+) -> bool:
+    """Invalidate and close a cloud daemon control connection.
+
+    Pausing a sandbox can freeze its WebSocket before the Hub observes a TCP
+    disconnect. Remove the connection from the online registry immediately so
+    new requests resume the sandbox instead of dispatching into a stale socket.
+    """
+    conn = _REGISTRY.get_by_cloud(cloud_daemon_instance_id)
+    if conn is None:
+        return False
+
+    await _REGISTRY.unregister(conn)
+    for fut in conn.pending_acks.values():
+        if not fut.done():
+            fut.set_exception(RuntimeError(reason))
+    conn.pending_acks.clear()
+    try:
+        await conn.ws.close(code=1012, reason=reason[:120])
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(
+            "cloud daemon control close failed after invalidation: cloud=%s err=%s",
+            cloud_daemon_instance_id,
+            exc,
+        )
+    logger.info(
+        "cloud daemon control connection invalidated: cloud=%s reason=%s",
+        cloud_daemon_instance_id,
+        reason,
+    )
+    return True
+
+
 def _registry_for_tests() -> _CloudDaemonRegistry:
     """Test-only accessor for injecting fake connections."""
     return _REGISTRY

@@ -26,6 +26,48 @@ class _FakeWS:
         self.sent.append(data)
 
 
+def test_owner_chat_room_id_is_scoped_by_session_key():
+    base = owner_chat_ws._build_owner_chat_room_id("u_scope", "ag_scope")
+    first = owner_chat_ws._build_owner_chat_room_id(
+        "u_scope", "ag_scope", session_key="course_run:first"
+    )
+    second = owner_chat_ws._build_owner_chat_room_id(
+        "u_scope", "ag_scope", session_key="course_run:second"
+    )
+
+    assert first != base
+    assert second != base
+    assert first != second
+
+
+def test_current_trace_id_matches_scoped_room_only():
+    user_id = "u_scoped_trace"
+    agent_id = "ag_scoped_trace"
+    room1 = owner_chat_ws._build_owner_chat_room_id(
+        user_id, agent_id, session_key="course_run:1"
+    )
+    room2 = owner_chat_ws._build_owner_chat_room_id(
+        user_id, agent_id, session_key="course_run:2"
+    )
+    run1 = "h_scoped_1"
+    run2 = "h_scoped_2"
+    owner_chat_ws._oc_trace_subs[run1] = (user_id, agent_id)
+    owner_chat_ws._oc_trace_subs[run2] = (user_id, agent_id)
+    owner_chat_ws._oc_trace_rooms[run1] = room1
+    owner_chat_ws._oc_trace_rooms[run2] = room2
+
+    try:
+        assert owner_chat_ws.current_owner_chat_trace_id(
+            room_id=room1, agent_id=agent_id
+        ) == run1
+        assert owner_chat_ws.current_owner_chat_trace_id(
+            room_id=room2, agent_id=agent_id
+        ) == run2
+    finally:
+        owner_chat_ws._cleanup_trace(run1)
+        owner_chat_ws._cleanup_trace(run2)
+
+
 @pytest.mark.asyncio
 async def test_explicit_trace_id_wins_over_most_recent_and_preserves_others(
     monkeypatch: pytest.MonkeyPatch,

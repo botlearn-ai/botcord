@@ -445,6 +445,7 @@ async def _deliver_fanout_event(event: dict) -> None:
         data = {
             "type": "stream_block",
             "trace_id": event.get("trace_id"),
+            "room_id": event.get("room_id"),
             "seq": event.get("seq"),
             "block": event.get("block"),
             "created_at": event.get("created_at"),

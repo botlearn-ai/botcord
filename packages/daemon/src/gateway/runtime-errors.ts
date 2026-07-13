@@ -8,8 +8,10 @@ export function looksLikeRuntimeAuthFailure(text: string): boolean {
   if (!s) return false;
   return (
     /^(Failed to authenticate|Authentication failed|Invalid API key|Invalid Anthropic API key)\b/i.test(s) ||
-    /^API Error:\s*4\d\d\b/i.test(s) ||
-    /\b(API Error:\s*4\d\d|Request not allowed|invalid x-api-key)\b/i.test(s) ||
+    /\bAPI Error:?\s*(?:401|403)\b.*\b(?:Invalid authentication credentials|Authentication failed|Invalid API key|Unauthorized|Forbidden|Request not allowed|invalid x-api-key)\b/i.test(
+      s,
+    ) ||
+    /\b(Request not allowed|invalid x-api-key)\b/i.test(s) ||
     /^(Unauthorized|Forbidden)(?:\b|:)/i.test(s)
   );
 }

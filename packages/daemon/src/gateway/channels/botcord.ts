@@ -434,8 +434,15 @@ async function postControlWithRefresh(
   path: string,
   body: unknown,
   method = "POST",
+  onTerminalCredentialError?: (err: unknown) => Promise<boolean>,
 ): Promise<Response> {
-  let token = await client.ensureToken();
+  let token: string;
+  try {
+    token = await client.ensureToken();
+  } catch (err) {
+    await onTerminalCredentialError?.(err);
+    throw err;
+  }
   for (let attempt = 0; attempt <= 1; attempt++) {
     const resp = await fetch(`${hubUrl}${path}`, {
       method,
@@ -447,7 +454,12 @@ async function postControlWithRefresh(
       signal: AbortSignal.timeout(10_000),
     });
     if (resp.status === 401 && attempt === 0) {
-      token = await client.refreshToken();
+      try {
+        token = await client.refreshToken();
+      } catch (err) {
+        await onTerminalCredentialError?.(err);
+        throw err;
+      }
       continue;
     }
     return resp;
@@ -470,6 +482,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
   const pendingHandoffMessages = new Set<string>();
   const handoffTails = new Map<string, Promise<void>>();
   let stopCallback: (() => void) | null = null;
+  let setStatusCallback: ((patch: Partial<ChannelStatusSnapshot>) => void) | null = null;
 
   let statusSnapshot: ChannelStatusSnapshot = {
     channel: options.id,
@@ -522,6 +535,64 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       });
     }
     return clientRef;
+  }
+
+  function setAdapterStatus(patch: Partial<ChannelStatusSnapshot>) {
+    statusSnapshot = { ...statusSnapshot, ...patch };
+    setStatusCallback?.(patch);
+  }
+
+  async function revokeLocalTerminalCredentials(err: unknown, log: GatewayLogger) {
+    if (!isTerminalAgentCredentialError(err)) return false;
+    try {
+      const result = options.localRevokeAgent
+        ? await options.localRevokeAgent(options.agentId, log)
+        : await revokeAgent(
+            {
+              agentId: options.agentId,
+              deleteCredentials: true,
+              deleteState: true,
+              deleteWorkspace: false,
+            },
+            {
+              gateway: {
+                removeChannel: async () => undefined,
+                removeManagedRoute: () => undefined,
+              } as unknown as Gateway,
+            },
+          );
+      log.warn("botcord agent credentials rejected by Hub; revoked local binding", {
+        agentId: options.agentId,
+        err: String(err),
+        result,
+      });
+      setAdapterStatus({
+        running: false,
+        connected: false,
+        restartPending: false,
+        lastStopAt: Date.now(),
+        lastError: "agent credentials rejected by Hub; local binding revoked",
+      });
+    } catch (cleanupErr) {
+      log.error("botcord terminal credential local revoke failed", {
+        agentId: options.agentId,
+        err: String(cleanupErr),
+      });
+      setAdapterStatus({
+        running: false,
+        connected: false,
+        restartPending: false,
+        lastStopAt: Date.now(),
+        lastError: String(cleanupErr),
+      });
+    }
+    return true;
+  }
+
+  async function revokeOutboundTerminalCredentials(err: unknown, log: GatewayLogger) {
+    if (!isTerminalAgentCredentialError(err)) return false;
+    stopCallback?.();
+    return revokeLocalTerminalCredentials(err, log);
   }
 
   async function drainInbox(
@@ -855,7 +926,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       return true;
     }
 
-    async function revokeLocalTerminalCredentials(err: unknown) {
+    async function stopForTerminalCredentials(err: unknown) {
       if (!isTerminalAgentCredentialError(err)) return false;
       running = false;
       permanentStopping = true;
@@ -866,48 +937,10 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         // ignore
       }
       try {
-        const result = options.localRevokeAgent
-          ? await options.localRevokeAgent(options.agentId, log)
-          : await revokeAgent(
-              {
-                agentId: options.agentId,
-                deleteCredentials: true,
-                deleteState: true,
-                deleteWorkspace: false,
-              },
-              {
-                gateway: {
-                  removeChannel: async () => undefined,
-                  removeManagedRoute: () => undefined,
-                } as unknown as Gateway,
-              },
-            );
-        log.warn("botcord agent credentials rejected by Hub; revoked local binding", {
-          agentId: options.agentId,
-          err: String(err),
-          result,
-        });
-        markStatus({
-          running: false,
-          connected: false,
-          restartPending: false,
-          lastStopAt: Date.now(),
-          lastError: "agent credentials rejected by Hub; local binding revoked",
-        });
-      } catch (cleanupErr) {
-        log.error("botcord terminal credential local revoke failed", {
-          agentId: options.agentId,
-          err: String(cleanupErr),
-        });
-        markStatus({
-          running: false,
-          connected: false,
-          restartPending: false,
-          lastStopAt: Date.now(),
-          lastError: String(cleanupErr),
-        });
+        await revokeLocalTerminalCredentials(err, log);
+      } finally {
+        permanentStopping = false;
       }
-      permanentStopping = false;
       if (rejectLoop) {
         const r = rejectLoop;
         rejectLoop = null;
@@ -999,7 +1032,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       try {
         token = await client.ensureToken();
       } catch (err) {
-        if (await revokeLocalTerminalCredentials(err)) {
+        if (await stopForTerminalCredentials(err)) {
           return;
         }
         log.error("botcord ws token refresh failed", { agentId, err: String(err) });
@@ -1140,7 +1173,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
             try {
               await client.refreshToken();
             } catch (err) {
-              if (await revokeLocalTerminalCredentials(err)) {
+              if (await stopForTerminalCredentials(err)) {
                 return;
               }
               log.error("botcord ws forced refresh failed", { agentId, err: String(err) });
@@ -1202,6 +1235,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
 
     async start(ctx: ChannelStartContext): Promise<void> {
       const client = ensureClient();
+      setStatusCallback = ctx.setStatus;
       // Only patch fields owned by the adapter; the manager is the single
       // writer for `channel` (== adapter.id) and `accountId`.
       const patch: Partial<ChannelStatusSnapshot> = {
@@ -1240,19 +1274,24 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       // (keyed by the same trace_id) merge into this message instead of
       // orphaning into a separate placeholder.
       if (message.traceId) options.traceId = message.traceId;
-      const upload = await uploadOutboundAttachments(client, message.attachments ?? [], ctx.log);
-      if (upload.attachments.length > 0) options.attachments = upload.attachments;
-      const text = rewriteUploadedAttachmentPaths(message.text, upload.replacements);
-      const resp =
-        message.type === "error" && client.sendTypedMessage
-          ? await client.sendTypedMessage(message.conversationId, "error", text, options)
-          : await client.sendMessage(message.conversationId, text, options);
-      const providerMessageId =
-        (resp && typeof resp.hub_msg_id === "string" && resp.hub_msg_id) ||
-        (resp && typeof (resp as { message_id?: unknown }).message_id === "string"
-          ? (resp as { message_id: string }).message_id
-          : null);
-      return { providerMessageId: providerMessageId ?? null };
+      try {
+        const upload = await uploadOutboundAttachments(client, message.attachments ?? [], ctx.log);
+        if (upload.attachments.length > 0) options.attachments = upload.attachments;
+        const text = rewriteUploadedAttachmentPaths(message.text, upload.replacements);
+        const resp =
+          message.type === "error" && client.sendTypedMessage
+            ? await client.sendTypedMessage(message.conversationId, "error", text, options)
+            : await client.sendMessage(message.conversationId, text, options);
+        const providerMessageId =
+          (resp && typeof resp.hub_msg_id === "string" && resp.hub_msg_id) ||
+          (resp && typeof (resp as { message_id?: unknown }).message_id === "string"
+            ? (resp as { message_id: string }).message_id
+            : null);
+        return { providerMessageId: providerMessageId ?? null };
+      } catch (err) {
+        await revokeOutboundTerminalCredentials(err, ctx.log);
+        throw err;
+      }
     },
 
     async streamBlock(ctx: ChannelStreamBlockContext): Promise<void> {
@@ -1261,11 +1300,18 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       try {
         const block = ctx.block as { raw?: unknown; kind?: string; seq?: number } | undefined;
         const seq = typeof block?.seq === "number" ? block.seq : 0;
-        const resp = await postControlWithRefresh(client, hubUrl, "/hub/stream-block", {
-          trace_id: ctx.traceId,
-          seq,
-          block: normalizeBlockForHub(block, seq),
-        });
+        const resp = await postControlWithRefresh(
+          client,
+          hubUrl,
+          "/hub/stream-block",
+          {
+            trace_id: ctx.traceId,
+            seq,
+            block: normalizeBlockForHub(block, seq),
+          },
+          "POST",
+          (err) => revokeOutboundTerminalCredentials(err, ctx.log),
+        );
         if (!resp.ok && resp.status !== 204) {
           const body = await resp.text().catch(() => "");
           ctx.log.warn("botcord stream-block non-ok", {
@@ -1282,9 +1328,16 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       const client = ensureClient();
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       try {
-        const resp = await postControlWithRefresh(client, hubUrl, "/hub/stream-end", {
-          trace_id: ctx.traceId,
-        });
+        const resp = await postControlWithRefresh(
+          client,
+          hubUrl,
+          "/hub/stream-end",
+          {
+            trace_id: ctx.traceId,
+          },
+          "POST",
+          (err) => revokeOutboundTerminalCredentials(err, ctx.log),
+        );
         if (!resp.ok && resp.status !== 204) {
           const body = await resp.text().catch(() => "");
           ctx.log.warn("botcord stream-end non-ok", {
@@ -1301,9 +1354,16 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       const client = ensureClient();
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       try {
-        const resp = await postControlWithRefresh(client, hubUrl, "/hub/typing", {
-          room_id: ctx.conversationId,
-        });
+        const resp = await postControlWithRefresh(
+          client,
+          hubUrl,
+          "/hub/typing",
+          {
+            room_id: ctx.conversationId,
+          },
+          "POST",
+          (err) => revokeOutboundTerminalCredentials(err, ctx.log),
+        );
         if (!resp.ok && resp.status !== 204) {
           const body = await resp.text().catch(() => "");
           ctx.log.warn("botcord typing non-ok", {
@@ -1329,18 +1389,26 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
           const resp = ctx.phase === "started"
-            ? await postControlWithRefresh(client, hubUrl, path, {
-                ...body,
-                kind: ctx.kind,
-                emoji: ctx.emoji || DEFAULT_REPLYING_STATUS_EMOJI,
-                ttl_sec: REPLYING_STATUS_TTL_SEC,
-              })
+            ? await postControlWithRefresh(
+                client,
+                hubUrl,
+                path,
+                {
+                  ...body,
+                  kind: ctx.kind,
+                  emoji: ctx.emoji || DEFAULT_REPLYING_STATUS_EMOJI,
+                  ttl_sec: REPLYING_STATUS_TTL_SEC,
+                },
+                "POST",
+                (err) => revokeOutboundTerminalCredentials(err, ctx.log),
+              )
             : await postControlWithRefresh(
                 client,
                 hubUrl,
                 `${path}/${encodeURIComponent(ctx.kind)}`,
                 body,
                 "DELETE",
+                (err) => revokeOutboundTerminalCredentials(err, ctx.log),
               );
           if (resp.ok || resp.status === 204) return;
           const respBody = await resp.text().catch(() => "");

@@ -39,6 +39,8 @@ export interface WechatSetupAdapterOptions {
   fetchImpl?: FetchLike;
   /** Override the default iLink base url (e.g. for E2E against a stub). */
   baseUrl?: string;
+  /** Bound setup-provider calls so Hub never waits on a hung iLink request. */
+  requestTimeoutMs?: number;
 }
 
 export function createWechatSetupAdapter(
@@ -46,6 +48,7 @@ export function createWechatSetupAdapter(
 ): ProviderSetupAdapter {
   const fetchImpl = opts.fetchImpl;
   const baseUrl = opts.baseUrl ?? DEFAULT_WECHAT_BASE_URL;
+  const requestTimeoutMs = opts.requestTimeoutMs ?? 3_000;
 
   async function loginStart(
     req: LoginStartRequest,
@@ -53,7 +56,11 @@ export function createWechatSetupAdapter(
   ): Promise<LoginStartResult> {
     let qr;
     try {
-      qr = await getBotQrcode({ ...(fetchImpl ? { fetchImpl } : {}), baseUrl });
+      qr = await getBotQrcode({
+        ...(fetchImpl ? { fetchImpl } : {}),
+        baseUrl,
+        timeoutMs: requestTimeoutMs,
+      });
     } catch (err) {
       ctx.log.warn("wechat login/start get_bot_qrcode failed", {
         agentId: req.agentId,
@@ -103,6 +110,7 @@ export function createWechatSetupAdapter(
       resp = await getQrcodeStatus(qrcode, {
         ...(fetchImpl ? { fetchImpl } : {}),
         baseUrl: session.secretPayload.baseUrl ?? baseUrl,
+        timeoutMs: requestTimeoutMs,
       });
     } catch (err) {
       ctx.log.warn("wechat login/status get_qrcode_status failed", {
@@ -157,7 +165,7 @@ export function createWechatSetupAdapter(
       resp = await getBotUpdates(session.secretPayload.botToken, {
         ...(fetchImpl ? { fetchImpl } : {}),
         baseUrl: session.secretPayload.baseUrl ?? baseUrl,
-        timeoutMs: 3000,
+        timeoutMs: requestTimeoutMs,
       });
     } catch (err) {
       ctx.log.warn("wechat discover getupdates failed", {
@@ -249,7 +257,7 @@ export function createWechatSetupAdapter(
       const resp = await getBotUpdates(secret.botToken, {
         ...(fetchImpl ? { fetchImpl } : {}),
         baseUrl: secret.baseUrl ?? baseUrl,
-        timeoutMs: 3000,
+        timeoutMs: requestTimeoutMs,
       });
       if (resp.ret !== undefined && resp.ret !== 0) {
         return { ok: false, details: { ret: resp.ret } };

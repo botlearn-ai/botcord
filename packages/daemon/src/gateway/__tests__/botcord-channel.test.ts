@@ -68,6 +68,18 @@ function makeInbox(overrides: Partial<InboxMessage> = {}): InboxMessage {
   };
 }
 
+function makeTerminalRefreshError(
+  code: "agent_not_found" | "key_not_found" | "key_not_active",
+): Error & { status?: number; code?: string } {
+  const status = code === "key_not_active" ? 403 : 404;
+  const err = new Error(
+    `Token refresh failed: ${status} {"code":"${code}","retryable":false}`,
+  ) as Error & { status?: number; code?: string };
+  err.status = status;
+  err.code = code;
+  return err;
+}
+
 async function runStart(
   channel: ReturnType<typeof createBotCordChannel>,
   overrides: {
@@ -276,6 +288,50 @@ describe("createBotCordChannel — send()", () => {
       errorRef: "err_abc123",
     });
     expect(client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("locally revokes stale credentials when outbound send sees terminal refresh 404", async () => {
+    const err = new Error(
+      'Token refresh failed: 404 {"code":"agent_not_found","retryable":false}',
+    ) as Error & { status?: number; code?: string };
+    err.status = 404;
+    err.code = "agent_not_found";
+    const client = makeClient({
+      sendMessage: vi.fn().mockRejectedValue(err),
+    });
+    const localRevokeAgent = vi.fn().mockResolvedValue({
+      agentId: "ag_self",
+      credentialsDeleted: true,
+      stateDeleted: true,
+      workspaceDeleted: false,
+    });
+    const logs: Array<{ msg: string; meta?: Record<string, unknown> }> = [];
+    const log: GatewayLogger = {
+      ...silentLog,
+      warn: (msg, meta) => logs.push({ msg, meta }),
+    };
+    const channel = createBotCordChannel({
+      id: "botcord-main",
+      accountId: "ag_self",
+      agentId: "ag_self",
+      client,
+      localRevokeAgent,
+    });
+
+    await expect(
+      channel.send({
+        message: {
+          channel: "botcord",
+          accountId: "ag_self",
+          conversationId: "rm_group_a",
+          text: "reply",
+        },
+        log,
+      }),
+    ).rejects.toBe(err);
+    expect(localRevokeAgent).toHaveBeenCalledWith("ag_self", log);
+    expect(logs.some((entry) => entry.msg === "botcord agent credentials rejected by Hub; revoked local binding"))
+      .toBe(true);
   });
 });
 
@@ -1329,6 +1385,57 @@ describe("createBotCordChannel — streamBlock()", () => {
     }
   });
 
+  it("locally revokes stale credentials when 401 recovery refresh returns terminal 404", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"code":"invalid_token"}', { status: 401 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const err = makeTerminalRefreshError("key_not_found");
+      const client = makeClient({
+        refreshToken: vi.fn().mockRejectedValue(err),
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const localRevokeAgent = vi.fn().mockResolvedValue({
+        agentId: "ag_self",
+        credentialsDeleted: true,
+        stateDeleted: true,
+        workspaceDeleted: false,
+      });
+      const logs: Array<{ msg: string; meta?: Record<string, unknown> }> = [];
+      const log: GatewayLogger = {
+        ...silentLog,
+        warn: (msg, meta) => logs.push({ msg, meta }),
+      };
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+        localRevokeAgent,
+      });
+
+      await expect(
+        channel.streamBlock!({
+          traceId: "trace_terminal",
+          accountId: "ag_self",
+          conversationId: "rm_oc_42",
+          block: { kind: "assistant_text", seq: 1, raw: { text: "partial" } },
+          log,
+        }),
+      ).resolves.toBeUndefined();
+      expect(client.refreshToken).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(localRevokeAgent).toHaveBeenCalledWith("ag_self", log);
+      expect(logs.some((entry) => entry.msg === "botcord agent credentials rejected by Hub; revoked local binding"))
+        .toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   it("normalizes DeepSeek message.delta assistant text", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     const realFetch = globalThis.fetch;
@@ -1700,6 +1807,115 @@ describe("createBotCordChannel — streamBlock()", () => {
   });
 });
 
+describe("createBotCordChannel — streamEnd()", () => {
+  it("locally revokes stale credentials when 401 recovery refresh returns terminal 404", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"code":"invalid_token"}', { status: 401 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const err = makeTerminalRefreshError("agent_not_found");
+      const client = makeClient({
+        refreshToken: vi.fn().mockRejectedValue(err),
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const localRevokeAgent = vi.fn().mockResolvedValue({
+        agentId: "ag_self",
+        credentialsDeleted: true,
+        stateDeleted: true,
+        workspaceDeleted: false,
+      });
+      const logs: Array<{ msg: string; meta?: Record<string, unknown> }> = [];
+      const log: GatewayLogger = {
+        ...silentLog,
+        warn: (msg, meta) => logs.push({ msg, meta }),
+      };
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+        localRevokeAgent,
+      });
+
+      await expect(
+        channel.streamEnd!({
+          traceId: "trace_terminal",
+          accountId: "ag_self",
+          conversationId: "rm_oc_42",
+          log,
+        }),
+      ).resolves.toBeUndefined();
+      expect(client.refreshToken).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(localRevokeAgent).toHaveBeenCalledWith("ag_self", log);
+      expect(logs.some((entry) => entry.msg === "botcord agent credentials rejected by Hub; revoked local binding"))
+        .toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});
+
+describe("createBotCordChannel — messageStatus()", () => {
+  it("locally revokes stale credentials when replying status refresh returns terminal 403", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"code":"invalid_token"}', { status: 401 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const err = makeTerminalRefreshError("key_not_active");
+      const client = makeClient({
+        refreshToken: vi.fn().mockRejectedValue(err),
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const localRevokeAgent = vi.fn().mockResolvedValue({
+        agentId: "ag_self",
+        credentialsDeleted: true,
+        stateDeleted: true,
+        workspaceDeleted: false,
+      });
+      const logs: Array<{ msg: string; meta?: Record<string, unknown> }> = [];
+      const log: GatewayLogger = {
+        ...silentLog,
+        warn: (msg, meta) => logs.push({ msg, meta }),
+      };
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+        localRevokeAgent,
+      });
+
+      await expect(
+        channel.messageStatus!({
+          traceId: "trace_status",
+          accountId: "ag_self",
+          conversationId: "rm_oc_42",
+          messageId: "m_source",
+          turnId: "turn_1",
+          kind: "replying",
+          emoji: ":hourglass:",
+          phase: "started",
+          log,
+        }),
+      ).resolves.toBeUndefined();
+      expect(client.refreshToken).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(localRevokeAgent).toHaveBeenCalledWith("ag_self", log);
+      expect(logs.some((entry) => entry.msg === "botcord agent credentials rejected by Hub; revoked local binding"))
+        .toBe(true);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});
+
 describe("createBotCordChannel — typing()", () => {
   it("POSTs to /hub/typing with the room id", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
@@ -1792,6 +2008,60 @@ describe("createBotCordChannel — typing()", () => {
       expect((fetchSpy.mock.calls[1][1].headers as Record<string, string>).Authorization).toBe(
         "Bearer test-token-2",
       );
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("locally revokes stale credentials when 401 recovery refresh returns terminal 404", async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"code":"invalid_token"}', { status: 401 }));
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    try {
+      const err = new Error(
+        'Token refresh failed: 404 {"code":"key_not_found","retryable":false}',
+      ) as Error & { status?: number; code?: string };
+      err.status = 404;
+      err.code = "key_not_found";
+      const client = makeClient({
+        refreshToken: vi.fn().mockRejectedValue(err),
+        getHubUrl: vi.fn().mockReturnValue("https://hub.example.com"),
+      });
+      const localRevokeAgent = vi.fn().mockResolvedValue({
+        agentId: "ag_self",
+        credentialsDeleted: true,
+        stateDeleted: true,
+        workspaceDeleted: false,
+      });
+      const logs: Array<{ msg: string; meta?: Record<string, unknown> }> = [];
+      const log: GatewayLogger = {
+        ...silentLog,
+        warn: (msg, meta) => logs.push({ msg, meta }),
+      };
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: "https://hub.example.com",
+        localRevokeAgent,
+      });
+
+      await expect(
+        channel.typing!({
+          traceId: "trace_terminal",
+          accountId: "ag_self",
+          conversationId: "rm_oc_42",
+          log,
+        }),
+      ).resolves.toBeUndefined();
+      expect(client.refreshToken).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(localRevokeAgent).toHaveBeenCalledWith("ag_self", log);
+      expect(logs.some((entry) => entry.msg === "botcord agent credentials rejected by Hub; revoked local binding"))
+        .toBe(true);
     } finally {
       globalThis.fetch = realFetch;
     }
