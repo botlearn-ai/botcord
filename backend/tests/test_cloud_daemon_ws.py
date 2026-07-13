@@ -32,6 +32,7 @@ from hub.routers.cloud_daemon_control import (
     CLOUD_DAEMON_TOKEN_KIND,
     _CloudDaemonConn,
     _create_cloud_daemon_access_token,
+    disconnect_cloud_daemon_control,
     _handle_cloud_daemon_event,
     _registry_for_tests,
     _verify_cloud_daemon_access_token,
@@ -98,6 +99,32 @@ class _FakeWS:
 
     async def close(self, code: int = 1000, reason: str = "") -> None:
         self.closed_with = (code, reason)
+
+
+@pytest.mark.asyncio
+async def test_disconnect_cloud_daemon_control_invalidates_stale_connection():
+    ws = _FakeWS()
+    conn = _CloudDaemonConn(
+        ws=ws,
+        user_id="usr_pause",
+        cloud_daemon_instance_id="cloud_dm_pause",
+        daemon_instance_id="dm_pause",
+    )
+    pending = asyncio.get_running_loop().create_future()
+    conn.pending_acks["frame_pause"] = pending
+    registry = _registry_for_tests()
+    await registry.register(conn)
+
+    disconnected = await disconnect_cloud_daemon_control(
+        "cloud_dm_pause",
+        reason="cloud daemon idle-paused",
+    )
+
+    assert disconnected is True
+    assert registry.is_online("cloud_dm_pause") is False
+    assert ws.closed_with == (1012, "cloud daemon idle-paused")
+    with pytest.raises(RuntimeError, match="idle-paused"):
+        await pending
 
 
 # ---------------------------------------------------------------------------
