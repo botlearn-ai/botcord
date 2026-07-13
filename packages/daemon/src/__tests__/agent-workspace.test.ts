@@ -92,6 +92,14 @@ describe("ensureAgentWorkspace", () => {
     expect(existsSync(path.join(skillsDir, "botcord_memory", "SKILL.md"))).toBe(true);
   });
 
+  it("seeds bundled skills under workspace/skills/ for generic runtimes", () => {
+    ensureAgentWorkspace("ag_generic_skills", { runtime: "deepseek-tui" });
+    const skillsDir = path.join(agentWorkspaceDir("ag_generic_skills"), "skills");
+    expect(existsSync(path.join(skillsDir, "botcord", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsDir, "botcord-user-guide", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(skillsDir, "botcord_memory", "SKILL.md"))).toBe(true);
+  });
+
   it("re-seeds skills on a second call so daemon upgrades propagate", () => {
     ensureAgentWorkspace("ag_skill_upgrade", {});
     const skillFile = path.join(
