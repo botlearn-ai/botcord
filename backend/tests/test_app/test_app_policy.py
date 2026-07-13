@@ -626,12 +626,49 @@ async def test_runtime_skills_refresh_keeps_504_after_persistent_ack_timeout(
     r = await client.post("/api/agents/ag_owned/skills/refresh", headers=headers)
     assert r.status_code == 504, r.text
     assert r.json()["detail"] == "daemon_ack_timeout"
-    assert len(dispatch_calls) == 2
+    assert dispatch_calls == [
+        {
+            "cloud_daemon_instance_id": "cloud_dm_timeout_skills",
+            "type": "list_agent_skills",
+            "params": {"agentId": "ag_owned"},
+            "timeout_ms": 5000,
+        },
+        {
+            "cloud_daemon_instance_id": "cloud_dm_timeout_skills",
+            "type": "list_agent_skills",
+            "params": {"agentId": "ag_owned"},
+            "timeout_ms": 5000,
+        },
+    ]
 
 
 @pytest.mark.asyncio
-async def test_runtime_skills_install_does_not_retry_cloud_dispatch_loss(
-    client, seed, db_session, monkeypatch
+@pytest.mark.parametrize(
+    ("error_code", "error_message", "expected_status", "expected_detail"),
+    [
+        (
+            "cloud_daemon_disconnected",
+            "connection closed after send",
+            409,
+            "daemon_offline",
+        ),
+        (
+            "cloud_daemon_ack_timeout",
+            "ack timeout after 30000ms",
+            504,
+            "daemon_ack_timeout",
+        ),
+    ],
+)
+async def test_runtime_skills_install_does_not_retry_cloud_dispatch_error(
+    client,
+    seed,
+    db_session,
+    monkeypatch,
+    error_code,
+    error_message,
+    expected_status,
+    expected_detail,
 ):
     from app.routers import runtime_skills as runtime_skills_mod
 
@@ -690,8 +727,8 @@ async def test_runtime_skills_install_does_not_retry_cloud_dispatch_loss(
             "timeout_ms": timeout_ms,
         })
         raise runtime_skills_mod.CloudDaemonDispatchError(
-            "cloud_daemon_disconnected",
-            "connection closed after send",
+            error_code,
+            error_message,
         )
 
     monkeypatch.setattr(runtime_skills_mod, "send_cloud_control_frame", fake_send_cloud)
@@ -708,8 +745,8 @@ async def test_runtime_skills_install_does_not_retry_cloud_dispatch_loss(
             }
         },
     )
-    assert r.status_code == 409, r.text
-    assert r.json()["detail"] == "daemon_offline"
+    assert r.status_code == expected_status, r.text
+    assert r.json()["detail"] == expected_detail
     assert resume_calls == []
     assert dispatch_calls == [
         {
