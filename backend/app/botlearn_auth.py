@@ -256,6 +256,7 @@ def issue_botlearn_session_token(
     installation_id: str,
     scopes: list[str],
     session_key: str | None = None,
+    session_profile_required: bool = False,
 ) -> tuple[str, int]:
     """Mint a short-lived BotCord integration session token.
 
@@ -278,6 +279,10 @@ def issue_botlearn_session_token(
     }
     if session_key:
         payload["session_key"] = session_key
+    if session_profile_required:
+        # Deliberately only an enforcement bit: profile id/hash/content remain
+        # in server-side Hub/daemon state and never enter the browser token.
+        payload["session_profile_required"] = True
     token = pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return token, BOTLEARN_SESSION_TTL_SECONDS
 

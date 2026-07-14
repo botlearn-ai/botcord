@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import hashlib
 import json
 import logging
+import time
 import uuid
 from typing import Any, Awaitable, Callable
 
@@ -34,6 +36,12 @@ _redis_init_failed = False
 # Local-delivery callback registered by owner_chat_ws.py to avoid a circular
 # import. Signature: async (user_id, agent_id, data: dict) -> None.
 _fanout_delivery: Callable[[str, str, dict], Awaitable[None]] | None = None
+
+# Session-profile bindings remain server-side. The process-local mirror keeps
+# single-instance/dev deployments correct when Redis is disabled; production
+# Redis makes the binding visible across Hub workers and restarts for the
+# lifetime of the short-lived BotLearn session token.
+_local_session_profile_bindings: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 def register_fanout_delivery(
@@ -90,8 +98,83 @@ def _events_key(trace_id: str) -> str:
     return f"owner_chat_run:{trace_id}:events"
 
 
+def _session_profile_key(user_id: str, agent_id: str, session_key: str) -> str:
+    digest = hashlib.sha256(
+        f"{user_id}\0{agent_id}\0{session_key}".encode("utf-8")
+    ).hexdigest()
+    return f"botlearn_session_profile:{digest}"
+
+
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+async def write_session_profile_binding(
+    *,
+    user_id: str,
+    agent_id: str,
+    session_key: str,
+    required: bool,
+    ttl_seconds: int,
+    status: dict[str, Any] | None = None,
+) -> None:
+    """Bind a course session to profile id/hash without storing profile content."""
+    key = _session_profile_key(user_id, agent_id, session_key)
+    value = {
+        "required": bool(required),
+        "profile_id": (status or {}).get("profileId") or (status or {}).get("profile_id"),
+        "profile_hash": (status or {}).get("profileHash") or (status or {}).get("profile_hash"),
+        "status": (status or {}).get("status"),
+    }
+    ttl = max(1, int(ttl_seconds))
+    _local_session_profile_bindings[key] = (time.time() + ttl, value)
+    client = get_redis()
+    if client is None:
+        return
+    try:
+        await client.set(key, json.dumps(value), ex=ttl)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "owner_chat_cache.write_session_profile_binding failed agent=%s: %s",
+            agent_id,
+            exc,
+        )
+
+
+async def load_session_profile_binding(
+    *,
+    user_id: str,
+    agent_id: str,
+    session_key: str,
+) -> dict[str, Any] | None:
+    key = _session_profile_key(user_id, agent_id, session_key)
+    client = get_redis()
+    if client is not None:
+        try:
+            raw = await client.get(key)
+            if not raw:
+                _local_session_profile_bindings.pop(key, None)
+                return None
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                return None
+            return parsed
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "owner_chat_cache.load_session_profile_binding failed agent=%s: %s",
+                agent_id,
+                exc,
+            )
+
+    # Redis disabled/unavailable: use the single-process development fallback.
+    local = _local_session_profile_bindings.get(key)
+    if local is None:
+        return None
+    expires_at, value = local
+    if expires_at > time.time():
+        return dict(value)
+    _local_session_profile_bindings.pop(key, None)
+    return None
 
 
 # ---------------------------------------------------------------------------

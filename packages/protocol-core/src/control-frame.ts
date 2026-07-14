@@ -102,6 +102,17 @@ export const CONTROL_FRAME_TYPES = {
    */
   INSTALL_AGENT_SKILL: "install_agent_skill",
   /**
+   * Hub→daemon: materialize one short-lived BotLearn Course runtime profile
+   * under an agent's session directory. Unlike `install_agent_skill`, this
+   * never mutates the agent's long-lived runtime/workspace skill roots.
+   */
+  APPLY_SESSION_PROFILE: "apply_session_profile",
+  /**
+   * Hub→daemon: confirm that the exact BotLearn Course session profile is
+   * still present and unexpired before owner-chat accepts the first task.
+   */
+  GET_SESSION_PROFILE: "get_session_profile",
+  /**
    * Daemon→Hub: event frame carrying the latest runtime-probe snapshot.
    * Pushed on first control-WS connect (P0) and on reconnect/diff (P1).
    * Hub persists the payload onto `daemon_instances.runtimes_json` so the
@@ -470,6 +481,9 @@ export interface AgentSkillFileManifest {
   path: string;
   content?: string;
   sourcePath?: string;
+  /** Optional integrity metadata used by trusted inline course packages. */
+  sha256?: string;
+  size?: number;
 }
 
 export interface AgentSkillManifestInput {
@@ -502,6 +516,57 @@ export interface InstallAgentSkillParams {
     packageSpec: string;
     skills?: string[];
   };
+}
+
+export interface SessionProfilePromptPackInput {
+  id: string;
+  version: string;
+  digest: string;
+  systemInstructions: string;
+}
+
+export interface SessionProfileSkillPackageInput {
+  id: string;
+  version: string;
+  digest: string;
+  archiveManifest: AgentSkillArchiveManifestInput;
+}
+
+/** Payload shape for `apply_session_profile`. */
+export interface ApplySessionProfileParams {
+  agentId: string;
+  sessionKey: string;
+  roomId: string;
+  schemaVersion: "botlearn-course-runtime-profile/0.1";
+  profileId: string;
+  profileHash: string;
+  courseVersionId: string;
+  promptPack: SessionProfilePromptPackInput;
+  skillPackages: SessionProfileSkillPackageInput[];
+  requiredCapabilities: string[];
+  ttlSeconds: number;
+}
+
+/** Payload shape for `get_session_profile`. */
+export interface GetSessionProfileParams {
+  agentId: string;
+  sessionKey: string;
+  roomId: string;
+  profileId?: string;
+  profileHash?: string;
+}
+
+export interface SessionProfileStatus {
+  profileId: string;
+  profileHash: string;
+  status: "applied" | "requirements_unmet";
+  appliedPromptPackRef: string;
+  appliedSkillRefs: string[];
+  availableCapabilities: string[];
+  missingSkills: string[];
+  missingCapabilities: string[];
+  runtime: string;
+  expiresAt: string;
 }
 
 /** Payload shape for `revoke_agent`. */

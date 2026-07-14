@@ -540,6 +540,12 @@ BOTLEARN_ALLOWED_ORIGINS: list[str] = [
 BOTLEARN_SESSION_TTL_SECONDS: int = int(
     os.getenv("BOTLEARN_SESSION_TTL_SECONDS", "900")
 )
+# Shared only by the two trusted backends. Required when the session exchange
+# carries a runtime_profile so a browser with a valid BotLearn user token
+# cannot forge Prompt Packs or inline Skill archives.
+BOTLEARN_RUNTIME_PROFILE_SECRET: str | None = (
+    os.getenv("BOTLEARN_RUNTIME_PROFILE_SECRET", "").strip() or None
+)
 # Require ``email_verified=true`` on the BotLearn login token.
 BOTLEARN_REQUIRE_EMAIL_VERIFIED: bool = os.getenv(
     "BOTLEARN_REQUIRE_EMAIL_VERIFIED", "true"

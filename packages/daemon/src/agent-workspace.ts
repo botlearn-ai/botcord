@@ -29,6 +29,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -60,6 +61,22 @@ export function agentWorkspaceDir(agentId: string): string {
 
 export function agentStateDir(agentId: string): string {
   return path.join(agentHomeDir(agentId), "state");
+}
+
+/** Root for short-lived, room-scoped runtime profiles. */
+export function agentSessionProfilesDir(agentId: string): string {
+  return path.join(agentHomeDir(agentId), "sessions");
+}
+
+/**
+ * Directory for one isolated conversation session. Hashing keeps Hub room ids
+ * out of filesystem paths and makes traversal impossible even if a future
+ * channel introduces a less restrictive conversation-id format.
+ */
+export function agentSessionProfileDir(agentId: string, roomId: string): string {
+  if (!roomId || roomId.length > 512) throw new Error("roomId is required");
+  const sessionHash = createHash("sha256").update(roomId, "utf8").digest("hex");
+  return path.join(agentSessionProfilesDir(agentId), sessionHash);
 }
 
 /**
