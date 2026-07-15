@@ -27,7 +27,7 @@ from typing import Any
 
 import sentry_sdk
 from nacl.signing import SigningKey as NaClSigningKey
-from sqlalchemy import func, or_, select, text as sa_text
+from sqlalchemy import and_, func, or_, select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy.orm.attributes import flag_modified
@@ -41,6 +41,7 @@ from hub.config import (
     CLOUD_AGENT_DEFAULT_RUNTIME,
     CLOUD_AGENT_FEATURE_ENABLED,
     CLOUD_AGENT_MAX_PER_USER,
+    CLOUD_AGENT_OWNER_CHAT_RUN_LEASE_SECONDS,
     HUB_PUBLIC_BASE_URL,
 )
 from hub.enums import KeyState, MessageState
@@ -2182,7 +2183,10 @@ class CloudAgentService:
         if any(agent.status == "provisioning" for agent in agents):
             return False
         if await self._cloud_daemon_has_active_run(
-            db, cdi.id, include_owner_chat_inbox=True
+            db,
+            cdi.id,
+            include_owner_chat_inbox=True,
+            now=now,
         ):
             return False
 
@@ -2224,6 +2228,7 @@ class CloudAgentService:
         cloud_daemon_instance_id: str,
         *,
         include_owner_chat_inbox: bool = False,
+        now: datetime.datetime | None = None,
     ) -> bool:
         agent_ids_subquery = (
             select(CloudAgentInstance.agent_id)
@@ -2251,12 +2256,29 @@ class CloudAgentService:
             )
         ]
         if include_owner_chat_inbox:
+            current = now or _now()
+            owner_chat_lease_cutoff = current - datetime.timedelta(
+                seconds=CLOUD_AGENT_OWNER_CHAT_RUN_LEASE_SECONDS
+            )
             active_message_filters.append(
                 (
                     (MessageRecord.source_type == "dashboard_user_chat")
                     & (MessageRecord.source_session_kind == "owner_chat")
-                    & MessageRecord.state.in_(
-                        (MessageState.queued, MessageState.processing)
+                    & or_(
+                        MessageRecord.state.in_(
+                            (MessageState.queued, MessageState.processing)
+                        ),
+                        and_(
+                            MessageRecord.state.in_(
+                                (MessageState.delivered, MessageState.acked)
+                            ),
+                            func.coalesce(
+                                MessageRecord.acked_at,
+                                MessageRecord.delivered_at,
+                                MessageRecord.created_at,
+                            )
+                            >= owner_chat_lease_cutoff,
+                        ),
                     )
                 )
             )

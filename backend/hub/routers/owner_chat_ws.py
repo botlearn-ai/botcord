@@ -14,7 +14,7 @@ from typing import Any, Sequence
 import sentry_sdk
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1053,10 +1053,33 @@ class StreamEndBody(BaseModel):
     trace_id: str = Field(..., max_length=48)
 
 
+async def _settle_owner_chat_trigger(
+    db: AsyncSession,
+    *,
+    trace_id: str,
+    agent_id: str,
+) -> bool:
+    """Release the DB-backed active-turn lease for one owner-chat trigger."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    result = await db.execute(
+        update(MessageRecord)
+        .where(
+            MessageRecord.hub_msg_id == trace_id,
+            MessageRecord.receiver_id == agent_id,
+            MessageRecord.source_type == "dashboard_user_chat",
+            MessageRecord.source_session_kind == "owner_chat",
+            MessageRecord.state.notin_((MessageState.done, MessageState.failed)),
+        )
+        .values(state=MessageState.done, acked_at=now, next_retry_at=None)
+    )
+    return bool(result.rowcount)
+
+
 @router.post("/hub/stream-end", status_code=204)
 async def receive_stream_end(
     body: StreamEndBody,
     agent_id: str = Depends(get_current_agent),
+    db: AsyncSession = Depends(get_db),
 ):
     """Signal that an owner-chat run has ended (turn terminated).
 
@@ -1079,6 +1102,12 @@ async def receive_stream_end(
         run = await owner_chat_cache.load_run(body.trace_id)
         if run is not None and run.get("agent_id") != agent_id:
             return
+    await _settle_owner_chat_trigger(
+        db,
+        trace_id=body.trace_id,
+        agent_id=agent_id,
+    )
+    await db.commit()
     await owner_chat_cache.mark_run_completed(body.trace_id)
     _cleanup_trace(body.trace_id)
 

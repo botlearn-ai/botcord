@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖环境变量、时间窗口与支付活动常量，向 Hub 全局暴露运行时配置
-[OUTPUT]: 对外提供数据库、鉴权、文件、Stripe 与冷启动赠送等统一配置常量
+[OUTPUT]: 对外提供数据库、鉴权、文件、Cloud Agent 生命周期、Stripe 与冷启动赠送等统一配置常量
 [POS]: backend 配置中枢，负责把跨模块共享的运行时策略收敛为单一真相源
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
@@ -383,6 +383,14 @@ CLOUD_AGENT_IDLE_PAUSE_SECONDS: float = float(
 )
 CLOUD_AGENT_IDLE_SWEEP_INTERVAL_SECONDS: float = float(
     os.getenv("CLOUD_AGENT_IDLE_SWEEP_INTERVAL_SECONDS", "60")
+)
+# An owner-chat trigger becomes ``delivered`` as soon as the daemon claims it,
+# before the runtime turn finishes.  Keep that delivered row as an active-turn
+# lease until ``/hub/stream-end`` settles it.  The bounded fallback prevents a
+# crashed daemon from keeping its sandbox alive forever; 31 minutes covers the
+# daemon's 30-minute outer turn timeout plus terminal cleanup.
+CLOUD_AGENT_OWNER_CHAT_RUN_LEASE_SECONDS: float = float(
+    os.getenv("CLOUD_AGENT_OWNER_CHAT_RUN_LEASE_SECONDS", "1860")
 )
 
 # ---------------------------------------------------------------------------
