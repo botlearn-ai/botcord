@@ -20,6 +20,8 @@ async function startMockDeepseekServer(opts?: {
   threadId?: string;
   turnId?: string;
   events?: Array<{ event: string; data: unknown }>;
+  endEventStream?: boolean;
+  keepAliveIntervalMs?: number;
 }) {
   const token = opts?.token ?? "test-token";
   const threadId = opts?.threadId ?? "thr_test";
@@ -78,6 +80,10 @@ async function startMockDeepseekServer(opts?: {
           connection: "keep-alive",
         });
         eventRes = res;
+        if (opts?.keepAliveIntervalMs) {
+          const keepAlive = setInterval(() => res.write(": keep-alive\n\n"), opts.keepAliveIntervalMs);
+          res.on("close", () => clearInterval(keepAlive));
+        }
         return;
       }
       if (req.method === "POST" && req.url === `/v1/threads/${threadId}/turns`) {
@@ -85,7 +91,7 @@ async function startMockDeepseekServer(opts?: {
         res.end(JSON.stringify({ thread: { id: threadId }, turn: { id: turnId } }));
         setTimeout(() => {
           for (const ev of events) eventRes?.write(sse(ev.event, ev.data));
-          eventRes?.end();
+          if (opts?.endEventStream !== false) eventRes?.end();
         }, 5);
         return;
       }
@@ -112,10 +118,12 @@ function runAdapter(
   sessionId: string | null = null,
   extraArgs?: string[],
   systemRules?: Parameters<DeepseekTuiAdapter["run"]>[0]["systemRules"],
+  turnEventIdleTimeoutMs?: number,
 ) {
-  const adapter = new DeepseekTuiAdapter({ serverUrl, authToken });
+  const adapter = new DeepseekTuiAdapter({ serverUrl, authToken, turnEventIdleTimeoutMs });
   const ctrl = new AbortController();
   const blocks: string[] = [];
+  const blockEvents: Array<{ kind: string; raw?: unknown }> = [];
   const status: Array<{ phase: string; label?: string }> = [];
   const result = adapter.run({
     text: "hi",
@@ -127,12 +135,15 @@ function runAdapter(
     extraArgs,
     systemContext: "runtime memory",
     systemRules,
-    onBlock: (b) => blocks.push(b.kind),
+    onBlock: (b) => {
+      blocks.push(b.kind);
+      blockEvents.push(b);
+    },
     onStatus: (e) => {
       if (e.kind === "thinking") status.push({ phase: e.phase, label: e.label });
     },
   });
-  return { result, blocks, status };
+  return { result, blocks, blockEvents, status };
 }
 
 describe("DeepseekTuiAdapter", () => {
@@ -472,6 +483,100 @@ describe("DeepseekTuiAdapter", () => {
       const { result, blocks } = runAdapter(server.baseUrl, server.token);
       await expect(result).resolves.toMatchObject({ text: "hi" });
       expect(blocks).toContain("thinking");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("streams current DeepSeek agent_reasoning deltas as redacted thinking progress", async () => {
+    const server = await startMockDeepseekServer({
+      events: [
+        {
+          event: "turn.started",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.started" },
+        },
+        {
+          event: "item.delta",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.delta",
+            payload: { kind: "agent_reasoning", delta: "private reasoning must not leak" },
+          },
+        },
+        {
+          event: "item.delta",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.delta",
+            payload: { kind: "agent_reasoning", delta: "another private token" },
+          },
+        },
+        {
+          event: "item.delta",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.delta",
+            payload: { kind: "agent_message", delta: "done" },
+          },
+        },
+        {
+          event: "turn.completed",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.completed" },
+        },
+      ],
+    });
+    try {
+      const { result, blocks, blockEvents } = runAdapter(server.baseUrl, server.token);
+      await expect(result).resolves.toMatchObject({ text: "done" });
+      expect(blocks).toContain("thinking");
+      const reasoning = blockEvents.find(
+        (block) => block.kind === "thinking" && (block.raw as any)?.event === "item.delta",
+      );
+      expect(
+        blockEvents.filter(
+          (block) => block.kind === "thinking" && (block.raw as any)?.event === "item.delta",
+        ),
+      ).toHaveLength(1);
+      expect(reasoning?.raw).toEqual({
+        event: "item.delta",
+        phase: "updated",
+        label: "Reasoning",
+        source: "runtime",
+      });
+      expect(JSON.stringify(reasoning)).not.toContain("private reasoning");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("fails a turn whose SSE connection stays open without runtime events", async () => {
+    const server = await startMockDeepseekServer({
+      events: [
+        {
+          event: "turn.started",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.started" },
+        },
+      ],
+      endEventStream: false,
+      keepAliveIntervalMs: 5,
+    });
+    try {
+      const { result } = runAdapter(
+        server.baseUrl,
+        server.token,
+        null,
+        undefined,
+        undefined,
+        30,
+      );
+      await expect(result).resolves.toMatchObject({
+        text: "",
+        newSessionId: "",
+        error: expect.stringMatching(/no runtime event for 30ms/),
+      });
     } finally {
       await server.close();
     }

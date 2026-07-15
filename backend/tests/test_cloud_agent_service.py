@@ -1506,23 +1506,28 @@ async def test_idle_pause_skips_unacked_owner_chat_message(db_session, state):
 
 
 @pytest.mark.asyncio
-async def test_idle_pause_ignores_acked_owner_chat_message(db_session):
+@pytest.mark.parametrize("state", [MessageState.delivered, MessageState.acked])
+async def test_idle_pause_skips_recent_claimed_owner_chat_turn(db_session, state):
     user_id = uuid.uuid4()
     svc, fake = _make_service()
     view = await svc.create_cloud_agent(
         db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
     )
+    now = datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc)
+    claimed_at = now - datetime.timedelta(seconds=600)
     db_session.add(
         MessageRecord(
-            hub_msg_id="hub_msg_owner_chat_delivered",
-            msg_id="msg_owner_chat_delivered",
+            hub_msg_id=f"hub_msg_owner_chat_{state.value}",
+            msg_id=f"msg_owner_chat_{state.value}",
             sender_id=view.agent_id,
             receiver_id=view.agent_id,
-            state=MessageState.delivered,
+            state=state,
             envelope_json="{}",
             ttl_sec=300,
             source_type="dashboard_user_chat",
             source_session_kind="owner_chat",
+            delivered_at=claimed_at,
+            acked_at=claimed_at if state == MessageState.acked else None,
         )
     )
     await db_session.commit()
@@ -1530,7 +1535,47 @@ async def test_idle_pause_ignores_acked_owner_chat_message(db_session):
     paused_count = await svc.pause_idle_cloud_daemons(
         db_session,
         idle_seconds=300,
-        now=datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc),
+        now=now,
+    )
+
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == view.cloud_daemon_instance_id
+        )
+    )
+    assert paused_count == 0
+    assert cdi.status == "ready"
+    assert fake.calls(view.cloud_daemon_instance_id)["pause"] == 0
+
+
+@pytest.mark.asyncio
+async def test_idle_pause_ignores_expired_owner_chat_turn_lease(db_session):
+    user_id = uuid.uuid4()
+    svc, fake = _make_service()
+    view = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+    now = datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc)
+    db_session.add(
+        MessageRecord(
+            hub_msg_id="hub_msg_owner_chat_expired",
+            msg_id="msg_owner_chat_expired",
+            sender_id=view.agent_id,
+            receiver_id=view.agent_id,
+            state=MessageState.delivered,
+            envelope_json="{}",
+            ttl_sec=300,
+            source_type="dashboard_user_chat",
+            source_session_kind="owner_chat",
+            delivered_at=now - datetime.timedelta(hours=2),
+        )
+    )
+    await db_session.commit()
+
+    paused_count = await svc.pause_idle_cloud_daemons(
+        db_session,
+        idle_seconds=300,
+        now=now,
     )
 
     cdi = await db_session.scalar(

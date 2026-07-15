@@ -22,6 +22,15 @@ import type {
 const log = consoleLogger;
 
 const DEEPSEEK_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+/**
+ * Per-turn SSE watchdog. DeepSeek's HTTP server sends keep-alive comments even
+ * when the underlying model turn has stopped producing runtime events, so this
+ * must be reset only by parsed events (not by arbitrary response bytes).
+ * 0 disables the watchdog.
+ */
+const DEFAULT_TURN_EVENT_IDLE_TIMEOUT_MS = 60_000;
+/** Bound token-level reasoning deltas before they become durable Hub/Course events. */
+const REASONING_PROGRESS_INTERVAL_MS = 4_000;
 const STARTUP_TIMEOUT_MS = 30_000;
 const STARTUP_POLL_MS = 250;
 const SSE_TEXT_CAP = 1 * 1024 * 1024;
@@ -41,8 +50,16 @@ interface DeepseekAdapterDeps {
   /** Test seam: use an already-running compatible server instead of spawning `deepseek`. */
   serverUrl?: string;
   authToken?: string;
+  turnEventIdleTimeoutMs?: number;
   fetchFn?: typeof fetch;
   spawnFn?: typeof spawn;
+}
+
+class DeepseekTurnEventIdleError extends Error {
+  constructor(timeoutMs: number) {
+    super(`event stream produced no runtime event for ${timeoutMs}ms`);
+    this.name = "DeepseekTurnEventIdleError";
+  }
 }
 
 const PROCESS_POOL = new Map<string, DeepseekProcessHandle>();
@@ -98,6 +115,7 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
   private readonly explicitBinary: string | undefined;
   private readonly explicitServerUrl: string | undefined;
   private readonly explicitAuthToken: string | undefined;
+  private readonly turnEventIdleTimeoutMs: number;
   private readonly fetchFn: typeof fetch;
   private readonly spawnFn: typeof spawn;
   private resolvedBinary: string | null = null;
@@ -106,6 +124,8 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
     this.explicitBinary = deps.binary ?? process.env.BOTCORD_DEEPSEEK_TUI_BIN;
     this.explicitServerUrl = deps.serverUrl ?? process.env.BOTCORD_DEEPSEEK_TUI_URL;
     this.explicitAuthToken = deps.authToken ?? process.env.BOTCORD_DEEPSEEK_TUI_TOKEN;
+    this.turnEventIdleTimeoutMs =
+      deps.turnEventIdleTimeoutMs ?? deepseekTurnEventIdleTimeoutMs();
     this.fetchFn = deps.fetchFn ?? fetch;
     this.spawnFn = deps.spawnFn ?? spawn;
   }
@@ -173,10 +193,19 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      const turnEventIdle = err instanceof DeepseekTurnEventIdleError;
+      if (turnEventIdle && !this.explicitServerUrl) {
+        // Closing the SSE client does not guarantee that the local runtime
+        // cancels its in-flight provider request. Reap the whole process group
+        // so a silent turn cannot keep consuming resources or contaminate the
+        // next turn; the next adapter run will start a clean server.
+        shutdownHandle(handle, "turn-event-idle-timeout");
+        PROCESS_POOL.delete(poolKey(opts));
+      }
       const staleSession = opts.sessionId && /404|not found|missing/i.test(message);
       return {
         text: "",
-        newSessionId: staleSession ? "" : opts.sessionId ?? "",
+        newSessionId: staleSession || turnEventIdle ? "" : opts.sessionId ?? "",
         error: `deepseek-tui: ${message}`,
       };
     } finally {
@@ -387,6 +416,25 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
       let text = "";
       let errorText = "";
       let capped = false;
+      let lastReasoningProgressAt = 0;
+      let idleTimer: NodeJS.Timeout | undefined;
+      let rejectIdle: ((err: Error) => void) | undefined;
+      const idleFailure = new Promise<never>((_resolve, reject) => {
+        rejectIdle = reject;
+      });
+      const clearEventIdle = () => {
+        if (!idleTimer) return;
+        clearTimeout(idleTimer);
+        idleTimer = undefined;
+      };
+      const armEventIdle = () => {
+        if (this.turnEventIdleTimeoutMs <= 0) return;
+        clearEventIdle();
+        idleTimer = setTimeout(() => {
+          rejectIdle?.(new DeepseekTurnEventIdleError(this.turnEventIdleTimeoutMs));
+        }, this.turnEventIdleTimeoutMs);
+        idleTimer.unref?.();
+      };
       const append = (chunk: string) => {
         if (!chunk || capped) return;
         const budget = SSE_TEXT_CAP - Buffer.byteLength(text, "utf8");
@@ -406,7 +454,15 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
         const eventTurnId = stringField(payload, "turn_id") ?? stringField(payload?.payload, "turn_id");
         if (turnId && eventTurnId && eventTurnId !== turnId) return false;
         seq += 1;
-        const block = normalizeDeepseekEvent(eventName, payload, seq);
+        let block = normalizeDeepseekEvent(eventName, payload, seq);
+        if (block?.kind === "thinking" && eventName === "item.delta") {
+          const now = Date.now();
+          if (now - lastReasoningProgressAt < REASONING_PROGRESS_INTERVAL_MS) {
+            block = null;
+          } else {
+            lastReasoningProgressAt = now;
+          }
+        }
         if (block) opts.onBlock?.(block);
         const extractedError = extractDeepseekError(eventName, payload);
         if (extractedError) errorText = extractedError;
@@ -432,26 +488,35 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
         return false;
       };
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buf.indexOf("\n\n")) !== -1) {
-          const frame = parseSseFrame(buf.slice(0, idx));
-          buf = buf.slice(idx + 2);
-          if (!frame) continue;
-          if (emit(frame.event, frame.data)) {
-            await reader.cancel().catch(() => undefined);
-            return { text: text.trim(), ...(errorText ? { error: errorText } : {}) };
+      armEventIdle();
+      try {
+        while (true) {
+          const { value, done } = await Promise.race([reader.read(), idleFailure]);
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buf.indexOf("\n\n")) !== -1) {
+            const frame = parseSseFrame(buf.slice(0, idx));
+            buf = buf.slice(idx + 2);
+            if (!frame) continue;
+            const eventTurnId =
+              stringField(frame.data, "turn_id") ??
+              stringField(frame.data?.payload, "turn_id");
+            if (!turnId || !eventTurnId || eventTurnId === turnId) armEventIdle();
+            if (emit(frame.event, frame.data)) {
+              await reader.cancel().catch(() => undefined);
+              return { text: text.trim(), ...(errorText ? { error: errorText } : {}) };
+            }
           }
         }
+        if (buf.trim()) {
+          const frame = parseSseFrame(buf);
+          if (frame) emit(frame.event, frame.data);
+        }
+        return { text: text.trim(), ...(errorText ? { error: errorText } : {}) };
+      } finally {
+        clearEventIdle();
       }
-      if (buf.trim()) {
-        const frame = parseSseFrame(buf);
-        if (frame) emit(frame.event, frame.data);
-      }
-      return { text: text.trim(), ...(errorText ? { error: errorText } : {}) };
     };
   }
 
@@ -492,8 +557,22 @@ function normalizeDeepseekEvent(eventName: string, payload: any, seq: number): S
   if (eventName === "item.delta" && isAgentMessageDelta(payload)) {
     return { raw: { event: eventName, payload }, kind: "assistant_text", seq };
   }
+  if (eventName === "item.delta" && isAgentReasoningDelta(payload)) {
+    // DeepSeek 0.8.39 streams thinking as item.delta/agent_reasoning. Forward
+    // only a lifecycle marker: the raw reasoning text is private chain of
+    // thought and must not enter Hub frames, transcripts, or Course storage.
+    return {
+      raw: { event: eventName, phase: "updated", label: "Reasoning", source: "runtime" },
+      kind: "thinking",
+      seq,
+    };
+  }
   if (eventName === "item.completed" && isAgentReasoningItem(payload)) {
-    return { raw: { event: eventName, payload }, kind: "thinking", seq };
+    return {
+      raw: { event: eventName, phase: "updated", label: "Reasoning", source: "runtime" },
+      kind: "thinking",
+      seq,
+    };
   }
   if (eventName === "turn.started" || eventName === "status" || embeddedDeepseekEvent(payload) === "turn.started") {
     return { raw: { event: eventName, payload }, kind: "system", seq };
@@ -549,6 +628,10 @@ function isToolCompleted(eventName: string, payload: any): boolean {
 
 function isAgentMessageDelta(payload: any): boolean {
   return payload?.kind === "agent_message" || payload?.payload?.kind === "agent_message";
+}
+
+function isAgentReasoningDelta(payload: any): boolean {
+  return payload?.kind === "agent_reasoning" || payload?.payload?.kind === "agent_reasoning";
 }
 
 function isAgentReasoningItem(payload: any): boolean {
@@ -760,6 +843,15 @@ function stringField(obj: any, key: string): string | undefined {
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function deepseekTurnEventIdleTimeoutMs(): number {
+  const raw = process.env.BOTCORD_DEEPSEEK_TURN_IDLE_TIMEOUT_MS;
+  if (raw === undefined || raw === "") return DEFAULT_TURN_EVENT_IDLE_TIMEOUT_MS;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : DEFAULT_TURN_EVENT_IDLE_TIMEOUT_MS;
 }
 
 function isValidThreadId(id: string): boolean {

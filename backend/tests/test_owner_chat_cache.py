@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from unittest.mock import AsyncMock
 
 from hub import owner_chat_cache
-from hub.models import Agent, Base, User
+from hub.models import Agent, Base, MessageRecord, MessageState, User
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -491,6 +491,21 @@ async def test_stream_end_completes_run(
     room_id = _build_owner_chat_room_id(user_id, agent_id)
 
     trace_id = "h_endtrace"
+    trigger = MessageRecord(
+        hub_msg_id=trace_id,
+        msg_id="msg_endtrace",
+        sender_id=agent_id,
+        receiver_id=agent_id,
+        room_id=room_id,
+        state=MessageState.delivered,
+        envelope_json="{}",
+        ttl_sec=300,
+        source_type="dashboard_user_chat",
+        source_session_kind="owner_chat",
+        delivered_at=datetime.datetime.now(datetime.timezone.utc),
+    )
+    db_session.add(trigger)
+    await db_session.commit()
     await owner_chat_cache.write_run_metadata(
         trace_id, user_id=user_id, agent_id=agent_id, room_id=room_id, trigger_msg_id=trace_id,
     )
@@ -506,6 +521,9 @@ async def test_stream_end_completes_run(
         # Run is now completed and the local subscription cleaned up.
         assert fake_redis.hashes[f"owner_chat_run:{trace_id}"]["status"] == "completed"
         assert trace_id not in owner_chat_ws._oc_trace_subs
+        await db_session.refresh(trigger)
+        assert trigger.state == MessageState.done
+        assert trigger.acked_at is not None
     finally:
         owner_chat_ws._oc_trace_subs.pop(trace_id, None)
         owner_chat_ws._oc_trace_block_count.pop(trace_id, None)
