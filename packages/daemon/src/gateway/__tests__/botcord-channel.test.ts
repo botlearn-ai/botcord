@@ -29,6 +29,7 @@ function makeClient(overrides: Partial<BotCordChannelClient> = {}): BotCordChann
     refreshToken: vi.fn(async () => "test-token-2"),
     pollInbox: vi.fn().mockResolvedValue({ messages: [], count: 0, has_more: false }),
     ackMessages: vi.fn().mockResolvedValue(undefined),
+    renewInboxLease: vi.fn().mockResolvedValue(undefined),
     sendMessage: vi
       .fn()
       .mockResolvedValue({ hub_msg_id: "m_provider", queued: true, status: "queued" }),
@@ -701,6 +702,64 @@ describe("createBotCordChannel — inbox normalization", () => {
 // ---------------------------------------------------------------------------
 
 describe("createBotCordChannel — ack + dedup", () => {
+  it("renews a processing lease until the envelope is accepted", async () => {
+    const server = await startAuthOkServer();
+    try {
+      const msg = makeInbox({ hub_msg_id: "m_lease_1" });
+      const client = makeClient({
+        pollInbox: vi.fn().mockResolvedValueOnce({
+          messages: [msg],
+          count: 1,
+          has_more: false,
+        }).mockResolvedValue({ messages: [], count: 0, has_more: false }),
+        getHubUrl: vi.fn().mockReturnValue(server.url),
+      });
+      const channel = createBotCordChannel({
+        id: "botcord-main",
+        accountId: "ag_self",
+        agentId: "ag_self",
+        client,
+        hubBaseUrl: server.url,
+        pollIntervalMs: 0,
+        inboxLeaseRenewIntervalMs: 10,
+      });
+      const abort = new AbortController();
+      const emits: GatewayInboundEnvelope[] = [];
+      let releaseEmit!: () => void;
+      const emitBlocked = new Promise<void>((resolve) => {
+        releaseEmit = resolve;
+      });
+      const startP = channel.start({
+        config: stubConfig,
+        accountId: "ag_self",
+        abortSignal: abort.signal,
+        log: silentLog,
+        emit: async (env) => {
+          emits.push(env);
+          await emitBlocked;
+        },
+        setStatus: () => {},
+      });
+
+      await vi.waitFor(() => expect(emits).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(client.renewInboxLease).toHaveBeenCalledWith(["m_lease_1"]),
+      );
+
+      await emits[0]!.ack!.accept();
+      const renewCount = vi.mocked(client.renewInboxLease).mock.calls.length;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(client.renewInboxLease).toHaveBeenCalledTimes(renewCount);
+      expect(client.ackMessages).toHaveBeenCalledWith(["m_lease_1"]);
+
+      releaseEmit();
+      abort.abort();
+      await startP;
+    } finally {
+      await server.close();
+    }
+  });
+
   it("envelope.ack.accept() calls client.ackMessages with the hub_msg_id", async () => {
     const server = await startAuthOkServer();
     try {

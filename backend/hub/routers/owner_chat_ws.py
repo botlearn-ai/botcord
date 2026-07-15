@@ -911,6 +911,7 @@ async def owner_chat_ws(ws: WebSocket):
                     "sender": "user",
                     "room_id": room_id,
                     "text": text,
+                    "delivery_state": MessageState.queued.value,
                     "created_at": now,
                 }
                 if client_msg_id:

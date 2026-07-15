@@ -61,7 +61,7 @@ async def _reclaim_stale_processing() -> None:
     After reclaiming, notifies affected agents so WS/long-poll consumers
     re-fetch immediately instead of waiting for the next new message.
     """
-    from hub.routers.hub import notify_inbox
+    from hub.routers.hub import notify_inbox, notify_owner_chat_delivery_state
     from sqlalchemy import select, update
 
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -69,17 +69,17 @@ async def _reclaim_stale_processing() -> None:
     async with async_session() as session:
         # First, find which agents are affected so we can notify them
         affected_stmt = (
-            select(MessageRecord.receiver_id)
+            select(MessageRecord)
             .where(
                 MessageRecord.state == MessageState.processing,
                 MessageRecord.next_retry_at <= now,
             )
-            .distinct()
         )
         affected_result = await session.execute(affected_stmt)
-        affected_agents = [row[0] for row in affected_result.all()]
+        affected_records = list(affected_result.scalars().all())
+        affected_by_id = {record.id: record for record in affected_records}
 
-        if not affected_agents:
+        if not affected_records:
             return
 
         # Bulk revert
@@ -90,11 +90,28 @@ async def _reclaim_stale_processing() -> None:
                 MessageRecord.next_retry_at <= now,
             )
             .values(state=MessageState.queued, next_retry_at=None)
+            .returning(MessageRecord.id)
         )
         result = await session.execute(stmt)
+        reclaimed_ids = set(result.scalars().all())
         await session.commit()
 
-        logger.info("Reclaimed %d stale processing messages back to queued", result.rowcount)
+        reclaimed_records = [
+            affected_by_id[record_id]
+            for record_id in reclaimed_ids
+            if record_id in affected_by_id
+        ]
+        affected_agents = {record.receiver_id for record in reclaimed_records}
+        logger.info(
+            "Reclaimed %d stale processing messages back to queued",
+            len(reclaimed_records),
+        )
+
+        await notify_owner_chat_delivery_state(
+            reclaimed_records,
+            state=MessageState.queued,
+            reason="processing_lease_expired",
+        )
 
         # Notify affected agents so they re-poll
         for agent_id in affected_agents:
