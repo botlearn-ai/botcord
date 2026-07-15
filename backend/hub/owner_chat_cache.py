@@ -52,6 +52,16 @@ def register_fanout_delivery(
     _fanout_delivery = fn
 
 
+async def deliver_local(user_id: str, agent_id: str, data: dict) -> None:
+    """Best-effort delivery to owner-chat WebSockets held by this Hub process."""
+    if _fanout_delivery is None:
+        return
+    try:
+        await _fanout_delivery(user_id, agent_id, data)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("owner_chat_cache.local delivery failed: %s", exc)
+
+
 def redis_enabled() -> bool:
     return bool(getattr(hub_config, "BOTCORD_REDIS_URL", None))
 

@@ -2730,19 +2730,33 @@ describe("Dispatcher", () => {
     expect(Object.keys(dispatcher.turns()).length).toBe(0);
   });
 
-  it("ack.accept() is called before runtime.run() starts", async () => {
+  it("ack.accept() is called only after runtime.run() finishes", async () => {
     const order: string[] = [];
-    const runtime = new FakeRuntime({
-      observeRun: () => order.push("run"),
-      newSessionId: "sid",
+    let finishRun!: () => void;
+    const runBlocked = new Promise<void>((resolve) => {
+      finishRun = resolve;
     });
+    const runtime: RuntimeAdapter = {
+      id: "claude-code",
+      run: async () => {
+        order.push("run:start");
+        await runBlocked;
+        order.push("run:end");
+        return { text: "ok", newSessionId: "sid" };
+      },
+    };
     const { dispatcher } = await scaffold({ runtimeFactory: () => runtime });
     const accept = vi.fn(async () => {
       order.push("accept");
     });
 
-    await dispatcher.handle(makeEnvelope({}, { accept }));
-    expect(order).toEqual(["accept", "run"]);
+    const handling = dispatcher.handle(makeEnvelope({}, { accept }));
+    await vi.waitFor(() => expect(order).toEqual(["run:start"]));
+    expect(accept).not.toHaveBeenCalled();
+
+    finishRun();
+    await handling;
+    expect(order).toEqual(["run:start", "run:end", "accept"]);
   });
 
   it("route match wins over default: uses match's cwd / runtime / extraArgs", async () => {
@@ -3039,7 +3053,7 @@ describe("Dispatcher", () => {
     expect(store.all()[0].memoryVersion).toBe("wm-sha256:same");
   });
 
-  it("onInbound: observer is invoked with the message between ack and runtime.run", async () => {
+  it("onInbound: observer runs before runtime and terminal ack", async () => {
     const order: string[] = [];
     const runtime = new FakeRuntime({
       newSessionId: "sid",
@@ -3066,7 +3080,7 @@ describe("Dispatcher", () => {
     });
 
     await dispatcher.handle(makeEnvelope({ id: "msg_obs_1" }, { accept }));
-    expect(order).toEqual(["ack", "observe", "run"]);
+    expect(order).toEqual(["observe", "run", "ack"]);
     expect(seen).toEqual(["msg_obs_1"]);
   });
 
@@ -3590,34 +3604,49 @@ describe("Dispatcher", () => {
     });
 
     // m1 arrives → triggers immediate turn.
+    const accept1 = vi.fn(async () => {});
+    const accept2 = vi.fn(async () => {});
+    const accept3 = vi.fn(async () => {});
     const p1 = dispatcher.handle(
-      makeEnvelope({
-        id: "m1",
-        text: "hello",
-        raw: { hub_msg_id: "m1", text: "hello" },
-        conversation: { id: "rm_grp_x", kind: "group" },
-      })
+      makeEnvelope(
+        {
+          id: "m1",
+          text: "hello",
+          raw: { hub_msg_id: "m1", text: "hello" },
+          conversation: { id: "rm_grp_x", kind: "group" },
+        },
+        { accept: accept1 }
+      )
     );
     // Let the worker start runtime.run for m1.
     await Promise.resolve();
     await Promise.resolve();
     // m2 + m3 arrive while m1 is in flight → buffered, must coalesce.
     const p2 = dispatcher.handle(
-      makeEnvelope({
-        id: "m2",
-        text: "second",
-        raw: { hub_msg_id: "m2", text: "second" },
-        conversation: { id: "rm_grp_x", kind: "group" },
-      })
+      makeEnvelope(
+        {
+          id: "m2",
+          text: "second",
+          raw: { hub_msg_id: "m2", text: "second" },
+          conversation: { id: "rm_grp_x", kind: "group" },
+        },
+        { accept: accept2 }
+      )
     );
     const p3 = dispatcher.handle(
-      makeEnvelope({
-        id: "m3",
-        text: "third",
-        raw: { hub_msg_id: "m3", text: "third" },
-        conversation: { id: "rm_grp_x", kind: "group" },
-      })
+      makeEnvelope(
+        {
+          id: "m3",
+          text: "third",
+          raw: { hub_msg_id: "m3", text: "third" },
+          conversation: { id: "rm_grp_x", kind: "group" },
+        },
+        { accept: accept3 }
+      )
     );
+    expect(accept1).not.toHaveBeenCalled();
+    expect(accept2).not.toHaveBeenCalled();
+    expect(accept3).not.toHaveBeenCalled();
     await Promise.all([p1, p2, p3]);
 
     // Exactly two runtime turns: m1 alone, then a single coalesced turn merging m2+m3.
@@ -3627,6 +3656,9 @@ describe("Dispatcher", () => {
     // Anchor of merged turn is the latest entry (m3); raw.batch holds both.
     expect(composeCalls[1].id).toBe("m3");
     expect(composeCalls[1].batchSize).toBe(2);
+    expect(accept1).toHaveBeenCalledTimes(1);
+    expect(accept2).toHaveBeenCalledTimes(1);
+    expect(accept3).toHaveBeenCalledTimes(1);
     // Sends gated for non-owner-chat room.
     expect(channel.sends.length).toBe(0);
   });

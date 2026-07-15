@@ -38,6 +38,7 @@ const SEEN_MESSAGES_CAP = 500;
 const OWNER_CHAT_PREFIX = "rm_oc_";
 const DM_ROOM_PREFIX = "rm_dm_";
 const INBOX_POLL_LIMIT = 50;
+const INBOX_LEASE_RENEW_INTERVAL_MS = 40_000;
 const CHANNEL_PERMANENT_STOP = "channel_permanent_stop";
 const DEFAULT_REPLYING_STATUS_EMOJI = "⏳";
 // Matches the dispatcher's 30-minute turn hard timeout — a turn can never
@@ -68,6 +69,7 @@ export interface BotCordChannelClient {
     roomId?: string;
   }): Promise<{ messages: InboxMessage[]; count: number; has_more: boolean }>;
   ackMessages(messageIds: string[]): Promise<void>;
+  renewInboxLease(messageIds: string[]): Promise<void>;
   uploadFile?(
     filePath: string,
     filename: string,
@@ -120,6 +122,8 @@ export interface BotCordChannelOptions {
   hubBaseUrl?: string;
   /** Periodic inbox polling fallback. Set to 0 to disable. Defaults to 30s. */
   pollIntervalMs?: number;
+  /** Test hook: override the processing-lease renewal interval. Defaults to 40s. */
+  inboxLeaseRenewIntervalMs?: number;
   /** Test hook: supply a pre-built client instead of loading credentials from disk. */
   client?: BotCordChannelClient;
   /** Test hook: supply a client factory. Ignored when `client` is provided. */
@@ -481,6 +485,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
   const seenMessages = new Set<string>();
   const pendingHandoffMessages = new Set<string>();
   const handoffTails = new Map<string, Promise<void>>();
+  const activeLeaseRenewals = new Set<() => void>();
   let stopCallback: (() => void) | null = null;
   let setStatusCallback: ((patch: Partial<ChannelStatusSnapshot>) => void) | null = null;
 
@@ -524,6 +529,52 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         handoffTails.delete(groupKey);
       }
     });
+  }
+
+  function startInboxLeaseRenewal(
+    client: BotCordChannelClient,
+    hubMsgIds: string[],
+    log: GatewayLogger,
+  ): () => void {
+    const intervalMs = options.inboxLeaseRenewIntervalMs ?? INBOX_LEASE_RENEW_INTERVAL_MS;
+    if (intervalMs <= 0 || hubMsgIds.length === 0) return () => undefined;
+
+    let stopped = false;
+    let renewing = false;
+    const timer = setInterval(() => {
+      if (stopped || renewing) return;
+      renewing = true;
+      void client
+        .renewInboxLease(hubMsgIds)
+        .then(() => {
+          log.debug("botcord inbox processing lease renewed", {
+            hubMsgIds,
+          });
+        })
+        .catch((err) => {
+          log.warn("botcord inbox processing lease renewal failed", {
+            hubMsgIds,
+            err: String(err),
+          });
+        })
+        .finally(() => {
+          renewing = false;
+        });
+    }, intervalMs);
+    timer.unref?.();
+
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+      activeLeaseRenewals.delete(stop);
+    };
+    activeLeaseRenewals.add(stop);
+    return stop;
+  }
+
+  function stopInboxLeaseRenewals(): void {
+    for (const stop of [...activeLeaseRenewals]) stop();
   }
 
   function ensureClient(): BotCordChannelClient {
@@ -696,16 +747,21 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
 
       const hubIds = group.map((m) => m.hub_msg_id);
       for (const hubId of hubIds) pendingHandoffMessages.add(hubId);
+      const stopLeaseRenewal = startInboxLeaseRenewal(client, hubIds, log);
       let accepted = false;
       const markAccepted = () => {
         if (accepted) return;
         accepted = true;
+        stopLeaseRenewal();
         for (const hubId of hubIds) pendingHandoffMessages.delete(hubId);
       };
       const envelope: GatewayInboundEnvelope = {
         message: normalized,
         ack: {
           accept: async () => {
+            // Runtime handling is terminal now; stop extending ownership so
+            // an ACK failure naturally falls back to Hub lease expiry/retry.
+            stopLeaseRenewal();
             try {
               // Ack the entire batch together so Hub never re-delivers any
               // member of this turn if the agent succeeds on the group.
@@ -731,6 +787,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           await emit(envelope);
           markAccepted();
         } catch (err) {
+          stopLeaseRenewal();
           if (!accepted) forgetSeen(hubIds);
           log.error("botcord emit threw", {
             hubMsgIds: hubIds,
@@ -866,6 +923,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       running = false;
       permanentStopping = true;
       clearTimers();
+      stopInboxLeaseRenewals();
       try {
         ws?.close();
       } catch {
@@ -931,6 +989,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       running = false;
       permanentStopping = true;
       clearTimers();
+      stopInboxLeaseRenewals();
       try {
         ws?.close();
       } catch {
@@ -1155,6 +1214,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
               failures: consecutiveAuthFailures,
             });
             running = false;
+            stopInboxLeaseRenewals();
             markStatus({
               running: false,
               connected: false,
@@ -1202,6 +1262,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       if (!running) return;
       running = false;
       clearTimers();
+      stopInboxLeaseRenewals();
       markStatus({
         running: false,
         connected: false,

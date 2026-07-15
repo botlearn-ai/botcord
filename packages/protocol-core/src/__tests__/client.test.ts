@@ -127,3 +127,50 @@ describe("BotCordClient token refresh", () => {
     });
   });
 });
+
+describe("BotCordClient inbox leases", () => {
+  it("serializes ack=false explicitly when polling", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ messages: [], count: 0, has_more: false }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    await client.pollInbox({ limit: 50, ack: false });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://hub.example/hub/inbox?limit=50&ack=false",
+      expect.any(Object),
+    );
+  });
+
+  it("renews processing leases for explicit message ids", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ renewed: 2 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    await client.renewInboxLease(["m_1", "m_2"]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://hub.example/hub/inbox/lease/renew",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ message_ids: ["m_1", "m_2"] }),
+      }),
+    );
+  });
+});

@@ -14,9 +14,10 @@ import sentry_sdk
 from cachetools import TTLCache
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from hub import owner_chat_cache
 from hub.i18n import I18nHTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -33,6 +34,7 @@ from hub.config import (
     PAIR_RATE_LIMIT_PER_MINUTE,
     RATE_LIMIT_PER_MINUTE,
 )
+from hub.constants import INBOX_PROCESSING_LEASE_SECONDS
 from hub.validators import normalize_file_url
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.dashboard_message_shaping import load_user_display_names
@@ -74,6 +76,8 @@ from hub.schemas import (
     HistoryResponse,
     InboxAckRequest,
     InboxAckResponse,
+    InboxLeaseRenewRequest,
+    InboxLeaseRenewResponse,
     InboxMessage,
     InboxPollResponse,
     MessageEnvelope,
@@ -1949,6 +1953,53 @@ async def _fetch_queued_messages(
     return list(result.scalars().all())
 
 
+async def notify_owner_chat_delivery_state(
+    records: list[MessageRecord],
+    *,
+    state: MessageState,
+    reason: str | None = None,
+) -> None:
+    """Push durable inbox state changes to owner-chat clients.
+
+    PostgreSQL remains the delivery source of truth. These WebSocket/Redis
+    notifications are best-effort observability only and must never decide
+    whether a message is claimed, retried, or acknowledged.
+    """
+    updated_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    for rec in records:
+        if (
+            rec.source_session_kind != "owner_chat"
+            or not rec.source_user_id
+            or not rec.room_id
+        ):
+            continue
+        data: dict[str, Any] = {
+            "type": "delivery_status",
+            "hub_msg_id": rec.hub_msg_id,
+            "trace_id": rec.hub_msg_id,
+            "room_id": rec.room_id,
+            "state": state.value,
+            "updated_at": updated_at,
+        }
+        if reason:
+            data["reason"] = reason
+
+        await owner_chat_cache.deliver_local(
+            rec.source_user_id,
+            rec.receiver_id,
+            data,
+        )
+        if owner_chat_cache.redis_enabled():
+            await owner_chat_cache.publish_fanout(
+                {
+                    "type": "delivery_status",
+                    "user_id": rec.source_user_id,
+                    "agent_id": rec.receiver_id,
+                    "data": data,
+                }
+            )
+
+
 @router.get("/inbox", response_model=InboxPollResponse)
 async def poll_inbox(
     db: AsyncSession = Depends(get_db),
@@ -2081,10 +2132,17 @@ async def poll_inbox(
             # Set next_retry_at as the processing timeout — the expiry loop will
             # revert stale processing records back to queued after this time.
             rec.state = MessageState.processing
-            rec.next_retry_at = now + datetime.timedelta(seconds=120)
+            rec.next_retry_at = now + datetime.timedelta(
+                seconds=INBOX_PROCESSING_LEASE_SECONDS
+            )
 
     if messages:
         await db.commit()
+        if not ack:
+            await notify_owner_chat_delivery_state(
+                rows,
+                state=MessageState.processing,
+            )
 
     return InboxPollResponse(
         messages=messages,
@@ -2127,6 +2185,7 @@ async def ack_inbox_messages(
     for rec in rows:
         rec.state = MessageState.delivered
         rec.delivered_at = now
+        rec.acked_at = now
         rec.next_retry_at = None
 
     await db.commit()
@@ -2137,6 +2196,45 @@ async def ack_inbox_messages(
         len(body.message_ids),
     )
     return InboxAckResponse(acked=len(rows))
+
+
+# ---------------------------------------------------------------------------
+# POST /hub/inbox/lease/renew — extend two-phase processing ownership
+# ---------------------------------------------------------------------------
+
+
+@router.post("/inbox/lease/renew", response_model=InboxLeaseRenewResponse)
+async def renew_inbox_message_leases(
+    body: InboxLeaseRenewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_dashboard_claimed_agent),
+):
+    """Extend processing leases for messages currently owned by this agent."""
+    if not body.message_ids:
+        return InboxLeaseRenewResponse(renewed=0)
+
+    deadline = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+        seconds=INBOX_PROCESSING_LEASE_SECONDS
+    )
+    stmt = (
+        update(MessageRecord)
+        .where(
+            MessageRecord.receiver_id == current_agent,
+            MessageRecord.hub_msg_id.in_(body.message_ids),
+            MessageRecord.state == MessageState.processing,
+        )
+        .values(next_retry_at=deadline)
+    )
+    result = await db.execute(stmt)
+    renewed = result.rowcount or 0
+    await db.commit()
+    logger.debug(
+        "Renewed %d inbox message leases for agent=%s (requested %d)",
+        renewed,
+        current_agent,
+        len(body.message_ids),
+    )
+    return InboxLeaseRenewResponse(renewed=renewed)
 
 
 # ---------------------------------------------------------------------------

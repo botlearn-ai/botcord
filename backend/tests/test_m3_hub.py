@@ -1,6 +1,7 @@
 """Tests for M3 Hub/Router: send, receipt, status, inbox, history."""
 
 import base64
+import datetime as dt
 import hashlib
 import json
 import time
@@ -794,7 +795,7 @@ async def test_inbox_poll_marks_delivered(client: AsyncClient, db_session: Async
 
 @pytest.mark.asyncio
 async def test_inbox_poll_peek_mode(client: AsyncClient, db_session: AsyncSession):
-    """ack=false leaves messages in queued state."""
+    """ack=false claims messages without marking them delivered."""
     (sk_a, alice_id, alice_key, alice_token), (
         sk_b,
         bob_id,
@@ -822,6 +823,124 @@ async def test_inbox_poll_peek_mode(client: AsyncClient, db_session: AsyncSessio
     )
     rec = result.scalar_one()
     assert rec.state == MessageState.processing
+
+
+@pytest.mark.asyncio
+async def test_inbox_claim_notifies_owner_chat_processing_state(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """ack=false exposes the real daemon claim without making status delivery authoritative."""
+    (sk_a, alice_id, alice_key, alice_token), (
+        _sk_b,
+        bob_id,
+        _bob_key,
+        bob_token,
+    ) = await _setup_two_agents_no_endpoint(client)
+    envelope = await _send_queued_message(
+        client, sk_a, alice_key, alice_id, bob_id, alice_token
+    )
+    result = await db_session.execute(
+        select(MessageRecord).where(MessageRecord.msg_id == envelope["msg_id"])
+    )
+    rec = result.scalar_one()
+    rec.room_id = "rm_oc_delivery_state"
+    rec.source_user_id = "owner-user-id"
+    rec.source_session_kind = "owner_chat"
+    await db_session.commit()
+
+    deliver_local = AsyncMock()
+    monkeypatch.setattr("hub.routers.hub.owner_chat_cache.deliver_local", deliver_local)
+    monkeypatch.setattr("hub.routers.hub.owner_chat_cache.redis_enabled", lambda: False)
+
+    resp = await client.get(
+        "/hub/inbox",
+        headers=_auth_header(bob_token),
+        params={"ack": "false", "timeout": 0},
+    )
+
+    assert resp.status_code == 200
+    deliver_local.assert_awaited_once()
+    user_id, agent_id, frame = deliver_local.await_args.args
+    assert user_id == "owner-user-id"
+    assert agent_id == bob_id
+    assert frame == {
+        "type": "delivery_status",
+        "hub_msg_id": rec.hub_msg_id,
+        "trace_id": rec.hub_msg_id,
+        "room_id": "rm_oc_delivery_state",
+        "state": "processing",
+        "updated_at": frame["updated_at"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_inbox_processing_lease_renews_until_explicit_ack(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """Only the receiver can renew a processing lease; explicit ack ends it."""
+    (sk_a, alice_id, alice_key, alice_token), (
+        sk_b,
+        bob_id,
+        bob_key,
+        bob_token,
+    ) = await _setup_two_agents_no_endpoint(client)
+
+    envelope = await _send_queued_message(
+        client, sk_a, alice_key, alice_id, bob_id, alice_token
+    )
+    poll = await client.get(
+        "/hub/inbox",
+        headers=_auth_header(bob_token),
+        params={"ack": "false", "timeout": 0},
+    )
+    assert poll.status_code == 200
+    hub_msg_id = poll.json()["messages"][0]["hub_msg_id"]
+
+    result = await db_session.execute(
+        select(MessageRecord).where(MessageRecord.msg_id == envelope["msg_id"])
+    )
+    rec = result.scalar_one()
+    short_deadline = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=5)
+    rec.next_retry_at = short_deadline
+    await db_session.commit()
+
+    wrong_owner = await client.post(
+        "/hub/inbox/lease/renew",
+        headers=_auth_header(alice_token),
+        json={"message_ids": [hub_msg_id]},
+    )
+    assert wrong_owner.status_code == 200
+    assert wrong_owner.json() == {"renewed": 0}
+
+    renewed = await client.post(
+        "/hub/inbox/lease/renew",
+        headers=_auth_header(bob_token),
+        json={"message_ids": [hub_msg_id]},
+    )
+    assert renewed.status_code == 200
+    assert renewed.json() == {"renewed": 1}
+    await db_session.refresh(rec)
+    assert rec.state == MessageState.processing
+    assert rec.next_retry_at is not None
+    renewed_deadline = rec.next_retry_at
+    if renewed_deadline.tzinfo is None:
+        renewed_deadline = renewed_deadline.replace(tzinfo=dt.timezone.utc)
+    assert renewed_deadline > short_deadline
+
+    acked = await client.post(
+        "/hub/inbox/ack",
+        headers=_auth_header(bob_token),
+        json={"message_ids": [hub_msg_id]},
+    )
+    assert acked.status_code == 200
+    assert acked.json() == {"acked": 1}
+    await db_session.refresh(rec)
+    assert rec.state == MessageState.delivered
+    assert rec.delivered_at is not None
+    assert rec.acked_at is not None
+    assert rec.next_retry_at is None
 
 
 @pytest.mark.asyncio
@@ -1241,6 +1360,54 @@ def _patch_expiry_session(db_session):
 
 
 @pytest.mark.asyncio
+async def test_expired_inbox_processing_lease_requeues_message(
+    client, db_session, monkeypatch: pytest.MonkeyPatch
+):
+    """A crashed consumer's processing message becomes pollable again."""
+    from hub.expiry import _reclaim_stale_processing
+
+    (sk_a, alice_id, alice_key, alice_token), (
+        _sk_b,
+        bob_id,
+        _bob_key,
+        bob_token,
+    ) = await _setup_two_agents_no_endpoint(client)
+    envelope = await _send_queued_message(
+        client, sk_a, alice_key, alice_id, bob_id, alice_token
+    )
+    poll = await client.get(
+        "/hub/inbox",
+        headers=_auth_header(bob_token),
+        params={"ack": "false", "timeout": 0},
+    )
+    assert poll.status_code == 200
+
+    result = await db_session.execute(
+        select(MessageRecord).where(MessageRecord.msg_id == envelope["msg_id"])
+    )
+    rec = result.scalar_one()
+    rec.next_retry_at = dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=1)
+    await db_session.commit()
+
+    delivery_state = AsyncMock()
+    monkeypatch.setattr(
+        "hub.routers.hub.notify_owner_chat_delivery_state",
+        delivery_state,
+    )
+    with _patch_expiry_session(db_session):
+        await _reclaim_stale_processing()
+
+    await db_session.refresh(rec)
+    assert rec.state == MessageState.queued
+    assert rec.next_retry_at is None
+    delivery_state.assert_awaited_once()
+    assert delivery_state.await_args.kwargs == {
+        "state": MessageState.queued,
+        "reason": "processing_lease_expired",
+    }
+
+
+@pytest.mark.asyncio
 async def test_expiry_loop_marks_expired_message_as_failed(client, db_session):
     """message_expiry_loop should mark queued messages past TTL as failed."""
     from hub.expiry import _expire_batch
@@ -1462,5 +1629,3 @@ async def test_expiry_loop_starvation_long_ttl_does_not_block_short(client, db_s
         "Expired short-TTL message was starved by older non-expired long-TTL messages"
     )
     assert expired_record.last_error == "TTL_EXPIRED"
-
-

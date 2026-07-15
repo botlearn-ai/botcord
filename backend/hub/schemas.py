@@ -374,6 +374,14 @@ class InboxAckResponse(BaseModel):
     acked: int
 
 
+class InboxLeaseRenewRequest(BaseModel):
+    message_ids: list[str]
+
+
+class InboxLeaseRenewResponse(BaseModel):
+    renewed: int
+
+
 # --- History schemas ---
 
 
