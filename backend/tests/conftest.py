@@ -1,8 +1,15 @@
 import datetime
+import os
 
 import pytest
 from sqlalchemy import event
 from sqlalchemy.ext import asyncio as _sa_async
+
+# Hub startup intentionally requires an explicit daemon-control signing key.
+os.environ.setdefault(
+    "BOTCORD_HUB_CONTROL_PRIVATE_KEY",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+)
 
 # Patch create_async_engine so SQLite test engines automatically map the
 # "public" schema (used by User/Role/Permission models) to None. SQLite has

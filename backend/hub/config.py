@@ -62,10 +62,8 @@ ALLOW_PRIVATE_ENDPOINTS: bool = os.getenv("ALLOW_PRIVATE_ENDPOINTS", "false").lo
 INTERNAL_API_SECRET: str | None = os.getenv("INTERNAL_API_SECRET", None)
 
 if ALLOW_PRIVATE_ENDPOINTS and not INTERNAL_API_SECRET:
-    _logger.warning(
-        "ALLOW_PRIVATE_ENDPOINTS is enabled but INTERNAL_API_SECRET is not set. "
-        "Internal wallet endpoints are accessible WITHOUT authentication. "
-        "Set INTERNAL_API_SECRET to a strong random value in production."
+    raise RuntimeError(
+        "ALLOW_PRIVATE_ENDPOINTS requires INTERNAL_API_SECRET to be set"
     )
 
 # Shared secret used by the gateway-ingress service when it calls the
@@ -274,18 +272,19 @@ SENTRY_LOGS_LEVEL: int | None = _parse_log_level_env("SENTRY_LOGS_LEVEL", "INFO"
 # Daemon control plane
 # ---------------------------------------------------------------------------
 
-# Default development keypair — DO NOT use in production. Override
-# BOTCORD_HUB_CONTROL_PRIVATE_KEY with a freshly generated 32-byte Ed25519
-# seed (base64). The matching public key is shipped to the daemon for verification.
+# Legacy development keypair — never use it. Deployments must set
+# BOTCORD_HUB_CONTROL_PRIVATE_KEY to a persistent, freshly generated 32-byte
+# Ed25519 seed (base64).
 _DAEMON_DEFAULT_PRIVATE_KEY_B64 = "R9yHQWAP+oLdwuXW67TGSi/RWbkYPGf1a31by04W1zA="
 
 DAEMON_HUB_CONTROL_PRIVATE_KEY_B64: str = os.getenv(
-    "BOTCORD_HUB_CONTROL_PRIVATE_KEY", _DAEMON_DEFAULT_PRIVATE_KEY_B64
+    "BOTCORD_HUB_CONTROL_PRIVATE_KEY", ""
 )
+if not DAEMON_HUB_CONTROL_PRIVATE_KEY_B64:
+    raise RuntimeError("BOTCORD_HUB_CONTROL_PRIVATE_KEY must be set")
 if DAEMON_HUB_CONTROL_PRIVATE_KEY_B64 == _DAEMON_DEFAULT_PRIVATE_KEY_B64:
-    _logger.warning(
-        "BOTCORD_HUB_CONTROL_PRIVATE_KEY is using the insecure default seed. "
-        "Generate a fresh Ed25519 keypair before deploying to production."
+    raise RuntimeError(
+        "BOTCORD_HUB_CONTROL_PRIVATE_KEY must not use the insecure default seed"
     )
 
 DAEMON_ACCESS_TOKEN_EXPIRE_SECONDS: int = int(
