@@ -754,6 +754,8 @@ class CloudAgentService:
         paused = 0
 
         for cdi in candidates:
+            cloud_daemon_instance_id = cdi.id
+            provider_sandbox_id = cdi.provider_sandbox_id
             try:
                 if await self._pause_cloud_daemon_if_idle(
                     db, cdi, cutoff=cutoff, now=current
@@ -763,8 +765,8 @@ class CloudAgentService:
                 await db.rollback()
                 logger.warning(
                     "idle pause failed: cloud=%s sandbox=%s err=%s",
-                    cdi.id,
-                    cdi.provider_sandbox_id,
+                    cloud_daemon_instance_id,
+                    provider_sandbox_id,
                     exc,
                 )
 
@@ -2199,6 +2201,12 @@ class CloudAgentService:
             cloud_daemon_instance_id=cdi.id,
             provider_sandbox_id=cdi.provider_sandbox_id,
         )
+        if handle.status != "paused":
+            raise CloudAgentError(
+                handle.error_code or "cloud_daemon_pause_failed",
+                handle.error_message or "cloud daemon provider did not confirm pause",
+                http_status=502,
+            )
         _apply_handle_to_rows(cdi, handle)
         cdi.last_paused_at = now
         cdi.metadata_json = {

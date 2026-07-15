@@ -1334,6 +1334,43 @@ async def test_idle_pause_pauses_ready_daemon_and_agents(db_session):
 
 
 @pytest.mark.asyncio
+async def test_idle_pause_does_not_persist_or_report_failed_provider_pause(db_session):
+    class FailedPauseProvider(FakeCloudDaemonProvider):
+        async def pause(self, **kwargs):
+            handle = await super().pause(**kwargs)
+            handle.status = "failed"
+            handle.error_code = "e2b_pause_failed"
+            handle.error_message = "Response 409"
+            return handle
+
+    user_id = uuid.uuid4()
+    svc, _fake = _make_service(provider=FailedPauseProvider())
+    view = await svc.create_cloud_agent(
+        db_session, user_id=user_id, body=CreateCloudAgentInput(name="A")
+    )
+
+    paused_count = await svc.pause_idle_cloud_daemons(
+        db_session,
+        idle_seconds=300,
+        now=datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+
+    cai = await db_session.scalar(
+        select(CloudAgentInstance).where(CloudAgentInstance.agent_id == view.agent_id)
+    )
+    cdi = await db_session.scalar(
+        select(CloudDaemonInstance).where(
+            CloudDaemonInstance.id == view.cloud_daemon_instance_id
+        )
+    )
+    assert paused_count == 0
+    assert cai.status == "ready"
+    assert cdi.status == "ready"
+    assert cdi.last_paused_at is None
+    assert "last_pause_reason" not in (cdi.metadata_json or {})
+
+
+@pytest.mark.asyncio
 async def test_idle_pause_invalidates_control_connection(db_session, monkeypatch):
     user_id = uuid.uuid4()
     svc, _fake = _make_service()
