@@ -29,7 +29,6 @@ from hub.models import Agent, MessageRecord, MessageState
 from hub.routers.dashboard_chat import (
     _build_owner_chat_room_id,
     _ensure_owner_chat_room,
-    _OWNER_CHAT_ROOM_PREFIX,
 )
 from hub.routers.hub import (
     _load_reply_previews,
@@ -38,10 +37,12 @@ from hub.routers.hub import (
     notify_inbox,
 )
 from hub.services.cloud_agent import CloudAgentError, resume_cloud_agent_for_inbox
+from hub.services.session_profile import (
+    SessionProfileDispatchError,
+    get_botlearn_session_profile,
+)
 from hub.validators import normalize_file_url
 from hub import owner_chat_cache
-
-import jwt as pyjwt
 
 logger = logging.getLogger(__name__)
 
@@ -510,6 +511,7 @@ async def owner_chat_ws(ws: WebSocket):
         botlearn_claims = _try_botlearn_session_claims(token)
         internal_uid: str | None = None
         session_key: str | None = None
+        session_profile_required = False
         if botlearn_claims is not None:
             if botlearn_claims["agent_id"] != req_agent_id:
                 await ws.close(code=4001, reason="Token not valid for this agent")
@@ -518,6 +520,7 @@ async def owner_chat_ws(ws: WebSocket):
             raw_session_key = botlearn_claims.get("session_key")
             if isinstance(raw_session_key, str) and raw_session_key.strip():
                 session_key = raw_session_key.strip()
+            session_profile_required = botlearn_claims.get("session_profile_required") is True
         else:
             try:
                 supabase_uid = verify_supabase_token(token)
@@ -556,6 +559,64 @@ async def owner_chat_ws(ws: WebSocket):
             agent_id = req_agent_id
             user_id = internal_uid
             display_name = agent.display_name or agent_id
+
+            session_profile_binding = (
+                await owner_chat_cache.load_session_profile_binding(
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    session_key=session_key,
+                )
+                if session_key
+                else None
+            )
+            session_profile_required = session_profile_required or bool(
+                session_profile_binding
+                and session_profile_binding.get("required") is True
+            )
+            if session_profile_required:
+                if not session_key:
+                    await ws.close(code=4003, reason="Session profile binding is missing")
+                    return
+                binding = session_profile_binding
+                profile_id = binding.get("profile_id") if binding else None
+                profile_hash = binding.get("profile_hash") if binding else None
+                if (
+                    not binding
+                    or binding.get("required") is not True
+                    or binding.get("status") != "applied"
+                    or not isinstance(profile_id, str)
+                    or not isinstance(profile_hash, str)
+                ):
+                    await ws.close(code=4003, reason="Session profile is unavailable")
+                    return
+                expected_room_id = _build_owner_chat_room_id(
+                    user_id,
+                    agent_id,
+                    session_key=session_key,
+                )
+                try:
+                    profile_status = await get_botlearn_session_profile(
+                        db,
+                        user_id=uuid.UUID(user_id),
+                        agent_id=agent_id,
+                        session_key=session_key,
+                        room_id=expected_room_id,
+                        profile_id=profile_id,
+                        profile_hash=profile_hash,
+                    )
+                except (SessionProfileDispatchError, ValueError) as exc:
+                    logger.warning(
+                        "Owner-chat session profile preflight failed: user=%s agent=%s room=%s err=%s",
+                        user_id,
+                        agent_id,
+                        expected_room_id,
+                        exc,
+                    )
+                    await ws.close(code=4003, reason="Session profile preflight failed")
+                    return
+                if profile_status.get("status") != "applied":
+                    await ws.close(code=4003, reason="Session runtime requirements are unmet")
+                    return
 
             # Ensure owner-chat room exists
             room_id = await _ensure_owner_chat_room(

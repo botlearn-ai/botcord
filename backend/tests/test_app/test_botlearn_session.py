@@ -36,6 +36,7 @@ from tests.test_app.conftest import create_test_engine
 BOTLEARN_SECRET = "test-botlearn-shared-secret"
 BOTLEARN_ISSUER = "https://botlearn.example"
 ALLOWED_ORIGIN = "https://app.botlearn.ai"
+RUNTIME_PROFILE_SECRET = "trusted-course-service-secret"
 
 
 def _now() -> datetime.datetime:
@@ -92,6 +93,7 @@ def _configure_botlearn(
     monkeypatch.setattr(ba, "BOTLEARN_ISSUER", issuer)
     monkeypatch.setattr(ba, "BOTLEARN_AUDIENCE", audience)
     monkeypatch.setattr(ba, "BOTLEARN_REQUIRE_EMAIL_VERIFIED", require_email_verified)
+    monkeypatch.setattr(br, "BOTLEARN_RUNTIME_PROFILE_SECRET", RUNTIME_PROFILE_SECRET)
     monkeypatch.setattr(
         ba,
         "BOTLEARN_ALLOWED_ORIGINS",
@@ -162,6 +164,34 @@ def _headers(token: str, *, origin: str | None = ALLOWED_ORIGIN) -> dict:
     if origin is not None:
         headers["Origin"] = origin
     return headers
+
+
+def _runtime_profile() -> dict:
+    return {
+        "schema_version": "botlearn-course-runtime-profile/0.1",
+        "profile_id": "crp_test_profile",
+        "profile_hash": "sha256:" + "1" * 64,
+        "course_version_id": str(uuid.uuid4()),
+        "prompt_pack": {
+            "id": "botlearn.executor.ai-creator",
+            "version": "1.0.0",
+            "digest": "sha256:" + "2" * 64,
+            "system_instructions": "Use course-scoped instructions.",
+        },
+        "skill_packages": [
+            {
+                "id": "botlearn.plan-ai-creator-strategy",
+                "version": "0.1.0",
+                "digest": "sha256:" + "3" * 64,
+                "archive_manifest": {
+                    "name": "botlearn.plan-ai-creator-strategy",
+                    "skillMd": "# Skill",
+                    "files": [],
+                },
+            }
+        ],
+        "required_capabilities": ["web.search", "workspace.write"],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +290,175 @@ async def test_session_exchange_derives_session_key_from_course_run_metadata(
         issuer=BOTLEARN_SESSION_ISSUER,
     )
     assert claims["session_key"] == "course_run:run-456"
+
+
+@pytest.mark.asyncio
+async def test_session_exchange_applies_trusted_runtime_profile_before_issuing_token(
+    client_factory, monkeypatch
+):
+    _configure_botlearn(monkeypatch)
+    client, _service = await client_factory()
+    captured: dict = {}
+
+    async def fake_apply(db, **kwargs):
+        captured.update(kwargs)
+        profile = kwargs["runtime_profile"]
+        return {
+            "profileId": profile["profileId"],
+            "profileHash": profile["profileHash"],
+            "status": "applied",
+            "appliedSkillRefs": ["botlearn.plan-ai-creator-strategy@0.1.0"],
+            "availableCapabilities": ["web.search", "workspace.write"],
+            "missingSkills": [],
+            "missingCapabilities": [],
+            "runtime": "deepseek-tui",
+            "expiresAt": (_now() + datetime.timedelta(minutes=15)).isoformat(),
+        }
+
+    import app.routers.botlearn as br
+
+    monkeypatch.setattr(br, "apply_botlearn_session_profile", fake_apply)
+    headers = _headers(_botlearn_token("botlearn-user-profile"))
+    headers["X-BotLearn-Runtime-Profile-Secret"] = RUNTIME_PROFILE_SECRET
+    r = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=headers,
+        json={
+            "session_key": "course_run:profile-123",
+            "runtime_profile": _runtime_profile(),
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["runtime_profile_status"]["status"] == "applied"
+    assert captured["session_key"] == "course_run:profile-123"
+    assert captured["room_id"].startswith("rm_oc_")
+    assert captured["runtime_profile"]["schemaVersion"] == (
+        "botlearn-course-runtime-profile/0.1"
+    )
+    assert captured["runtime_profile"]["promptPack"]["systemInstructions"] == (
+        "Use course-scoped instructions."
+    )
+
+    claims = jwt.decode(
+        body["access_token"],
+        JWT_SECRET,
+        algorithms=[JWT_ALGORITHM],
+        audience=BOTLEARN_SESSION_AUDIENCE,
+        issuer=BOTLEARN_SESSION_ISSUER,
+    )
+    assert claims["session_profile_required"] is True
+    assert "profile_id" not in claims
+    assert "profile_hash" not in claims
+
+
+@pytest.mark.asyncio
+async def test_session_exchange_cannot_downgrade_existing_profile_binding(
+    client_factory, monkeypatch
+):
+    _configure_botlearn(monkeypatch)
+    client, _service = await client_factory()
+
+    async def fake_apply(db, **kwargs):
+        profile = kwargs["runtime_profile"]
+        return {
+            "profileId": profile["profileId"],
+            "profileHash": profile["profileHash"],
+            "status": "applied",
+            "appliedSkillRefs": ["botlearn.plan-ai-creator-strategy@0.1.0"],
+            "availableCapabilities": ["web.search", "workspace.write"],
+            "missingSkills": [],
+            "missingCapabilities": [],
+            "runtime": "deepseek-tui",
+            "expiresAt": (_now() + datetime.timedelta(minutes=15)).isoformat(),
+        }
+
+    import app.routers.botlearn as br
+
+    monkeypatch.setattr(br, "apply_botlearn_session_profile", fake_apply)
+    token = _botlearn_token("botlearn-user-profile-downgrade")
+    session_key = "course_run:profile-no-downgrade"
+    trusted_headers = _headers(token)
+    trusted_headers["X-BotLearn-Runtime-Profile-Secret"] = RUNTIME_PROFILE_SECRET
+    first = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=trusted_headers,
+        json={"session_key": session_key, "runtime_profile": _runtime_profile()},
+    )
+    assert first.status_code == 200, first.text
+
+    second = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=_headers(token),
+        json={"session_key": session_key},
+    )
+    assert second.status_code == 200, second.text
+    claims = jwt.decode(
+        second.json()["access_token"],
+        JWT_SECRET,
+        algorithms=[JWT_ALGORITHM],
+        audience=BOTLEARN_SESSION_AUDIENCE,
+        issuer=BOTLEARN_SESSION_ISSUER,
+    )
+    assert claims["session_profile_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_session_exchange_rejects_browser_forged_runtime_profile(
+    client_factory, monkeypatch
+):
+    _configure_botlearn(monkeypatch)
+    client, _service = await client_factory()
+    r = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=_headers(_botlearn_token("botlearn-user-forged-profile")),
+        json={
+            "session_key": "course_run:forged",
+            "runtime_profile": _runtime_profile(),
+        },
+    )
+    assert r.status_code == 403
+    assert r.json()["detail"]["code"] == "profile_permission_denied"
+
+
+@pytest.mark.asyncio
+async def test_session_exchange_returns_daemon_requirement_status(
+    client_factory, monkeypatch
+):
+    _configure_botlearn(monkeypatch)
+    client, _service = await client_factory()
+
+    async def fake_apply(db, **kwargs):
+        profile = kwargs["runtime_profile"]
+        return {
+            "profileId": profile["profileId"],
+            "profileHash": profile["profileHash"],
+            "status": "requirements_unmet",
+            "appliedSkillRefs": ["botlearn.plan-ai-creator-strategy@0.1.0"],
+            "availableCapabilities": ["workspace.write"],
+            "missingSkills": [],
+            "missingCapabilities": ["web.search"],
+            "runtime": "codex",
+            "expiresAt": (_now() + datetime.timedelta(minutes=15)).isoformat(),
+        }
+
+    import app.routers.botlearn as br
+
+    monkeypatch.setattr(br, "apply_botlearn_session_profile", fake_apply)
+    headers = _headers(_botlearn_token("botlearn-user-profile-unmet"))
+    headers["X-BotLearn-Runtime-Profile-Secret"] = RUNTIME_PROFILE_SECRET
+    r = await client.post(
+        "/api/integrations/botlearn/session",
+        headers=headers,
+        json={
+            "session_key": "course_run:profile-unmet",
+            "runtime_profile": _runtime_profile(),
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["runtime_profile_status"]["status"] == "requirements_unmet"
+    assert r.json()["runtime_profile_status"]["missingCapabilities"] == ["web.search"]
 
 
 @pytest.mark.asyncio

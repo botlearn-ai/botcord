@@ -40,6 +40,8 @@ import {
   type GatewayInboundFrame,
   type InstallAgentSkillParams,
   type ListAgentSkillsParams,
+  type ApplySessionProfileParams,
+  type GetSessionProfileParams,
 } from "@botcord/protocol-core";
 import type { Gateway } from "./gateway/index.js";
 import type { GatewayInboundMessage } from "./gateway/index.js";
@@ -102,6 +104,11 @@ import {
   type CloudGatewayTypingEmitter,
 } from "./cloud-gateway-runtime.js";
 import { scheduleDaemonSelfRestart } from "./self-restart.js";
+import {
+  applySessionProfile,
+  getSessionProfileStatus,
+  readSessionProfile,
+} from "./session-profile.js";
 
 const require = createRequire(import.meta.url);
 
@@ -577,6 +584,90 @@ export function createProvisioner(opts: ProvisionerOptions): (
           hermesProfile: skillIndexOptions.hermesProfile ?? null,
           count: result.skills.length,
         });
+        return { ok: true, result };
+      }
+
+      case CONTROL_FRAME_TYPES.APPLY_SESSION_PROFILE: {
+        const params = (frame.params ?? {}) as unknown as ApplySessionProfileParams;
+        if (!params.agentId || !params.sessionKey || !params.roomId) {
+          return {
+            ok: false,
+            error: {
+              code: "bad_params",
+              message: "apply_session_profile requires params.agentId, sessionKey, and roomId",
+            },
+          };
+        }
+        const route = gateway.listManagedRoutes()
+          .find((entry) => entry.match?.accountId === params.agentId);
+        if (!route) {
+          return {
+            ok: false,
+            error: {
+              code: "agent_not_loaded",
+              message: `agent ${params.agentId} is not loaded in daemon gateway`,
+            },
+          };
+        }
+        try {
+          const result = applySessionProfile(params, route);
+          daemonLog.info("apply_session_profile", {
+            agentId: params.agentId,
+            roomId: params.roomId,
+            profileId: result.profileId,
+            profileHash: result.profileHash,
+            runtime: result.runtime,
+            status: result.status,
+            appliedSkillRefs: result.appliedSkillRefs,
+            missingCapabilities: result.missingCapabilities,
+          });
+          return { ok: true, result };
+        } catch (err) {
+          return {
+            ok: false,
+            error: {
+              code: "profile_apply_failed",
+              message: err instanceof Error ? err.message : String(err),
+            },
+          };
+        }
+      }
+
+      case CONTROL_FRAME_TYPES.GET_SESSION_PROFILE: {
+        const params = (frame.params ?? {}) as unknown as GetSessionProfileParams;
+        if (!params.agentId || !params.sessionKey || !params.roomId) {
+          return {
+            ok: false,
+            error: {
+              code: "bad_params",
+              message: "get_session_profile requires params.agentId, sessionKey, and roomId",
+            },
+          };
+        }
+        const stored = readSessionProfile(params.agentId, params.roomId);
+        const result = getSessionProfileStatus(params.agentId, params.roomId);
+        if (!stored || !result) {
+          return {
+            ok: false,
+            error: {
+              code: "session_profile_missing",
+              message: "session profile is missing or expired",
+            },
+          };
+        }
+        if (
+          stored.sessionKey !== params.sessionKey ||
+          (params.profileId && result.profileId !== params.profileId) ||
+          (params.profileHash && result.profileHash !== params.profileHash)
+        ) {
+          return {
+            ok: false,
+            error: {
+              code: "session_profile_mismatch",
+              message: "session profile does not match the requested session binding",
+            },
+          };
+        }
         return { ok: true, result };
       }
 
