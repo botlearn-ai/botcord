@@ -1581,6 +1581,14 @@ function normalizeBlockForHub(
     return withRaw({ kind: "tool_result", seq, payload });
   }
 
+  if (kind === "progress") {
+    const summary = typeof raw?.summary === "string" ? raw.summary.trim().slice(0, 240) : "";
+    const status = raw?.status === "completed" ? "completed" : "in_progress";
+    if (summary) payload.summary = summary;
+    payload.status = status;
+    return { kind: "progress", seq, payload };
+  }
+
   if (kind === "system") {
     if (typeof raw?.subtype === "string") payload.subtype = raw.subtype;
     if (typeof raw?.session_id === "string") payload.session_id = raw.session_id;
