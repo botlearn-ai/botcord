@@ -1955,8 +1955,9 @@ export class Dispatcher {
      * auto-synthesizing thinking on plain `system`/`other` blocks. This
      * prevents the post-prose flicker caused by Codex's `turn.completed` /
      * Claude Code's `result` (both arrive as system/other AFTER the prose).
-     * `tool_use` is the explicit exception — agents that legitimately go
-     * back to work after a partial answer should still drive "Thinking…".
+     * `tool_use` and user-visible `progress` are explicit exceptions — agents
+     * that legitimately go back to work after a partial answer should still
+     * drive "Thinking…".
      */
     let sawAssistantText = false;
     let blocksSent = 0;
@@ -2126,7 +2127,10 @@ export class Dispatcher {
           // `turn.completed`, claude `result`) would otherwise flicker
           // "Thinking…" right after the final answer.
           if (!thinkingActive && block.kind !== "assistant_text") {
-            const allowed = !sawAssistantText || block.kind === "tool_use";
+            const allowed =
+              !sawAssistantText ||
+              block.kind === "tool_use" ||
+              block.kind === "progress";
             if (allowed) {
               thinkingActive = true;
               sendThinkingMarker("started", undefined, "dispatcher");

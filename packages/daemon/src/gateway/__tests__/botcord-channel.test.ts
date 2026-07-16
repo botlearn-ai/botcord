@@ -1212,6 +1212,31 @@ describe("createBotCordChannel — ack + dedup", () => {
 // ---------------------------------------------------------------------------
 
 describe("createBotCordChannel — streamBlock()", () => {
+  it("normalizes user-visible progress without forwarding an internal tool envelope", () => {
+    expect(
+      __normalizeBlockForHubForTests(
+        {
+          kind: "progress",
+          seq: 1,
+          raw: {
+            summary: "已读取项目结构，正在核对测试入口。",
+            status: "in_progress",
+            source: "report_progress",
+            secret: "must-not-leak",
+          },
+        },
+        1,
+      ),
+    ).toEqual({
+      kind: "progress",
+      seq: 1,
+      payload: {
+        summary: "已读取项目结构，正在核对测试入口。",
+        status: "in_progress",
+      },
+    });
+  });
+
   it("normalizes Codex tool items without using internal ids as params", () => {
     expect(
       __normalizeBlockForHubForTests(

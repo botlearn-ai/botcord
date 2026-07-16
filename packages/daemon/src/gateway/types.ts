@@ -355,7 +355,7 @@ export interface StreamBlock {
    * by an adapter) to represent "the runtime is busy but has nothing visible
    * to show yet" — see `RuntimeStatusEvent`.
    */
-  kind: "assistant_text" | "tool_use" | "tool_result" | "system" | "thinking" | "other";
+  kind: "assistant_text" | "tool_use" | "tool_result" | "system" | "thinking" | "progress" | "other";
   /** 1-based sequence number within this turn. */
   seq: number;
 }
