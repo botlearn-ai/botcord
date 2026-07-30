@@ -17,6 +17,7 @@ export interface AttentionPolicyFetcherOptions {
   hubBaseUrl?: string;
   log?: {
     warn: (msg: string, meta?: Record<string, unknown>) => void;
+    debug?: (msg: string, meta?: Record<string, unknown>) => void;
   };
 }
 
@@ -50,6 +51,9 @@ export function createAttentionPolicyFetcher(
         ...(creds.tokenExpiresAt !== undefined
           ? { tokenExpiresAt: creds.tokenExpiresAt }
           : {}),
+        authDiagnostic: (event) => {
+          opts.log?.debug?.("daemon.auth.coordination", { ...event });
+        },
       });
       client.onTokenRefresh = (token, expiresAt) => {
         try {

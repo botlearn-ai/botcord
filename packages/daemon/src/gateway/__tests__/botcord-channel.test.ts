@@ -1187,6 +1187,7 @@ describe("createBotCordChannel — ack + dedup", () => {
     await expect(startP).rejects.toMatchObject({ code: "channel_permanent_stop" });
     expect(AuthRejectedWebSocket.instances).toHaveLength(1);
     expect(client.refreshToken).toHaveBeenCalledTimes(1);
+    expect(client.refreshToken).toHaveBeenCalledWith("test-token");
     expect(localRevokeAgent).toHaveBeenCalledWith("ag_self", log);
     expect(logs.some((entry) => entry.msg === "botcord agent credentials rejected by Hub; revoked local binding"))
       .toBe(true);
