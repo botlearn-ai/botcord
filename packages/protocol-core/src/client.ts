@@ -2,7 +2,7 @@
  * HTTP client for BotCord Hub REST API.
  * Handles JWT token lifecycle and request signing.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { buildSignedEnvelope, derivePublicKey, generateKeypair, signChallenge } from "./crypto.js";
 import { normalizeTokenExpiresAt } from "./credentials.js";
@@ -53,6 +53,36 @@ export interface BotCordClientConfig {
   privateKey: string;
   token?: string;
   tokenExpiresAt?: number;
+  authDiagnostic?: (event: BotCordAuthDiagnostic) => void;
+}
+
+export interface BotCordAuthDiagnostic {
+  event:
+    | "client_created"
+    | "refresh_started"
+    | "refresh_joined"
+    | "refresh_reused"
+    | "refresh_succeeded"
+    | "refresh_failed";
+  authScopeId: string;
+  clientInstanceId: string;
+  generation: number;
+  reason?: "missing_or_expiring" | "forced" | "rest_401";
+  status?: number;
+}
+
+interface SharedCredentialState {
+  token: string | null;
+  tokenExpiresAt: number;
+  generation: number;
+  refreshPromise: Promise<string> | null;
+}
+
+const sharedCredentialStates = new Map<string, SharedCredentialState>();
+
+/** @internal Test-only helper; production callers must not clear live auth coordination. */
+export function resetSharedCredentialStatesForTests(): void {
+  sharedCredentialStates.clear();
 }
 
 export class BotCordClient {
@@ -60,8 +90,10 @@ export class BotCordClient {
   private agentId: string;
   private keyId: string;
   private privateKey: string;
-  private jwtToken: string | null = null;
-  private tokenExpiresAt = 0;
+  private credentialState: SharedCredentialState;
+  private authScopeId: string;
+  private clientInstanceId = randomBytes(6).toString("hex");
+  private authDiagnostic?: (event: BotCordAuthDiagnostic) => void;
 
   /** Called after a token refresh so credentials can be persisted. */
   onTokenRefresh?: (token: string, expiresAt: number) => void;
@@ -74,35 +106,87 @@ export class BotCordClient {
     this.agentId = config.agentId;
     this.keyId = config.keyId;
     this.privateKey = config.privateKey;
-    if (config.token) {
-      this.jwtToken = config.token;
-      this.tokenExpiresAt = normalizeTokenExpiresAt(config.tokenExpiresAt) ?? 0;
+    const scopeKey = `${this.hubUrl}\0${this.agentId}\0${this.keyId}`;
+    this.authScopeId = createHash("sha256")
+      .update(scopeKey)
+      .digest("hex")
+      .slice(0, 16);
+    this.authDiagnostic = config.authDiagnostic;
+    const existing = sharedCredentialStates.get(scopeKey);
+    if (existing) {
+      this.credentialState = existing;
+    } else {
+      this.credentialState = {
+        token: config.token ?? null,
+        tokenExpiresAt: config.token
+          ? normalizeTokenExpiresAt(config.tokenExpiresAt) ?? 0
+          : 0,
+        generation: config.token ? 1 : 0,
+        refreshPromise: null,
+      };
+      sharedCredentialStates.set(scopeKey, this.credentialState);
     }
+    this.emitAuthDiagnostic("client_created");
   }
 
   // ── Token management ──────────────────────────────────────────
 
   async ensureToken(): Promise<string> {
-    if (this.jwtToken && Date.now() / 1000 < this.tokenExpiresAt - 60) {
-      return this.jwtToken;
+    if (
+      this.credentialState.token &&
+      Date.now() / 1000 < this.credentialState.tokenExpiresAt - 60
+    ) {
+      return this.credentialState.token;
     }
-    return this.refreshToken();
+    return this.refreshToken(undefined, "missing_or_expiring");
   }
 
-  async refreshToken(): Promise<string> {
+  async refreshToken(
+    failedToken?: string,
+    reason: "missing_or_expiring" | "forced" | "rest_401" = "forced",
+  ): Promise<string> {
+    if (
+      failedToken !== undefined &&
+      this.credentialState.token &&
+      this.credentialState.token !== failedToken
+    ) {
+      this.emitAuthDiagnostic("refresh_reused", reason);
+      return this.credentialState.token;
+    }
+    if (this.credentialState.refreshPromise) {
+      this.emitAuthDiagnostic("refresh_joined", reason);
+      return this.credentialState.refreshPromise;
+    }
+    this.emitAuthDiagnostic("refresh_started", reason);
+    const refreshPromise = this.performTokenRefresh(reason);
+    this.credentialState.refreshPromise = refreshPromise;
+    try {
+      return await refreshPromise;
+    } finally {
+      if (this.credentialState.refreshPromise === refreshPromise) {
+        this.credentialState.refreshPromise = null;
+      }
+    }
+  }
+
+  private async performTokenRefresh(
+    reason: "missing_or_expiring" | "forced" | "rest_401",
+  ): Promise<string> {
     const nonce = randomBytes(32).toString("base64");
     const sig = signChallenge(this.privateKey, nonce);
 
-    const resp = await fetch(`${this.hubUrl}/registry/agents/${this.agentId}/token/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        key_id: this.keyId,
-        nonce,
-        sig,
-      }),
-      signal: AbortSignal.timeout(10000),
-    });
+    let resp: Response;
+    try {
+      resp = await fetch(`${this.hubUrl}/registry/agents/${this.agentId}/token/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key_id: this.keyId, nonce, sig }),
+        signal: AbortSignal.timeout(10000),
+      });
+    } catch (err) {
+      this.emitAuthDiagnostic("refresh_failed", reason);
+      throw err;
+    }
 
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
@@ -110,22 +194,56 @@ export class BotCordClient {
       (err as any).status = resp.status;
       const code = parseErrorCode(body);
       if (code) (err as any).code = code;
+      this.emitAuthDiagnostic("refresh_failed", reason, resp.status);
       throw err;
     }
 
     const data = (await resp.json()) as { agent_token: string; token?: string; expires_at?: number };
-    this.jwtToken = data.agent_token || data.token!;
-    this.tokenExpiresAt = data.expires_at ?? Date.now() / 1000 + 86400;
-    this.onTokenRefresh?.(this.jwtToken, this.tokenExpiresAt);
-    return this.jwtToken;
+    this.credentialState.token = data.agent_token || data.token!;
+    this.credentialState.tokenExpiresAt =
+      data.expires_at ?? Date.now() / 1000 + 86400;
+    this.credentialState.generation += 1;
+    this.onTokenRefresh?.(this.credentialState.token, this.credentialState.tokenExpiresAt);
+    this.emitAuthDiagnostic("refresh_succeeded", reason);
+    return this.credentialState.token;
   }
 
   getToken(): string | null {
-    return this.jwtToken;
+    return this.credentialState.token;
   }
 
   getTokenExpiresAt(): number {
-    return this.tokenExpiresAt;
+    return this.credentialState.tokenExpiresAt;
+  }
+
+  getAuthDiagnosticContext(): Pick<
+    BotCordAuthDiagnostic,
+    "authScopeId" | "clientInstanceId" | "generation"
+  > {
+    return {
+      authScopeId: this.authScopeId,
+      clientInstanceId: this.clientInstanceId,
+      generation: this.credentialState.generation,
+    };
+  }
+
+  private emitAuthDiagnostic(
+    event: BotCordAuthDiagnostic["event"],
+    reason?: BotCordAuthDiagnostic["reason"],
+    status?: number,
+  ): void {
+    try {
+      this.authDiagnostic?.({
+        event,
+        authScopeId: this.authScopeId,
+        clientInstanceId: this.clientInstanceId,
+        generation: this.credentialState.generation,
+        ...(reason ? { reason } : {}),
+        ...(status !== undefined ? { status } : {}),
+      });
+    } catch {
+      // Diagnostics must never affect authentication or refresh recovery.
+    }
   }
 
   // ── Authenticated fetch with rate-limit retry ─────────────────
@@ -151,7 +269,7 @@ export class BotCordClient {
       if (resp.ok) return resp;
 
       if (resp.status === 401 && attempt === 0) {
-        token = await this.refreshToken();
+        token = await this.refreshToken(token, "rest_401");
         continue;
       }
 

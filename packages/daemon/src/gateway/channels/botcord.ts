@@ -6,6 +6,7 @@ import {
   defaultCredentialsFile,
   loadStoredCredentials,
   updateCredentialsToken,
+  type BotCordAuthDiagnostic,
   type InboxMessage,
   type MessageAttachment,
 } from "@botcord/protocol-core";
@@ -61,7 +62,7 @@ type InboxDrainTrigger =
 /** Minimal surface the adapter needs from `BotCordClient`. Matches the subset used at runtime. */
 export interface BotCordChannelClient {
   ensureToken(): Promise<string>;
-  refreshToken(): Promise<string>;
+  refreshToken(failedToken?: string): Promise<string>;
   pollInbox(options?: {
     limit?: number;
     ack?: boolean;
@@ -106,6 +107,7 @@ export type BotCordClientFactory = (input: {
   agentId: string;
   hubBaseUrl?: string;
   credentialsPath?: string;
+  authDiagnostic?: (event: BotCordAuthDiagnostic) => void;
 }) => BotCordChannelClient;
 
 /** Options accepted by `createBotCordChannel()`. */
@@ -238,6 +240,7 @@ function defaultClientFactory(input: {
   agentId: string;
   hubBaseUrl?: string;
   credentialsPath?: string;
+  authDiagnostic?: (event: BotCordAuthDiagnostic) => void;
 }): BotCordChannelClient {
   const credFile = input.credentialsPath ?? defaultCredentialsFile(input.agentId);
   const creds = loadStoredCredentials(credFile);
@@ -248,6 +251,7 @@ function defaultClientFactory(input: {
     privateKey: creds.privateKey,
     token: creds.token,
     tokenExpiresAt: creds.tokenExpiresAt,
+    authDiagnostic: input.authDiagnostic,
   });
   client.onTokenRefresh = (token, expiresAt) => {
     try {
@@ -459,7 +463,7 @@ async function postControlWithRefresh(
     });
     if (resp.status === 401 && attempt === 0) {
       try {
-        token = await client.refreshToken();
+        token = await client.refreshToken(token);
       } catch (err) {
         await onTerminalCredentialError?.(err);
         throw err;
@@ -577,12 +581,15 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     for (const stop of [...activeLeaseRenewals]) stop();
   }
 
-  function ensureClient(): BotCordChannelClient {
+  function ensureClient(log: GatewayLogger): BotCordChannelClient {
     if (!clientRef) {
       clientRef = factory({
         agentId: options.agentId,
         hubBaseUrl: options.hubBaseUrl,
         credentialsPath: options.credentialsPath,
+        authDiagnostic: (event) => {
+          log.debug("botcord.auth.coordination", { ...event });
+        },
       });
     }
     return clientRef;
@@ -1231,7 +1238,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           }
           const refresh = (async () => {
             try {
-              await client.refreshToken();
+              await client.refreshToken(token);
             } catch (err) {
               if (await stopForTerminalCredentials(err)) {
                 return;
@@ -1295,7 +1302,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     type: channelType,
 
     async start(ctx: ChannelStartContext): Promise<void> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       setStatusCallback = ctx.setStatus;
       // Only patch fields owned by the adapter; the manager is the single
       // writer for `channel` (== adapter.id) and `accountId`.
@@ -1319,7 +1326,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     },
 
     async send(ctx: ChannelSendContext): Promise<ChannelSendResult> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       const { message } = ctx;
       const options: {
         replyTo?: string;
@@ -1356,7 +1363,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     },
 
     async streamBlock(ctx: ChannelStreamBlockContext): Promise<void> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       try {
         const block = ctx.block as { raw?: unknown; kind?: string; seq?: number } | undefined;
@@ -1386,7 +1393,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     },
 
     async streamEnd(ctx: ChannelStreamEndContext): Promise<void> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       try {
         const resp = await postControlWithRefresh(
@@ -1412,7 +1419,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     },
 
     async typing(ctx: ChannelTypingContext): Promise<void> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       try {
         const resp = await postControlWithRefresh(
@@ -1438,7 +1445,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     },
 
     async messageStatus(ctx: ChannelMessageStatusContext): Promise<void> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       const body = {
         room_id: ctx.conversationId,

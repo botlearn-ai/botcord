@@ -6,7 +6,11 @@
  * `{ room, members }` shape the builder expects. A single GET is enough —
  * Hub returns both the room record and its member list in one payload.
  */
-import { BotCordClient, loadStoredCredentials } from "@botcord/protocol-core";
+import {
+  BotCordClient,
+  loadStoredCredentials,
+  updateCredentialsToken,
+} from "@botcord/protocol-core";
 import type { RoomContextFetcher } from "./room-context.js";
 
 interface CachedClient {
@@ -23,6 +27,7 @@ export interface RoomContextFetcherOptions {
   hubBaseUrl?: string;
   log?: {
     warn: (msg: string, meta?: Record<string, unknown>) => void;
+    debug?: (msg: string, meta?: Record<string, unknown>) => void;
   };
 }
 
@@ -58,7 +63,17 @@ export function createRoomContextFetcher(
         ...(creds.tokenExpiresAt !== undefined
           ? { tokenExpiresAt: creds.tokenExpiresAt }
           : {}),
+        authDiagnostic: (event) => {
+          opts.log?.debug?.("daemon.auth.coordination", { ...event });
+        },
       });
+      client.onTokenRefresh = (token, expiresAt) => {
+        try {
+          updateCredentialsToken(credsPath, token, expiresAt);
+        } catch {
+          // Persistence failures are non-fatal; the next refresh retries.
+        }
+      };
       clients.set(accountId, { client, credentialsPath: credsPath });
       return client;
     } catch (err) {
