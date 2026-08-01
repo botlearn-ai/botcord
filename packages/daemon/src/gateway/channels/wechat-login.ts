@@ -14,6 +14,7 @@ import { wechatHeaders, type FetchLike } from "./wechat-http.js";
 import { assertSafeBaseUrl } from "./url-guard.js";
 
 export const DEFAULT_WECHAT_BASE_URL = "https://ilinkai.weixin.qq.com";
+export const DEFAULT_WECHAT_LOGIN_TIMEOUT_MS = 10_000;
 
 export interface WechatQrcode {
   qrcode: string;
@@ -31,6 +32,7 @@ export interface WechatQrcodeStatus {
 export interface WechatLoginOptions {
   baseUrl?: string;
   fetchImpl?: FetchLike;
+  timeoutMs?: number;
 }
 
 /** `GET /ilink/bot/get_bot_qrcode?bot_type=3` — fetch a fresh login QR. */
@@ -42,6 +44,7 @@ export async function getBotQrcode(opts: WechatLoginOptions = {}): Promise<Wecha
   const res = await fetcher(`${base}/ilink/bot/get_bot_qrcode?bot_type=3`, {
     method: "GET",
     headers: wechatHeaders(),
+    signal: AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_WECHAT_LOGIN_TIMEOUT_MS),
   });
   const data = (await safeJson(res)) ?? {};
   const qrcode = typeof data.qrcode === "string" ? data.qrcode : "";
@@ -70,7 +73,11 @@ export async function getQrcodeStatus(
   const fetcher = opts.fetchImpl ?? (globalThis.fetch as FetchLike);
   const res = await fetcher(
     `${base}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(qrcode)}`,
-    { method: "GET", headers: wechatHeaders() },
+    {
+      method: "GET",
+      headers: wechatHeaders(),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_WECHAT_LOGIN_TIMEOUT_MS),
+    },
   );
   const data = (await safeJson(res)) ?? {};
   const status = typeof data.status === "string" ? data.status : "unknown";
