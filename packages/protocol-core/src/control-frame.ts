@@ -827,6 +827,8 @@ export interface RuntimeSnapshotParams {
   runtimes: RuntimeProbeResult[];
   probedAt: number;
   daemonVersion?: string;
+  /** SHA-256 fingerprints of trusted Hub control keys; never raw keys. */
+  hubControlTrustKeyFingerprints?: string[];
 }
 
 /**
@@ -839,6 +841,7 @@ export interface ListRuntimesResult {
   runtimes: RuntimeProbeResult[];
   probedAt: number;
   daemonVersion?: string;
+  hubControlTrustKeyFingerprints?: string[];
 }
 
 // ---------------------------------------------------------------------------
