@@ -11,7 +11,7 @@ import {
   buildDaemonWebSocketUrl,
   CONTROL_FRAME_TYPES,
   jcsCanonicalize,
-  resolveHubControlPublicKey,
+  resolveHubControlPublicKeys,
   verifyEd25519,
   type ControlAck,
   type ControlFrame,
@@ -81,10 +81,16 @@ export interface ControlChannelOptions {
   label?: string;
   /**
    * Override the embedded Hub control-plane public key (raw 32-byte, base64).
-   * When omitted the channel falls back to {@link resolveHubControlPublicKey},
-   * which honors `BOTCORD_HUB_CONTROL_PUBLIC_KEY`.
+   * When omitted the channel falls back to {@link resolveHubControlPublicKeys},
+   * which honors `BOTCORD_HUB_CONTROL_PUBLIC_KEYS` and the legacy singular
+   * variable.
    */
   hubPublicKey?: string | null;
+  /**
+   * Trusted Hub keys used during rotation. Takes precedence over
+   * `hubPublicKey`; an empty array explicitly disables verification.
+   */
+  hubPublicKeys?: readonly string[] | null;
   /** Test hook — inject a WebSocket constructor. */
   webSocketCtor?: typeof WebSocket;
   /** Test hook — override the backoff schedule. */
@@ -103,7 +109,7 @@ export class ControlChannel {
   private readonly handle: ControlFrameHandler;
   private readonly path: string;
   private readonly label: string | undefined;
-  private readonly hubPublicKey: string | null;
+  private readonly hubPublicKeys: readonly string[];
   private readonly webSocketCtor: typeof WebSocket;
   private readonly backoff: number[];
   private readonly keepaliveMs: number;
@@ -125,8 +131,11 @@ export class ControlChannel {
     // Prefer an explicit `label` from start-time; fall back to whatever
     // was persisted on the user-auth record at login.
     this.label = opts.label ?? opts.auth.current?.label;
-    this.hubPublicKey =
-      opts.hubPublicKey === undefined ? resolveHubControlPublicKey() : opts.hubPublicKey;
+    this.hubPublicKeys = opts.hubPublicKeys !== undefined
+      ? [...new Set((opts.hubPublicKeys ?? []).filter(Boolean))]
+      : opts.hubPublicKey !== undefined
+        ? opts.hubPublicKey ? [opts.hubPublicKey] : []
+        : resolveHubControlPublicKeys();
     this.webSocketCtor = opts.webSocketCtor ?? WebSocket;
     this.backoff = opts.backoffMs ?? RECONNECT_BACKOFF_MS;
     this.keepaliveMs = opts.keepaliveIntervalMs ?? KEEPALIVE_INTERVAL_MS;
@@ -153,7 +162,8 @@ export class ControlChannel {
       hubUrl: this.auth.current.hubUrl,
       path: this.path,
       label: this.label ?? null,
-      hubKeyConfigured: !!this.hubPublicKey,
+      hubKeyConfigured: this.hubPublicKeys.length > 0,
+      hubKeyCount: this.hubPublicKeys.length,
     });
     this.connectInflight = this.connect().catch((err) => {
       // Initial connect failure surfaces to the caller; subsequent
@@ -441,7 +451,7 @@ export class ControlChannel {
     // dev / placeholder constant), we log a warning per frame and accept,
     // so the daemon can still bring up the control plane against a Hub
     // that hasn't published its key yet.
-    if (this.hubPublicKey) {
+    if (this.hubPublicKeys.length > 0) {
       if (typeof frame.sig !== "string" || frame.sig.length === 0) {
         daemonLog.warn("control-channel: rejecting unsigned frame", {
           type: frame.type,
@@ -454,7 +464,8 @@ export class ControlChannel {
         });
         return;
       }
-      if (!verifyEd25519(this.hubPublicKey, controlSigningInput(frame), frame.sig)) {
+      const signingInput = controlSigningInput(frame);
+      if (!this.hubPublicKeys.some((key) => verifyEd25519(key, signingInput, frame.sig!))) {
         daemonLog.warn("control-channel: rejecting frame with bad signature", {
           type: frame.type,
           id: frame.id,
