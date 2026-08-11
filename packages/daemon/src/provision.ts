@@ -16,6 +16,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   BotCordClient,
@@ -24,6 +25,7 @@ import {
   derivePublicKey,
   loadStoredCredentials,
   normalizeTokenExpiresAt,
+  resolveHubControlPublicKeys,
   writeCredentialsFile,
   type AgentIdentitySnapshot,
   type ControlAck,
@@ -2281,6 +2283,9 @@ export function collectRuntimeSnapshot(opts: { force?: boolean } = {}): ListRunt
   const value: ListRuntimesResult = { runtimes, probedAt: Date.now() };
   const version = daemonPackageVersion();
   if (version) value.daemonVersion = version;
+  value.hubControlTrustKeyFingerprints = resolveHubControlPublicKeys().map(
+    (key) => `sha256:${createHash("sha256").update(key, "utf8").digest("hex")}`,
+  );
   _runtimeProbeCache = { at: Date.now(), value };
   return value;
 }

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 // Hoisted mock for `../adapters/runtimes.js` so each suite can stub
 // `detectRuntimes()` independently — we want coverage of the "empty
@@ -49,6 +50,30 @@ function setRuntimes(entries: typeof mockState.entries): void {
 }
 
 describe("collectRuntimeSnapshot", () => {
+  it("attests the configured trust ring using fingerprints, never raw keys", () => {
+    const previousPlural = process.env.BOTCORD_HUB_CONTROL_PUBLIC_KEYS;
+    const previousSingular = process.env.BOTCORD_HUB_CONTROL_PUBLIC_KEY;
+    process.env.BOTCORD_HUB_CONTROL_PUBLIC_KEYS = "old-public-key,new-public-key";
+    delete process.env.BOTCORD_HUB_CONTROL_PUBLIC_KEY;
+    try {
+      const snap = collectRuntimeSnapshot({ force: true });
+      const fingerprint = (key: string) =>
+        `sha256:${createHash("sha256").update(key, "utf8").digest("hex")}`;
+      expect(snap.hubControlTrustKeyFingerprints).toEqual([
+        fingerprint("old-public-key"),
+        fingerprint("new-public-key"),
+      ]);
+      expect(JSON.stringify(snap)).not.toContain("old-public-key");
+      expect(JSON.stringify(snap)).not.toContain("new-public-key");
+    } finally {
+      if (previousPlural === undefined) delete process.env.BOTCORD_HUB_CONTROL_PUBLIC_KEYS;
+      else process.env.BOTCORD_HUB_CONTROL_PUBLIC_KEYS = previousPlural;
+      if (previousSingular === undefined) delete process.env.BOTCORD_HUB_CONTROL_PUBLIC_KEY;
+      else process.env.BOTCORD_HUB_CONTROL_PUBLIC_KEY = previousSingular;
+      clearRuntimeProbeCache();
+    }
+  });
+
   it("returns an empty runtimes array when no adapters are registered", () => {
     setRuntimes([]);
     const snap = collectRuntimeSnapshot();

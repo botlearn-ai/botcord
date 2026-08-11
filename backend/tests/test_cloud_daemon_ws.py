@@ -367,6 +367,7 @@ async def test_runtime_snapshot_persists_to_daemon_instance(
         daemon_instance_id=daemon.id,
     )
     probed_at_ms = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
+    fingerprints = ["sha256:" + "c" * 64, "sha256:" + "d" * 64]
     await _handle_cloud_daemon_event(
         conn,
         {
@@ -375,6 +376,7 @@ async def test_runtime_snapshot_persists_to_daemon_instance(
             "params": {
                 "runtimes": [{"id": "deepseek-tui", "available": True}],
                 "probedAt": probed_at_ms,
+                "hubControlTrustKeyFingerprints": fingerprints,
             },
         },
     )
@@ -390,6 +392,7 @@ async def test_runtime_snapshot_persists_to_daemon_instance(
     assert refreshed is not None
     assert refreshed.runtimes_json == [{"id": "deepseek-tui", "available": True}]
     assert refreshed.runtimes_probed_at is not None
+    assert refreshed.hub_control_trust_key_fingerprints == fingerprints
 
 
 @pytest.mark.asyncio
