@@ -59,6 +59,7 @@ from hub.config import (
     DAEMON_DISPATCH_DEFAULT_TIMEOUT_MS,
     DAEMON_DISPATCH_MAX_TIMEOUT_MS,
     DAEMON_HUB_CONTROL_PRIVATE_KEY_B64,
+    DAEMON_HUB_CONTROL_PUBLIC_KEYS_B64,
     FRONTEND_BASE_URL,
     HUB_PUBLIC_BASE_URL,
     JWT_ALGORITHM,
@@ -110,6 +111,19 @@ _HUB_SIGNING_KEY: SigningKey = _load_hub_signing_key()
 HUB_CONTROL_PUBLIC_KEY_B64: str = base64.b64encode(
     bytes(_HUB_SIGNING_KEY.verify_key)
 ).decode()
+
+
+def _trusted_hub_public_keys() -> list[str]:
+    """Return the configured rotation ring, always including the active signer."""
+    configured = [
+        key.strip()
+        for key in re.split(r"[,\r\n]+", DAEMON_HUB_CONTROL_PUBLIC_KEYS_B64)
+        if key.strip()
+    ]
+    return list(dict.fromkeys([HUB_CONTROL_PUBLIC_KEY_B64, *configured]))
+
+
+HUB_CONTROL_PUBLIC_KEYS_B64: str = ",".join(_trusted_hub_public_keys())
 
 
 def _sign_frame(frame: dict[str, Any]) -> str:

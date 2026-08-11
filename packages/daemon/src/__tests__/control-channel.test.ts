@@ -193,6 +193,38 @@ describe("ControlChannel — Hub signature verification", () => {
     await ch.stop();
   });
 
+  it("accepts frames signed by either key in a rotation ring", async () => {
+    const oldKey = generateKeypair();
+    const newKey = generateKeypair();
+    const handler = vi.fn(async () => ({ ok: true }));
+    const auth = new UserAuthManager({
+      record: makeAuthRecord(),
+      file: "/tmp/never-written-user-auth.json",
+    });
+    const ctor = makeFakeCtor();
+    const ch = new ControlChannel({
+      auth,
+      handle: handler,
+      hubPublicKeys: [oldKey.publicKey, newKey.publicKey],
+      webSocketCtor: ctor as unknown as typeof import("ws").default,
+    });
+    await ch.start();
+    const ws = FakeWebSocket.instances[0];
+    for (const [id, privateKey] of [
+      ["old", oldKey.privateKey],
+      ["new", newKey.privateKey],
+    ] as const) {
+      const frame = signFrame(
+        { id, type: CONTROL_FRAME_TYPES.PING, ts: Date.now() },
+        privateKey,
+      );
+      ws.emit("message", Buffer.from(JSON.stringify(frame)));
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    expect(handler).toHaveBeenCalledTimes(2);
+    await ch.stop();
+  });
+
   it("rejects frames with no signature when a Hub key is configured", async () => {
     const { publicKey } = generateKeypair();
     const handler = vi.fn(async () => ({ ok: true }));

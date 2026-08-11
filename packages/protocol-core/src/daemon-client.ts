@@ -282,9 +282,31 @@ export async function pollDeviceToken(
  * `BOTCORD_HUB_CONTROL_PRIVATE_KEY` is unset; production rotates via env.
  * To replace the constant, edit this file and rebuild
  * `@botcord/protocol-core`. Operators can also override at runtime via
- * `BOTCORD_HUB_CONTROL_PUBLIC_KEY`.
+ * `BOTCORD_HUB_CONTROL_PUBLIC_KEYS` or the legacy singular variable.
  */
 export const HUB_CONTROL_PUBLIC_KEY = "H8lKtrtJclp+M69dh0n0avdia/kN8fy1tYUSrQFpDxY=";
+
+/**
+ * Resolve every trusted Hub control-plane public key. The plural env var is
+ * a comma/newline-separated key ring used during signing-key rotations. It
+ * takes precedence over the legacy singular override, which remains supported
+ * for existing installations.
+ */
+export function resolveHubControlPublicKeys(
+  env?: Record<string, string | undefined>,
+): string[] {
+  const e = env ?? (typeof process !== "undefined" ? process.env : {});
+  const ring = e?.BOTCORD_HUB_CONTROL_PUBLIC_KEYS;
+  if (typeof ring === "string" && ring.trim().length > 0) {
+    const keys = [...new Set(ring.split(/[\n,]/).map((key) => key.trim()).filter(Boolean))];
+    if (keys.length > 0) return keys;
+  }
+  const legacy = e?.BOTCORD_HUB_CONTROL_PUBLIC_KEY;
+  if (typeof legacy === "string" && legacy.trim().length > 0) {
+    return [legacy.trim()];
+  }
+  return HUB_CONTROL_PUBLIC_KEY ? [HUB_CONTROL_PUBLIC_KEY] : [];
+}
 
 /**
  * Resolve the Hub control-plane Ed25519 public key, honoring the
@@ -294,13 +316,5 @@ export const HUB_CONTROL_PUBLIC_KEY = "H8lKtrtJclp+M69dh0n0avdia/kN8fy1tYUSrQFpD
  * warning" rather than a hard failure.
  */
 export function resolveHubControlPublicKey(env?: Record<string, string | undefined>): string | null {
-  const e = env ?? (typeof process !== "undefined" ? process.env : {});
-  const override = e?.BOTCORD_HUB_CONTROL_PUBLIC_KEY;
-  if (typeof override === "string" && override.length > 0) {
-    return override;
-  }
-  if (HUB_CONTROL_PUBLIC_KEY && HUB_CONTROL_PUBLIC_KEY.length > 0) {
-    return HUB_CONTROL_PUBLIC_KEY;
-  }
-  return null;
+  return resolveHubControlPublicKeys(env)[0] ?? null;
 }

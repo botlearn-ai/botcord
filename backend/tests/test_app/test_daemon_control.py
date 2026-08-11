@@ -37,6 +37,24 @@ TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-daemon-control"
 
 
+def test_trusted_hub_public_keys_accepts_comma_and_newline_separators(monkeypatch):
+    import hub.routers.daemon_control as daemon_control
+
+    monkeypatch.setattr(
+        daemon_control,
+        "DAEMON_HUB_CONTROL_PUBLIC_KEYS_B64",
+        "old-key\nnew-key, rollback-key\r\nduplicate-key\nduplicate-key",
+    )
+
+    assert daemon_control._trusted_hub_public_keys() == [
+        daemon_control.HUB_CONTROL_PUBLIC_KEY_B64,
+        "old-key",
+        "new-key",
+        "rollback-key",
+        "duplicate-key",
+    ]
+
+
 def _make_supabase_token(sub: str, secret: str = TEST_SUPABASE_SECRET) -> str:
     payload = {
         "sub": sub,
