@@ -50,14 +50,15 @@ function parseErrorCode(body: string): string | undefined {
   return undefined;
 }
 
-function parseRetryable(body: string): boolean | undefined {
+const TERMINAL_RATE_LIMIT_CODES = new Set(["duplicate_content"]);
+
+function isTerminalRateLimit(body: string): boolean {
   try {
-    const parsed = JSON.parse(body) as { retryable?: unknown };
-    if (typeof parsed.retryable === "boolean") return parsed.retryable;
+    const parsed = JSON.parse(body) as { code?: unknown };
+    return typeof parsed.code === "string" && TERMINAL_RATE_LIMIT_CODES.has(parsed.code);
   } catch {
-    // Missing or non-JSON metadata preserves the status-based retry policy.
+    return false;
   }
-  return undefined;
 }
 
 export interface BotCordClientConfig {
@@ -309,7 +310,7 @@ export class BotCordClient {
       if (
         resp.status === 429 &&
         attempt < MAX_RETRIES &&
-        parseRetryable(body) !== false
+        !isTerminalRateLimit(body)
       ) {
         const retryAfter = parseInt(resp.headers.get("Retry-After") || "", 10);
         const delayMs = retryAfter > 0 ? retryAfter * 1000 : RETRY_BASE_MS * (attempt + 1);

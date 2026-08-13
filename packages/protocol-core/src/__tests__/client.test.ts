@@ -302,7 +302,7 @@ describe("BotCordClient token refresh", () => {
     expect(new Set(requestIds).size).toBe(1);
   });
 
-  it("does not retry a 429 response explicitly marked non-retryable", async () => {
+  it("does not retry a duplicate_content 429", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn(async () =>
       Response.json(
@@ -332,33 +332,37 @@ describe("BotCordClient token refresh", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("retries a 429 response explicitly marked retryable", async () => {
-    vi.useFakeTimers();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        Response.json(
-          { detail: "Slow mode", code: "slow_mode", retryable: true },
-          { status: 429 },
-        ),
-      )
-      .mockResolvedValueOnce(Response.json({ messages: [], count: 0, has_more: false }));
-    vi.stubGlobal("fetch", fetchMock);
-    const client = new BotCordClient({
-      hubUrl: "https://hub.example",
-      agentId: "ag_test",
-      keyId: "k_test",
-      privateKey,
-      token: "cached-token",
-      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
-    });
+  it.each([
+    ["rate_limit_exceeded", "Rate limit exceeded"],
+    ["conversation_rate_limit_exceeded", "Conversation rate limit exceeded"],
+    ["slow_mode_wait", "Please wait before sending another message"],
+  ])(
+    "retries a Hub %s 429 even when its generic 4xx metadata says non-retryable",
+    async (code, detail) => {
+      vi.useFakeTimers();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json({ detail, code, retryable: false }, { status: 429 }),
+        )
+        .mockResolvedValueOnce(Response.json({ messages: [], count: 0, has_more: false }));
+      vi.stubGlobal("fetch", fetchMock);
+      const client = new BotCordClient({
+        hubUrl: "https://hub.example",
+        agentId: "ag_test",
+        keyId: "k_test",
+        privateKey,
+        token: "cached-token",
+        tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+      });
 
-    const poll = client.pollInbox({ limit: 50 });
-    await vi.runAllTimersAsync();
-    await poll;
+      const poll = client.pollInbox({ limit: 50 });
+      await vi.runAllTimersAsync();
+      await poll;
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("includes structured error_ref on typed error messages", async () => {
     let sentBody: any;
