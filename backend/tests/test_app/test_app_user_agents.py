@@ -1096,8 +1096,16 @@ async def test_credential_reset_ticket_returns_valid_ticket(
 
 
 @pytest.mark.asyncio
-async def test_claim_resolve_success(client: AsyncClient, seed_user: dict, db_session: AsyncSession):
+async def test_claim_resolve_success(
+    client: AsyncClient,
+    seed_user: dict,
+    db_session: AsyncSession,
+    monkeypatch,
+):
     """Claiming an unclaimed agent binds it to the user."""
+    import hub.config
+
+    monkeypatch.setattr(hub.config, "is_claim_gift_active", lambda: True)
     token = seed_user["token"]
 
     # Create a new unclaimed agent
@@ -1281,9 +1289,14 @@ async def seed_user_for_claim(db_session: AsyncSession, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_claim_agent_with_token_success(
-    client: AsyncClient, seed_user_for_claim: dict
+    client: AsyncClient,
+    seed_user_for_claim: dict,
+    monkeypatch,
 ):
     """Successful claim with agent_token (mock verify returns True)."""
+    import hub.config
+
+    monkeypatch.setattr(hub.config, "is_claim_gift_active", lambda: True)
     token = seed_user_for_claim["token"]
 
     with _mock_verify_agent_control(True):
@@ -1325,11 +1338,7 @@ async def test_claim_gift_skips_after_window(
     import hub.config
 
     token = seed_user_for_claim["token"]
-    monkeypatch.setattr(
-        hub.config,
-        "CLAIM_GIFT_WINDOW_END_AT_EXCLUSIVE",
-        datetime.datetime(2026, 4, 7, 0, 0, 0, tzinfo=datetime.timezone.utc),
-    )
+    monkeypatch.setattr(hub.config, "is_claim_gift_active", lambda: False)
 
     with _mock_verify_agent_control(True):
         resp = await client.post(

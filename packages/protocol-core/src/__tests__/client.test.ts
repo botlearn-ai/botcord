@@ -1,11 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { BotCordClient } from "../client.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  BotCordClient,
+  resetSharedCredentialStatesForTests,
+  type BotCordAuthDiagnostic,
+} from "../client.js";
 
 const privateKey = Buffer.alloc(32, 2).toString("base64");
 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  resetSharedCredentialStatesForTests();
 });
 
 describe("BotCordClient token refresh", () => {
@@ -84,6 +92,158 @@ describe("BotCordClient token refresh", () => {
       inboxRequests[0].headers["X-BotCord-Request-ID"],
     );
     expect(refreshRequest?.headers["X-BotCord-Caller-Version"]).toBe("0.2.17");
+  });
+
+  it("single-flights concurrent refreshes and shares the new generation across clients", async () => {
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    let refreshCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/token/refresh")) {
+          refreshCount += 1;
+          await refreshGate;
+          return Response.json({
+            agent_token: "shared-new-token",
+            expires_at: Math.floor(Date.now() / 1000) + 3600,
+          });
+        }
+        return Response.json({ messages: [], count: 0, has_more: false });
+      }),
+    );
+    const config = {
+      hubUrl: "https://hub.concurrent.example",
+      agentId: "ag_concurrent",
+      keyId: "k_concurrent",
+      privateKey,
+    };
+    const first = new BotCordClient(config);
+    const second = new BotCordClient(config);
+
+    const firstRefresh = first.ensureToken();
+    const secondRefresh = second.ensureToken();
+    releaseRefresh();
+
+    await expect(Promise.all([firstRefresh, secondRefresh])).resolves.toEqual([
+      "shared-new-token",
+      "shared-new-token",
+    ]);
+    expect(refreshCount).toBe(1);
+    expect(first.getToken()).toBe("shared-new-token");
+    expect(second.getToken()).toBe("shared-new-token");
+  });
+
+  it("reuses a peer generation when REST 401 recovery races a completed refresh", async () => {
+    const authorizations: string[] = [];
+    let refreshCount = 0;
+    let releaseStaleResponse!: () => void;
+    const staleResponseGate = new Promise<void>((resolve) => {
+      releaseStaleResponse = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/token/refresh")) {
+          refreshCount += 1;
+          return Response.json({
+            agent_token: "peer-new-token",
+            expires_at: Math.floor(Date.now() / 1000) + 3600,
+          });
+        }
+        authorizations.push(((init?.headers ?? {}) as Record<string, string>).Authorization);
+        if (authorizations.length === 1) {
+          await staleResponseGate;
+          return new Response("stale", { status: 401 });
+        }
+        return Response.json({ messages: [], count: 0, has_more: false });
+      }),
+    );
+    const config = {
+      hubUrl: "https://hub.rest-race.example",
+      agentId: "ag_rest_race",
+      keyId: "k_rest_race",
+      privateKey,
+      token: "old-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    };
+    const restClient = new BotCordClient(config);
+    const peerClient = new BotCordClient(config);
+    const request = restClient.pollInbox();
+    await vi.waitFor(() => expect(authorizations).toHaveLength(1));
+    await peerClient.refreshToken("old-token");
+    releaseStaleResponse();
+    await request;
+
+    expect(refreshCount).toBe(1);
+    expect(authorizations).toEqual(["Bearer old-token", "Bearer peer-new-token"]);
+  });
+
+  it("emits privacy-safe auth generation diagnostics without credential material", async () => {
+    const events: BotCordAuthDiagnostic[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          agent_token: "super-secret-token",
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      ),
+    );
+    const client = new BotCordClient({
+      hubUrl: "https://hub.diagnostics.example",
+      agentId: "ag_diagnostics",
+      keyId: "k_diagnostics",
+      privateKey,
+      authDiagnostic: (event) => events.push(event),
+    });
+    await client.ensureToken();
+
+    expect(events.map((event) => event.event)).toEqual([
+      "client_created",
+      "refresh_started",
+      "refresh_succeeded",
+    ]);
+    expect(events[2]).toMatchObject({
+      generation: 1,
+      reason: "missing_or_expiring",
+    });
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain("super-secret-token");
+    expect(serialized).not.toContain(privateKey);
+    expect(serialized).not.toContain("ag_diagnostics");
+    expect(serialized).not.toContain("k_diagnostics");
+  });
+
+  it("reuses a peer generation when WS invalid_token reports the token used to authenticate", async () => {
+    let refreshCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        refreshCount += 1;
+        return Response.json({
+          agent_token: "peer-ws-token",
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+        });
+      }),
+    );
+    const config = {
+      hubUrl: "https://hub.ws-race.example",
+      agentId: "ag_ws_race",
+      keyId: "k_ws_race",
+      privateKey,
+      token: "ws-auth-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    };
+    const wsClient = new BotCordClient(config);
+    const peerClient = new BotCordClient(config);
+
+    await peerClient.refreshToken("ws-auth-token");
+    await expect(wsClient.refreshToken("ws-auth-token")).resolves.toBe("peer-ws-token");
+    expect(refreshCount).toBe(1);
   });
 
   it("attaches status and code to token refresh failures", async () => {
@@ -171,5 +331,52 @@ describe("BotCordClient token refresh", () => {
       message: "Runtime error: codex error",
       error_ref: "err_abc123",
     });
+  });
+});
+
+describe("BotCordClient inbox leases", () => {
+  it("serializes ack=false explicitly when polling", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ messages: [], count: 0, has_more: false }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    await client.pollInbox({ limit: 50, ack: false });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://hub.example/hub/inbox?limit=50&ack=false",
+      expect.any(Object),
+    );
+  });
+
+  it("renews processing leases for explicit message ids", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ renewed: 2 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    await client.renewInboxLease(["m_1", "m_2"]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://hub.example/hub/inbox/lease/renew",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ message_ids: ["m_1", "m_2"] }),
+      }),
+    );
   });
 });

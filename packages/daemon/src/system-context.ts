@@ -12,7 +12,8 @@
  *   4. `[BotCord Room Context]` (group rooms, via optional async fetcher;
  *      room rules are carried separately as `RuntimeRunOptions.systemRules`)
  *   5. `[BotCord Cross-Room Awareness]` (optional activity tracker)
- *   6. `[BotCord Daemon Skill Index]` (soft skill hot-reload index)
+ *   6. `[BotLearn Course Session Profile]` (room-scoped Prompt/Skill overlay)
+ *   7. `[BotCord Daemon Skill Index]` (soft skill hot-reload index)
  *
  * Behavior:
  *   - Working memory is loaded fresh per turn, so a `memory set` from another
@@ -41,6 +42,7 @@ import { log } from "./log.js";
 import { buildSoftSkillIndexPrompt } from "./skill-index.js";
 import type { SkillIndexOptions } from "./skill-index.js";
 import { effectiveMention } from "./mention-scan.js";
+import { buildSessionProfilePrompt } from "./session-profile.js";
 
 /**
  * Async per-turn room-context builder (see `room-context.ts`). Returns the
@@ -297,6 +299,22 @@ export function createDaemonSystemContextBuilder(
     }
   };
 
+  const buildSessionProfile = (message: GatewayInboundMessage): string | null => {
+    try {
+      return buildSessionProfilePrompt(deps.agentId, message.conversation.id);
+    } catch (err) {
+      log.warn(
+        "system-context: session profile build failed — skipping session block",
+        {
+          agentId: deps.agentId,
+          roomId: message.conversation.id,
+          err: err instanceof Error ? err.message : String(err),
+        }
+      );
+      return null;
+    }
+  };
+
   if (!deps.roomContextBuilder) {
     const syncBuilder = (
       message: GatewayInboundMessage
@@ -312,6 +330,7 @@ export function createDaemonSystemContextBuilder(
       // Loop-risk sits at the end so its "reply NO_REPLY unless…" guidance
       // is the last thing the model sees before the user turn body.
       // Identity sits at the very front so it frames every other block.
+      const sessionProfile = buildSessionProfile(message);
       const skillIndex = buildSkillIndex(message);
       const loopRisk = runLoopRisk(message);
       return assemble([
@@ -321,6 +340,7 @@ export function createDaemonSystemContextBuilder(
         environment,
         memory,
         digest,
+        sessionProfile,
         skillIndex,
         loopRisk,
       ]);
@@ -357,6 +377,7 @@ export function createDaemonSystemContextBuilder(
         }
       );
     }
+    const sessionProfile = buildSessionProfile(message);
     const skillIndex = buildSkillIndex(message);
     const loopRisk = runLoopRisk(message);
     return assemble([
@@ -367,6 +388,7 @@ export function createDaemonSystemContextBuilder(
       memory,
       roomBlock,
       digest,
+      sessionProfile,
       skillIndex,
       loopRisk,
     ]);

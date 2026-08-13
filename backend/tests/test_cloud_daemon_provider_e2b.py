@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+import httpx
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -13,7 +14,10 @@ from hub.routers.cloud_daemon_control import (
     _create_cloud_daemon_access_token,
     _verify_cloud_daemon_access_token,
 )
-from hub.routers.daemon_control import HUB_CONTROL_PUBLIC_KEY_B64
+from hub.routers.daemon_control import (
+    HUB_CONTROL_PUBLIC_KEY_B64,
+    HUB_CONTROL_PUBLIC_KEYS_B64,
+)
 from hub.services.cloud_agent import (
     CloudAgentService,
     CreateCloudAgentInput,
@@ -21,6 +25,7 @@ from hub.services.cloud_agent import (
 from hub.services.cloud_daemon_provider_e2b import (
     CLOUD_DAEMON_STARTUP_COMMAND,
     E2BCloudDaemonProvider,
+    E2BProviderUnavailable,
     FakeE2BSandboxClient,
     _E2BSdkClient,
 )
@@ -117,6 +122,7 @@ async def test_create_or_resume_starts_sandbox_and_injects_env():
     assert env["BOTCORD_CLOUD_DAEMON_INSTANCE_ID"] == "cloud_dm_aaa"
     assert env["BOTCORD_DAEMON_INSTANCE_ID"] == "dm_bbb"
     assert env["BOTCORD_HUB_CONTROL_PUBLIC_KEY"] == HUB_CONTROL_PUBLIC_KEY_B64
+    assert env["BOTCORD_HUB_CONTROL_PUBLIC_KEYS"] == HUB_CONTROL_PUBLIC_KEYS_B64
     assert env["DEEPSEEK_API_KEY"] == "ds-secret"
     assert env["CLOUD_DAEMON_NPM_SPEC"] == "@botcord/daemon@latest"
 
@@ -183,19 +189,44 @@ async def test_create_or_resume_injects_extra_runtime_env():
 
 
 @pytest.mark.asyncio
-async def test_create_or_resume_allows_public_key_override():
-    """Explicit runtime env still wins over provider defaults."""
+async def test_create_or_resume_allows_public_key_ring_override():
+    """Runtime trust keys extend rather than replace the provider ring."""
     provider, client = _make_provider()
     handle = await provider.create_or_resume(
         cloud_daemon_instance_id="cloud_dm_key_override",
         daemon_instance_id="dm_key_override",
         user_id=str(uuid.uuid4()),
         runtime="deepseek-tui",
-        extra_env={"BOTCORD_HUB_CONTROL_PUBLIC_KEY": "override-public-key"},
+        extra_env={"BOTCORD_HUB_CONTROL_PUBLIC_KEYS": "old-public-key,new-public-key"},
     )
     sandbox = client.get(handle.provider_sandbox_id)
     assert sandbox is not None
-    assert sandbox.env["BOTCORD_HUB_CONTROL_PUBLIC_KEY"] == "override-public-key"
+    assert sandbox.env["BOTCORD_HUB_CONTROL_PUBLIC_KEYS"].split(",") == [
+        *HUB_CONTROL_PUBLIC_KEYS_B64.split(","),
+        "old-public-key",
+        "new-public-key",
+    ]
+    assert sandbox.env["BOTCORD_HUB_CONTROL_PUBLIC_KEY"] == HUB_CONTROL_PUBLIC_KEY_B64
+
+
+@pytest.mark.asyncio
+async def test_create_or_resume_preserves_legacy_single_public_key_override():
+    """A singular runtime key extends trust without replacing the active signer."""
+    provider, client = _make_provider()
+    handle = await provider.create_or_resume(
+        cloud_daemon_instance_id="cloud_dm_legacy_key",
+        daemon_instance_id="dm_legacy_key",
+        user_id=str(uuid.uuid4()),
+        runtime="deepseek-tui",
+        extra_env={"BOTCORD_HUB_CONTROL_PUBLIC_KEY": "legacy-public-key"},
+    )
+    sandbox = client.get(handle.provider_sandbox_id)
+    assert sandbox is not None
+    assert sandbox.env["BOTCORD_HUB_CONTROL_PUBLIC_KEY"] == HUB_CONTROL_PUBLIC_KEY_B64
+    assert sandbox.env["BOTCORD_HUB_CONTROL_PUBLIC_KEYS"].split(",") == [
+        *HUB_CONTROL_PUBLIC_KEYS_B64.split(","),
+        "legacy-public-key",
+    ]
 
 
 @pytest.mark.asyncio
@@ -324,6 +355,28 @@ async def test_create_failure_returns_failed_handle():
     )
     assert handle.status == "failed"
     assert handle.error_code == "e2b_create_failed"
+
+
+@pytest.mark.asyncio
+async def test_resume_connect_unavailable_returns_failed_handle():
+    """Retry-exhausted E2B connect transport errors are controlled provider failures."""
+
+    class UnavailableOnResumeClient(FakeE2BSandboxClient):
+        async def resume_sandbox(self, **_kwargs):
+            raise E2BProviderUnavailable("e2b sandbox unavailable during connect")
+
+    provider, _ = _make_provider(client=UnavailableOnResumeClient())
+    handle = await provider.create_or_resume(
+        cloud_daemon_instance_id="cloud_dm_unavailable",
+        daemon_instance_id="dm_unavailable",
+        user_id="u",
+        runtime="deepseek-tui",
+        provider_sandbox_id="sbx_flaky",
+    )
+
+    assert handle.status == "failed"
+    assert handle.error_code == "e2b_provider_unavailable"
+    assert handle.provider_sandbox_id == "sbx_flaky"
 
 
 # ---------------------------------------------------------------------------
@@ -500,6 +553,7 @@ class _FakeAsyncSandboxClass:
     kill_returns_false: bool = False
     pause_raises_not_found: bool = False
     create_raises: Exception | None = None
+    connect_read_errors_remaining: int = 0
 
     @classmethod
     def reset(cls) -> None:
@@ -513,6 +567,7 @@ class _FakeAsyncSandboxClass:
         cls.kill_returns_false = False
         cls.pause_raises_not_found = False
         cls.create_raises = None
+        cls.connect_read_errors_remaining = 0
 
     @classmethod
     async def create(cls, *, template=None, timeout=None, envs=None, **opts):
@@ -530,6 +585,9 @@ class _FakeAsyncSandboxClass:
         cls.connect_calls.append(
             {"sandbox_id": sandbox_id, "timeout": timeout, "opts": opts}
         )
+        if cls.connect_read_errors_remaining > 0:
+            cls.connect_read_errors_remaining -= 1
+            raise httpx.ReadError("e2b response stream ended early")
         if cls.connect_raises_not_found:
             raise _FakeSandboxNotFoundException(f"sandbox {sandbox_id} not found")
         return _FakeAsyncSandboxHandle(
@@ -676,6 +734,40 @@ async def test_sdk_client_resume_returns_handle(fake_e2b_sdk_client):
     assert run.started is True
     assert _FakeAsyncSandboxClass.connect_calls[0]["sandbox_id"] == "sbx_beta"
     assert _FakeAsyncSandboxClass.connect_calls[0]["timeout"] == 120
+
+
+@pytest.mark.asyncio
+async def test_sdk_client_resume_retries_once_on_read_error(fake_e2b_sdk_client):
+    """A transient SDK/httpx read error during connect gets one retry."""
+    _FakeAsyncSandboxClass.connect_read_errors_remaining = 1
+
+    run = await fake_e2b_sdk_client.resume_sandbox(
+        sandbox_id="sbx_flaky",
+        env={},
+        timeout_seconds=120,
+    )
+
+    assert run.sandbox_id == "sbx_flaky"
+    assert len(_FakeAsyncSandboxClass.connect_calls) == 2
+    assert _FakeAsyncSandboxClass.connect_calls[0]["sandbox_id"] == "sbx_flaky"
+    assert _FakeAsyncSandboxClass.connect_calls[1]["sandbox_id"] == "sbx_flaky"
+
+
+@pytest.mark.asyncio
+async def test_sdk_client_resume_read_error_after_retry_is_unavailable(
+    fake_e2b_sdk_client,
+):
+    """Repeated SDK/httpx read errors become a provider-unavailable error."""
+    _FakeAsyncSandboxClass.connect_read_errors_remaining = 2
+
+    with pytest.raises(E2BProviderUnavailable):
+        await fake_e2b_sdk_client.resume_sandbox(
+            sandbox_id="sbx_flaky",
+            env={},
+            timeout_seconds=120,
+        )
+
+    assert len(_FakeAsyncSandboxClass.connect_calls) == 2
 
 
 @pytest.mark.asyncio

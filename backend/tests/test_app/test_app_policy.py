@@ -470,8 +470,205 @@ async def test_runtime_skills_refresh_retries_cloud_dispatch_loss_and_persists(
 
 
 @pytest.mark.asyncio
-async def test_runtime_skills_install_does_not_retry_cloud_dispatch_loss(
+async def test_runtime_skills_refresh_retries_after_initial_ack_timeout(
     client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_skills as runtime_skills_mod
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.hosting_kind = "cloud"
+    agent.daemon_instance_id = "dm_cloud_timeout_retry_skills"
+    agent.runtime = "codex"
+    daemon = DaemonInstance(
+        id="dm_cloud_timeout_retry_skills",
+        user_id=agent.user_id,
+        kind="cloud",
+        refresh_token_hash="hash",
+    )
+    cloud_daemon = CloudDaemonInstance(
+        id="cloud_dm_timeout_retry_skills",
+        user_id=agent.user_id,
+        daemon_instance_id=daemon.id,
+        provider="e2b",
+        status="ready",
+        runtime="codex",
+        max_agents=1,
+        active_agent_count=1,
+    )
+    cloud_binding = CloudAgentInstance(
+        id="cloud_ag_timeout_retry_skills",
+        user_id=agent.user_id,
+        agent_id=agent.agent_id,
+        cloud_daemon_instance_id=cloud_daemon.id,
+        daemon_instance_id=daemon.id,
+        runtime="codex",
+        model_profile="default",
+        status="ready",
+    )
+    db_session.add_all([daemon, cloud_daemon, cloud_binding])
+    await db_session.commit()
+
+    monkeypatch.setattr(runtime_skills_mod, "is_cloud_daemon_online", lambda _id: True)
+
+    dispatch_calls = []
+    probed_at = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)
+
+    async def fake_send_cloud(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        dispatch_calls.append({
+            "cloud_daemon_instance_id": cloud_daemon_instance_id,
+            "type": type_,
+            "params": params,
+            "timeout_ms": timeout_ms,
+        })
+        if len(dispatch_calls) == 1:
+            raise runtime_skills_mod.CloudDaemonDispatchError(
+                "cloud_daemon_ack_timeout",
+                "ack timeout after 5000ms",
+            )
+        return {
+            "ok": True,
+            "result": {
+                "agentId": "ag_owned",
+                "skills": [
+                    {
+                        "name": "cloud-timeout-retry-skill",
+                        "source": "runtime-global",
+                        "description": "Cloud timeout retry skill",
+                        "mtimeMs": probed_at,
+                    }
+                ],
+                "probedAt": probed_at,
+            },
+        }
+
+    monkeypatch.setattr(runtime_skills_mod, "send_cloud_control_frame", fake_send_cloud)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post("/api/agents/ag_owned/skills/refresh", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["skills"][0]["name"] == "cloud-timeout-retry-skill"
+    assert dispatch_calls == [
+        {
+            "cloud_daemon_instance_id": "cloud_dm_timeout_retry_skills",
+            "type": "list_agent_skills",
+            "params": {"agentId": "ag_owned"},
+            "timeout_ms": 5000,
+        },
+        {
+            "cloud_daemon_instance_id": "cloud_dm_timeout_retry_skills",
+            "type": "list_agent_skills",
+            "params": {"agentId": "ag_owned"},
+            "timeout_ms": 5000,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_runtime_skills_refresh_keeps_504_after_persistent_ack_timeout(
+    client, seed, db_session, monkeypatch
+):
+    from app.routers import runtime_skills as runtime_skills_mod
+
+    row = await db_session.execute(select(Agent).where(Agent.agent_id == "ag_owned"))
+    agent = row.scalar_one()
+    agent.hosting_kind = "cloud"
+    agent.daemon_instance_id = "dm_cloud_timeout_skills"
+    agent.runtime = "codex"
+    daemon = DaemonInstance(
+        id="dm_cloud_timeout_skills",
+        user_id=agent.user_id,
+        kind="cloud",
+        refresh_token_hash="hash",
+    )
+    cloud_daemon = CloudDaemonInstance(
+        id="cloud_dm_timeout_skills",
+        user_id=agent.user_id,
+        daemon_instance_id=daemon.id,
+        provider="e2b",
+        status="ready",
+        runtime="codex",
+        max_agents=1,
+        active_agent_count=1,
+    )
+    cloud_binding = CloudAgentInstance(
+        id="cloud_ag_timeout_skills",
+        user_id=agent.user_id,
+        agent_id=agent.agent_id,
+        cloud_daemon_instance_id=cloud_daemon.id,
+        daemon_instance_id=daemon.id,
+        runtime="codex",
+        model_profile="default",
+        status="ready",
+    )
+    db_session.add_all([daemon, cloud_daemon, cloud_binding])
+    await db_session.commit()
+
+    monkeypatch.setattr(runtime_skills_mod, "is_cloud_daemon_online", lambda _id: True)
+
+    dispatch_calls = []
+
+    async def fake_send_cloud(cloud_daemon_instance_id, type_, params=None, timeout_ms=None):
+        dispatch_calls.append({
+            "cloud_daemon_instance_id": cloud_daemon_instance_id,
+            "type": type_,
+            "params": params,
+            "timeout_ms": timeout_ms,
+        })
+        raise runtime_skills_mod.CloudDaemonDispatchError(
+            "cloud_daemon_ack_timeout",
+            "ack timeout after 5000ms",
+        )
+
+    monkeypatch.setattr(runtime_skills_mod, "send_cloud_control_frame", fake_send_cloud)
+
+    headers = {"Authorization": f"Bearer {seed['token']}"}
+    r = await client.post("/api/agents/ag_owned/skills/refresh", headers=headers)
+    assert r.status_code == 504, r.text
+    assert r.json()["detail"] == "daemon_ack_timeout"
+    assert dispatch_calls == [
+        {
+            "cloud_daemon_instance_id": "cloud_dm_timeout_skills",
+            "type": "list_agent_skills",
+            "params": {"agentId": "ag_owned"},
+            "timeout_ms": 5000,
+        },
+        {
+            "cloud_daemon_instance_id": "cloud_dm_timeout_skills",
+            "type": "list_agent_skills",
+            "params": {"agentId": "ag_owned"},
+            "timeout_ms": 5000,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error_code", "error_message", "expected_status", "expected_detail"),
+    [
+        (
+            "cloud_daemon_disconnected",
+            "connection closed after send",
+            409,
+            "daemon_offline",
+        ),
+        (
+            "cloud_daemon_ack_timeout",
+            "ack timeout after 30000ms",
+            504,
+            "daemon_ack_timeout",
+        ),
+    ],
+)
+async def test_runtime_skills_install_does_not_retry_cloud_dispatch_error(
+    client,
+    seed,
+    db_session,
+    monkeypatch,
+    error_code,
+    error_message,
+    expected_status,
+    expected_detail,
 ):
     from app.routers import runtime_skills as runtime_skills_mod
 
@@ -530,8 +727,8 @@ async def test_runtime_skills_install_does_not_retry_cloud_dispatch_loss(
             "timeout_ms": timeout_ms,
         })
         raise runtime_skills_mod.CloudDaemonDispatchError(
-            "cloud_daemon_disconnected",
-            "connection closed after send",
+            error_code,
+            error_message,
         )
 
     monkeypatch.setattr(runtime_skills_mod, "send_cloud_control_frame", fake_send_cloud)
@@ -548,8 +745,8 @@ async def test_runtime_skills_install_does_not_retry_cloud_dispatch_loss(
             }
         },
     )
-    assert r.status_code == 409, r.text
-    assert r.json()["detail"] == "daemon_offline"
+    assert r.status_code == expected_status, r.text
+    assert r.json()["detail"] == expected_detail
     assert resume_calls == []
     assert dispatch_calls == [
         {

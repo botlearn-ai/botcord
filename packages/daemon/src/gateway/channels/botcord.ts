@@ -6,6 +6,7 @@ import {
   defaultCredentialsFile,
   loadStoredCredentials,
   updateCredentialsToken,
+  type BotCordAuthDiagnostic,
   type InboxMessage,
   type MessageAttachment,
 } from "@botcord/protocol-core";
@@ -38,6 +39,7 @@ const SEEN_MESSAGES_CAP = 500;
 const OWNER_CHAT_PREFIX = "rm_oc_";
 const DM_ROOM_PREFIX = "rm_dm_";
 const INBOX_POLL_LIMIT = 50;
+const INBOX_LEASE_RENEW_INTERVAL_MS = 40_000;
 const CHANNEL_PERMANENT_STOP = "channel_permanent_stop";
 const DEFAULT_REPLYING_STATUS_EMOJI = "⏳";
 // Matches the dispatcher's 30-minute turn hard timeout — a turn can never
@@ -60,7 +62,7 @@ type InboxDrainTrigger =
 /** Minimal surface the adapter needs from `BotCordClient`. Matches the subset used at runtime. */
 export interface BotCordChannelClient {
   ensureToken(): Promise<string>;
-  refreshToken(): Promise<string>;
+  refreshToken(failedToken?: string): Promise<string>;
   pollInbox(options?: {
     limit?: number;
     ack?: boolean;
@@ -68,6 +70,7 @@ export interface BotCordChannelClient {
     roomId?: string;
   }): Promise<{ messages: InboxMessage[]; count: number; has_more: boolean }>;
   ackMessages(messageIds: string[]): Promise<void>;
+  renewInboxLease(messageIds: string[]): Promise<void>;
   uploadFile?(
     filePath: string,
     filename: string,
@@ -104,6 +107,7 @@ export type BotCordClientFactory = (input: {
   agentId: string;
   hubBaseUrl?: string;
   credentialsPath?: string;
+  authDiagnostic?: (event: BotCordAuthDiagnostic) => void;
 }) => BotCordChannelClient;
 
 /** Options accepted by `createBotCordChannel()`. */
@@ -120,6 +124,8 @@ export interface BotCordChannelOptions {
   hubBaseUrl?: string;
   /** Periodic inbox polling fallback. Set to 0 to disable. Defaults to 30s. */
   pollIntervalMs?: number;
+  /** Test hook: override the processing-lease renewal interval. Defaults to 40s. */
+  inboxLeaseRenewIntervalMs?: number;
   /** Test hook: supply a pre-built client instead of loading credentials from disk. */
   client?: BotCordChannelClient;
   /** Test hook: supply a client factory. Ignored when `client` is provided. */
@@ -234,6 +240,7 @@ function defaultClientFactory(input: {
   agentId: string;
   hubBaseUrl?: string;
   credentialsPath?: string;
+  authDiagnostic?: (event: BotCordAuthDiagnostic) => void;
 }): BotCordChannelClient {
   const credFile = input.credentialsPath ?? defaultCredentialsFile(input.agentId);
   const creds = loadStoredCredentials(credFile);
@@ -244,6 +251,7 @@ function defaultClientFactory(input: {
     privateKey: creds.privateKey,
     token: creds.token,
     tokenExpiresAt: creds.tokenExpiresAt,
+    authDiagnostic: input.authDiagnostic,
   });
   client.onTokenRefresh = (token, expiresAt) => {
     try {
@@ -455,7 +463,7 @@ async function postControlWithRefresh(
     });
     if (resp.status === 401 && attempt === 0) {
       try {
-        token = await client.refreshToken();
+        token = await client.refreshToken(token);
       } catch (err) {
         await onTerminalCredentialError?.(err);
         throw err;
@@ -481,6 +489,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
   const seenMessages = new Set<string>();
   const pendingHandoffMessages = new Set<string>();
   const handoffTails = new Map<string, Promise<void>>();
+  const activeLeaseRenewals = new Set<() => void>();
   let stopCallback: (() => void) | null = null;
   let setStatusCallback: ((patch: Partial<ChannelStatusSnapshot>) => void) | null = null;
 
@@ -526,12 +535,61 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     });
   }
 
-  function ensureClient(): BotCordChannelClient {
+  function startInboxLeaseRenewal(
+    client: BotCordChannelClient,
+    hubMsgIds: string[],
+    log: GatewayLogger,
+  ): () => void {
+    const intervalMs = options.inboxLeaseRenewIntervalMs ?? INBOX_LEASE_RENEW_INTERVAL_MS;
+    if (intervalMs <= 0 || hubMsgIds.length === 0) return () => undefined;
+
+    let stopped = false;
+    let renewing = false;
+    const timer = setInterval(() => {
+      if (stopped || renewing) return;
+      renewing = true;
+      void client
+        .renewInboxLease(hubMsgIds)
+        .then(() => {
+          log.debug("botcord inbox processing lease renewed", {
+            hubMsgIds,
+          });
+        })
+        .catch((err) => {
+          log.warn("botcord inbox processing lease renewal failed", {
+            hubMsgIds,
+            err: String(err),
+          });
+        })
+        .finally(() => {
+          renewing = false;
+        });
+    }, intervalMs);
+    timer.unref?.();
+
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+      activeLeaseRenewals.delete(stop);
+    };
+    activeLeaseRenewals.add(stop);
+    return stop;
+  }
+
+  function stopInboxLeaseRenewals(): void {
+    for (const stop of [...activeLeaseRenewals]) stop();
+  }
+
+  function ensureClient(log: GatewayLogger): BotCordChannelClient {
     if (!clientRef) {
       clientRef = factory({
         agentId: options.agentId,
         hubBaseUrl: options.hubBaseUrl,
         credentialsPath: options.credentialsPath,
+        authDiagnostic: (event) => {
+          log.debug("botcord.auth.coordination", { ...event });
+        },
       });
     }
     return clientRef;
@@ -696,16 +754,21 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
 
       const hubIds = group.map((m) => m.hub_msg_id);
       for (const hubId of hubIds) pendingHandoffMessages.add(hubId);
+      const stopLeaseRenewal = startInboxLeaseRenewal(client, hubIds, log);
       let accepted = false;
       const markAccepted = () => {
         if (accepted) return;
         accepted = true;
+        stopLeaseRenewal();
         for (const hubId of hubIds) pendingHandoffMessages.delete(hubId);
       };
       const envelope: GatewayInboundEnvelope = {
         message: normalized,
         ack: {
           accept: async () => {
+            // Runtime handling is terminal now; stop extending ownership so
+            // an ACK failure naturally falls back to Hub lease expiry/retry.
+            stopLeaseRenewal();
             try {
               // Ack the entire batch together so Hub never re-delivers any
               // member of this turn if the agent succeeds on the group.
@@ -731,6 +794,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           await emit(envelope);
           markAccepted();
         } catch (err) {
+          stopLeaseRenewal();
           if (!accepted) forgetSeen(hubIds);
           log.error("botcord emit threw", {
             hubMsgIds: hubIds,
@@ -866,6 +930,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       running = false;
       permanentStopping = true;
       clearTimers();
+      stopInboxLeaseRenewals();
       try {
         ws?.close();
       } catch {
@@ -931,6 +996,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       running = false;
       permanentStopping = true;
       clearTimers();
+      stopInboxLeaseRenewals();
       try {
         ws?.close();
       } catch {
@@ -1155,6 +1221,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
               failures: consecutiveAuthFailures,
             });
             running = false;
+            stopInboxLeaseRenewals();
             markStatus({
               running: false,
               connected: false,
@@ -1171,7 +1238,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
           }
           const refresh = (async () => {
             try {
-              await client.refreshToken();
+              await client.refreshToken(token);
             } catch (err) {
               if (await stopForTerminalCredentials(err)) {
                 return;
@@ -1202,6 +1269,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       if (!running) return;
       running = false;
       clearTimers();
+      stopInboxLeaseRenewals();
       markStatus({
         running: false,
         connected: false,
@@ -1234,7 +1302,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     type: channelType,
 
     async start(ctx: ChannelStartContext): Promise<void> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       setStatusCallback = ctx.setStatus;
       // Only patch fields owned by the adapter; the manager is the single
       // writer for `channel` (== adapter.id) and `accountId`.
@@ -1258,7 +1326,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     },
 
     async send(ctx: ChannelSendContext): Promise<ChannelSendResult> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       const { message } = ctx;
       const options: {
         replyTo?: string;
@@ -1295,7 +1363,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     },
 
     async streamBlock(ctx: ChannelStreamBlockContext): Promise<void> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       try {
         const block = ctx.block as { raw?: unknown; kind?: string; seq?: number } | undefined;
@@ -1325,7 +1393,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     },
 
     async streamEnd(ctx: ChannelStreamEndContext): Promise<void> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       try {
         const resp = await postControlWithRefresh(
@@ -1351,7 +1419,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     },
 
     async typing(ctx: ChannelTypingContext): Promise<void> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       try {
         const resp = await postControlWithRefresh(
@@ -1377,7 +1445,7 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
     },
 
     async messageStatus(ctx: ChannelMessageStatusContext): Promise<void> {
-      const client = ensureClient();
+      const client = ensureClient(ctx.log);
       const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
       const body = {
         room_id: ctx.conversationId,

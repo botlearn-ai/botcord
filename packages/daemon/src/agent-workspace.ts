@@ -29,6 +29,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -60,6 +61,22 @@ export function agentWorkspaceDir(agentId: string): string {
 
 export function agentStateDir(agentId: string): string {
   return path.join(agentHomeDir(agentId), "state");
+}
+
+/** Root for short-lived, room-scoped runtime profiles. */
+export function agentSessionProfilesDir(agentId: string): string {
+  return path.join(agentHomeDir(agentId), "sessions");
+}
+
+/**
+ * Directory for one isolated conversation session. Hashing keeps Hub room ids
+ * out of filesystem paths and makes traversal impossible even if a future
+ * channel introduces a less restrictive conversation-id format.
+ */
+export function agentSessionProfileDir(agentId: string, roomId: string): string {
+  if (!roomId || roomId.length > 512) throw new Error("roomId is required");
+  const sessionHash = createHash("sha256").update(roomId, "utf8").digest("hex");
+  return path.join(agentSessionProfilesDir(agentId), sessionHash);
 }
 
 /**
@@ -386,6 +403,7 @@ export function ensureAgentHermesWorkspace(
  *   - Claude Code: `<workspace>/.claude/skills/<name>/`
  *   - Codex:       `<codex-home>/skills/<name>/`
  *   - Hermes:      `<hermes-home>/skills/<name>/`
+ *   - Other:       `<workspace>/skills/<name>/`
  * Seeded fresh per `ensureAgent*` call (force-overwrite) so daemon
  * upgrades propagate.
  */
@@ -448,6 +466,15 @@ function seedClaudeCodeSkills(workspace: string): void {
 }
 
 /**
+ * Seed the generic workspace skill directory consumed by runtimes without
+ * their own native skill root (for example DeepSeek TUI). The daemon adds
+ * these skills to the soft skill index injected into the runtime context.
+ */
+function seedGenericWorkspaceSkills(workspace: string): void {
+  copyBundledSkills(path.join(workspace, "skills"));
+}
+
+/**
  * Seed Codex's `<CODEX_HOME>/skills/` discovery dir. The codex adapter
  * sets `CODEX_HOME=<agent>/codex-home/`, isolating per-agent skills from
  * the user's global `~/.codex/skills/` — so skills must be seeded here
@@ -507,6 +534,7 @@ export function ensureAgentWorkspace(agentId: string, seed: WorkspaceSeed): void
   writeIfMissing(path.join(workspace, "task.md"), TASK_MD);
   writeIfMissing(path.join(notes, ".gitkeep"), "");
   seedClaudeCodeSkills(workspace);
+  seedGenericWorkspaceSkills(workspace);
 }
 
 /** Patch fields accepted by {@link applyAgentIdentity}. `bio = null` clears it. */

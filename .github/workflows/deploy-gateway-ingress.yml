@@ -80,8 +80,8 @@ jobs:
     steps:
       - name: docker compose down/up
         run: |
-          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-preview/docker-compose.yaml down
-          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT-preview/docker-compose.yaml up -d
+          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT/docker-compose.yaml down
+          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT/docker-compose.yaml up -d
           echo "✅ Preview restarted"
 
   # ── Rollout prod (k8s) ───────────────────────────────────────────────────────

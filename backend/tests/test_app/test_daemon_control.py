@@ -37,6 +37,24 @@ TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-daemon-control"
 
 
+def test_trusted_hub_public_keys_accepts_comma_and_newline_separators(monkeypatch):
+    import hub.routers.daemon_control as daemon_control
+
+    monkeypatch.setattr(
+        daemon_control,
+        "DAEMON_HUB_CONTROL_PUBLIC_KEYS_B64",
+        "old-key\nnew-key, rollback-key\r\nduplicate-key\nduplicate-key",
+    )
+
+    assert daemon_control._trusted_hub_public_keys() == [
+        daemon_control.HUB_CONTROL_PUBLIC_KEY_B64,
+        "old-key",
+        "new-key",
+        "rollback-key",
+        "duplicate-key",
+    ]
+
+
 def _make_supabase_token(sub: str, secret: str = TEST_SUPABASE_SECRET) -> str:
     payload = {
         "sub": sub,
@@ -477,6 +495,49 @@ async def test_list_instances(client: AsyncClient, seed_user):
     for entry in data["instances"]:
         assert entry["id"].startswith("dm_")
         assert entry["online"] is False
+        assert entry["agent_bindings"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_instances_includes_multi_agent_traffic_eligibility(
+    client: AsyncClient, seed_user, db_session: AsyncSession
+):
+    bundle = await _provision_instance_via_device_code(client, seed_user)
+    instance_id = bundle["daemon_instance_id"]
+    db_session.add_all(
+        [
+            Agent(
+                agent_id="ag_inventory_active",
+                display_name="Inventory Active",
+                user_id=seed_user["user_id"],
+                daemon_instance_id=instance_id,
+                message_policy=MessagePolicy.contacts_only,
+                status="active",
+            ),
+            Agent(
+                agent_id="ag_inventory_deleted",
+                display_name="Inventory Deleted",
+                user_id=seed_user["user_id"],
+                daemon_instance_id=instance_id,
+                message_policy=MessagePolicy.contacts_only,
+                status="deleted",
+                deleted_at=datetime.datetime.now(datetime.timezone.utc),
+            ),
+        ]
+    )
+    await db_session.commit()
+    response = await client.get(
+        "/daemon/instances",
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert response.status_code == 200, response.text
+    instance = next(
+        row for row in response.json()["instances"] if row["id"] == instance_id
+    )
+    assert instance["agent_bindings"] == [
+        {"agent_id": "ag_inventory_active", "status": "active", "traffic_eligible": True},
+        {"agent_id": "ag_inventory_deleted", "status": "deleted", "traffic_eligible": False},
+    ]
 
 
 @pytest.mark.asyncio
@@ -1052,6 +1113,7 @@ async def test_runtime_snapshot_event_persists_to_db(
         },
         {"id": "codex", "available": False, "error": "not found"},
     ]
+    fingerprints = ["sha256:" + "a" * 64, "sha256:" + "b" * 64]
     await _handle_daemon_event(
         conn,
         {
@@ -1061,6 +1123,7 @@ async def test_runtime_snapshot_event_persists_to_db(
                 "runtimes": runtimes,
                 "probedAt": probed_at,
                 "daemonVersion": "0.2.96",
+                "hubControlTrustKeyFingerprints": fingerprints,
             },
         },
     )
@@ -1083,6 +1146,7 @@ async def test_runtime_snapshot_event_persists_to_db(
     assert stored == runtimes
     assert inst.runtimes_probed_at is not None
     assert inst.daemon_version == "0.2.96"
+    assert inst.hub_control_trust_key_fingerprints == fingerprints
 
     # list_instances surfaces it.
     r = await client.get(
@@ -1095,6 +1159,21 @@ async def test_runtime_snapshot_event_persists_to_db(
     assert entry["runtimes"] == runtimes
     assert entry["runtimes_probed_at"] is not None
     assert entry["daemon_version"] == "0.2.96"
+    assert entry["hub_control_trust_key_fingerprints"] == fingerprints
+
+    # A fresh snapshot without optional attestations clears stale evidence.
+    await _handle_daemon_event(
+        conn,
+        {
+            "id": "frm_rs_2",
+            "type": "runtime_snapshot",
+            "params": {"runtimes": runtimes, "probedAt": _probed_now_ms()},
+        },
+    )
+    await db_session.commit()
+    await db_session.refresh(inst)
+    assert inst.daemon_version is None
+    assert inst.hub_control_trust_key_fingerprints is None
 
 
 @pytest.mark.asyncio
@@ -1147,6 +1226,24 @@ async def test_runtime_snapshot_bad_params_rejected(
     assert ack["ok"] is False
     assert ack["error"]["code"] == "bad_params"
 
+    # Raw/malformed key material must never be accepted as an attestation.
+    fake_ws.sent.clear()
+    await _handle_daemon_event(
+        conn,
+        {
+            "id": "frm_rs_raw_key",
+            "type": "runtime_snapshot",
+            "params": {
+                "runtimes": [],
+                "probedAt": _probed_now_ms(),
+                "hubControlTrustKeyFingerprints": ["raw-public-key"],
+            },
+        },
+    )
+    ack = json.loads(fake_ws.sent[-1])
+    assert ack["ok"] is False
+    assert ack["error"]["code"] == "bad_params"
+
     # DB row runtimes_json remains null.
     await db_session.commit()
     res = await db_session.execute(
@@ -1155,6 +1252,7 @@ async def test_runtime_snapshot_bad_params_rejected(
     inst = res.scalar_one()
     assert inst.runtimes_json is None
     assert inst.runtimes_probed_at is None
+    assert inst.hub_control_trust_key_fingerprints is None
 
 
 @pytest.mark.asyncio
@@ -1405,6 +1503,23 @@ async def test_refresh_runtimes_success_persists_and_returns(
 
     bundle = await _provision_instance_via_device_code(client, seed_user)
     instance_id = bundle["daemon_instance_id"]
+    seeded = await db_session.scalar(
+        select(DaemonInstance).where(DaemonInstance.id == instance_id)
+    )
+    assert seeded is not None
+    seeded.daemon_version = "stale-version"
+    seeded.hub_control_trust_key_fingerprints = ["sha256:" + "f" * 64]
+    db_session.add(
+        Agent(
+            agent_id="ag_refresh_inventory",
+            display_name="Refresh Inventory",
+            user_id=seed_user["user_id"],
+            daemon_instance_id=instance_id,
+            message_policy=MessagePolicy.contacts_only,
+            status="active",
+        )
+    )
+    await db_session.commit()
 
     fake_ws = _FakeWS()
     conn = _DaemonConn(
@@ -1436,7 +1551,11 @@ async def test_refresh_runtimes_success_persists_and_returns(
                 "result": {
                     "runtimes": runtimes,
                     "probedAt": probed_at,
-                    "daemonVersion": "0.2.97",
+                    "hubControlTrustKeyFingerprints": [
+                        "sha256:" + "a" * 64,
+                        "sha256:" + "a" * 64,
+                        "sha256:" + "b" * 64,
+                    ],
                 },
             }
             fut = conn.pending_acks.get(sent["id"])
@@ -1453,7 +1572,14 @@ async def test_refresh_runtimes_success_persists_and_returns(
         body = r.json()
         assert body["runtimes"] == runtimes
         assert body["runtimes_probed_at"]
-        assert body["daemon_version"] == "0.2.97"
+        assert body["daemon_version"] is None
+        assert body["hub_control_trust_key_fingerprints"] == [
+            "sha256:" + "a" * 64,
+            "sha256:" + "b" * 64,
+        ]
+        assert body["agent_bindings"] == [
+            {"agent_id": "ag_refresh_inventory", "status": "active", "traffic_eligible": True}
+        ]
 
         # DB is updated.
         await db_session.commit()
@@ -1466,7 +1592,11 @@ async def test_refresh_runtimes_success_persists_and_returns(
             stored = json.loads(stored)
         assert stored == runtimes
         assert inst.runtimes_probed_at is not None
-        assert inst.daemon_version == "0.2.97"
+        assert inst.daemon_version is None
+        assert inst.hub_control_trust_key_fingerprints == [
+            "sha256:" + "a" * 64,
+            "sha256:" + "b" * 64,
+        ]
     finally:
         await registry.unregister(conn)
 

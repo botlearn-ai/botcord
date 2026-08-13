@@ -6,6 +6,7 @@ import {
   agentCodexHomeDir,
   agentHermesHomeDir,
   agentWorkspaceDir,
+  ensureAgentWorkspace,
 } from "../agent-workspace.js";
 import { hermesProfileHomeDir } from "../gateway/runtimes/hermes-agent.js";
 import {
@@ -39,6 +40,36 @@ afterEach(() => {
 });
 
 describe("skill snapshots", () => {
+  it("discovers bundled workspace skills for DeepSeek TUI agents", () => {
+    const agentId = "ag_deepseek_skills";
+    ensureAgentWorkspace(agentId, { runtime: "deepseek-tui" });
+
+    const snapshot = collectAgentSkillSnapshot(agentId, { runtime: "deepseek-tui" });
+
+    expect(snapshot.runtime).toBe("deepseek-tui");
+    expect(snapshot.skills.map((skill) => skill.name)).toEqual([
+      "botcord",
+      "botcord_memory",
+      "botcord-user-guide",
+    ]);
+    expect(snapshot.skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "botcord",
+          source: "workspace",
+          sourceDetail: "agent-workspace",
+          runtime: "deepseek-tui",
+          path: path.join(
+            agentWorkspaceDir(agentId),
+            "skills",
+            "botcord",
+            "SKILL.md",
+          ),
+        }),
+      ]),
+    );
+  });
+
   it("scopes scans to the selected runtime and maps UI source buckets", () => {
     const agentId = "ag_skilltest";
     const claudePath = path.join(agentWorkspaceDir(agentId), ".claude", "skills");

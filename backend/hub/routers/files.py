@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import logging
 import os
+import re
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, UploadFile
@@ -149,7 +150,9 @@ async def download_file(
         return FileResponse(
             path=record.disk_path,
             media_type=record.content_type,
-            filename=record.original_filename,
+            headers={
+                "Content-Disposition": _build_content_disposition(record.original_filename),
+            },
         )
 
     try:
@@ -167,5 +170,15 @@ async def download_file(
 
 
 def _build_content_disposition(filename: str) -> str:
+    fallback = _content_disposition_fallback_filename(filename)
     quoted = quote(filename, safe="")
-    return f'attachment; filename="{filename}"; filename*=UTF-8\'\'{quoted}'
+    return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quoted}'
+
+
+def _content_disposition_fallback_filename(filename: str) -> str:
+    basename = os.path.basename(filename or "").strip() or "download"
+    stem, ext = os.path.splitext(basename)
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-")
+    safe_ext = re.sub(r"[^A-Za-z0-9.]+", "", ext)[:32]
+    fallback = f"{safe_stem or 'download'}{safe_ext}"
+    return fallback[:200] or "download"

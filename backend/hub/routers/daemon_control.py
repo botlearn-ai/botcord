@@ -59,6 +59,7 @@ from hub.config import (
     DAEMON_DISPATCH_DEFAULT_TIMEOUT_MS,
     DAEMON_DISPATCH_MAX_TIMEOUT_MS,
     DAEMON_HUB_CONTROL_PRIVATE_KEY_B64,
+    DAEMON_HUB_CONTROL_PUBLIC_KEYS_B64,
     FRONTEND_BASE_URL,
     HUB_PUBLIC_BASE_URL,
     JWT_ALGORITHM,
@@ -110,6 +111,19 @@ _HUB_SIGNING_KEY: SigningKey = _load_hub_signing_key()
 HUB_CONTROL_PUBLIC_KEY_B64: str = base64.b64encode(
     bytes(_HUB_SIGNING_KEY.verify_key)
 ).decode()
+
+
+def _trusted_hub_public_keys() -> list[str]:
+    """Return the configured rotation ring, always including the active signer."""
+    configured = [
+        key.strip()
+        for key in re.split(r"[,\r\n]+", DAEMON_HUB_CONTROL_PUBLIC_KEYS_B64)
+        if key.strip()
+    ]
+    return list(dict.fromkeys([HUB_CONTROL_PUBLIC_KEY_B64, *configured]))
+
+
+HUB_CONTROL_PUBLIC_KEYS_B64: str = ",".join(_trusted_hub_public_keys())
 
 
 def _sign_frame(frame: dict[str, Any]) -> str:
@@ -588,6 +602,14 @@ class _InstanceView(BaseModel):
     runtimes: list[dict[str, Any]] | None = None
     runtimes_probed_at: datetime.datetime | None = None
     daemon_version: str | None = None
+    hub_control_trust_key_fingerprints: list[str] | None = None
+    agent_bindings: list["_AgentBindingView"]
+
+
+class _AgentBindingView(BaseModel):
+    agent_id: str
+    status: str
+    traffic_eligible: bool
 
 
 def _instance_status(instance: DaemonInstance) -> str:
@@ -617,7 +639,38 @@ def _instance_online(instance: DaemonInstance) -> bool:
     return _REGISTRY.is_online(instance.id)
 
 
-def _instance_to_view(instance: DaemonInstance) -> _InstanceView:
+def _agent_to_binding(agent: Agent) -> _AgentBindingView:
+    return _AgentBindingView(
+        agent_id=agent.agent_id,
+        status=agent.status,
+        # Active, non-deleted agents are the control-delivery population used
+        # by the rotation gate. Retain ineligible bindings in the inventory so
+        # operators can prove why each agent was excluded.
+        traffic_eligible=agent.status == "active" and agent.deleted_at is None,
+    )
+
+
+async def _load_agent_bindings(
+    db: AsyncSession, daemon_instance_ids: list[str]
+) -> dict[str, list[_AgentBindingView]]:
+    bindings = {daemon_id: [] for daemon_id in daemon_instance_ids}
+    if not daemon_instance_ids:
+        return bindings
+    result = await db.execute(
+        select(Agent)
+        .where(Agent.daemon_instance_id.in_(daemon_instance_ids))
+        .order_by(Agent.agent_id)
+    )
+    for agent in result.scalars().all():
+        if agent.daemon_instance_id in bindings:
+            bindings[agent.daemon_instance_id].append(_agent_to_binding(agent))
+    return bindings
+
+
+def _instance_to_view(
+    instance: DaemonInstance,
+    agent_bindings: list[_AgentBindingView] | None = None,
+) -> _InstanceView:
     return _InstanceView(
         id=instance.id,
         label=instance.label,
@@ -632,6 +685,10 @@ def _instance_to_view(instance: DaemonInstance) -> _InstanceView:
         runtimes=instance.runtimes_json if instance.runtimes_json else None,
         runtimes_probed_at=instance.runtimes_probed_at,
         daemon_version=instance.daemon_version,
+        hub_control_trust_key_fingerprints=(
+            instance.hub_control_trust_key_fingerprints
+        ),
+        agent_bindings=agent_bindings or [],
     )
 
 
@@ -653,7 +710,10 @@ async def list_instances(
         .order_by(DaemonInstance.created_at.desc())
     )
     rows = result.scalars().all()
-    return _InstancesResponse(instances=[_instance_to_view(row) for row in rows])
+    bindings = await _load_agent_bindings(db, [row.id for row in rows])
+    return _InstancesResponse(
+        instances=[_instance_to_view(row, bindings[row.id]) for row in rows]
+    )
 
 
 async def _load_owned_instance(
@@ -1163,6 +1223,8 @@ class _RefreshRuntimesResponse(BaseModel):
     runtimes: list[dict[str, Any]]
     runtimes_probed_at: datetime.datetime
     daemon_version: str | None = None
+    hub_control_trust_key_fingerprints: list[str] | None = None
+    agent_bindings: list[_AgentBindingView]
 
 
 _REFRESH_RUNTIMES_TIMEOUT_MS = 10000
@@ -1352,10 +1414,15 @@ async def refresh_instance_runtimes(
         await db.commit()
 
         runtimes, probed_dt = persisted
+        bindings = await _load_agent_bindings(db, [instance.id])
         return _RefreshRuntimesResponse(
             runtimes=runtimes,
             runtimes_probed_at=probed_dt,
             daemon_version=instance.daemon_version,
+            hub_control_trust_key_fingerprints=(
+                instance.hub_control_trust_key_fingerprints
+            ),
+            agent_bindings=bindings[instance.id],
         )
 
     conn = _REGISTRY.get(daemon_instance_id)
@@ -1403,10 +1470,15 @@ async def refresh_instance_runtimes(
     await db.commit()
 
     runtimes, probed_dt = persisted
+    bindings = await _load_agent_bindings(db, [instance.id])
     return _RefreshRuntimesResponse(
         runtimes=runtimes,
         runtimes_probed_at=probed_dt,
         daemon_version=instance.daemon_version,
+        hub_control_trust_key_fingerprints=(
+            instance.hub_control_trust_key_fingerprints
+        ),
+        agent_bindings=bindings[instance.id],
     )
 
 
@@ -1719,11 +1791,14 @@ _DAEMON_INITIATED_TYPES = {
 
 def _parse_runtime_snapshot_params(
     params: Any,
-) -> tuple[list[dict[str, Any]], datetime.datetime, str | None] | None:
+) -> (
+    tuple[list[dict[str, Any]], datetime.datetime, str | None, list[str] | None]
+    | None
+):
     """Validate a ``runtime_snapshot`` / ``list_runtimes`` ack payload.
 
-    Returns ``(runtimes, probed_at_utc, daemon_version)`` on success, ``None``
-    on malformed input (caller should respond with ``bad_params``).
+    Returns runtimes, probe time, daemon version, and trust-key fingerprints
+    on success, or ``None`` on malformed input.
     """
     if not isinstance(params, dict):
         return None
@@ -1787,7 +1862,23 @@ def _parse_runtime_snapshot_params(
         if not isinstance(daemon_version, str) or len(daemon_version) > 64:
             return None
         daemon_version = daemon_version.strip() or None
-    return runtimes, probed_dt, daemon_version
+    fingerprints = params.get("hubControlTrustKeyFingerprints")
+    if fingerprints is not None:
+        if not isinstance(fingerprints, list) or len(fingerprints) > 16:
+            return None
+        normalized_fingerprints: list[str] = []
+        for fingerprint in fingerprints:
+            if (
+                not isinstance(fingerprint, str)
+                or len(fingerprint) != 71
+                or not fingerprint.startswith("sha256:")
+                or any(c not in "0123456789abcdef" for c in fingerprint[7:])
+            ):
+                return None
+            if fingerprint not in normalized_fingerprints:
+                normalized_fingerprints.append(fingerprint)
+        fingerprints = normalized_fingerprints
+    return runtimes, probed_dt, daemon_version, fingerprints
 
 
 async def _persist_runtime_snapshot(
@@ -1804,11 +1895,14 @@ async def _persist_runtime_snapshot(
     parsed = _parse_runtime_snapshot_params(params)
     if parsed is None:
         return None
-    runtimes, probed_dt, daemon_version = parsed
+    runtimes, probed_dt, daemon_version, fingerprints = parsed
     instance.runtimes_json = runtimes
     instance.runtimes_probed_at = probed_dt
-    if daemon_version is not None:
-        instance.daemon_version = daemon_version
+    # Absence means incompatible/unknown; never pair a fresh probe/ring with a
+    # stale version from an earlier snapshot.
+    instance.daemon_version = daemon_version
+    # Absence means incompatible/unknown; never retain a stale attestation.
+    instance.hub_control_trust_key_fingerprints = fingerprints
     return runtimes, probed_dt
 
 

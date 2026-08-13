@@ -648,6 +648,11 @@ interface BufferedSerialEntry {
   channel: ChannelAdapter;
   /** Per-arrival turnId; preserved through merge so transcript can record dropped/dispatched correctly. */
   turnId: string;
+  /** Settles the originating handle only after this entry reaches a terminal queue outcome. */
+  completion?: {
+    resolve(): void;
+    reject(error: unknown): void;
+  };
 }
 
 interface QueueState {
@@ -842,7 +847,7 @@ export class Dispatcher {
     }
   }
 
-  /** Consume one inbound envelope, ack it once ownership is decided, then run its turn. */
+  /** Consume one inbound envelope and ack it only after terminal handling. */
   async handle(envelope: GatewayInboundEnvelope): Promise<void> {
     const msg = envelope.message;
 
@@ -983,9 +988,6 @@ export class Dispatcher {
       }
     }
 
-    // Ack immediately: once the dispatcher has a route + queue key, ownership is decided.
-    await this.safeAck(envelope);
-
     // Inbound transcript record — always before observers / gates so we have a
     // grounded turnId for any downstream attention_skipped / dropped / etc.
     this.emitInbound(turnId, msg);
@@ -1046,6 +1048,7 @@ export class Dispatcher {
           topicId: dispatchMsg.conversation.threadId ?? null,
           reason: "attention_gate_false",
         });
+        await this.safeAck(envelope);
         return;
       }
     }
@@ -1096,6 +1099,7 @@ export class Dispatcher {
         dispatchChannel,
         dispatchTurnId
       );
+      await this.safeAck(envelope);
       return;
     }
 
@@ -1120,6 +1124,7 @@ export class Dispatcher {
         mergedFromDeferredTurnIds
       );
     }
+    await this.safeAck(envelope);
   }
 
   /** Snapshot of currently running turns keyed by queue key. */
@@ -1495,7 +1500,22 @@ export class Dispatcher {
   ): Promise<void> {
     const q = this.getQueue(queueKey);
     this.supersedePendingPark(q);
-    q.serialBuffer.push({ route, msg, channel, turnId });
+    let resolveCompletion!: () => void;
+    let rejectCompletion!: (error: unknown) => void;
+    const completion = new Promise<void>((resolve, reject) => {
+      resolveCompletion = resolve;
+      rejectCompletion = reject;
+    });
+    q.serialBuffer.push({
+      route,
+      msg,
+      channel,
+      turnId,
+      completion: {
+        resolve: resolveCompletion,
+        reject: rejectCompletion,
+      },
+    });
     while (q.serialBuffer.length > MAX_BATCH_BUFFER_ENTRIES) {
       const dropped = q.serialBuffer.shift()!;
       this.log.warn(
@@ -1516,51 +1536,70 @@ export class Dispatcher {
         reason: "queue_overflow",
         supersededBy: null,
       });
+      dropped.completion?.resolve();
     }
-    if (q.serialWorkerActive) return;
-    q.serialWorkerActive = true;
-    try {
-      while (q.serialBuffer.length > 0) {
-        const drained = q.serialBuffer.splice(0, q.serialBuffer.length);
-        const merged = this.mergeSerialBuffer(drained, queueKey);
-        if (!merged) continue;
-        // Drained entries other than the winner get a `batch_merged` dropped
-        // record now (winner is always the last entry — see mergeSerialBuffer).
-        if (drained.length > 1) {
-          for (let i = 0; i < drained.length - 1; i++) {
-            const lost = drained[i]!;
-            this.transcript.write({
-              ts: nowIso(),
-              kind: "dropped",
-              turnId: lost.turnId,
-              agentId: lost.msg.accountId,
-              roomId: lost.msg.conversation.id,
-              topicId: lost.msg.conversation.threadId ?? null,
-              reason: "batch_merged",
-              supersededBy: merged.turnId,
-            });
+    if (!q.serialWorkerActive) {
+      q.serialWorkerActive = true;
+      let pendingMergedFromTurnIds = mergedFromTurnIds;
+      try {
+        while (q.serialBuffer.length > 0) {
+          const drained = q.serialBuffer.splice(0, q.serialBuffer.length);
+          try {
+            const merged = this.mergeSerialBuffer(drained, queueKey);
+            if (!merged) {
+              for (const entry of drained) entry.completion?.resolve();
+              continue;
+            }
+            // Drained entries other than the winner get a `batch_merged` dropped
+            // record now (winner is always the last entry — see mergeSerialBuffer).
+            if (drained.length > 1) {
+              for (let i = 0; i < drained.length - 1; i++) {
+                const lost = drained[i]!;
+                this.transcript.write({
+                  ts: nowIso(),
+                  kind: "dropped",
+                  turnId: lost.turnId,
+                  agentId: lost.msg.accountId,
+                  roomId: lost.msg.conversation.id,
+                  topicId: lost.msg.conversation.threadId ?? null,
+                  reason: "batch_merged",
+                  supersededBy: merged.turnId,
+                });
+              }
+            }
+            const mergedTurnIds =
+              drained.length > 1
+                ? [
+                    ...pendingMergedFromTurnIds,
+                    ...drained.slice(0, -1).map((e) => e.turnId),
+                  ]
+                : pendingMergedFromTurnIds;
+            pendingMergedFromTurnIds = [];
+            await this.runTurn(
+              queueKey,
+              merged.route,
+              merged.text,
+              merged.msg,
+              merged.channel,
+              merged.turnId,
+              mergedTurnIds
+            );
+            for (const entry of drained) entry.completion?.resolve();
+          } catch (err) {
+            for (const entry of drained) entry.completion?.reject(err);
+            throw err;
           }
         }
-        const mergedTurnIds =
-          drained.length > 1
-            ? [
-                ...mergedFromTurnIds,
-                ...drained.slice(0, -1).map((e) => e.turnId),
-              ]
-            : mergedFromTurnIds;
-        await this.runTurn(
-          queueKey,
-          merged.route,
-          merged.text,
-          merged.msg,
-          merged.channel,
-          merged.turnId,
-          mergedTurnIds
-        );
+      } catch (err) {
+        // An unexpected dispatcher failure is non-terminal: reject every
+        // waiting handle so its Hub lease can expire and the message retries.
+        const pending = q.serialBuffer.splice(0, q.serialBuffer.length);
+        for (const entry of pending) entry.completion?.reject(err);
+      } finally {
+        q.serialWorkerActive = false;
       }
-    } finally {
-      q.serialWorkerActive = false;
     }
+    await completion;
   }
 
   /**

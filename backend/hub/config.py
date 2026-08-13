@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖环境变量、时间窗口与支付活动常量，向 Hub 全局暴露运行时配置
-[OUTPUT]: 对外提供数据库、鉴权、文件、Stripe 与冷启动赠送等统一配置常量
+[OUTPUT]: 对外提供数据库、鉴权、文件、Cloud Agent 生命周期、Stripe 与冷启动赠送等统一配置常量
 [POS]: backend 配置中枢，负责把跨模块共享的运行时策略收敛为单一真相源
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
@@ -62,10 +62,8 @@ ALLOW_PRIVATE_ENDPOINTS: bool = os.getenv("ALLOW_PRIVATE_ENDPOINTS", "false").lo
 INTERNAL_API_SECRET: str | None = os.getenv("INTERNAL_API_SECRET", None)
 
 if ALLOW_PRIVATE_ENDPOINTS and not INTERNAL_API_SECRET:
-    _logger.warning(
-        "ALLOW_PRIVATE_ENDPOINTS is enabled but INTERNAL_API_SECRET is not set. "
-        "Internal wallet endpoints are accessible WITHOUT authentication. "
-        "Set INTERNAL_API_SECRET to a strong random value in production."
+    raise RuntimeError(
+        "ALLOW_PRIVATE_ENDPOINTS requires INTERNAL_API_SECRET to be set"
     )
 
 # Shared secret used by the gateway-ingress service when it calls the
@@ -274,18 +272,22 @@ SENTRY_LOGS_LEVEL: int | None = _parse_log_level_env("SENTRY_LOGS_LEVEL", "INFO"
 # Daemon control plane
 # ---------------------------------------------------------------------------
 
-# Default development keypair — DO NOT use in production. Override
-# BOTCORD_HUB_CONTROL_PRIVATE_KEY with a freshly generated 32-byte Ed25519
-# seed (base64). The matching public key is shipped to the daemon for verification.
+# Legacy development keypair — never use it. Deployments must set
+# BOTCORD_HUB_CONTROL_PRIVATE_KEY to a persistent, freshly generated 32-byte
+# Ed25519 seed (base64).
 _DAEMON_DEFAULT_PRIVATE_KEY_B64 = "R9yHQWAP+oLdwuXW67TGSi/RWbkYPGf1a31by04W1zA="
 
 DAEMON_HUB_CONTROL_PRIVATE_KEY_B64: str = os.getenv(
-    "BOTCORD_HUB_CONTROL_PRIVATE_KEY", _DAEMON_DEFAULT_PRIVATE_KEY_B64
+    "BOTCORD_HUB_CONTROL_PRIVATE_KEY", ""
 )
+DAEMON_HUB_CONTROL_PUBLIC_KEYS_B64: str = os.getenv(
+    "BOTCORD_HUB_CONTROL_PUBLIC_KEYS", ""
+)
+if not DAEMON_HUB_CONTROL_PRIVATE_KEY_B64:
+    raise RuntimeError("BOTCORD_HUB_CONTROL_PRIVATE_KEY must be set")
 if DAEMON_HUB_CONTROL_PRIVATE_KEY_B64 == _DAEMON_DEFAULT_PRIVATE_KEY_B64:
-    _logger.warning(
-        "BOTCORD_HUB_CONTROL_PRIVATE_KEY is using the insecure default seed. "
-        "Generate a fresh Ed25519 keypair before deploying to production."
+    raise RuntimeError(
+        "BOTCORD_HUB_CONTROL_PRIVATE_KEY must not use the insecure default seed"
     )
 
 DAEMON_ACCESS_TOKEN_EXPIRE_SECONDS: int = int(
@@ -383,6 +385,14 @@ CLOUD_AGENT_IDLE_PAUSE_SECONDS: float = float(
 )
 CLOUD_AGENT_IDLE_SWEEP_INTERVAL_SECONDS: float = float(
     os.getenv("CLOUD_AGENT_IDLE_SWEEP_INTERVAL_SECONDS", "60")
+)
+# An owner-chat trigger becomes ``delivered`` as soon as the daemon claims it,
+# before the runtime turn finishes.  Keep that delivered row as an active-turn
+# lease until ``/hub/stream-end`` settles it.  The bounded fallback prevents a
+# crashed daemon from keeping its sandbox alive forever; 31 minutes covers the
+# daemon's 30-minute outer turn timeout plus terminal cleanup.
+CLOUD_AGENT_OWNER_CHAT_RUN_LEASE_SECONDS: float = float(
+    os.getenv("CLOUD_AGENT_OWNER_CHAT_RUN_LEASE_SECONDS", "1860")
 )
 
 # ---------------------------------------------------------------------------
@@ -539,6 +549,12 @@ BOTLEARN_ALLOWED_ORIGINS: list[str] = [
 # Short-lived integration session token TTL (seconds). Default 15 minutes.
 BOTLEARN_SESSION_TTL_SECONDS: int = int(
     os.getenv("BOTLEARN_SESSION_TTL_SECONDS", "900")
+)
+# Shared only by the two trusted backends. Required when the session exchange
+# carries a runtime_profile so a browser with a valid BotLearn user token
+# cannot forge Prompt Packs or inline Skill archives.
+BOTLEARN_RUNTIME_PROFILE_SECRET: str | None = (
+    os.getenv("BOTLEARN_RUNTIME_PROFILE_SECRET", "").strip() or None
 )
 # Require ``email_verified=true`` on the BotLearn login token.
 BOTLEARN_REQUIRE_EMAIL_VERIFIED: bool = os.getenv(

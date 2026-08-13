@@ -27,7 +27,7 @@ from typing import Any
 
 import sentry_sdk
 from nacl.signing import SigningKey as NaClSigningKey
-from sqlalchemy import func, or_, select, text as sa_text
+from sqlalchemy import and_, func, or_, select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy.orm.attributes import flag_modified
@@ -41,6 +41,7 @@ from hub.config import (
     CLOUD_AGENT_DEFAULT_RUNTIME,
     CLOUD_AGENT_FEATURE_ENABLED,
     CLOUD_AGENT_MAX_PER_USER,
+    CLOUD_AGENT_OWNER_CHAT_RUN_LEASE_SECONDS,
     HUB_PUBLIC_BASE_URL,
 )
 from hub.enums import KeyState, MessageState
@@ -65,6 +66,7 @@ from hub.models import (
 )
 from hub.routers.cloud_daemon_control import (
     CloudDaemonDispatchError,
+    disconnect_cloud_daemon_control,
     is_cloud_daemon_online,
     send_cloud_control_frame,
 )
@@ -693,6 +695,7 @@ class CloudAgentService:
         provider = self._get_provider()
         cai.status = "paused"
         await db.flush()
+        daemon_paused = False
 
         # Cloud daemon pause is a per-sandbox operation. Pause the sandbox
         # only once every non-deleted peer on it is also paused.
@@ -711,7 +714,13 @@ class CloudAgentService:
             )
             _apply_handle_to_rows(cdi, handle)
             cdi.last_paused_at = _now()
+            daemon_paused = True
         await db.commit()
+        if daemon_paused:
+            await disconnect_cloud_daemon_control(
+                cdi.id,
+                reason="cloud daemon manually paused",
+            )
         await db.refresh(cai)
         await db.refresh(cdi)
         return _make_view(agent, cai, cdi)
@@ -736,16 +745,22 @@ class CloudAgentService:
         current = now or _now()
         cutoff = current - datetime.timedelta(seconds=idle_seconds)
         result = await db.execute(
-            select(CloudDaemonInstance)
+            select(
+                CloudDaemonInstance.id,
+                CloudDaemonInstance.provider_sandbox_id,
+            )
             .where(CloudDaemonInstance.status == "ready")
             .order_by(CloudDaemonInstance.updated_at.asc())
             .limit(limit)
         )
-        candidates = list(result.scalars().all())
+        candidates = list(result.all())
         paused = 0
 
-        for cdi in candidates:
+        for cloud_daemon_instance_id, provider_sandbox_id in candidates:
             try:
+                cdi = await db.get(CloudDaemonInstance, cloud_daemon_instance_id)
+                if cdi is None or cdi.status != "ready":
+                    continue
                 if await self._pause_cloud_daemon_if_idle(
                     db, cdi, cutoff=cutoff, now=current
                 ):
@@ -754,8 +769,8 @@ class CloudAgentService:
                 await db.rollback()
                 logger.warning(
                     "idle pause failed: cloud=%s sandbox=%s err=%s",
-                    cdi.id,
-                    cdi.provider_sandbox_id,
+                    cloud_daemon_instance_id,
+                    provider_sandbox_id,
                     exc,
                 )
 
@@ -2174,7 +2189,10 @@ class CloudAgentService:
         if any(agent.status == "provisioning" for agent in agents):
             return False
         if await self._cloud_daemon_has_active_run(
-            db, cdi.id, include_owner_chat_inbox=True
+            db,
+            cdi.id,
+            include_owner_chat_inbox=True,
+            now=now,
         ):
             return False
 
@@ -2187,6 +2205,12 @@ class CloudAgentService:
             cloud_daemon_instance_id=cdi.id,
             provider_sandbox_id=cdi.provider_sandbox_id,
         )
+        if handle.status != "paused":
+            raise CloudAgentError(
+                handle.error_code or "cloud_daemon_pause_failed",
+                handle.error_message or "cloud daemon provider did not confirm pause",
+                http_status=502,
+            )
         _apply_handle_to_rows(cdi, handle)
         cdi.last_paused_at = now
         cdi.metadata_json = {
@@ -2199,6 +2223,10 @@ class CloudAgentService:
             agent.error_code = None
             agent.error_message = None
         await db.commit()
+        await disconnect_cloud_daemon_control(
+            cdi.id,
+            reason="cloud daemon idle-paused",
+        )
         logger.info(
             "idle-paused cloud daemon %s after %d idle agent(s)",
             cdi.id,
@@ -2212,6 +2240,7 @@ class CloudAgentService:
         cloud_daemon_instance_id: str,
         *,
         include_owner_chat_inbox: bool = False,
+        now: datetime.datetime | None = None,
     ) -> bool:
         agent_ids_subquery = (
             select(CloudAgentInstance.agent_id)
@@ -2239,12 +2268,29 @@ class CloudAgentService:
             )
         ]
         if include_owner_chat_inbox:
+            current = now or _now()
+            owner_chat_lease_cutoff = current - datetime.timedelta(
+                seconds=CLOUD_AGENT_OWNER_CHAT_RUN_LEASE_SECONDS
+            )
             active_message_filters.append(
                 (
                     (MessageRecord.source_type == "dashboard_user_chat")
                     & (MessageRecord.source_session_kind == "owner_chat")
-                    & MessageRecord.state.in_(
-                        (MessageState.queued, MessageState.processing)
+                    & or_(
+                        MessageRecord.state.in_(
+                            (MessageState.queued, MessageState.processing)
+                        ),
+                        and_(
+                            MessageRecord.state.in_(
+                                (MessageState.delivered, MessageState.acked)
+                            ),
+                            func.coalesce(
+                                MessageRecord.acked_at,
+                                MessageRecord.delivered_at,
+                                MessageRecord.created_at,
+                            )
+                            >= owner_chat_lease_cutoff,
+                        ),
                     )
                 )
             )

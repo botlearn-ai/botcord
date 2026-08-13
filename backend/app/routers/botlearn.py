@@ -20,10 +20,13 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import re
+import secrets
 import uuid as _uuid
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, WebSocket
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,18 +46,26 @@ from app.botlearn_auth import (
 from app.routers import cloud_agents as _cloud_agents_router
 from hub.config import (
     BOTLEARN_INTEGRATION_ENABLED,
+    BOTLEARN_RUNTIME_PROFILE_SECRET,
+    BOTLEARN_SESSION_TTL_SECONDS,
     BOTLEARN_WS_URL,
     HUB_PUBLIC_BASE_URL,
 )
 from hub.database import async_session, get_db
 from hub.id_generators import generate_botlearn_installation_id
 from hub.models import BotlearnInstallation, User
+from hub.routers.dashboard_chat import _build_owner_chat_room_id
+from hub import owner_chat_cache
 from hub.services.cloud_agent import (
     CloudAgentError,
     CloudAgentService,
     CreateCloudAgentInput,
     CreateRunInput,
     RunBudget,
+)
+from hub.services.session_profile import (
+    SessionProfileDispatchError,
+    apply_botlearn_session_profile,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,12 +102,93 @@ def _auth_error_to_http(exc: BotlearnAuthError) -> HTTPException:
 # ---------------------------------------------------------------------------
 
 
+_BOTLEARN_SESSION_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{1,180}$")
+_SHA256_RE = r"^sha256:[a-f0-9]{64}$"
+
+
+class BotlearnRuntimePromptPackIn(BaseModel):
+    id: str = Field(min_length=1, max_length=160)
+    version: str = Field(min_length=1, max_length=160)
+    digest: str = Field(pattern=_SHA256_RE)
+    system_instructions: str = Field(
+        alias="systemInstructions", min_length=1, max_length=100_000
+    )
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+
+class BotlearnRuntimeSkillPackageIn(BaseModel):
+    id: str = Field(min_length=1, max_length=160)
+    version: str = Field(min_length=1, max_length=160)
+    digest: str = Field(pattern=_SHA256_RE)
+    archive_manifest: dict[str, Any] = Field(alias="archiveManifest")
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+
+class BotlearnRuntimeProfileIn(BaseModel):
+    schema_version: str = Field(alias="schemaVersion")
+    profile_id: str = Field(alias="profileId", min_length=1, max_length=160)
+    profile_hash: str = Field(alias="profileHash", pattern=_SHA256_RE)
+    course_version_id: str = Field(alias="courseVersionId", min_length=1, max_length=128)
+    prompt_pack: BotlearnRuntimePromptPackIn = Field(alias="promptPack")
+    skill_packages: list[BotlearnRuntimeSkillPackageIn] = Field(
+        default_factory=list, alias="skillPackages", max_length=32
+    )
+    required_capabilities: list[str] = Field(
+        default_factory=list, alias="requiredCapabilities", max_length=64
+    )
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+
+class BotlearnSessionIn(BaseModel):
+    session_key: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    runtime_profile: BotlearnRuntimeProfileIn | None = None
+
+
 class BotlearnSessionOut(BaseModel):
     access_token: str
     expires_in: int
     agent_id: str
     installation_id: str
     ws_url: str
+    runtime_profile_status: dict[str, Any] | None = None
+
+
+def _normalize_botlearn_session_key(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_session_key", "message": "session_key must be a string"},
+        )
+    value = raw.strip()
+    if not value:
+        return None
+    if not _BOTLEARN_SESSION_KEY_RE.fullmatch(value):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_session_key",
+                "message": "session_key may only contain letters, digits, '.', '_', ':', and '-'",
+            },
+        )
+    return value
+
+
+def _resolve_botlearn_session_key(payload: BotlearnSessionIn | None) -> str | None:
+    if payload is None:
+        return None
+    explicit = _normalize_botlearn_session_key(payload.session_key)
+    if explicit:
+        return explicit
+    course_run_id = payload.metadata.get("course_run_id") or payload.metadata.get("courseRunId")
+    if course_run_id:
+        return _normalize_botlearn_session_key(f"course_run:{course_run_id}")
+    return None
 
 
 async def _find_or_create_user(
@@ -198,6 +290,7 @@ async def _find_revoked_installation_for_subject(
 @router.post("/session", response_model=BotlearnSessionOut)
 async def create_botlearn_session(
     request: Request,
+    payload: BotlearnSessionIn | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
     service: CloudAgentService = Depends(
         _cloud_agents_router.get_cloud_agent_service
@@ -227,6 +320,35 @@ async def create_botlearn_session(
         identity = verify_botlearn_id_token(authorization[len("Bearer "):])
     except BotlearnAuthError as exc:
         raise _auth_error_to_http(exc) from exc
+
+    session_key = _resolve_botlearn_session_key(payload)
+    runtime_profile = payload.runtime_profile if payload is not None else None
+    if runtime_profile is not None:
+        if not session_key:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "invalid_session_key",
+                    "message": "runtime_profile requires a stable session_key",
+                },
+            )
+        if not BOTLEARN_RUNTIME_PROFILE_SECRET:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "profile_exchange_not_configured",
+                    "message": "Trusted BotLearn runtime profile exchange is not configured",
+                },
+            )
+        provided_secret = request.headers.get("x-botlearn-runtime-profile-secret", "")
+        if not secrets.compare_digest(provided_secret, BOTLEARN_RUNTIME_PROFILE_SECRET):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "profile_permission_denied",
+                    "message": "Runtime profiles are accepted only from the trusted Course Service",
+                },
+            )
 
     revoked_installation = await _find_revoked_installation_for_subject(
         db, identity=identity
@@ -262,12 +384,64 @@ async def create_botlearn_session(
         )
     await db.commit()
 
+    runtime_profile_status: dict[str, Any] | None = None
+    if runtime_profile is not None:
+        assert session_key is not None
+        room_id = _build_owner_chat_room_id(
+            str(user.id),
+            agent_id,
+            session_key=session_key,
+        )
+        try:
+            runtime_profile_status = await apply_botlearn_session_profile(
+                db,
+                user_id=user.id,
+                agent_id=agent_id,
+                session_key=session_key,
+                room_id=room_id,
+                runtime_profile=runtime_profile.model_dump(
+                    by_alias=True,
+                    mode="json",
+                ),
+                ttl_seconds=BOTLEARN_SESSION_TTL_SECONDS,
+            )
+        except SessionProfileDispatchError as exc:
+            await db.rollback()
+            raise HTTPException(
+                status_code=exc.http_status,
+                detail={"code": exc.code, "message": exc.message},
+            ) from exc
+
+    existing_profile_binding = (
+        await owner_chat_cache.load_session_profile_binding(
+            user_id=str(user.id),
+            agent_id=agent_id,
+            session_key=session_key,
+        )
+        if session_key
+        else None
+    )
+    session_profile_required = runtime_profile is not None or bool(
+        existing_profile_binding and existing_profile_binding.get("required") is True
+    )
+    if session_key and (runtime_profile is not None or existing_profile_binding is None):
+        await owner_chat_cache.write_session_profile_binding(
+            user_id=str(user.id),
+            agent_id=agent_id,
+            session_key=session_key,
+            required=runtime_profile is not None,
+            ttl_seconds=BOTLEARN_SESSION_TTL_SECONDS,
+            status=runtime_profile_status,
+        )
+
     access_token, expires_in = issue_botlearn_session_token(
         user_id=user.id,
         botlearn_subject=identity.subject,
         agent_id=agent_id,
         installation_id=installation.id,
         scopes=list(installation.scopes_json or DEFAULT_BOTLEARN_SCOPES),
+        session_key=session_key,
+        session_profile_required=session_profile_required,
     )
     return BotlearnSessionOut(
         access_token=access_token,
@@ -275,6 +449,7 @@ async def create_botlearn_session(
         agent_id=agent_id,
         installation_id=installation.id,
         ws_url=_botlearn_ws_url(),
+        runtime_profile_status=runtime_profile_status,
     )
 
 

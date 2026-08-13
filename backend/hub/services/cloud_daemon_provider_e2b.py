@@ -29,8 +29,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
+import httpx
 
 from hub.config import (
     CLOUD_DAEMON_NPM_SPEC,
@@ -43,10 +46,17 @@ from hub.config import (
     HUB_PUBLIC_BASE_URL,
 )
 from hub.routers.cloud_daemon_control import _create_cloud_daemon_access_token
-from hub.routers.daemon_control import HUB_CONTROL_PUBLIC_KEY_B64
+from hub.routers.daemon_control import (
+    HUB_CONTROL_PUBLIC_KEY_B64,
+    HUB_CONTROL_PUBLIC_KEYS_B64,
+)
 from hub.services.cloud_daemon_provider import CloudDaemonHandle
 
 logger = logging.getLogger(__name__)
+
+
+class E2BProviderUnavailable(RuntimeError):
+    """Transient E2B transport failure after bounded retry."""
 
 
 # ---------------------------------------------------------------------------
@@ -150,16 +160,33 @@ class _E2BSdkClient:
         ``AsyncSandbox.connect`` auto-resumes a paused sandbox. Raises
         :class:`LookupError` if E2B doesn't recognise the id.
         """
-        try:
-            return await self._e2b.AsyncSandbox.connect(
-                sandbox_id,
-                timeout=timeout_seconds,
-                **self._api_opts(),
-            )
-        except self._e2b.SandboxNotFoundException as exc:
-            raise LookupError(str(exc)) from exc
-        except self._e2b.SandboxException as exc:
-            raise RuntimeError(str(exc)) from exc
+        last_read_error: httpx.ReadError | None = None
+        for attempt in range(2):
+            try:
+                return await self._e2b.AsyncSandbox.connect(
+                    sandbox_id,
+                    timeout=timeout_seconds,
+                    **self._api_opts(),
+                )
+            except httpx.ReadError as exc:
+                last_read_error = exc
+                if attempt == 0:
+                    logger.warning(
+                        "e2b connect read error for sandbox %s; retrying once: %s",
+                        sandbox_id,
+                        exc,
+                    )
+                    await asyncio.sleep(0)
+                    continue
+                break
+            except self._e2b.SandboxNotFoundException as exc:
+                raise LookupError(str(exc)) from exc
+            except self._e2b.SandboxException as exc:
+                raise RuntimeError(str(exc)) from exc
+
+        raise E2BProviderUnavailable(
+            f"e2b sandbox {sandbox_id} unavailable during connect"
+        ) from last_read_error
 
     # ------------------------------------------------------------------
     # E2BSandboxClient protocol
@@ -521,6 +548,24 @@ class E2BCloudDaemonProvider:
                 env=env,
                 background=True,
             )
+        except E2BProviderUnavailable as exc:
+            logger.warning(
+                "e2b provider unavailable during create_or_resume: cloud=%s err=%s",
+                cloud_daemon_instance_id,
+                exc,
+            )
+            return CloudDaemonHandle(
+                cloud_daemon_instance_id=cloud_daemon_instance_id,
+                daemon_instance_id=daemon_instance_id,
+                provider=self.PROVIDER_NAME,
+                status="failed",
+                runtime=runtime,
+                region=chosen_region,
+                provider_sandbox_id=provider_sandbox_id,
+                provider_template_id=self._template_id,
+                error_code="e2b_provider_unavailable",
+                error_message=str(exc),
+            )
         except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "e2b create_or_resume failed: cloud=%s err=%s",
@@ -671,13 +716,34 @@ class E2BCloudDaemonProvider:
             "BOTCORD_CLOUD_DAEMON_INSTANCE_ID": cloud_daemon_instance_id,
             "BOTCORD_DAEMON_INSTANCE_ID": daemon_instance_id,
             "BOTCORD_CLOUD_DAEMON_ACCESS_TOKEN": access_token,
+            # Old daemon releases only read the singular variable. Keep it on
+            # the active signer while newer releases consume the full ring.
             "BOTCORD_HUB_CONTROL_PUBLIC_KEY": HUB_CONTROL_PUBLIC_KEY_B64,
+            "BOTCORD_HUB_CONTROL_PUBLIC_KEYS": HUB_CONTROL_PUBLIC_KEYS_B64,
             "CLOUD_DAEMON_NPM_SPEC": self._daemon_npm_spec,
         }
         if self._deepseek_api_key:
             env["DEEPSEEK_API_KEY"] = self._deepseek_api_key
         if extra_env:
-            env.update({key: value for key, value in extra_env.items() if value})
+            overrides = {key: value for key, value in extra_env.items() if value}
+            override_keys = [
+                key.strip()
+                for name in (
+                    "BOTCORD_HUB_CONTROL_PUBLIC_KEYS",
+                    "BOTCORD_HUB_CONTROL_PUBLIC_KEY",
+                )
+                for key in re.split(r"[,\r\n]+", overrides.pop(name, ""))
+                if key.strip()
+            ]
+            provider_keys = [
+                key.strip()
+                for key in re.split(r"[,\r\n]+", HUB_CONTROL_PUBLIC_KEYS_B64)
+                if key.strip()
+            ]
+            env["BOTCORD_HUB_CONTROL_PUBLIC_KEYS"] = ",".join(
+                dict.fromkeys([*provider_keys, *override_keys])
+            )
+            env.update(overrides)
         return env
 
 

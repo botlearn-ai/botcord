@@ -1378,6 +1378,10 @@ class DaemonInstance(Base):
         DateTime(timezone=True), nullable=True
     )
     daemon_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Privacy-safe attestations only; raw control keys never enter inventory.
+    hub_control_trust_key_fingerprints: Mapped[list | None] = mapped_column(
+        JSON, nullable=True
+    )
 
 
 class DaemonAgentCleanup(Base):

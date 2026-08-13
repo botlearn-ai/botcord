@@ -34,13 +34,18 @@ async def db_session():
     await engine.dispose()
 
 
-def _issue(agent_id: str = "ag_test", installation_id: str = "bli_test") -> str:
+def _issue(
+    agent_id: str = "ag_test",
+    installation_id: str = "bli_test",
+    session_key: str | None = None,
+) -> str:
     token, _ = issue_botlearn_session_token(
         user_id=uuid.uuid4(),
         botlearn_subject=str(uuid.uuid4()),
         agent_id=agent_id,
         installation_id=installation_id,
         scopes=["cloud_runs:create"],
+        session_key=session_key,
     )
     return token
 
@@ -52,6 +57,14 @@ def test_accepts_botlearn_session_token():
     assert claims["agent_id"] == "ag_test"
     assert claims["installation_id"] == "bli_test"
     assert claims["user_id"]
+    assert "session_key" not in claims
+
+
+def test_accepts_botlearn_session_token_scope():
+    token = _issue(session_key="course_run:123")
+    claims = _try_botlearn_session_claims(token)
+    assert claims is not None
+    assert claims["session_key"] == "course_run:123"
 
 
 def test_rejects_other_token_kinds():

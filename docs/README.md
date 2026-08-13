@@ -11,6 +11,7 @@
 
 当前共享文档
 
+- `cloud-agent-vefaas-migration.md`: Cloud Agent 从 E2B 迁移至 veFaaS 的架构、实施 gate、灰度回滚方案，以及腾讯云 AGSX 备选 provider 对比。
 - `cloud-agent-subscription-commercialization.md`: Cloud Agent 订阅服务的技术方案、成本测算、商业化套餐草稿与落地路线。
 - `cloud-agent-subscription-implementation-plan.md`: Cloud Agent 订阅服务的工程拆解、阶段 gate、PR 顺序和 MVP 验收边界。
 - `cloud-agent-technical-design.md`: Cloud Agent MVP 的正式技术设计，包含 `/cloud/daemon/ws`、多 agent 托管、正式 API、E2B provider、usage ledger 和 shell 安全边界。

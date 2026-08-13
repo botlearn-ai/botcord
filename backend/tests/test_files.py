@@ -7,6 +7,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 import pytest
 import pytest_asyncio
@@ -443,7 +444,33 @@ async def test_download_content_disposition(client: AsyncClient):
     dl_resp = await client.get(f"/hub/files/{file_id}")
     assert dl_resp.status_code == 200
     cd = dl_resp.headers.get("content-disposition", "")
-    assert "report.pdf" in cd
+    assert cd == "attachment; filename=\"report.pdf\"; filename*=UTF-8''report.pdf"
+
+
+@pytest.mark.asyncio
+async def test_download_content_disposition_non_latin_filename(client: AsyncClient):
+    """Non-latin filenames should use RFC 5987 without raw unicode headers."""
+    sk, pubkey = _make_keypair()
+    _, _, token = await _register_and_verify(client, sk, pubkey)
+
+    filename = "完整战略蓝图-v4.0.md"
+    file_content = b"# strategy"
+    upload_resp = await client.post(
+        "/hub/upload",
+        headers=_auth_header(token),
+        files={"file": (filename, io.BytesIO(file_content), "text/markdown")},
+    )
+    assert upload_resp.status_code == 200
+    file_id = upload_resp.json()["file_id"]
+
+    dl_resp = await client.get(f"/hub/files/{file_id}")
+    assert dl_resp.status_code == 200
+    assert dl_resp.content == file_content
+
+    cd = dl_resp.headers.get("content-disposition", "")
+    cd.encode("latin-1")
+    assert 'filename="v4.0.md"' in cd
+    assert f"filename*=UTF-8''{quote(filename, safe='')}" in cd
 
 
 @pytest.mark.asyncio
