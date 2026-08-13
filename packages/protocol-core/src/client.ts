@@ -50,6 +50,16 @@ function parseErrorCode(body: string): string | undefined {
   return undefined;
 }
 
+function parseRetryable(body: string): boolean | undefined {
+  try {
+    const parsed = JSON.parse(body) as { retryable?: unknown };
+    if (typeof parsed.retryable === "boolean") return parsed.retryable;
+  } catch {
+    // Missing or non-JSON metadata preserves the status-based retry policy.
+  }
+  return undefined;
+}
+
 export interface BotCordClientConfig {
   hubUrl: string;
   agentId: string;
@@ -295,14 +305,18 @@ export class BotCordClient {
         continue;
       }
 
-      if (resp.status === 429 && attempt < MAX_RETRIES) {
+      const body = await resp.text().catch(() => "");
+      if (
+        resp.status === 429 &&
+        attempt < MAX_RETRIES &&
+        parseRetryable(body) !== false
+      ) {
         const retryAfter = parseInt(resp.headers.get("Retry-After") || "", 10);
         const delayMs = retryAfter > 0 ? retryAfter * 1000 : RETRY_BASE_MS * (attempt + 1);
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }
 
-      const body = await resp.text().catch(() => "");
       const err = new Error(`BotCord ${path} failed: ${resp.status} ${body}`);
       (err as any).status = resp.status;
       throw err;

@@ -302,6 +302,64 @@ describe("BotCordClient token refresh", () => {
     expect(new Set(requestIds).size).toBe(1);
   });
 
+  it("does not retry a 429 response explicitly marked non-retryable", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        {
+          detail: "Duplicate content",
+          code: "duplicate_content",
+          retryable: false,
+        },
+        { status: 429 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    await expect(client.sendMessage("rm_1", "duplicate")).rejects.toMatchObject({
+      status: 429,
+      message: expect.stringContaining("duplicate_content"),
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("retries a 429 response explicitly marked retryable", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { detail: "Slow mode", code: "slow_mode", retryable: true },
+          { status: 429 },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json({ messages: [], count: 0, has_more: false }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    const poll = client.pollInbox({ limit: 50 });
+    await vi.runAllTimersAsync();
+    await poll;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("includes structured error_ref on typed error messages", async () => {
     let sentBody: any;
     vi.stubGlobal(
