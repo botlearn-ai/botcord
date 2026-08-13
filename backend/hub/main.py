@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import pathlib
 from contextlib import asynccontextmanager
@@ -55,6 +56,7 @@ from hub.routers.cloud_agent_internal import internal_router as cloud_agent_inte
 from hub.routers.cloud_gateway_internal import internal_router as cloud_gateway_internal_router
 from hub.routers.cloud_gateway_internal import runtime_router as cloud_gateway_runtime_router
 from hub.storage import storage_requires_local_disk
+from hub.request_observability import rate_limit_context, request_id_for
 
 from app.routers.humans import router as app_humans_router
 from app.routers.users import router as app_users_router
@@ -84,6 +86,7 @@ from app.routers.agent_management import router as app_agent_management_router
 from app.auth import require_beta_user
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -189,6 +192,20 @@ if hub_config.SENTRY_DSN:
     )
 
 app = FastAPI(title="BotCord Hub", version="1.0.1", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def attach_request_id(request: Request, call_next):
+    """Echo a safe correlation id without reflecting arbitrary header content."""
+    request_id = request_id_for(request)
+    response = await call_next(request)
+    response.headers["X-BotCord-Request-ID"] = request_id
+    if response.status_code == 429 and request.url.path.startswith("/hub/"):
+        logger.warning(
+            "hub.request.rate_limited %s",
+            json.dumps(rate_limit_context(request), sort_keys=True),
+        )
+    return response
 
 
 def _build_cors_origins(extra_origins: list[str]) -> list[str]:

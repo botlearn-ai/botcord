@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import logging
 import time
 import uuid
 
@@ -335,7 +336,7 @@ async def test_send_only_message_type(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_send_rate_limit(client: AsyncClient):
+async def test_send_rate_limit(client: AsyncClient, caplog: pytest.LogCaptureFixture):
     """Exceeding 100 msg/min triggers 429."""
     from hub.routers import hub as hub_mod
 
@@ -353,17 +354,25 @@ async def test_send_rate_limit(client: AsyncClient):
 
     envelope = _build_envelope(sk_a, alice_key, alice_id, bob_id)
 
-    resp = await client.post(
-        "/hub/send", json=envelope, headers=_auth_header(alice_token)
-    )
+    headers = {
+        **_auth_header(alice_token),
+        "X-BotCord-Request-ID": "0123456789abcdef0123456789abcdef",
+        "X-BotCord-Caller": "protocol-core",
+    }
+    caplog.set_level(logging.WARNING, logger="hub.main")
+    resp = await client.post("/hub/send", json=envelope, headers=headers)
     assert resp.status_code == 429
+    event = next(line for line in caplog.messages if "hub.request.rate_limited" in line)
+    assert f'"authenticated_agent_id": "{alice_id}"' in event
+    assert '"rate_limit_reason": "agent_per_minute"' in event
+    assert '"client_request_id": "0123456789abcdef0123456789abcdef"' in event
 
     # Clean up
     hub_mod._rate_windows.pop(alice_id, None)
 
 
 @pytest.mark.asyncio
-async def test_send_pair_rate_limit(client: AsyncClient):
+async def test_send_pair_rate_limit(client: AsyncClient, caplog: pytest.LogCaptureFixture):
     """Exceeding per-pair rate limit triggers 429 with conversation detail."""
     from hub.routers import hub as hub_mod
 
@@ -382,11 +391,15 @@ async def test_send_pair_rate_limit(client: AsyncClient):
 
     envelope = _build_envelope(sk_a, alice_key, alice_id, bob_id)
 
+    caplog.set_level(logging.WARNING, logger="hub.main")
     resp = await client.post(
         "/hub/send", json=envelope, headers=_auth_header(alice_token)
     )
     assert resp.status_code == 429
     assert "Conversation rate limit" in resp.json()["detail"]
+    event = next(line for line in caplog.messages if "hub.request.rate_limited" in line)
+    assert f'"authenticated_agent_id": "{alice_id}"' in event
+    assert '"rate_limit_reason": "sender_target_per_minute"' in event
 
     # Clean up
     hub_mod._pair_rate_windows.pop(pair_key, None)
@@ -1462,5 +1475,4 @@ async def test_expiry_loop_starvation_long_ttl_does_not_block_short(client, db_s
         "Expired short-TTL message was starved by older non-expired long-TTL messages"
     )
     assert expired_record.last_error == "TTL_EXPIRED"
-
 

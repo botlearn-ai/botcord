@@ -39,7 +39,18 @@ const DEFAULT_SPLIT_AT = 1800;
 /** iLink server holds getupdates ≤35s; allow slack on the client timeout. */
 const POLL_TIMEOUT_S = 60;
 const POLL_BACKOFF_MS = 3000;
-const TRANSIENT_BACKOFF_MS = 1000;
+const TRANSIENT_BACKOFF_BASE_MS = 1000;
+const TRANSIENT_BACKOFF_MAX_MS = 30_000;
+const TRANSIENT_NETWORK_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "EAI_AGAIN",
+  "ENETUNREACH",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
 const WECHAT_PROVIDER = "wechat" as const;
 /** Trace -> context_token cache TTL. Doc recommends 30 minutes. */
 const TRACE_CONTEXT_TTL_MS = 30 * 60 * 1000;
@@ -72,6 +83,37 @@ export interface WechatChannelOptions {
 interface WechatSecret {
   botToken?: string;
   [key: string]: unknown;
+}
+
+export function classifyWechatPollError(error: unknown): {
+  transient: boolean;
+  name: string;
+  code?: string;
+} {
+  const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const cause = value.cause && typeof value.cause === "object"
+    ? value.cause as Record<string, unknown>
+    : {};
+  const name = typeof value.name === "string" ? value.name : "Error";
+  const rawCode = typeof value.code === "string"
+    ? value.code
+    : typeof cause.code === "string"
+      ? cause.code
+      : undefined;
+  const code = rawCode?.toUpperCase();
+  return {
+    transient:
+      name === "AbortError" ||
+      name === "TimeoutError" ||
+      (code !== undefined && TRANSIENT_NETWORK_CODES.has(code)),
+    name,
+    ...(code ? { code } : {}),
+  };
+}
+
+export function wechatTransientBackoffMs(consecutiveFailures: number): number {
+  const exponent = Math.max(0, Math.min(consecutiveFailures - 1, 5));
+  return Math.min(TRANSIENT_BACKOFF_MAX_MS, TRANSIENT_BACKOFF_BASE_MS * 2 ** exponent);
 }
 
 interface WechatItem {
@@ -537,6 +579,7 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
     if (typeof sweepTimer.unref === "function") sweepTimer.unref();
 
     let firstPollOk = false;
+    let consecutiveTransientFailures = 0;
     while (!stopped && !abortSignal.aborted) {
       try {
         const resp = await callApi<WechatGetUpdatesResp>(
@@ -548,9 +591,16 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
         // W3: a successful response (`ret === 0`) is the only signal we
         // have that the bot token actually authenticates. Promote the
         // channel to authorized only on that boundary.
-        if (!firstPollOk && resp.ret === 0) {
-          firstPollOk = true;
-          markStatus({ connected: true, authorized: true });
+        if (resp.ret === 0) {
+          if (consecutiveTransientFailures > 0) {
+            consecutiveTransientFailures = 0;
+            markStatus({ connected: true, lastError: null, reconnectAttempts: 0 });
+            log.info("wechat poll recovered", { gatewayId: opts.id });
+          }
+          if (!firstPollOk) {
+            firstPollOk = true;
+            markStatus({ connected: true, authorized: true });
+          }
         }
         const msgs = Array.isArray(resp.msgs) ? resp.msgs : [];
         // W4: persist the cursor only AFTER all emits return cleanly. If
@@ -591,10 +641,20 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
         }
       } catch (err) {
         if (stopped || abortSignal.aborted) break;
-        const name = (err as Error)?.name ?? "";
-        if (name === "AbortError" || name === "TimeoutError") {
-          log.warn("wechat poll transient", { name });
-          await sleep(TRANSIENT_BACKOFF_MS, abortSignal);
+        const classification = classifyWechatPollError(err);
+        if (classification.transient) {
+          consecutiveTransientFailures += 1;
+          const delayMs = wechatTransientBackoffMs(consecutiveTransientFailures);
+          const lastError = classification.code
+            ? `transient:${classification.code}`
+            : `transient:${classification.name}`;
+          markStatus({
+            connected: false,
+            lastError,
+            reconnectAttempts: consecutiveTransientFailures,
+          });
+          log.warn("wechat poll transient", { ...classification, delayMs });
+          await sleep(delayMs, abortSignal);
           continue;
         }
         const errStr = redactSecret(String(err), botToken);
