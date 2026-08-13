@@ -197,7 +197,7 @@ async def test_register_endpoint_no_auth(client: AsyncClient):
         f"/registry/agents/{agent_id}/endpoints",
         json={"url": "https://example.com/inbox", "webhook_token": "tok"},
     )
-    assert resp.status_code == 422  # missing Authorization header
+    assert resp.status_code == 401  # missing Authorization header
 
 
 @pytest.mark.asyncio
@@ -978,7 +978,7 @@ async def test_test_endpoint_auth_required(client: AsyncClient):
         f"/registry/agents/{agent_id}/endpoints/test",
         json={"url": "https://example.com/inbox", "webhook_token": "tok"},
     )
-    assert resp.status_code == 422  # missing auth header
+    assert resp.status_code == 401  # missing auth header
 
 
 @pytest.mark.asyncio
@@ -1244,7 +1244,7 @@ async def test_endpoint_status_auth_required(client: AsyncClient):
     resp = await client.get(
         f"/registry/agents/{agent_id}/endpoints/status",
     )
-    assert resp.status_code == 422  # missing auth header
+    assert resp.status_code == 401  # missing auth header
 
 
 # ===========================================================================

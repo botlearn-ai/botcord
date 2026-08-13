@@ -1,8 +1,9 @@
 import datetime
+import json
 import logging
 
 import jwt
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from jwt import PyJWKClient
 from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from hub.config import FRONTEND_BASE_URL, JWT_ALGORITHM, JWT_EXPIRE_HOURS, JWT_S
 from hub.database import get_db
 from hub.i18n import I18nHTTPException
 from hub.models import Agent, User
+from hub.request_observability import auth_failure_context
 
 _logger = logging.getLogger(__name__)
 
@@ -69,19 +71,37 @@ def verify_agent_token(token: str) -> str:
     return agent_id
 
 
-def get_current_agent(authorization: str = Header(...)) -> str:
+def _log_agent_auth_failure(request: Request, failure: str) -> None:
+    _logger.warning(
+        "hub.agent_auth.failed %s",
+        json.dumps(auth_failure_context(request, failure), sort_keys=True),
+    )
+
+
+def get_current_agent(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> str:
     """FastAPI dependency: extract agent_id from Bearer token.
 
     Raises 401 if the token is missing, malformed, or invalid.
     """
+    if not authorization:
+        _log_agent_auth_failure(request, "missing")
+        raise I18nHTTPException(status_code=401, message_key="invalid_authorization_header")
     if not authorization.startswith("Bearer "):
+        _log_agent_auth_failure(request, "malformed")
         raise I18nHTTPException(status_code=401, message_key="invalid_authorization_header")
     token = authorization[len("Bearer "):]
     try:
-        return verify_agent_token(token)
+        agent_id = verify_agent_token(token)
+        request.state.authenticated_agent_id = agent_id
+        return agent_id
     except jwt.ExpiredSignatureError:
+        _log_agent_auth_failure(request, "expired")
         raise I18nHTTPException(status_code=401, message_key="token_expired")
     except jwt.InvalidTokenError:
+        _log_agent_auth_failure(request, "invalid")
         raise I18nHTTPException(status_code=401, message_key="invalid_token")
 
 
@@ -101,23 +121,43 @@ def assert_current_agent_token(agent: Agent, token: str) -> None:
 
 
 async def get_current_claimed_agent(
-    authorization: str = Header(...),
+    request: Request,
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> str:
+    if not authorization:
+        _log_agent_auth_failure(request, "missing")
+        raise I18nHTTPException(status_code=401, message_key="invalid_authorization_header")
     if not authorization.startswith("Bearer "):
+        _log_agent_auth_failure(request, "malformed")
         raise I18nHTTPException(status_code=401, message_key="invalid_authorization_header")
     token = authorization[len("Bearer "):]
     try:
         agent_id = verify_agent_token(token)
     except jwt.ExpiredSignatureError:
+        _log_agent_auth_failure(request, "expired")
         raise I18nHTTPException(status_code=401, message_key="token_expired")
     except jwt.InvalidTokenError:
+        _log_agent_auth_failure(request, "invalid")
         raise I18nHTTPException(status_code=401, message_key="invalid_token")
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = result.scalar_one_or_none()
     if agent is None:
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
-    assert_current_agent_token(agent, token)
+    try:
+        assert_current_agent_token(agent, token)
+    except I18nHTTPException as exc:
+        # A persisted expiry is distinct from a replaced/revoked credential.
+        # Preserve that distinction instead of flattening every assertion
+        # failure into stale_or_revoked.
+        failure = (
+            "expired"
+            if getattr(exc, "message_key", None) == "token_expired"
+            else "stale_or_revoked"
+        )
+        _log_agent_auth_failure(request, failure)
+        raise
+    request.state.authenticated_agent_id = agent_id
     if agent.claimed_at is None:
         claim_url = f"{FRONTEND_BASE_URL.rstrip('/')}/agents/claim/{agent.claim_code}" if agent.claim_code else None
         if claim_url:

@@ -592,7 +592,11 @@ async def get_attention_policy(
 # ---------------------------------------------------------------------------
 
 
-def _check_rate_limit(agent_id: str, target_id: str | None = None) -> None:
+def _check_rate_limit(
+    agent_id: str,
+    target_id: str | None = None,
+    request: Request | None = None,
+) -> None:
     """Sliding-window rate limit (in-memory, per-worker). Raises 429.
 
     Checks two levels:
@@ -606,6 +610,8 @@ def _check_rate_limit(agent_id: str, target_id: str | None = None) -> None:
     while window and window[0] <= now - 60:
         window.popleft()
     if len(window) >= RATE_LIMIT_PER_MINUTE:
+        if request is not None:
+            request.state.rate_limit_reason = "agent_per_minute"
         raise I18nHTTPException(status_code=429, message_key="rate_limit_exceeded")
     window.append(now)
 
@@ -616,6 +622,8 @@ def _check_rate_limit(agent_id: str, target_id: str | None = None) -> None:
         while pair_window and pair_window[0] <= now - 60:
             pair_window.popleft()
         if len(pair_window) >= PAIR_RATE_LIMIT_PER_MINUTE:
+            if request is not None:
+                request.state.rate_limit_reason = "sender_target_per_minute"
             raise I18nHTTPException(
                 status_code=429,
                 message_key="conversation_rate_limit_exceeded",
@@ -1315,7 +1323,7 @@ def _can_send(room: Room, member: RoomMember) -> bool:
 can_send = _can_send
 
 
-def _check_slow_mode(room: Room, member: RoomMember) -> None:
+def _check_slow_mode(room: Room, member: RoomMember, request: Request | None = None) -> None:
     """Enforce slow mode interval. Owner/admin are exempt. Raises 429.
 
     Does NOT update the last-send timestamp — call _record_slow_mode_send()
@@ -1332,6 +1340,8 @@ def _check_slow_mode(room: Room, member: RoomMember) -> None:
         elapsed = now - last
         remaining = room.slow_mode_seconds - elapsed
         if remaining > 0:
+            if request is not None:
+                request.state.rate_limit_reason = "room_slow_mode"
             raise I18nHTTPException(
                 status_code=429,
                 message_key="slow_mode_wait",
@@ -1344,12 +1354,19 @@ def _record_slow_mode_send(room_id: str, agent_id: str) -> None:
     _slow_mode_last_send[(room_id, agent_id)] = time.monotonic()
 
 
-def _check_duplicate_content(room_id: str, sender_id: str, payload: dict) -> None:
+def _check_duplicate_content(
+    room_id: str,
+    sender_id: str,
+    payload: dict,
+    request: Request | None = None,
+) -> None:
     """Reject consecutive identical messages from the same sender in a room. Raises 429."""
     key = (room_id, sender_id)
     payload_bytes = json.dumps(payload, sort_keys=True).encode()
     content_hash = hashlib.sha256(payload_bytes).hexdigest()
     if _last_msg_hash.get(key) == content_hash:
+        if request is not None:
+            request.state.rate_limit_reason = "duplicate_content"
         raise I18nHTTPException(status_code=429, message_key="duplicate_content")
     _last_msg_hash[key] = content_hash
 
@@ -1389,12 +1406,12 @@ async def _send_room_message(
         raise I18nHTTPException(status_code=403, message_key="only_owner_admin_can_post")
 
     # Slow mode check (owner/admin exempt)
-    _check_slow_mode(room, sender_member)
+    _check_slow_mode(room, sender_member, request)
 
     # Duplicate content check. Owner-chat rooms are a private dashboard control
     # surface; repeated runtime error fallbacks should still be visible there.
     if not room_id.startswith("rm_oc_"):
-        _check_duplicate_content(room_id, envelope.from_, envelope.payload)
+        _check_duplicate_content(room_id, envelope.from_, envelope.payload, request)
 
     # All anti-spam checks passed — record timestamp for slow mode
     _record_slow_mode_send(room_id, envelope.from_)
@@ -1704,7 +1721,7 @@ async def send_message(
     )
 
     # Rate limit (counts as 1 regardless of fan-out)
-    _check_rate_limit(current_agent, target_id=envelope.to)
+    _check_rate_limit(current_agent, target_id=envelope.to, request=request)
 
     # Verify envelope
     await _verify_envelope(envelope, db)

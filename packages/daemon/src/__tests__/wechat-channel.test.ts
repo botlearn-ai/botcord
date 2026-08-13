@@ -2,7 +2,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createWechatChannel } from "../gateway/channels/wechat.js";
+import {
+  classifyWechatPollError,
+  createWechatChannel,
+  wechatTransientBackoffMs,
+} from "../gateway/channels/wechat.js";
 import type {
   ChannelStartContext,
   GatewayInboundEnvelope,
@@ -16,6 +20,32 @@ const SILENT_LOG: GatewayLogger = {
   error: () => {},
   debug: () => {},
 };
+
+describe("classifyWechatPollError", () => {
+  it.each(["ECONNRESET", "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT"])(
+    "classifies nested Undici/network code %s as transient",
+    (code) => {
+      expect(classifyWechatPollError(new TypeError("fetch failed", { cause: { code } }))).toEqual({
+        transient: true,
+        name: "TypeError",
+        code,
+      });
+    },
+  );
+
+  it("does not classify an HTTP/application error as transient", () => {
+    expect(classifyWechatPollError(new Error("HTTP 401"))).toEqual({
+      transient: false,
+      name: "Error",
+    });
+  });
+
+  it("uses bounded exponential backoff for sustained transient failures", () => {
+    expect([1, 2, 3, 4, 5, 6, 20].map(wechatTransientBackoffMs)).toEqual([
+      1000, 2000, 4000, 8000, 16000, 30000, 30000,
+    ]);
+  });
+});
 
 interface StubResponse {
   status?: number;
@@ -130,6 +160,45 @@ describe("wechat channel adapter", () => {
 
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("marks transient poll health unhealthy and clears it after a successful poll", async () => {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new TypeError("fetch failed", { cause: { code: "ECONNRESET" } });
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ret: 0, get_updates_buf: "cursor_1", msgs: [] }),
+        text: async () => JSON.stringify({ ret: 0, get_updates_buf: "cursor_1", msgs: [] }),
+      };
+    };
+    const adapter = createWechatChannel({
+      id: "gw_wx_health",
+      accountId: "ag_test",
+      botToken: "token",
+      stateFile: path.join(tmp, "health-state.json"),
+      fetchImpl: fetchImpl as unknown as Parameters<typeof createWechatChannel>[0]["fetchImpl"],
+      stateDebounceMs: 0,
+      allowedSenderIds: ["user1"],
+    });
+
+    const run = startAdapter(adapter, { stopAfterMs: 1150 });
+    await run.pollDone;
+
+    expect(run.statusPatches).toContainEqual(expect.objectContaining({
+      connected: false,
+      lastError: "transient:ECONNRESET",
+      reconnectAttempts: 1,
+    }));
+    expect(run.statusPatches).toContainEqual(expect.objectContaining({
+      connected: true,
+      lastError: null,
+      reconnectAttempts: 0,
+    }));
   });
 
   it("marks status error with reason missing_secret when bot token is unavailable", async () => {
