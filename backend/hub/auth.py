@@ -53,14 +53,19 @@ def create_agent_token(agent_id: str) -> tuple[str, int]:
     return token, int(expires_at.timestamp())
 
 
-def verify_agent_token(token: str) -> str:
+def verify_agent_token(token: str, *, verify_expiration: bool = True) -> str:
     """Verify a JWT token and return the agent_id.
 
     Raises:
         jwt.ExpiredSignatureError: If the token has expired.
         jwt.InvalidTokenError: If the token is invalid.
     """
-    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    payload = jwt.decode(
+        token,
+        JWT_SECRET,
+        algorithms=[JWT_ALGORITHM],
+        options={"verify_exp": verify_expiration},
+    )
     agent_id = payload.get("agent_id")
     if not agent_id:
         raise jwt.InvalidTokenError("Missing agent_id claim")
@@ -95,9 +100,19 @@ def get_current_agent(
     token = authorization[len("Bearer "):]
     try:
         agent_id = verify_agent_token(token)
+        request.state.verified_agent_id = agent_id
         request.state.authenticated_agent_id = agent_id
         return agent_id
     except jwt.ExpiredSignatureError:
+        # Expiry does not invalidate the JWT signature or its identity claims.
+        # Re-verify with only the time check disabled so the failure log can
+        # contain a server-trusted principal without logging token material.
+        try:
+            request.state.verified_agent_id = verify_agent_token(
+                token, verify_expiration=False
+            )
+        except jwt.InvalidTokenError:
+            pass
         _log_agent_auth_failure(request, "expired")
         raise I18nHTTPException(status_code=401, message_key="token_expired")
     except jwt.InvalidTokenError:
@@ -134,7 +149,14 @@ async def get_current_claimed_agent(
     token = authorization[len("Bearer "):]
     try:
         agent_id = verify_agent_token(token)
+        request.state.verified_agent_id = agent_id
     except jwt.ExpiredSignatureError:
+        try:
+            request.state.verified_agent_id = verify_agent_token(
+                token, verify_expiration=False
+            )
+        except jwt.InvalidTokenError:
+            pass
         _log_agent_auth_failure(request, "expired")
         raise I18nHTTPException(status_code=401, message_key="token_expired")
     except jwt.InvalidTokenError:
@@ -230,6 +252,7 @@ def verify_supabase_token(token: str) -> str:
 def _parse_dashboard_token(
     authorization: str,
     x_active_agent: str | None,
+    request: Request | None = None,
 ) -> tuple[str, str | None, str | None]:
     """Parse a dashboard Authorization header.
 
@@ -239,12 +262,27 @@ def _parse_dashboard_token(
     and must be verified against the agent's ``user_id`` by the caller.
     """
     if not authorization.startswith("Bearer "):
+        if request is not None:
+            _log_agent_auth_failure(request, "malformed")
         raise I18nHTTPException(status_code=401, message_key="invalid_authorization_header")
     token = authorization[len("Bearer "):]
 
     # Fast path: botcord agent JWT — agent_id is embedded, already trusted.
+    agent_failure = "invalid"
     try:
-        return verify_agent_token(token), None, token
+        agent_id = verify_agent_token(token)
+        if request is not None:
+            request.state.verified_agent_id = agent_id
+        return agent_id, None, token
+    except jwt.ExpiredSignatureError:
+        agent_failure = "expired"
+        if request is not None:
+            try:
+                request.state.verified_agent_id = verify_agent_token(
+                    token, verify_expiration=False
+                )
+            except jwt.InvalidTokenError:
+                pass
     except jwt.InvalidTokenError:
         pass
 
@@ -252,6 +290,8 @@ def _parse_dashboard_token(
     try:
         supabase_user_id = verify_supabase_token(token)
     except jwt.InvalidTokenError:
+        if request is not None:
+            _log_agent_auth_failure(request, agent_failure)
         raise I18nHTTPException(status_code=401, message_key="invalid_token")
 
     if not x_active_agent:
@@ -309,6 +349,7 @@ async def get_dashboard_agent(
 
 
 async def get_dashboard_claimed_agent(
+    request: Request,
     authorization: str = Header(...),
     x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
     db: AsyncSession = Depends(get_db),
@@ -317,14 +358,25 @@ async def get_dashboard_claimed_agent(
 
     When using Supabase JWT, verifies agent ownership via ``users`` → ``agents.user_id``.
     """
-    agent_id, supabase_uid, agent_token = _parse_dashboard_token(authorization, x_active_agent)
+    agent_id, supabase_uid, agent_token = _parse_dashboard_token(
+        authorization, x_active_agent, request
+    )
 
     result = await db.execute(select(Agent).where(Agent.agent_id == agent_id))
     agent = result.scalar_one_or_none()
     if agent is None:
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if supabase_uid is None and agent_token is not None:
-        assert_current_agent_token(agent, agent_token)
+        try:
+            assert_current_agent_token(agent, agent_token)
+        except I18nHTTPException as exc:
+            failure = (
+                "expired"
+                if getattr(exc, "message_key", None) == "token_expired"
+                else "stale_or_revoked"
+            )
+            _log_agent_auth_failure(request, failure)
+            raise
     elif agent.status != "active":
         raise I18nHTTPException(status_code=404, message_key="agent_not_found")
     if agent.claimed_at is None:
@@ -334,6 +386,7 @@ async def get_dashboard_claimed_agent(
         if internal_uid is None or str(agent.user_id) != internal_uid:
             raise I18nHTTPException(status_code=403, message_key="agent_not_owned_by_user")
 
+    request.state.authenticated_agent_id = agent_id
     return agent_id
 
 
