@@ -112,7 +112,8 @@ def get_current_agent(
                 token, verify_expiration=False
             )
         except jwt.InvalidTokenError:
-            pass
+            _log_agent_auth_failure(request, "invalid")
+            raise I18nHTTPException(status_code=401, message_key="invalid_token")
         _log_agent_auth_failure(request, "expired")
         raise I18nHTTPException(status_code=401, message_key="token_expired")
     except jwt.InvalidTokenError:
@@ -156,7 +157,8 @@ async def get_current_claimed_agent(
                 token, verify_expiration=False
             )
         except jwt.InvalidTokenError:
-            pass
+            _log_agent_auth_failure(request, "invalid")
+            raise I18nHTTPException(status_code=401, message_key="invalid_token")
         _log_agent_auth_failure(request, "expired")
         raise I18nHTTPException(status_code=401, message_key="token_expired")
     except jwt.InvalidTokenError:
@@ -279,7 +281,6 @@ def _parse_dashboard_token(
             request.state.verified_agent_id = agent_id
         return agent_id, None, token
     except jwt.ExpiredSignatureError:
-        agent_failure = "expired"
         if request is not None:
             try:
                 request.state.verified_agent_id = verify_agent_token(
@@ -287,6 +288,15 @@ def _parse_dashboard_token(
                 )
             except jwt.InvalidTokenError:
                 pass
+            else:
+                agent_failure = "expired"
+        else:
+            try:
+                verify_agent_token(token, verify_expiration=False)
+            except jwt.InvalidTokenError:
+                pass
+            else:
+                agent_failure = "expired"
     except jwt.InvalidTokenError:
         pass
 
