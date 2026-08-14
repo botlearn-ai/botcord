@@ -250,7 +250,7 @@ def verify_supabase_token(token: str) -> str:
 
 
 def _parse_dashboard_token(
-    authorization: str,
+    authorization: str | None,
     x_active_agent: str | None,
     request: Request | None = None,
 ) -> tuple[str, str | None, str | None]:
@@ -261,6 +261,10 @@ def _parse_dashboard_token(
     When the token is a Supabase JWT, supabase_user_id is extracted from ``sub``
     and must be verified against the agent's ``user_id`` by the caller.
     """
+    if not authorization:
+        if request is not None:
+            _log_agent_auth_failure(request, "missing")
+        raise I18nHTTPException(status_code=401, message_key="invalid_authorization_header")
     if not authorization.startswith("Bearer "):
         if request is not None:
             _log_agent_auth_failure(request, "malformed")
@@ -350,7 +354,7 @@ async def get_dashboard_agent(
 
 async def get_dashboard_claimed_agent(
     request: Request,
-    authorization: str = Header(...),
+    authorization: str | None = Header(default=None),
     x_active_agent: str | None = Header(default=None, alias="X-Active-Agent"),
     db: AsyncSession = Depends(get_db),
 ) -> str:

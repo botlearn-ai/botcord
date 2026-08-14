@@ -9,6 +9,7 @@ import time
 import uuid
 
 import jcs
+import jwt
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -18,6 +19,7 @@ from unittest.mock import AsyncMock
 
 from sqlalchemy import select
 
+from hub import auth
 from hub.models import Base, MessageRecord, MessageState
 
 # ---------------------------------------------------------------------------
@@ -686,6 +688,46 @@ async def test_receipt_forwarding_delivered_immediately(
 # ===========================================================================
 # GET /hub/inbox (polling) tests
 # ===========================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("GET", "/hub/inbox", None),
+        ("POST", "/hub/inbox/ack", {"message_ids": []}),
+        ("POST", "/hub/inbox/lease/renew", {"message_ids": []}),
+    ],
+)
+async def test_inbox_routes_log_expired_signature_verified_principal(
+    client: AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+    method: str,
+    path: str,
+    body: dict | None,
+):
+    token = jwt.encode(
+        {
+            "agent_id": "ag_trusted_expired_inbox",
+            "exp": dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=1),
+            "iss": "botcord",
+        },
+        auth.JWT_SECRET,
+        algorithm=auth.JWT_ALGORITHM,
+    )
+    caplog.set_level(logging.WARNING, logger="hub.auth")
+
+    response = await client.request(
+        method,
+        path,
+        headers=_auth_header(token),
+        json=body,
+    )
+
+    assert response.status_code == 401
+    assert '"failure": "expired"' in caplog.text
+    assert '"verified_agent_id": "ag_trusted_expired_inbox"' in caplog.text
+    assert token not in caplog.text
 
 
 async def _setup_two_agents_no_endpoint(client: AsyncClient):
