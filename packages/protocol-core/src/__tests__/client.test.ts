@@ -218,6 +218,50 @@ describe("BotCordClient token refresh", () => {
     expect(serialized).not.toContain("k_diagnostics");
   });
 
+  it("correlates a delayed stale-token 401 with the reused refresh generation", async () => {
+    const events: BotCordAuthDiagnostic[] = [];
+    let releaseStaleResponse!: () => void;
+    const staleResponseGate = new Promise<void>((resolve) => {
+      releaseStaleResponse = resolve;
+    });
+    const authorizations: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/token/refresh")) {
+        return Response.json({
+          agent_token: "rotated-token",
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+        });
+      }
+      authorizations.push(((init?.headers ?? {}) as Record<string, string>).Authorization);
+      if (authorizations.length === 1) {
+        await staleResponseGate;
+        return new Response("stale", { status: 401 });
+      }
+      return Response.json({ messages: [], count: 0, has_more: false });
+    }));
+    const config = {
+      hubUrl: "https://hub.delayed-race.example",
+      agentId: "ag_delayed_race",
+      keyId: "k_delayed_race",
+      privateKey,
+      token: "old-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+      authDiagnostic: (event: BotCordAuthDiagnostic) => events.push(event),
+    };
+    const requestClient = new BotCordClient(config);
+    const refreshClient = new BotCordClient(config);
+    const request = requestClient.pollInbox();
+    await vi.waitFor(() => expect(authorizations).toHaveLength(1));
+    await refreshClient.refreshToken("old-token");
+    releaseStaleResponse();
+    await request;
+
+    const reused = events.find((event) => event.event === "refresh_reused");
+    expect(reused).toMatchObject({ reason: "rest_401", generation: 2 });
+    expect(reused?.requestId).toMatch(/^[0-9a-f]{32}$/);
+    expect(authorizations).toEqual(["Bearer old-token", "Bearer rotated-token"]);
+  });
+
   it("reuses a peer generation when WS invalid_token reports the token used to authenticate", async () => {
     let refreshCount = 0;
     vi.stubGlobal(

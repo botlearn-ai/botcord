@@ -2060,6 +2060,12 @@ describe("createBotCordChannel — typing()", () => {
         log: silentLog,
       });
       expect(client.refreshToken).toHaveBeenCalledTimes(1);
+      const requestId = (fetchSpy.mock.calls[0][1].headers as Record<string, string>)[
+        "X-BotCord-Request-ID"
+      ];
+      expect(requestId).toMatch(/^[0-9a-f]{32}$/);
+      expect(client.ensureToken).toHaveBeenCalledWith(requestId);
+      expect(client.refreshToken).toHaveBeenCalledWith("test-token", "rest_401", requestId);
       expect(fetchSpy).toHaveBeenCalledTimes(2);
       // First attempt uses the stale token; the retry uses the refreshed one.
       expect((fetchSpy.mock.calls[0][1].headers as Record<string, string>).Authorization).toBe(
@@ -2068,6 +2074,9 @@ describe("createBotCordChannel — typing()", () => {
       expect((fetchSpy.mock.calls[1][1].headers as Record<string, string>).Authorization).toBe(
         "Bearer test-token-2",
       );
+      expect(
+        (fetchSpy.mock.calls[1][1].headers as Record<string, string>)["X-BotCord-Request-ID"],
+      ).toBe(requestId);
     } finally {
       globalThis.fetch = realFetch;
     }

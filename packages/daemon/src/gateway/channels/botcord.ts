@@ -10,6 +10,7 @@ import {
   type InboxMessage,
   type MessageAttachment,
 } from "@botcord/protocol-core";
+import { randomBytes } from "node:crypto";
 import type {
   ChannelAdapter,
   ChannelMessageStatusContext,
@@ -61,8 +62,12 @@ type InboxDrainTrigger =
 
 /** Minimal surface the adapter needs from `BotCordClient`. Matches the subset used at runtime. */
 export interface BotCordChannelClient {
-  ensureToken(): Promise<string>;
-  refreshToken(failedToken?: string): Promise<string>;
+  ensureToken(requestId?: string): Promise<string>;
+  refreshToken(
+    failedToken?: string,
+    reason?: "missing_or_expiring" | "forced" | "rest_401",
+    requestId?: string,
+  ): Promise<string>;
   pollInbox(options?: {
     limit?: number;
     ack?: boolean;
@@ -444,9 +449,10 @@ async function postControlWithRefresh(
   method = "POST",
   onTerminalCredentialError?: (err: unknown) => Promise<boolean>,
 ): Promise<Response> {
+  const requestId = randomBytes(16).toString("hex");
   let token: string;
   try {
-    token = await client.ensureToken();
+    token = await client.ensureToken(requestId);
   } catch (err) {
     await onTerminalCredentialError?.(err);
     throw err;
@@ -457,13 +463,14 @@ async function postControlWithRefresh(
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
+        "X-BotCord-Request-ID": requestId,
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(10_000),
     });
     if (resp.status === 401 && attempt === 0) {
       try {
-        token = await client.refreshToken(token);
+        token = await client.refreshToken(token, "rest_401", requestId);
       } catch (err) {
         await onTerminalCredentialError?.(err);
         throw err;

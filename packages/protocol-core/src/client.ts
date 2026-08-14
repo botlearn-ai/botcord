@@ -84,6 +84,8 @@ export interface BotCordAuthDiagnostic {
   generation: number;
   reason?: "missing_or_expiring" | "forced" | "rest_401";
   status?: number;
+  /** Privacy-safe request correlation id; never contains credential material. */
+  requestId?: string;
 }
 
 interface SharedCredentialState {
@@ -177,14 +179,14 @@ export class BotCordClient {
       this.credentialState.token &&
       this.credentialState.token !== failedToken
     ) {
-      this.emitAuthDiagnostic("refresh_reused", reason);
+      this.emitAuthDiagnostic("refresh_reused", reason, undefined, requestId);
       return this.credentialState.token;
     }
     if (this.credentialState.refreshPromise) {
-      this.emitAuthDiagnostic("refresh_joined", reason);
+      this.emitAuthDiagnostic("refresh_joined", reason, undefined, requestId);
       return this.credentialState.refreshPromise;
     }
-    this.emitAuthDiagnostic("refresh_started", reason);
+    this.emitAuthDiagnostic("refresh_started", reason, undefined, requestId);
     const refreshPromise = this.performTokenRefresh(reason, requestId);
     this.credentialState.refreshPromise = refreshPromise;
     try {
@@ -212,7 +214,7 @@ export class BotCordClient {
         signal: AbortSignal.timeout(10000),
       });
     } catch (err) {
-      this.emitAuthDiagnostic("refresh_failed", reason);
+      this.emitAuthDiagnostic("refresh_failed", reason, undefined, requestId);
       throw err;
     }
 
@@ -222,7 +224,7 @@ export class BotCordClient {
       (err as any).status = resp.status;
       const code = parseErrorCode(body);
       if (code) (err as any).code = code;
-      this.emitAuthDiagnostic("refresh_failed", reason, resp.status);
+      this.emitAuthDiagnostic("refresh_failed", reason, resp.status, requestId);
       throw err;
     }
 
@@ -232,7 +234,7 @@ export class BotCordClient {
       data.expires_at ?? Date.now() / 1000 + 86400;
     this.credentialState.generation += 1;
     this.onTokenRefresh?.(this.credentialState.token, this.credentialState.tokenExpiresAt);
-    this.emitAuthDiagnostic("refresh_succeeded", reason);
+    this.emitAuthDiagnostic("refresh_succeeded", reason, undefined, requestId);
     return this.credentialState.token;
   }
 
@@ -259,6 +261,7 @@ export class BotCordClient {
     event: BotCordAuthDiagnostic["event"],
     reason?: BotCordAuthDiagnostic["reason"],
     status?: number,
+    requestId?: string,
   ): void {
     try {
       this.authDiagnostic?.({
@@ -268,6 +271,7 @@ export class BotCordClient {
         generation: this.credentialState.generation,
         ...(reason ? { reason } : {}),
         ...(status !== undefined ? { status } : {}),
+        ...(requestId ? { requestId } : {}),
       });
     } catch {
       // Diagnostics must never affect authentication or refresh recovery.
