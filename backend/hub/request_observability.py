@@ -53,6 +53,9 @@ def auth_failure_context(request: Request, failure: str) -> dict[str, str | None
         "caller": _caller_hint(request),
         "caller_version": _matching_header(request, "x-botcord-caller-version", _VERSION),
         "agent_id_hint": _matching_header(request, "x-botcord-agent-id", _AGENT_ID),
+        # Set only after the Hub has verified the JWT signature and claims.
+        # Unlike agent_id_hint, this value is never accepted from a header.
+        "verified_agent_id": getattr(request.state, "verified_agent_id", None),
         "credential_key_id": _matching_header(request, "x-botcord-credential-key-id", _KEY_ID),
         "user_agent_hash": _user_agent_hash(request),
     }

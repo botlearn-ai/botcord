@@ -4,6 +4,7 @@ import datetime
 import hashlib
 from unittest.mock import AsyncMock
 
+import jwt
 import pytest
 from starlette.requests import Request
 
@@ -52,6 +53,7 @@ def test_auth_failure_context_only_includes_safe_non_secret_metadata():
         "caller": "protocol-core",
         "caller_version": "0.2.17",
         "agent_id_hint": "ag_0123456789abcdef",
+        "verified_agent_id": None,
         "credential_key_id": "k_0123456789abcdef",
         "user_agent_hash": hashlib.sha256(b"undici").hexdigest()[:16],
     }
@@ -111,6 +113,15 @@ def test_user_agent_is_hashed_instead_of_logged_verbatim():
     assert secret not in json.dumps(context)
 
 
+def test_agent_id_header_cannot_forge_verified_principal():
+    context = auth_failure_context(
+        _request([(b"x-botcord-agent-id", b"ag_0123456789abcdef")]), "invalid"
+    )
+
+    assert context["agent_id_hint"] == "ag_0123456789abcdef"
+    assert context["verified_agent_id"] is None
+
+
 @pytest.mark.parametrize(
     ("authorization", "failure"),
     [(None, "missing"), ("Basic abc", "malformed"), ("Bearer bad", "invalid")],
@@ -128,6 +139,99 @@ def test_agent_auth_failure_is_classified_without_token(
 
     assert f'"failure": "{failure}"' in caplog.text
     assert "Bearer bad" not in caplog.text
+
+
+def test_expired_agent_auth_logs_signature_verified_principal(
+    caplog: pytest.LogCaptureFixture,
+):
+    request = _request([(b"x-botcord-agent-id", b"ag_untrusted_hint")])
+    token = jwt.encode(
+        {
+            "agent_id": "ag_trusted_expired",
+            "exp": datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(seconds=1),
+            "iss": "botcord",
+        },
+        auth.JWT_SECRET,
+        algorithm=auth.JWT_ALGORITHM,
+    )
+    caplog.set_level(logging.WARNING, logger="hub.auth")
+
+    with pytest.raises(I18nHTTPException):
+        auth.get_current_agent(request, f"Bearer {token}")
+
+    assert '"failure": "expired"' in caplog.text
+    assert '"verified_agent_id": "ag_trusted_expired"' in caplog.text
+    assert token not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"agent_id": "ag_untrusted", "iss": "not-botcord"},
+        {"iss": "botcord"},
+    ],
+    ids=["wrong-issuer", "missing-agent-id"],
+)
+def test_expired_current_agent_with_invalid_claims_is_logged_as_invalid(
+    payload: dict[str, str],
+    caplog: pytest.LogCaptureFixture,
+):
+    request = _request()
+    token = jwt.encode(
+        {
+            **payload,
+            "exp": datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(seconds=1),
+        },
+        auth.JWT_SECRET,
+        algorithm=auth.JWT_ALGORITHM,
+    )
+    caplog.set_level(logging.WARNING, logger="hub.auth")
+
+    with pytest.raises(I18nHTTPException) as exc_info:
+        auth.get_current_agent(request, f"Bearer {token}")
+
+    assert exc_info.value.message_key == "invalid_token"
+    assert '"failure": "invalid"' in caplog.text
+    assert '"failure": "expired"' not in caplog.text
+    assert getattr(request.state, "verified_agent_id", None) is None
+    assert token not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"agent_id": "ag_untrusted", "iss": "not-botcord"},
+        {"iss": "botcord"},
+    ],
+    ids=["wrong-issuer", "missing-agent-id"],
+)
+async def test_expired_current_claimed_agent_with_invalid_claims_is_logged_as_invalid(
+    payload: dict[str, str],
+    caplog: pytest.LogCaptureFixture,
+):
+    request = _request()
+    token = jwt.encode(
+        {
+            **payload,
+            "exp": datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(seconds=1),
+        },
+        auth.JWT_SECRET,
+        algorithm=auth.JWT_ALGORITHM,
+    )
+    caplog.set_level(logging.WARNING, logger="hub.auth")
+
+    with pytest.raises(I18nHTTPException) as exc_info:
+        await auth.get_current_claimed_agent(request, f"Bearer {token}", None)
+
+    assert exc_info.value.message_key == "invalid_token"
+    assert '"failure": "invalid"' in caplog.text
+    assert '"failure": "expired"' not in caplog.text
+    assert getattr(request.state, "verified_agent_id", None) is None
+    assert token not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -153,4 +257,141 @@ async def test_persisted_token_expiry_is_not_logged_as_stale_or_revoked(
 
     assert exc_info.value.message_key == "token_expired"
     assert '"failure": "expired"' in caplog.text
+    assert '"verified_agent_id": "ag_test"' in caplog.text
     assert "stale_or_revoked" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_claimed_agent_logs_expired_trusted_principal(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    request = _request()
+    token = jwt.encode(
+        {
+            "agent_id": "ag_trusted_inbox",
+            "exp": datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(seconds=1),
+            "iss": "botcord",
+        },
+        auth.JWT_SECRET,
+        algorithm=auth.JWT_ALGORITHM,
+    )
+    monkeypatch.setattr(
+        auth,
+        "verify_supabase_token",
+        lambda _token: (_ for _ in ()).throw(jwt.InvalidTokenError()),
+    )
+    caplog.set_level(logging.WARNING, logger="hub.auth")
+
+    with pytest.raises(I18nHTTPException) as exc_info:
+        await auth.get_dashboard_claimed_agent(request, f"Bearer {token}", None, None)
+
+    assert exc_info.value.message_key == "invalid_token"
+    assert '"failure": "expired"' in caplog.text
+    assert '"path": "/hub/inbox"' in caplog.text
+    assert '"verified_agent_id": "ag_trusted_inbox"' in caplog.text
+    assert token not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_claimed_agent_logs_stale_token_without_secret(
+    caplog: pytest.LogCaptureFixture,
+):
+    request = _request()
+    agent = type("AgentStub", (), {
+        "agent_id": "ag_trusted_inbox",
+        "status": "active",
+        "agent_token": "replacement-token",
+        "token_expires_at": None,
+        "claimed_at": datetime.datetime.now(datetime.timezone.utc),
+    })()
+    result = type("ResultStub", (), {"scalar_one_or_none": lambda self: agent})()
+    db = type("DbStub", (), {"execute": AsyncMock(return_value=result)})()
+    token = jwt.encode(
+        {
+            "agent_id": agent.agent_id,
+            "exp": datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(hours=1),
+            "iss": "botcord",
+        },
+        auth.JWT_SECRET,
+        algorithm=auth.JWT_ALGORITHM,
+    )
+    caplog.set_level(logging.WARNING, logger="hub.auth")
+
+    with pytest.raises(I18nHTTPException):
+        await auth.get_dashboard_claimed_agent(
+            request, f"Bearer {token}", None, db
+        )
+
+    assert '"failure": "stale_or_revoked"' in caplog.text
+    assert '"verified_agent_id": "ag_trusted_inbox"' in caplog.text
+    assert token not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("payload", "secret"),
+    [
+        ({"agent_id": "ag_untrusted", "iss": "botcord"}, "wrong-signing-secret"),
+        ({"agent_id": "ag_untrusted", "iss": "not-botcord"}, auth.JWT_SECRET),
+        ({"iss": "botcord"}, auth.JWT_SECRET),
+    ],
+    ids=["wrong-signature", "wrong-issuer", "missing-agent-id"],
+)
+def test_expired_dashboard_token_never_attributes_unverified_principal(
+    payload: dict[str, str],
+    secret: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    request = _request()
+    token = jwt.encode(
+        {
+            **payload,
+            "exp": datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(seconds=1),
+        },
+        secret,
+        algorithm=auth.JWT_ALGORITHM,
+    )
+    monkeypatch.setattr(
+        auth,
+        "verify_supabase_token",
+        lambda _token: (_ for _ in ()).throw(jwt.InvalidTokenError()),
+    )
+    caplog.set_level(logging.WARNING, logger="hub.auth")
+
+    with pytest.raises(I18nHTTPException):
+        auth._parse_dashboard_token(f"Bearer {token}", None, request)
+
+    assert '"failure": "invalid"' in caplog.text
+    assert '"failure": "expired"' not in caplog.text
+    assert getattr(request.state, "verified_agent_id", None) is None
+    assert '"verified_agent_id": null' in caplog.text
+    assert token not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("authorization", "failure"),
+    [(None, "missing"), ("Basic abc", "malformed"), ("Bearer bad", "invalid")],
+)
+def test_dashboard_auth_failure_without_trusted_token_has_no_principal(
+    authorization: str | None,
+    failure: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    request = _request()
+    monkeypatch.setattr(
+        auth,
+        "verify_supabase_token",
+        lambda _token: (_ for _ in ()).throw(jwt.InvalidTokenError()),
+    )
+    caplog.set_level(logging.WARNING, logger="hub.auth")
+
+    with pytest.raises(I18nHTTPException):
+        auth._parse_dashboard_token(authorization, None, request)
+
+    assert f'"failure": "{failure}"' in caplog.text
+    assert '"verified_agent_id": null' in caplog.text
