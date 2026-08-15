@@ -10,6 +10,7 @@ _AGENT_ID = re.compile(r"^ag_[a-z0-9]{8,64}$")
 _KEY_ID = re.compile(r"^k_[a-z0-9]{8,64}$")
 _VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]{1,32})?$")
 _CALLERS = frozenset({"protocol-core"})
+_RETRY_ATTEMPT = re.compile(r"^[0-2]$")
 
 
 def _matching_header(request: Request, name: str, pattern: re.Pattern[str]) -> str | None:
@@ -61,7 +62,7 @@ def auth_failure_context(request: Request, failure: str) -> dict[str, str | None
     }
 
 
-def rate_limit_context(request: Request) -> dict[str, str | None]:
+def rate_limit_context(request: Request) -> dict[str, str | int | None]:
     """Safe correlation metadata for a server-issued 429.
 
     Caller-supplied values are diagnostic hints only; authorization never
@@ -74,4 +75,12 @@ def rate_limit_context(request: Request) -> dict[str, str | None]:
         request.state, "authenticated_agent_id", None
     )
     context["rate_limit_reason"] = getattr(request.state, "rate_limit_reason", None)
+    context["rate_limit_limit"] = getattr(request.state, "rate_limit_limit", None)
+    context["rate_limit_count"] = getattr(request.state, "rate_limit_count", None)
+    context["retry_after_seconds"] = getattr(
+        request.state, "rate_limit_retry_after", None
+    )
+    context["retry_attempt"] = _matching_header(
+        request, "x-botcord-retry-attempt", _RETRY_ATTEMPT
+    )
     return context

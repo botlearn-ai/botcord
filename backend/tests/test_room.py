@@ -3292,6 +3292,7 @@ async def test_slow_mode_basic(client: AsyncClient):
     env2 = _build_envelope(sk_b, b_kid, b_id, room_id, payload={"text": "msg2"})
     resp = await client.post("/hub/send", json=env2, headers=_auth_header(b_token))
     assert resp.status_code == 429
+    assert 1 <= int(resp.headers["Retry-After"]) <= 5
     assert "Slow mode" in resp.json()["detail"]
 
 

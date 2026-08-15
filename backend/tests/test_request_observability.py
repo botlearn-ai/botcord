@@ -73,10 +73,14 @@ def test_rate_limit_context_is_correlatable_without_authorization_material():
         (b"authorization", b"Bearer secret"),
         (b"x-botcord-request-id", b"abcdef0123456789abcdef0123456789"),
         (b"x-botcord-caller", b"protocol-core"),
+        (b"x-botcord-retry-attempt", b"2"),
         (b"user-agent", b"botcord-daemon/1.2.3"),
     ])
     request.state.authenticated_agent_id = "ag_0123456789abcdef"
     request.state.rate_limit_reason = "sender_target_per_minute"
+    request.state.rate_limit_limit = 10
+    request.state.rate_limit_count = 10
+    request.state.rate_limit_retry_after = 42
     context = rate_limit_context(request)
     assert context["failure"] == "rate_limited"
     assert context["client_request_id"] == "abcdef0123456789abcdef0123456789"
@@ -84,6 +88,10 @@ def test_rate_limit_context_is_correlatable_without_authorization_material():
     assert context["caller"] == "protocol-core"
     assert context["authenticated_agent_id"] == "ag_0123456789abcdef"
     assert context["rate_limit_reason"] == "sender_target_per_minute"
+    assert context["rate_limit_limit"] == 10
+    assert context["rate_limit_count"] == 10
+    assert context["retry_after_seconds"] == 42
+    assert context["retry_attempt"] == "2"
     assert "authorization" not in context
     assert "secret" not in json.dumps(context)
 
@@ -111,6 +119,13 @@ def test_user_agent_is_hashed_instead_of_logged_verbatim():
     context = auth_failure_context(_request([(b"user-agent", secret.encode())]), "invalid")
     assert context["user_agent_hash"] == hashlib.sha256(secret.encode()).hexdigest()[:16]
     assert secret not in json.dumps(context)
+
+
+def test_rate_limit_context_rejects_unbounded_retry_attempt():
+    context = rate_limit_context(
+        _request([(b"x-botcord-retry-attempt", b"9999999999")])
+    )
+    assert context["retry_attempt"] is None
 
 
 def test_agent_id_header_cannot_forge_verified_principal():

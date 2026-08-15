@@ -376,6 +376,62 @@ describe("BotCordClient token refresh", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("does not blindly retry a send 429 without Retry-After", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        { detail: "Rate limit exceeded", code: "rate_limit_exceeded" },
+        { status: 429 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    await expect(client.sendMessage("rm_1", "rate limited")).rejects.toMatchObject({
+      status: 429,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("honors Retry-After and identifies a send retry attempt", async () => {
+    vi.useFakeTimers();
+    const attempts: string[] = [];
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      attempts.push((init?.headers as Record<string, string>)["X-BotCord-Retry-Attempt"]);
+      if (attempts.length === 1) {
+        return Response.json(
+          { detail: "Rate limit exceeded", code: "rate_limit_exceeded" },
+          { status: 429, headers: { "Retry-After": "7" } },
+        );
+      }
+      return Response.json({ hub_msg_id: "hub_1" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    const send = client.sendMessage("rm_1", "rate limited");
+    await vi.advanceTimersByTimeAsync(6999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(send).resolves.toMatchObject({ hub_msg_id: "hub_1" });
+    expect(attempts).toEqual(["0", "1"]);
+  });
+
   it.each([
     ["rate_limit_exceeded", "Rate limit exceeded"],
     ["conversation_rate_limit_exceeded", "Conversation rate limit exceeded"],

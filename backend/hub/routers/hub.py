@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import json
 import logging
+import math
 import time
 import uuid
 from typing import Any
@@ -610,9 +611,17 @@ def _check_rate_limit(
     while window and window[0] <= now - 60:
         window.popleft()
     if len(window) >= RATE_LIMIT_PER_MINUTE:
+        retry_after = max(1, math.ceil(60 - (now - window[0])))
         if request is not None:
             request.state.rate_limit_reason = "agent_per_minute"
-        raise I18nHTTPException(status_code=429, message_key="rate_limit_exceeded")
+            request.state.rate_limit_limit = RATE_LIMIT_PER_MINUTE
+            request.state.rate_limit_count = len(window)
+            request.state.rate_limit_retry_after = retry_after
+        raise I18nHTTPException(
+            status_code=429,
+            message_key="rate_limit_exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
     window.append(now)
 
     # --- Per-pair limit (sender → target) ---
@@ -622,12 +631,17 @@ def _check_rate_limit(
         while pair_window and pair_window[0] <= now - 60:
             pair_window.popleft()
         if len(pair_window) >= PAIR_RATE_LIMIT_PER_MINUTE:
+            retry_after = max(1, math.ceil(60 - (now - pair_window[0])))
             if request is not None:
                 request.state.rate_limit_reason = "sender_target_per_minute"
+                request.state.rate_limit_limit = PAIR_RATE_LIMIT_PER_MINUTE
+                request.state.rate_limit_count = len(pair_window)
+                request.state.rate_limit_retry_after = retry_after
             raise I18nHTTPException(
                 status_code=429,
                 message_key="conversation_rate_limit_exceeded",
                 limit=PAIR_RATE_LIMIT_PER_MINUTE,
+                headers={"Retry-After": str(retry_after)},
             )
         pair_window.append(now)
 
@@ -1342,10 +1356,14 @@ def _check_slow_mode(room: Room, member: RoomMember, request: Request | None = N
         if remaining > 0:
             if request is not None:
                 request.state.rate_limit_reason = "room_slow_mode"
+                request.state.rate_limit_limit = room.slow_mode_seconds
+                request.state.rate_limit_count = 1
+                request.state.rate_limit_retry_after = max(1, math.ceil(remaining))
             raise I18nHTTPException(
                 status_code=429,
                 message_key="slow_mode_wait",
                 remaining=f"{remaining:.0f}",
+                headers={"Retry-After": str(max(1, math.ceil(remaining)))},
             )
 
 

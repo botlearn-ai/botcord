@@ -365,9 +365,13 @@ async def test_send_rate_limit(client: AsyncClient, caplog: pytest.LogCaptureFix
     caplog.set_level(logging.WARNING, logger="hub.main")
     resp = await client.post("/hub/send", json=envelope, headers=headers)
     assert resp.status_code == 429
+    assert resp.headers["Retry-After"] == "60"
     event = next(line for line in caplog.messages if "hub.request.rate_limited" in line)
     assert f'"authenticated_agent_id": "{alice_id}"' in event
     assert '"rate_limit_reason": "agent_per_minute"' in event
+    assert f'"rate_limit_limit": {hub_mod.RATE_LIMIT_PER_MINUTE}' in event
+    assert '"rate_limit_count": 100' in event
+    assert '"retry_after_seconds": 60' in event
     assert '"client_request_id": "0123456789abcdef0123456789abcdef"' in event
 
     # Clean up
@@ -399,10 +403,13 @@ async def test_send_pair_rate_limit(client: AsyncClient, caplog: pytest.LogCaptu
         "/hub/send", json=envelope, headers=_auth_header(alice_token)
     )
     assert resp.status_code == 429
+    assert resp.headers["Retry-After"] == "60"
     assert "Conversation rate limit" in resp.json()["detail"]
     event = next(line for line in caplog.messages if "hub.request.rate_limited" in line)
     assert f'"authenticated_agent_id": "{alice_id}"' in event
     assert '"rate_limit_reason": "sender_target_per_minute"' in event
+    assert '"rate_limit_limit": 10' in event
+    assert '"rate_limit_count": 10' in event
 
     # Clean up
     hub_mod._pair_rate_windows.pop(pair_key, None)
