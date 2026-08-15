@@ -35,6 +35,7 @@ import type { AttentionPolicy } from "./should-wake.js";
 
 const MAX_RETRIES = 2;
 const RETRY_BASE_MS = 1000;
+const MAX_RETRY_AFTER_SECONDS = 60 * 60;
 const CLIENT_NAME = "protocol-core";
 const require = createRequire(import.meta.url);
 const CLIENT_VERSION = (require("../package.json") as { version: string }).version;
@@ -59,6 +60,14 @@ function isTerminalRateLimit(body: string): boolean {
   } catch {
     return false;
   }
+}
+
+function parseRetryAfterSeconds(value: string | null): number | null {
+  if (!value || !/^[1-9]\d*$/.test(value)) return null;
+  const seconds = Number(value);
+  return Number.isSafeInteger(seconds) && seconds <= MAX_RETRY_AFTER_SECONDS
+    ? seconds
+    : null;
 }
 
 export interface BotCordClientConfig {
@@ -317,18 +326,20 @@ export class BotCordClient {
         attempt < MAX_RETRIES &&
         !isTerminalRateLimit(body)
       ) {
-        const retryAfter = parseInt(resp.headers.get("Retry-After") || "", 10);
+        const retryAfter = parseRetryAfterSeconds(resp.headers.get("Retry-After"));
         // Sending is non-idempotent from the transport's point of view.  The
         // envelope msg_id lets the Hub deduplicate accepted messages, but it
         // does not make an unsolicited rapid retry safe: a 429 can represent
         // a minute-long limiter window.  Retry sends only when the Hub gives
         // an explicit delay; read-only calls retain the legacy fallback.
-        if (init.method === "POST" && path.startsWith("/hub/send") && !(retryAfter > 0)) {
+        if (init.method === "POST" && path.startsWith("/hub/send") && retryAfter === null) {
           const err = new Error(`BotCord ${path} failed: ${resp.status} ${body}`);
           (err as any).status = resp.status;
           throw err;
         }
-        const delayMs = retryAfter > 0 ? retryAfter * 1000 : RETRY_BASE_MS * (attempt + 1);
+        const delayMs = retryAfter !== null
+          ? retryAfter * 1000
+          : RETRY_BASE_MS * (attempt + 1);
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }

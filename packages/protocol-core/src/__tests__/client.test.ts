@@ -433,6 +433,65 @@ describe("BotCordClient token refresh", () => {
   });
 
   it.each([
+    ["trailing junk", "7junk"],
+    ["fractional seconds", "1.5"],
+    ["HTTP-date", "Wed, 21 Oct 2015 07:28:00 GMT"],
+    ["oversized seconds", "3601"],
+  ])("does not retry a send for %s Retry-After", async (_case, retryAfter) => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        { detail: "Rate limit exceeded", code: "rate_limit_exceeded" },
+        { status: 429, headers: { "Retry-After": retryAfter } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    await expect(client.sendMessage("rm_1", "rate limited")).rejects.toMatchObject({
+      status: 429,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("accepts the maximum safe Retry-After boundary", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { detail: "Rate limit exceeded", code: "rate_limit_exceeded" },
+          { status: 429, headers: { "Retry-After": "3600" } },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json({ hub_msg_id: "hub_1" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    const send = client.sendMessage("rm_1", "rate limited");
+    await vi.advanceTimersByTimeAsync(3_599_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(send).resolves.toMatchObject({ hub_msg_id: "hub_1" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
     ["rate_limit_exceeded", "Rate limit exceeded"],
     ["conversation_rate_limit_exceeded", "Conversation rate limit exceeded"],
     ["slow_mode_wait", "Please wait before sending another message"],
