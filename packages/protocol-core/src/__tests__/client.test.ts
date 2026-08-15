@@ -516,6 +516,31 @@ describe("BotCordClient token refresh", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("treats a leading-zero oversized Retry-After on a read call as oversized", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        { detail: "Rate limit exceeded", code: "rate_limit_exceeded" },
+        { status: 429, headers: { "Retry-After": "03601" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({
+      hubUrl: "https://hub.example",
+      agentId: "ag_test",
+      keyId: "k_test",
+      privateKey,
+      token: "cached-token",
+      tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    await expect(client.pollInbox({ limit: 50 })).rejects.toMatchObject({
+      status: 429,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it.each([
     ["rate_limit_exceeded", "Rate limit exceeded"],
     ["conversation_rate_limit_exceeded", "Conversation rate limit exceeded"],

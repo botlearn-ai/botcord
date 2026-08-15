@@ -68,12 +68,15 @@ type ParsedRetryAfter =
   | { kind: "oversized" };
 
 function parseRetryAfterSeconds(value: string | null): ParsedRetryAfter {
-  if (!value || !/^[1-9]\d*$/.test(value)) {
+  if (!value || !/^\d+$/.test(value)) {
     return { kind: "missing_or_malformed" };
   }
   const seconds = Number(value);
   if (!Number.isSafeInteger(seconds) || seconds > MAX_RETRY_AFTER_SECONDS) {
     return { kind: "oversized" };
+  }
+  if (seconds === 0) {
+    return { kind: "missing_or_malformed" };
   }
   return { kind: "valid", seconds };
 }
