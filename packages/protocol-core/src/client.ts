@@ -62,12 +62,20 @@ function isTerminalRateLimit(body: string): boolean {
   }
 }
 
-function parseRetryAfterSeconds(value: string | null): number | null {
-  if (!value || !/^[1-9]\d*$/.test(value)) return null;
+type ParsedRetryAfter =
+  | { kind: "valid"; seconds: number }
+  | { kind: "missing_or_malformed" }
+  | { kind: "oversized" };
+
+function parseRetryAfterSeconds(value: string | null): ParsedRetryAfter {
+  if (!value || !/^[1-9]\d*$/.test(value)) {
+    return { kind: "missing_or_malformed" };
+  }
   const seconds = Number(value);
-  return Number.isSafeInteger(seconds) && seconds <= MAX_RETRY_AFTER_SECONDS
-    ? seconds
-    : null;
+  if (!Number.isSafeInteger(seconds) || seconds > MAX_RETRY_AFTER_SECONDS) {
+    return { kind: "oversized" };
+  }
+  return { kind: "valid", seconds };
 }
 
 export interface BotCordClientConfig {
@@ -331,14 +339,20 @@ export class BotCordClient {
         // envelope msg_id lets the Hub deduplicate accepted messages, but it
         // does not make an unsolicited rapid retry safe: a 429 can represent
         // a minute-long limiter window.  Retry sends only when the Hub gives
-        // an explicit delay; read-only calls retain the legacy fallback.
-        if (init.method === "POST" && path.startsWith("/hub/send") && retryAfter === null) {
+        // an explicit delay. Read-only calls retain the legacy fallback only
+        // for missing or malformed values; valid-but-oversized delays fail
+        // closed for every call rather than becoming rapid retries.
+        const isSend = init.method === "POST" && path.startsWith("/hub/send");
+        if (
+          retryAfter.kind === "oversized" ||
+          (isSend && retryAfter.kind !== "valid")
+        ) {
           const err = new Error(`BotCord ${path} failed: ${resp.status} ${body}`);
           (err as any).status = resp.status;
           throw err;
         }
-        const delayMs = retryAfter !== null
-          ? retryAfter * 1000
+        const delayMs = retryAfter.kind === "valid"
+          ? retryAfter.seconds * 1000
           : RETRY_BASE_MS * (attempt + 1);
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
