@@ -77,7 +77,7 @@ describe("BotCordClient token refresh", () => {
     expect(inboxRequests[1].headers.Authorization).toBe("Bearer new-token");
     expect(inboxRequests[0].headers).toMatchObject({
       "X-BotCord-Caller": "protocol-core",
-      "X-BotCord-Caller-Version": "0.2.17",
+      "X-BotCord-Caller-Version": "0.2.18",
       "X-BotCord-Agent-ID": "ag_test",
       "X-BotCord-Credential-Key-ID": "k_test",
     });
@@ -91,7 +91,7 @@ describe("BotCordClient token refresh", () => {
     expect(refreshRequest?.headers["X-BotCord-Request-ID"]).toBe(
       inboxRequests[0].headers["X-BotCord-Request-ID"],
     );
-    expect(refreshRequest?.headers["X-BotCord-Caller-Version"]).toBe("0.2.17");
+    expect(refreshRequest?.headers["X-BotCord-Caller-Version"]).toBe("0.2.18");
   });
 
   it("single-flights concurrent refreshes and shares the new generation across clients", async () => {

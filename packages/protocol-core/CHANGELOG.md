@@ -1,5 +1,12 @@
 # @botcord/protocol-core
 
+## 0.2.18
+
+### Patch Changes
+
+- c46b7f7: Correlate REST 401 recovery, token refresh coordination diagnostics, and control-request retries with one privacy-safe request ID.
+- 1c04014: Coordinate token generations across in-process clients that share agent credentials, serialize refreshes, and expose privacy-safe auth diagnostics.
+
 ## 0.2.17
 
 ### Patch Changes
