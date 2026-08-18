@@ -3,7 +3,11 @@
  * Used when a runtime-native session is discarded and the same turn is retried
  * in a fresh session.
  */
-import { BotCordClient, loadStoredCredentials } from "@botcord/protocol-core";
+import {
+  BotCordClient,
+  loadStoredCredentials,
+  updateCredentialsToken,
+} from "@botcord/protocol-core";
 import { sanitizeUntrustedContent } from "./gateway/index.js";
 import type { GatewayInboundMessage } from "./gateway/index.js";
 
@@ -100,6 +104,13 @@ export function createRecentRoomMessagesRecoveryBuilder(
           ? { tokenExpiresAt: creds.tokenExpiresAt }
           : {}),
       });
+      client.onTokenRefresh = (token, expiresAt) => {
+        try {
+          updateCredentialsToken(credsPath, token, expiresAt);
+        } catch {
+          // Persistence failures are non-fatal; the next refresh retries.
+        }
+      };
       clients.set(accountId, { client, credentialsPath: credsPath });
       return client;
     } catch (err) {
