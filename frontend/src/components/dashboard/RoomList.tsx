@@ -103,7 +103,7 @@ function UnreadBadge({ count }: { count: number }) {
   return (
     <span
       ref={badgeRef}
-      className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold leading-none text-text-primary shadow-[0_0_10px_rgba(34,211,238,0.55)]"
+      className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold leading-none text-[var(--color-on-accent)] shadow-[0_0_10px_rgba(34,211,238,0.55)]"
     >
       {formatUnreadCount(count)}
     </span>

@@ -20,6 +20,10 @@
 
 html[data-theme="dark"] {
   color-scheme: dark;
+  /* Foreground for filled neon-accent surfaces (unread pills, badges). The
+   * accent flips from bright neon on dark to a deep teal on light, so the text
+   * on top has to flip the other way. */
+  --color-on-accent: #0a0a0f;
   --liquid-canvas:
     radial-gradient(circle at 12% 8%, rgba(0, 240, 255, 0.11), transparent 30%),
     radial-gradient(circle at 85% 13%, rgba(139, 92, 246, 0.10), transparent 29%),
@@ -38,6 +42,7 @@ html[data-theme="dark"] {
 
 html[data-theme="light"] {
   color-scheme: light;
+  --color-on-accent: #ffffff;
   --color-deep-black: #eef3f9;
   --color-deep-black-light: rgba(255, 255, 255, 0.72);
   --color-neon-cyan: #007b93;
@@ -68,6 +73,58 @@ html[data-theme="light"] {
   --color-zinc-200: #2c3e54;
   --color-zinc-100: #17283d;
   --color-white: #17283d;
+
+  /*
+   * Semantic status colors (danger / warning / success / info) are used as raw
+   * Tailwind palette classes across the dashboard — `text-red-400`,
+   * `bg-amber-400/10`, `border-emerald-400/30` and friends. Those shades were
+   * picked to glow on a near-black canvas; on the light canvas they wash out
+   * (text-red-400 lands around 2.5:1 against white). Tailwind v4 resolves each
+   * of them to `var(--color-<name>-<shade>)`, so remapping the shades actually
+   * in use shifts every occurrence at once — including the `color-mix`-based
+   * `/10` and `/40` tints, which stay correctly pale because they are mixed
+   * from the new darker base.
+   *
+   * The mapping keeps hue and moves each shade down the official Tailwind
+   * ramp (200-400 -> 700/800, 500 -> 600) so contrast on a light surface lands
+   * above 4.5:1 while solid dots and fills read darker rather than neon.
+   */
+  --color-red-200: #991b1b;
+  --color-red-300: #b91c1c;
+  --color-red-400: #b91c1c;
+  --color-red-500: #dc2626;
+  --color-orange-300: #c2410c;
+  --color-orange-400: #c2410c;
+  --color-orange-500: #ea580c;
+  --color-amber-100: #78350f;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #b45309;
+  --color-amber-500: #d97706;
+  --color-yellow-100: #713f12;
+  --color-yellow-200: #854d0e;
+  --color-yellow-300: #a16207;
+  --color-yellow-400: #a16207;
+  --color-yellow-500: #ca8a04;
+  --color-green-300: #15803d;
+  --color-green-400: #16a34a;
+  --color-green-500: #16a34a;
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #047857;
+  --color-emerald-500: #059669;
+  --color-teal-300: #0f766e;
+  --color-cyan-200: #155e75;
+  --color-cyan-300: #0e7490;
+  --color-cyan-400: #0e7490;
+  --color-cyan-500: #0891b2;
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0369a1;
+  --color-sky-500: #0284c7;
+  --color-blue-400: #1d4ed8;
+  --color-rose-300: #be123c;
+  --color-rose-400: #be123c;
+  --color-pink-500: #db2777;
 
   --liquid-canvas:
     radial-gradient(circle at 10% 4%, rgba(0, 149, 182, 0.14), transparent 31%),

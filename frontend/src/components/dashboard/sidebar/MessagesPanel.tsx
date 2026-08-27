@@ -373,7 +373,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
               <span className={`text-sm font-medium ${messagesShowRequests ? "text-neon-cyan" : "text-text-primary"}`}>
                 {locale === "zh" ? "新好友申请" : "New Requests"}
               </span>
-              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-text-primary">
+              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-[var(--color-on-accent)]">
                 {pendingRequestCount}
               </span>
             </div>

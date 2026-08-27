@@ -248,7 +248,7 @@ export default function ContactRequestsInbox({
                                 {group.agentId}
                               </p>
                             </div>
-                            <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-black">
+                            <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-[var(--color-on-accent)]">
                               {group.approvals.length}
                             </span>
                             <ChevronDown

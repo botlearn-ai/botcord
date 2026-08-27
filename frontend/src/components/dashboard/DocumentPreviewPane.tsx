@@ -304,7 +304,7 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
           title={title}
           sandbox="allow-popups"
           srcDoc={content}
-          className="h-full w-full border-0 bg-white"
+          className="h-full w-full border-0 bg-[#ffffff]"
         />
       );
     }

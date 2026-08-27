@@ -1314,7 +1314,7 @@ function FeishuAddForm({
           <div className="space-y-2">
             <div className="text-xs text-text-secondary">{statusText[status]}</div>
             {phase === "scanning" && qrcodeUrl ? (
-              <div className="inline-block rounded-xl border border-glass-border bg-white p-3">
+              <div className="inline-block rounded-xl border border-glass-border bg-[#ffffff] p-3">
                 <QRCodeSVG value={qrcodeUrl} size={176} />
               </div>
             ) : null}
@@ -1739,7 +1739,7 @@ function WechatAddForm({
               <WechatLoginExpiryNotice remainingMs={loginRemainingMs} />
             </div>
             {qrcodeUrl ? (
-              <div className="inline-flex h-44 w-44 items-center justify-center rounded-md border border-glass-border bg-white p-2">
+              <div className="inline-flex h-44 w-44 items-center justify-center rounded-md border border-glass-border bg-[#ffffff] p-2">
                 <QRCodeSVG
                   value={qrcodeUrl}
                   size={160}
@@ -2532,7 +2532,7 @@ function GatewayEditForm({
                   {wechatStatusText[wechatStatus]}
                 </div>
                 {wechatQrcodeUrl ? (
-                  <div className="inline-flex h-36 w-36 items-center justify-center rounded-md border border-glass-border bg-white p-2">
+                  <div className="inline-flex h-36 w-36 items-center justify-center rounded-md border border-glass-border bg-[#ffffff] p-2">
                     <QRCodeSVG
                       value={wechatQrcodeUrl}
                       size={128}
