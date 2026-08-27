@@ -303,8 +303,7 @@ export default function PolicySettingsClient() {
     return (
       <div className="max-w-3xl">
         <Header />
-        <SkeletonCard />
-        <SkeletonCard />
+        <PolicyFormSkeleton />
       </div>
     );
   }
@@ -344,10 +343,7 @@ export default function PolicySettingsClient() {
       ) : null}
 
       {!policy || loadingPolicy ? (
-        <>
-          <SkeletonCard />
-          <SkeletonCard />
-        </>
+        <PolicyFormSkeleton />
       ) : (
         <PolicyForm policy={policy} saving={saving} onPatch={apply} />
       )}
@@ -372,16 +368,38 @@ function Header({ right }: { right?: React.ReactNode }) {
   );
 }
 
-function SkeletonCard() {
+/**
+ * Mirrors `PolicyForm`: a three-tile summary row followed by the two `Card`
+ * sections, so the loading frame has the same shape as the loaded form.
+ */
+function PolicyFormSkeleton() {
   return (
-    <section className="mb-6 animate-pulse rounded-2xl border border-glass-border bg-glass-bg/40 p-6">
-      <div className="mb-4 h-4 w-32 rounded bg-glass-bg" />
-      <div className="space-y-2">
-        <div className="h-10 rounded bg-glass-bg/70" />
-        <div className="h-10 rounded bg-glass-bg/70" />
-        <div className="h-10 rounded bg-glass-bg/70" />
+    <>
+      <div className="mb-6 grid gap-3 md:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, idx) => (
+          <div key={idx} className="rounded-xl border border-glass-border px-3 py-3">
+            <div className="mb-1 flex items-center gap-1.5">
+              <div className="dashboard-skeleton-block h-4 w-4 rounded" />
+              <div className="dashboard-skeleton-block h-2.5 w-16 rounded" />
+            </div>
+            <div className="dashboard-skeleton-block h-4 w-24 rounded" />
+          </div>
+        ))}
       </div>
-    </section>
+      {Array.from({ length: 2 }).map((_, idx) => (
+        <section key={idx} className="mb-6 rounded-2xl border border-glass-border bg-glass-bg/40 p-6">
+          <header className="mb-4">
+            <div className="dashboard-skeleton-block h-4 w-32 rounded" />
+            <div className="dashboard-skeleton-block mt-2 h-3 w-4/5 rounded" />
+          </header>
+          <div className="space-y-2">
+            <div className="dashboard-skeleton-block h-10 rounded-lg" />
+            <div className="dashboard-skeleton-block h-10 rounded-lg" />
+            <div className="dashboard-skeleton-block h-10 rounded-lg" />
+          </div>
+        </section>
+      ))}
+    </>
   );
 }
 
