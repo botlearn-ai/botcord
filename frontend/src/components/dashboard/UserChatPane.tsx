@@ -580,7 +580,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
         <button
           type="button"
           onClick={() => setActionMenuOpenId((current) => current === msg.clientId ? null : msg.clientId)}
-          className={`flex h-6 w-6 items-center justify-center rounded-lg text-text-secondary hover:bg-glass-bg hover:text-text-primary transition-colors ${visible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`liquid-message-action flex h-8 w-8 items-center justify-center rounded-xl text-text-secondary transition-colors ${visible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           aria-label="More actions"
         >
           <MoreHorizontal className="h-3.5 w-3.5" />

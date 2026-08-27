@@ -371,7 +371,7 @@ export default function RoomList({
   }
 
   return (
-    <div ref={roomListRef} className="py-1">
+    <div ref={roomListRef} className="py-2">
       {showUserChatEntry && (
         <div
           ref={userChatEntryRef}
@@ -382,12 +382,12 @@ export default function RoomList({
           title={t.userChatTooltip}
           onClick={handleSelectUserChat}
           onKeyDown={handleUserChatKeyDown}
-          className={`liquid-list-row relative w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
+          className={`liquid-list-row liquid-room-row relative mx-2 my-1 rounded-2xl px-3 py-3 text-left transition-[transform,background-color,border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
             messagesPane === "user-chat"
-              ? "!border-neon-cyan !bg-neon-cyan/10"
+              ? "liquid-room-row-selected"
               : isOwnerChatEmpty
-                ? "!border-neon-cyan/50 !bg-neon-cyan/[0.06]"
-                : "border-transparent hover:bg-glass-bg"
+                ? "liquid-room-row-attention"
+                : ""
           }`}
         >
           <div className="flex items-center gap-3">
@@ -483,10 +483,10 @@ export default function RoomList({
             onMouseEnter={() => prefetchRoom(room)}
             onFocus={() => prefetchRoom(room)}
             onKeyDown={(event) => handleRoomKeyDown(event, room)}
-            className={`liquid-list-row w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
+            className={`liquid-list-row liquid-room-row mx-2 my-1 rounded-2xl px-3 py-3 text-left transition-[transform,background-color,border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
               isSelected
-                ? "!border-neon-cyan !bg-neon-cyan/10"
-                : "border-transparent hover:bg-glass-bg"
+                ? "liquid-room-row-selected"
+                : ""
             }`}
           >
             <div className="flex items-center gap-3">

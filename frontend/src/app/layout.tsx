@@ -33,7 +33,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#08111f",
+  themeColor: "#eef3f9",
 };
 
 export default function RootLayout({
@@ -42,16 +42,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" data-theme="light" suppressHydrationWarning className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <head>
         <Script id="botcord-theme" strategy="beforeInteractive">
           {`try {
             const stored = JSON.parse(localStorage.getItem("app-storage") || "{}");
             const theme = stored && stored.state && stored.state.theme;
-            if (theme === "light" || theme === "dark") {
-              document.documentElement.dataset.theme = theme;
-              document.documentElement.style.colorScheme = theme;
-            }
+            const resolvedTheme = theme === "dark" || theme === "light" ? theme : "light";
+            document.documentElement.dataset.theme = resolvedTheme;
+            document.documentElement.style.colorScheme = resolvedTheme;
+            const themeColor = document.querySelector('meta[name="theme-color"]');
+            if (themeColor) themeColor.content = resolvedTheme === "light" ? "#eef3f9" : "#08111f";
           } catch {}`}
         </Script>
       </head>

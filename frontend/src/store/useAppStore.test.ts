@@ -3,7 +3,11 @@ import { useAppStore } from "@/store/useAppStore";
 
 describe("useAppStore theme preference", () => {
   beforeEach(() => {
-    useAppStore.setState({ language: "en", theme: "dark" });
+    useAppStore.setState({ language: "en", theme: "light" });
+  });
+
+  it("defaults to the light theme", () => {
+    expect(useAppStore.getInitialState().theme).toBe("light");
   });
 
   it("switches between the persisted dark and light theme values", () => {
