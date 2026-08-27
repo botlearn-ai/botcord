@@ -43,7 +43,7 @@ const toneClasses = {
   cyan: "bg-neon-cyan/10 text-neon-cyan",
   green: "bg-neon-green/10 text-neon-green",
   purple: "bg-neon-purple/10 text-neon-purple",
-  zinc: "bg-zinc-700/50 text-zinc-300",
+  zinc: "bg-glass-bg/70 text-text-secondary",
 };
 
 export default function DashboardMultiSelect({
@@ -273,7 +273,7 @@ export default function DashboardMultiSelect({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((next) => !next)}
-        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-left text-sm text-text-primary transition-colors hover:border-neon-cyan/30 disabled:cursor-not-allowed disabled:opacity-50"
+        className="liquid-input flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-glass-border px-3 py-2 text-left text-sm text-text-primary transition-colors hover:border-neon-cyan/30 disabled:cursor-not-allowed disabled:opacity-50"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={`${id}-panel`}
@@ -298,7 +298,7 @@ export default function DashboardMultiSelect({
               {selectedOptions.length > 3 ? (
                 <span
                   ref={overflowChipRef}
-                  className="inline-block origin-center rounded border border-glass-border bg-deep-black-light px-2 py-0.5 text-xs text-text-secondary"
+                  className="inline-block origin-center rounded border border-glass-border bg-glass-bg/70 px-2 py-0.5 text-xs text-text-secondary"
                 >
                   +{selectedOptions.length - 3}
                 </span>
@@ -318,10 +318,10 @@ export default function DashboardMultiSelect({
         <div
           ref={panelRef}
           id={`${id}-panel`}
-          className={`absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-xl border border-glass-border bg-deep-black-light shadow-2xl shadow-black/40 ${panelClassName}`}
+          className={`liquid-menu absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-xl border border-glass-border ${panelClassName}`}
         >
           <div className="border-b border-glass-border p-2">
-            <div className="flex items-center gap-2 rounded-lg border border-glass-border bg-deep-black px-2.5">
+            <div className="liquid-input flex items-center gap-2 rounded-lg border border-glass-border px-2.5">
               <Search className="h-3.5 w-3.5 text-text-secondary/70" />
               <input
                 ref={searchRef}
@@ -364,8 +364,8 @@ export default function DashboardMultiSelect({
                         aria-selected={selected}
                         onClick={() => toggle(option.value)}
                         data-dashboard-multi-option
-                        className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${
-                          selected ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-primary hover:bg-glass-bg"
+                        className={`liquid-list-row flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${
+                          selected ? "!bg-neon-cyan/10 text-neon-cyan" : "text-text-primary hover:bg-glass-bg"
                         }`}
                       >
                         <span
@@ -376,7 +376,7 @@ export default function DashboardMultiSelect({
                           className={`flex h-4 w-4 shrink-0 origin-center items-center justify-center rounded border ${
                             selected
                               ? "border-neon-cyan bg-neon-cyan text-deep-black"
-                              : "border-glass-border bg-deep-black-light"
+                              : "border-glass-border bg-glass-bg/70"
                           }`}
                         >
                           {selected ? <Check className="h-3 w-3" /> : null}

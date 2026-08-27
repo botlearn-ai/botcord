@@ -580,18 +580,18 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
         <button
           type="button"
           onClick={() => setActionMenuOpenId((current) => current === msg.clientId ? null : msg.clientId)}
-          className={`flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors ${visible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`flex h-6 w-6 items-center justify-center rounded-lg text-text-secondary hover:bg-glass-bg hover:text-text-primary transition-colors ${visible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           aria-label="More actions"
         >
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
         {menuOpen && (
-          <div className={`absolute top-full mt-1 z-30 min-w-[96px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl ${alignRight ? "right-0" : "left-0"}`}>
+          <div className={`liquid-menu absolute top-full z-30 mt-1 min-w-[96px] rounded-xl border border-glass-border bg-deep-black-light py-1 shadow-xl ${alignRight ? "right-0" : "left-0"}`}>
             {canReply && (
               <button
                 type="button"
                 onMouseDown={(event) => { event.preventDefault(); handleReply(msg); }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
               >
                 <CornerUpLeft className="h-3.5 w-3.5 text-zinc-500" />
                 {replyLabel}
@@ -600,7 +600,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
             <button
               type="button"
               onMouseDown={(event) => { event.preventDefault(); handleForward(msg); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
             >
               <Forward className="h-3.5 w-3.5 text-zinc-500" />
               {forwardLabel}
@@ -608,7 +608,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
             <button
               type="button"
               onMouseDown={(event) => { event.preventDefault(); void handleCopy(msg); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
             >
               {copied ? (
                 <Check className="h-3.5 w-3.5 text-emerald-400" />
@@ -665,10 +665,10 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   };
 
   return (
-    <div className="relative flex h-full min-w-0">
+    <div className="dashboard-main relative flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800 max-md:px-3">
+      <div className="liquid-toolbar flex items-center gap-2 border-b border-glass-border px-4 py-3 max-md:px-3">
         <button
           type="button"
           onClick={handleMobileBack}
@@ -688,7 +688,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
           <PanelLeftOpen className="h-4 w-4" />
         </button>
         <MessageSquare className="w-4 h-4 text-cyan-400" />
-        <h2 className="min-w-0 truncate text-sm font-medium text-zinc-200">
+        <h2 className="min-w-0 truncate text-sm font-medium text-text-primary">
           {chatRoomName || "Agent"}
         </h2>
         <div className="ml-auto flex items-center gap-2">
@@ -761,7 +761,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 className="space-y-1.5"
               >
                 <div className="flex justify-start">
-                  <div className="max-w-[75%] rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
+                  <div className="liquid-message liquid-message-error max-w-[75%] rounded-2xl border px-3 py-2 text-sm text-text-primary">
                     <div className="mb-1 flex items-center gap-1.5">
                       <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-purple-400/30 bg-purple-400/10 text-purple-300">
                         <Bot className="h-2.5 w-2.5" />
@@ -839,9 +839,9 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 onMouseLeave={() => { setHoveredActionId(null); setActionMenuOpenId(null); }}
               >
                 {renderMessageActions(msg, true)}
-                <div className="max-w-[75%] rounded-lg px-3 py-2 text-sm bg-cyan-500/20 text-cyan-100 border border-cyan-500/30">
+                <div className="liquid-message liquid-message-own max-w-[75%] rounded-2xl border px-3 py-2 text-sm text-text-primary">
                   <div className="mb-1 flex items-center justify-end gap-1.5">
-                    <span className="text-xs font-medium text-cyan-100/90">
+                    <span className="text-xs font-medium text-neon-cyan">
                       {msg.senderName}
                     </span>
                     <span
@@ -916,16 +916,16 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 >
                   {isUser && renderMessageActions(msg, true)}
                   <div
-                    className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
+                    className={`liquid-message max-w-[75%] rounded-2xl border px-3 py-2 text-sm ${
                       isUser
-                        ? "bg-cyan-500/20 text-cyan-100 border border-cyan-500/30"
-                        : "bg-zinc-800 text-zinc-200 border border-zinc-700"
+                        ? "liquid-message-own text-text-primary"
+                        : "liquid-message-peer text-text-primary"
                     }`}
                   >
                     <div className={`mb-1 flex items-center gap-1.5 ${isUser ? "justify-end" : ""}`}>
                       {isUser ? (
                         <>
-                          <span className="text-xs font-medium text-cyan-100/90">
+                          <span className="text-xs font-medium text-neon-cyan">
                             {msg.senderName}
                           </span>
                           <span
@@ -945,7 +945,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                           >
                             <Bot className="h-2.5 w-2.5" />
                           </span>
-                          <span className="text-xs font-medium text-zinc-300">
+                          <span className="text-xs font-medium text-text-primary">
                             {msg.senderName}
                           </span>
                           {chatAgentId && (
@@ -1007,7 +1007,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
         {/* Typing indicator (only when no streaming message exists) */}
         {agentTyping && !hasStreamingMsg && (
           <div ref={typingIndicatorRef} className="flex justify-start">
-            <div className="rounded-lg px-3 py-2 bg-zinc-800 border border-zinc-700">
+            <div className="liquid-message liquid-message-peer rounded-2xl border px-3 py-2">
               <div className="flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
                 <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
@@ -1020,7 +1020,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       </div>
 
       {/* Input */}
-      <div className="border-t border-zinc-800 px-4 py-3">
+      <div className="liquid-toolbar border-t border-glass-border px-4 py-3">
         <div className="flex flex-col gap-1">
           {replyingTo && (
             <OwnerChatReplyingToBar

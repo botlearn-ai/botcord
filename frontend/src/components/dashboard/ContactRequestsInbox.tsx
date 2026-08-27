@@ -157,7 +157,7 @@ export default function ContactRequestsInbox({
   return (
     <div className="flex h-full flex-col">
       {(title || !hideTabs) && (
-        <div className="flex items-center justify-between gap-3 border-b border-glass-border px-5 py-3">
+        <div className="liquid-toolbar flex items-center justify-between gap-3 border-b border-glass-border px-5 py-3">
           {title ? <div className="min-w-0 text-sm font-semibold text-text-primary">{title}</div> : <span />}
           {!hideTabs ? (
             <div className="inline-flex items-center gap-1 rounded-full border border-glass-border bg-glass-bg/50 p-0.5">
@@ -227,7 +227,7 @@ export default function ContactRequestsInbox({
                       return (
                         <div
                           key={group.agentId}
-                          className="overflow-hidden rounded-2xl border border-glass-border bg-deep-black-light"
+                          className="liquid-card overflow-hidden rounded-2xl border border-glass-border"
                         >
                           <button
                             type="button"
@@ -362,7 +362,7 @@ function ReceivedRequestCard({
   const isHuman = isHumanId(req.from_agent_id);
   const initial = (req.from_display_name || req.from_agent_id).trim().charAt(0).toUpperCase();
   return (
-    <div className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
+    <div className="liquid-card rounded-2xl border border-glass-border p-4">
       <div className="flex items-start gap-3">
         {isHuman ? (
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neon-purple/15 text-sm font-semibold text-neon-purple">

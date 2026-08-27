@@ -84,12 +84,12 @@ export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
   }, []);
 
   return (
-    <div ref={overlayRef} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+    <div ref={overlayRef} className="liquid-scrim fixed inset-0 z-[90] flex items-center justify-center p-4">
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-2xl rounded-[28px] border border-glass-border bg-deep-black-light p-8 shadow-2xl"
+        className="liquid-dialog w-full max-w-2xl rounded-[28px] p-8"
       >
         <div data-agent-gate-part className="mx-auto max-w-xl text-center">
           <p className="text-[11px] font-bold uppercase tracking-[0.32em] text-neon-cyan/80">
@@ -103,7 +103,7 @@ export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
           </p>
         </div>
 
-        <div data-agent-gate-part className="mt-6 rounded-2xl border border-glass-border bg-deep-black p-4">
+        <div data-agent-gate-part className="liquid-card mt-6 rounded-2xl p-4">
           {isResolving ? (
             <div className="flex items-center gap-3 text-sm text-text-secondary">
               <Loader2 className="h-4 w-4 animate-spin text-neon-cyan" />

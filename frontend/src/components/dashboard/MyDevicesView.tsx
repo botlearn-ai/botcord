@@ -62,7 +62,7 @@ export default function MyDevicesView() {
               <button
                 key={device.id}
                 onClick={() => setSelectedDeviceId(device.id)}
-                className="w-full rounded-2xl border border-glass-border bg-deep-black-light p-5 text-left transition-colors hover:border-neon-cyan/40"
+                className="liquid-card w-full rounded-2xl border border-glass-border p-5 text-left transition-colors hover:border-neon-cyan/40"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-start gap-3">

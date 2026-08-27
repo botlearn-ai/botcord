@@ -103,7 +103,7 @@ function UnreadBadge({ count }: { count: number }) {
   return (
     <span
       ref={badgeRef}
-      className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold leading-none text-black shadow-[0_0_10px_rgba(34,211,238,0.55)]"
+      className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold leading-none text-text-primary shadow-[0_0_10px_rgba(34,211,238,0.55)]"
     >
       {formatUnreadCount(count)}
     </span>
@@ -382,11 +382,11 @@ export default function RoomList({
           title={t.userChatTooltip}
           onClick={handleSelectUserChat}
           onKeyDown={handleUserChatKeyDown}
-          className={`relative w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
+          className={`liquid-list-row relative w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
             messagesPane === "user-chat"
-              ? "border-neon-cyan bg-neon-cyan/10"
+              ? "!border-neon-cyan !bg-neon-cyan/10"
               : isOwnerChatEmpty
-                ? "border-neon-cyan/50 bg-neon-cyan/[0.06]"
+                ? "!border-neon-cyan/50 !bg-neon-cyan/[0.06]"
                 : "border-transparent hover:bg-glass-bg"
           }`}
         >
@@ -423,7 +423,7 @@ export default function RoomList({
         </div>
       )}
       {displayRooms.length === 0 && !showUserChatEntry && (
-        <div className="p-4 text-center text-xs text-text-secondary">
+        <div className="liquid-empty-state m-3 p-4 text-center text-xs text-text-secondary">
           {t.noRooms}
         </div>
       )}
@@ -483,9 +483,9 @@ export default function RoomList({
             onMouseEnter={() => prefetchRoom(room)}
             onFocus={() => prefetchRoom(room)}
             onKeyDown={(event) => handleRoomKeyDown(event, room)}
-            className={`w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
+            className={`liquid-list-row w-full border-l-2 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
               isSelected
-                ? "border-neon-cyan bg-neon-cyan/10"
+                ? "!border-neon-cyan !bg-neon-cyan/10"
                 : "border-transparent hover:bg-glass-bg"
             }`}
           >

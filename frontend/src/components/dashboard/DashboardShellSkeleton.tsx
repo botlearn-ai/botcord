@@ -40,7 +40,7 @@ function SkeletonRoomList() {
   return (
     <div className="space-y-2 p-3">
       {Array.from({ length: 7 }).map((_, idx) => (
-        <div key={idx} className="rounded-lg border border-glass-border bg-deep-black-light p-3">
+        <div key={idx} className="liquid-card rounded-lg border border-glass-border p-3">
           <SkeletonLine className="h-3 w-2/3" />
           <SkeletonLine className="mt-2 h-2.5 w-1/2 bg-glass-border/40" />
         </div>
@@ -52,7 +52,7 @@ function SkeletonRoomList() {
 function SecondaryPanelSkeleton({ variant }: { variant: ShellSkeletonVariant }) {
   if (variant === "messages") {
     return (
-      <div className="flex h-full w-[200px] shrink-0 flex-col border-r border-glass-border bg-deep-black/50">
+      <div className="liquid-panel flex h-full w-[200px] shrink-0 flex-col border-r border-glass-border">
         <div className="flex h-14 items-center justify-between border-b border-glass-border px-3">
           <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">分组</span>
           <SkeletonLine className="h-3.5 w-3.5 bg-glass-border/50" />
@@ -113,9 +113,9 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
   ] as const;
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-deep-black">
-      <div className="flex h-full bg-deep-black-light">
-        <div className="flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3">
+    <div className="dashboard-root relative flex h-screen overflow-hidden">
+      <div className="liquid-panel flex h-full">
+        <div className="liquid-rail flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border py-3">
           <div className="mb-3 flex h-11 w-11 items-center justify-center">
             <BotCordLoader label="Loading BotCord" size="sm" showLabel={false} />
           </div>

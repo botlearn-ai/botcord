@@ -219,11 +219,11 @@ export default function TopicDrawer() {
       <div
         ref={overlayRef}
         onClick={closeDrawer}
-        className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm md:hidden"
+        className="liquid-scrim fixed inset-0 z-30 backdrop-blur-sm md:hidden"
       />
       <aside
         ref={drawerRef}
-        className="fixed right-0 top-0 z-40 flex h-full w-full max-w-[480px] flex-col border-l border-glass-border bg-deep-black shadow-2xl md:w-[440px]"
+        className="liquid-drawer fixed right-0 top-0 z-40 flex h-full w-full max-w-[480px] flex-col border-l md:w-[440px]"
       >
         <header data-topic-drawer-part className="flex items-start gap-2 border-b border-glass-border/60 px-4 py-3">
           <div className="min-w-0 flex-1">
@@ -243,7 +243,7 @@ export default function TopicDrawer() {
           </div>
           <button
             onClick={closeDrawer}
-            className="rounded-md p-1 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="liquid-action rounded-md p-1 text-text-secondary transition-colors hover:text-text-primary"
             aria-label="Close topic"
           >
             <X className="h-4 w-4" />
@@ -252,7 +252,7 @@ export default function TopicDrawer() {
 
         <div data-topic-drawer-part className="flex-1 overflow-y-auto px-3 py-3">
           {topicMessages.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-text-secondary">
+            <div className="liquid-empty-state flex h-full items-center justify-center rounded-xl text-sm text-text-secondary">
               {t.noMessages}
             </div>
           ) : (

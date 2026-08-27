@@ -58,7 +58,7 @@ function JsonHighlight({ text }: { text: string }) {
           <>
             <span>{indent}</span>
             <span className="text-cyan-400">{key}</span>
-            <span className="text-zinc-500">{colon}</span>
+            <span className="text-text-secondary">{colon}</span>
             <span className={getValueClass(value)}>{value}</span>
           </>
         );
@@ -91,9 +91,9 @@ function getValueClass(value: string): string {
   const v = value.trim().replace(/,\s*$/, "");
   if (v.startsWith('"')) return "text-emerald-400";
   if (v === "true" || v === "false") return "text-amber-400";
-  if (v === "null") return "text-zinc-500 italic";
+  if (v === "null") return "italic text-text-secondary";
   if (/^-?\d/.test(v)) return "text-purple-400";
-  return "text-zinc-400"; // punctuation: {, }, [, ]
+  return "text-text-secondary"; // punctuation: {, }, [, ]
 }
 
 // ---------------------------------------------------------------------------
@@ -116,13 +116,13 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
   return (
     <button
       onClick={handleCopy}
-      className={`p-1 rounded hover:bg-white/10 transition-colors ${className ?? ""}`}
+      className={`liquid-action rounded p-1 transition-colors ${className ?? ""}`}
       title="复制"
     >
       {copied ? (
         <Check className="w-3 h-3 text-emerald-400" />
       ) : (
-        <Copy className="w-3 h-3 text-zinc-500 hover:text-zinc-300" />
+        <Copy className="h-3 w-3 text-text-secondary" />
       )}
     </button>
   );
@@ -173,20 +173,20 @@ function FullScreenOverlay({
   return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[9999] flex flex-col bg-black/90 backdrop-blur-sm"
+      className="liquid-scrim fixed inset-0 z-[9999] flex flex-col backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === e.currentTarget) closeWithMotion();
       }}
     >
-      <div ref={panelRef} role="dialog" aria-modal="true" className="flex min-h-0 flex-1 flex-col">
+      <div ref={panelRef} role="dialog" aria-modal="true" className="liquid-dialog flex min-h-0 flex-1 flex-col rounded-none border-x-0 border-y-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-glass-border bg-zinc-950/80">
+        <div className="liquid-toolbar flex items-center justify-between border-b border-glass-border px-6 py-3">
           <div className="flex items-center gap-3">
             <span className="text-sm font-mono text-emerald-400">{title}</span>
-            <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">
+            <span className="liquid-card rounded px-2 py-0.5 text-xs text-text-secondary">
               {contentType.toUpperCase()}
             </span>
-            <span className="text-xs text-zinc-600">
+            <span className="text-xs text-text-secondary/75">
               {rawText.length.toLocaleString()} 字符
             </span>
           </div>
@@ -194,9 +194,9 @@ function FullScreenOverlay({
             <CopyButton text={rawText} />
             <button
               onClick={closeWithMotion}
-              className="p-1 rounded hover:bg-white/10 transition-colors"
+              className="liquid-action rounded p-1 transition-colors"
             >
-              <X className="w-4 h-4 text-zinc-400 hover:text-zinc-200" />
+              <X className="h-4 w-4 text-text-secondary" />
             </button>
           </div>
         </div>
@@ -236,7 +236,7 @@ function ResultRenderer({
 
   if (contentType === "json") {
     return (
-      <div className="bg-zinc-950/50 rounded-md px-3 py-2 overflow-x-auto">
+      <div className="liquid-tool-surface overflow-x-auto rounded-md px-3 py-2">
         <JsonHighlight text={formattedJson} />
       </div>
     );
@@ -244,7 +244,7 @@ function ResultRenderer({
 
   if (contentType === "markdown") {
     return (
-      <div className={`${fullMode ? "text-sm" : "text-xs"} text-zinc-300`}>
+      <div className={`${fullMode ? "text-sm" : "text-xs"} text-text-primary`}>
         <MarkdownContent content={text} />
       </div>
     );
@@ -252,7 +252,7 @@ function ResultRenderer({
 
   // Plain text
   return (
-    <pre className="text-[11px] text-zinc-400 font-mono bg-zinc-950/50 rounded-md px-3 py-2 overflow-x-auto whitespace-pre-wrap break-words">
+    <pre className="liquid-tool-surface overflow-x-auto rounded-md px-3 py-2 font-mono text-[11px] whitespace-pre-wrap break-words text-text-primary">
       {text}
     </pre>
   );
@@ -305,20 +305,20 @@ export default function ToolResultContent({
     : rawText;
 
   return (
-    <div className="mt-1 ml-5">
+    <div className="liquid-tool-surface mt-1 ml-5 rounded-lg p-1.5">
       {/* Toolbar */}
       <div className="flex items-center gap-1 mb-1">
-        <span className="text-[10px] text-zinc-600 bg-zinc-800/60 px-1.5 py-0.5 rounded">
+        <span className="liquid-card rounded px-1.5 py-0.5 text-[10px] text-text-secondary">
           {contentType === "json" ? "JSON" : contentType === "markdown" ? "Markdown" : "Text"}
         </span>
         <CopyButton text={rawText} />
         {(truncated || rawText.length > 500) && (
           <button
             onClick={() => setFullScreen(true)}
-            className="p-1 rounded hover:bg-white/10 transition-colors"
+            className="liquid-action rounded p-1 transition-colors"
             title="全屏查看"
           >
-            <Maximize2 className="w-3 h-3 text-zinc-500 hover:text-zinc-300" />
+            <Maximize2 className="h-3 w-3 text-text-secondary" />
           </button>
         )}
       </div>

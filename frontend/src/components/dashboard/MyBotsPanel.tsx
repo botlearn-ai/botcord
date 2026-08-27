@@ -46,7 +46,7 @@ function MyBotsPanel() {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="dashboard-main h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-text-primary">{t.pageTitle}</h1>
@@ -57,7 +57,7 @@ function MyBotsPanel() {
 
         {/* Sub-tab pill control + matching create action on the right. */}
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex items-center gap-1 rounded-full border border-glass-border bg-glass-bg/60 p-1">
+          <div className="liquid-tabs inline-flex items-center gap-1 rounded-full border border-glass-border p-1">
             {SUB_TABS.map((tab) => {
               const active = myBotsTab === tab.key;
               return (
@@ -79,7 +79,7 @@ function MyBotsPanel() {
           {myBotsTab === "bots" ? (
             <button
               onClick={handleCreateBot}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
               <Plus className="h-4 w-4" />
               {t.createBot}
@@ -87,7 +87,7 @@ function MyBotsPanel() {
           ) : (
             <button
               onClick={() => setShowAddDevice(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
               <Plus className="h-4 w-4" />
               {t.addDevice}
@@ -156,7 +156,7 @@ function BotsView({
               <button
                 key={agent.agent_id}
                 onClick={() => setBotDetailAgentId(agent.agent_id)}
-                className="rounded-2xl border border-glass-border bg-deep-black-light p-5 text-left transition-colors hover:border-neon-cyan/40"
+                className="liquid-card rounded-2xl border border-glass-border p-5 text-left transition-colors hover:border-neon-cyan/40"
               >
                 <div className="mb-4 flex items-start gap-3">
                   <BotAvatar agentId={agent.agent_id} avatarUrl={agent.avatar_url} size={48} alt={agent.display_name} />
@@ -220,7 +220,7 @@ function BotsView({
 
 function Stat({ label, value, delta }: { label: string; value: number | string; delta?: string }) {
   return (
-    <div className="rounded-lg bg-glass-bg px-2 py-1.5">
+    <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
       <div className="text-[10px] uppercase tracking-wider text-text-secondary/60">{label}</div>
       <div className="flex items-baseline gap-1">
         <span className="text-sm font-semibold text-text-primary">{value}</span>

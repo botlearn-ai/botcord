@@ -159,12 +159,12 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+      className="liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 py-6 backdrop-blur-sm"
       onClick={closeWithAnimation}
     >
       <div
         ref={panelRef}
-        className="relative w-full max-w-2xl overflow-hidden rounded-[28px] shadow-[0_32px_120px_rgba(0,0,0,0.45)]"
+        className="liquid-dialog relative w-full max-w-2xl overflow-hidden rounded-[28px] border"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -173,7 +173,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
         <div className="relative flex max-h-[90vh] flex-col overflow-hidden">
           <button
             onClick={closeWithAnimation}
-            className="absolute right-3 top-3 z-10 rounded-full bg-black/25 p-2 text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+            className="liquid-action absolute right-3 top-3 z-10 rounded-full p-2 text-text-secondary transition-colors hover:text-text-primary"
             aria-label={common[locale].close}
             title={common[locale].close}
           >
@@ -189,7 +189,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
 
             <section className="w-full" data-overlay-section>
               <div
-                className="relative h-56 overflow-hidden rounded-[28px] border border-white/10"
+                className="relative h-56 overflow-hidden rounded-[28px] border border-glass-border"
                 style={{ backgroundImage: roomVisualTheme.patternUrl, backgroundRepeat: "repeat" }}
               >
                 <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(7,10,22,0.18),rgba(7,10,22,0.82))]" />
@@ -198,22 +198,22 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                     <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-neon-cyan/80">{t.shareRoom}</p>
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
-                    <span className="rounded-full bg-black/25 px-3 py-1 text-[11px] font-medium text-white/85 backdrop-blur-sm">{visibilityLabel}</span>
-                    <span className="rounded-full bg-black/25 px-3 py-1 text-[11px] font-medium text-white/85 backdrop-blur-sm">{accessLabel}</span>
+                    <span className="liquid-card rounded-full px-3 py-1 text-[11px] font-medium text-text-primary">{visibilityLabel}</span>
+                    <span className="liquid-card rounded-full px-3 py-1 text-[11px] font-medium text-text-primary">{accessLabel}</span>
                   </div>
                 </div>
                 <div className="absolute inset-x-0 bottom-0 p-5">
                   <div className="space-y-4">
                     <div className="flex items-center gap-4">
                       <div
-                        className="flex h-16 w-16 items-center justify-center rounded-[20px] text-lg font-bold text-white/90 backdrop-blur-sm"
+                        className="liquid-card flex h-16 w-16 items-center justify-center rounded-[20px] text-lg font-bold text-text-primary"
                         style={{ background: roomVisualTheme.accentDim, boxShadow: `0 0 0 1px ${roomVisualTheme.accent}55` }}
                       >
                         {roomInitials}
                       </div>
                       <div className="min-w-0">
-                        <h2 id="share-modal-title" className="truncate text-[34px] font-semibold leading-none text-white">{roomName}</h2>
-                        <p className="mt-3 text-sm leading-6 text-white/72">{t.createShareAssets}</p>
+                        <h2 id="share-modal-title" className="truncate text-[34px] font-semibold leading-none text-text-primary">{roomName}</h2>
+                        <p className="mt-3 text-sm leading-6 text-text-secondary">{t.createShareAssets}</p>
                       </div>
                     </div>
                     {membersLoading ? (
@@ -221,24 +221,24 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                         {Array.from({ length: memberSkeletonCount }, (_, index) => (
                           <div
                             key={`member-skeleton-${index}`}
-                            className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-white/12"
+                            className="liquid-card h-10 w-10 shrink-0 animate-pulse rounded-full"
                           />
                         ))}
-                        <div className="h-10 w-16 shrink-0 animate-pulse rounded-full bg-white/10" />
+                        <div className="liquid-card h-10 w-16 shrink-0 animate-pulse rounded-full" />
                       </div>
                     ) : visibleMembers.length > 0 ? (
                       <div className="flex items-center gap-2 overflow-hidden">
                         {visibleMembers.map((member, index) => (
                           <div
                             key={member.agent_id}
-                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${memberAvatarTones[index % memberAvatarTones.length]} text-xs font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.28)]`}
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${memberAvatarTones[index % memberAvatarTones.length]} text-xs font-semibold text-text-primary`}
                             title={member.display_name}
                           >
                             {initialsFromName(member.display_name || member.agent_id)}
                           </div>
                         ))}
                         {remainingMembers > 0 ? (
-                          <div className="flex h-10 shrink-0 items-center justify-center rounded-full bg-white/[0.08] px-3 text-xs font-semibold text-white/80">
+                          <div className="liquid-card flex h-10 shrink-0 items-center justify-center rounded-full px-3 text-xs font-semibold text-text-primary">
                             +{remainingMembers}
                           </div>
                         ) : null}
@@ -253,7 +253,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                   <div className="space-y-3">
                     <button
                       onClick={() => void handleCopyText(typeof window !== "undefined" ? window.location.href : "", "plain-link")}
-                      className="flex w-full items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
+                      className="liquid-list-row flex w-full items-start justify-between gap-4 rounded-2xl px-4 py-4 text-left transition-colors"
                     >
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5 rounded-xl bg-neon-cyan/12 p-2 text-neon-cyan">
@@ -264,7 +264,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                           <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyCurrentUrlDescription}</p>
                         </div>
                       </div>
-                      <span className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-text-primary/90">
+                      <span className="liquid-card shrink-0 rounded-full px-3 py-1 text-[11px] font-medium text-text-primary/90">
                         {copiedField === "plain-link" ? tc.copied : tc.copy}
                       </span>
                     </button>
@@ -275,7 +275,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                       <button
                         onClick={handleCreate}
                         disabled={loading}
-                        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-neon-cyan/15 px-4 py-3 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-neon-cyan/35 bg-neon-cyan/15 px-4 py-3 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                         {loading ? t.creating : t.createShareLink}
@@ -285,7 +285,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                     <div className="space-y-3">
                       <button
                         onClick={() => void handleCopyPlainLink()}
-                        className="flex w-full items-start justify-between gap-4 rounded-2xl bg-black/20 px-4 py-4 text-left transition-colors hover:bg-white/5"
+                        className="liquid-list-row flex w-full items-start justify-between gap-4 rounded-2xl px-4 py-4 text-left transition-colors"
                       >
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 rounded-xl bg-neon-cyan/12 p-2 text-neon-cyan">
@@ -299,7 +299,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                             ) : null}
                           </div>
                         </div>
-                        <span className="shrink-0 rounded-full bg-white/[0.07] px-3 py-1 text-[11px] font-medium text-text-primary/90">
+                        <span className="liquid-card shrink-0 rounded-full px-3 py-1 text-[11px] font-medium text-text-primary/90">
                           {copiedField === "plain-link" ? tc.copied : tc.copy}
                         </span>
                       </button>
@@ -307,7 +307,7 @@ export default function ShareModal({ roomId, roomName, roomVisibility, canInvite
                   )
                 }
 
-                <div className="rounded-2xl bg-black/20 px-4 py-4">
+                <div className="liquid-card rounded-2xl px-4 py-4">
                   <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                     {entryType === "private_invite" || roomVisibility === "private" ? <Lock className="h-3.5 w-3.5" /> : <Globe2 className="h-3.5 w-3.5" />}
                     {distributionLabel}

@@ -93,12 +93,12 @@ export default function TransferOwnershipDialog({
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-30 flex items-center justify-center bg-black/60 ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-30 flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
-        className="w-[360px] rounded-lg border border-glass-border bg-deep-black-light p-4"
+        className="liquid-dialog w-full max-w-[360px] rounded-xl p-4"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-3 text-sm font-semibold text-text-primary">
@@ -137,7 +137,7 @@ export default function TransferOwnershipDialog({
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
                 placeholder={roomName}
-                className="w-full rounded border border-glass-border bg-deep-black px-2 py-1.5 text-xs text-text-primary placeholder:text-text-secondary/40"
+                className="liquid-input w-full rounded-lg border px-2.5 py-2 text-xs text-text-primary placeholder:text-text-secondary/40"
               />
             </label>
 
@@ -151,7 +151,7 @@ export default function TransferOwnershipDialog({
           <button
             onClick={closeWithMotion}
             disabled={submitting}
-            className="rounded border border-glass-border px-3 py-1.5 text-[11px] text-text-secondary hover:bg-glass-bg"
+            className="liquid-action rounded-lg px-3 py-1.5 text-[11px] text-text-secondary"
           >
             {t.permCancel}
           </button>
@@ -159,7 +159,7 @@ export default function TransferOwnershipDialog({
             <button
               onClick={submit}
               disabled={!confirmArmed || !selected || submitting}
-              className="rounded border border-neon-purple/40 bg-neon-purple/10 px-3 py-1.5 text-[11px] text-neon-purple hover:bg-neon-purple/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="liquid-action rounded-lg border border-neon-purple/40 bg-neon-purple/10 px-3 py-1.5 text-[11px] text-neon-purple hover:bg-neon-purple/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {submitting ? "…" : t.transferOwnership}
             </button>

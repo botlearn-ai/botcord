@@ -496,16 +496,16 @@ export default function AgentSettingsDrawer({
   }, [closeWithMotion]);
 
   return (
-    <div ref={overlayRef} className="fixed inset-0 z-50 bg-black/60" onClick={closeWithMotion}>
+    <div ref={overlayRef} className="liquid-scrim fixed inset-0 z-50" onClick={closeWithMotion}>
       <div
         ref={drawerRef}
         role="dialog"
         aria-modal="true"
-        className="ml-auto flex h-full w-full max-w-[480px] flex-col overflow-hidden border-l border-glass-border bg-deep-black shadow-2xl"
+        className="liquid-drawer ml-auto flex h-full w-full max-w-[480px] flex-col overflow-hidden border-l border-glass-border shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
+        <div className="liquid-toolbar flex items-center justify-between border-b border-glass-border px-6 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold text-text-primary">
               {displayName}
@@ -522,7 +522,7 @@ export default function AgentSettingsDrawer({
         </div>
 
         {/* Tabs */}
-        <div className="flex flex-nowrap overflow-x-auto border-b border-glass-border/60 px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="liquid-tabs flex flex-nowrap overflow-x-auto border-b border-glass-border/60 px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {(["profile", "policy", "schedules", "gateways", "skills", "files"] as Tab[]).map((t) => (
             <button
               key={t}
@@ -604,7 +604,7 @@ export default function AgentSettingsDrawer({
                   onChange={(e) => setNameVal(e.target.value)}
                   disabled={profileSaving}
                   maxLength={128}
-                  className="w-full rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
+                  className="liquid-input w-full rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none transition-colors disabled:opacity-60"
                 />
               </div>
 
@@ -619,7 +619,7 @@ export default function AgentSettingsDrawer({
                   rows={4}
                   maxLength={4000}
                   placeholder={t.profile.bioPlaceholder}
-                  className="w-full resize-none rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
+                  className="liquid-input w-full resize-none rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none transition-colors disabled:opacity-60"
                 />
               </div>
 

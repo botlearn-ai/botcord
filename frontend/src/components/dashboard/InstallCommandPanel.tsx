@@ -98,12 +98,12 @@ export default function InstallCommandPanel({ ticket, onClaimed, onCancel }: Pro
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-glass-border bg-glass-bg/40 p-3">
+      <div className="liquid-card rounded-xl border border-glass-border p-3">
         <p className="mb-2 text-xs text-text-secondary">
           Run this on your OpenClaw host (one-line install + bind):
         </p>
         <div className="flex items-stretch gap-2">
-          <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-lg border border-glass-border bg-deep-black px-3 py-2 font-mono text-xs text-text-primary">
+          <code className="liquid-tool-surface flex-1 overflow-x-auto whitespace-nowrap rounded-lg border border-glass-border px-3 py-2 font-mono text-xs text-text-primary">
             {ticket.installCommand}
           </code>
           <button
@@ -126,7 +126,7 @@ export default function InstallCommandPanel({ ticket, onClaimed, onCancel }: Pro
         </div>
       </div>
 
-      <div className="flex items-center justify-between rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-xs">
+      <div className="liquid-tool-surface flex items-center justify-between rounded-xl border border-glass-border px-3 py-2 text-xs">
         <span className="flex items-center gap-2 text-text-secondary">
           {!expired && <Loader2 className="h-3.5 w-3.5 animate-spin text-neon-cyan" />}
           {statusMessage}

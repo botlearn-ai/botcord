@@ -62,7 +62,7 @@ export default function SearchBar({ onSearch, placeholder }: SearchBarProps) {
       onChange={handleChange}
       onFocus={handleFocus}
       placeholder={resolvedPlaceholder}
-      className="w-full rounded-lg border border-glass-border bg-deep-black-light px-3 py-2 text-sm text-text-primary placeholder-text-secondary/50 outline-none transition-colors focus:border-neon-cyan/50"
+      className="liquid-input w-full rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary placeholder-text-secondary/50 outline-none transition-colors focus:border-neon-cyan/50"
     />
   );
 }

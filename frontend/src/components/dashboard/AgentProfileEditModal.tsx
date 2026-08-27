@@ -124,7 +124,7 @@ export default function AgentProfileEditModal({
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-[110] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeWithMotion();
       }}
@@ -133,13 +133,13 @@ export default function AgentProfileEditModal({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        className="liquid-dialog relative w-full max-w-md rounded-2xl p-5"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <button
           onClick={() => closeWithMotion()}
           disabled={saving}
-          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
         >
           <X className="h-5 w-5" />
         </button>
@@ -166,7 +166,7 @@ export default function AgentProfileEditModal({
                   type="button"
                   onClick={() => setAvatarUrl(url)}
                   disabled={saving}
-                  className={`aspect-square overflow-hidden rounded-full border bg-glass-bg transition-all disabled:opacity-60 ${
+                  className={`liquid-action aspect-square overflow-hidden rounded-full border transition-all disabled:opacity-60 ${
                     selected
                       ? "border-neon-cyan ring-2 ring-neon-cyan/30"
                       : "border-glass-border hover:border-neon-cyan/50"
@@ -189,7 +189,7 @@ export default function AgentProfileEditModal({
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={saving}
             maxLength={128}
-            className="w-full rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
+            className="liquid-input w-full rounded-lg border px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
           />
         </label>
 
@@ -202,7 +202,7 @@ export default function AgentProfileEditModal({
             rows={4}
             maxLength={4000}
             placeholder={tBioPlaceholder}
-            className="w-full resize-none rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
+            className="liquid-input w-full resize-none rounded-lg border px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
           />
         </label>
 
@@ -216,14 +216,14 @@ export default function AgentProfileEditModal({
           <button
             onClick={() => closeWithMotion()}
             disabled={saving}
-            className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+            className="liquid-action rounded-xl px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
           >
             {tCancel}
           </button>
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className="flex items-center gap-2 rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-60"
+            className="liquid-action flex items-center gap-2 rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-60"
           >
             {saving ? (
               <>
@@ -240,7 +240,7 @@ export default function AgentProfileEditModal({
           <button
             onClick={() => setShowUnbind(true)}
             disabled={saving}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 disabled:opacity-60"
+            className="liquid-action flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 disabled:opacity-60"
           >
             <Trash2 className="h-4 w-4" />
             {tDelete}

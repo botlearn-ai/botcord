@@ -164,17 +164,17 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center ${closing ? "pointer-events-none" : ""}`}
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
-        className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-glass-border bg-glass-bg backdrop-blur-xl"
+        className="liquid-dialog relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={closeWithMotion}
-          className="absolute right-4 top-4 z-10 rounded p-1 text-text-secondary hover:text-text-primary"
+          className="liquid-action absolute right-4 top-4 z-10 rounded-lg p-1 text-text-secondary hover:text-text-primary"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M4 4l8 8M12 4l-8 8" />
@@ -190,7 +190,7 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
         <WalletAccountSelector value={selectedViewer} onChange={setSelectedViewer} />
 
         <form id="withdrawForm" onSubmit={handleSubmit} className="space-y-4">
-          <div className="rounded-lg border border-glass-border bg-deep-black-light p-3">
+          <div className="liquid-card rounded-lg p-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-text-secondary">{t.availableBalance}</span>
               <span className="font-mono text-sm font-semibold text-neon-green">
@@ -211,7 +211,7 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
-              className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-purple/50"
+              className="liquid-input w-full rounded-lg border p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-purple/50"
             />
             <button
               type="button"
@@ -232,7 +232,7 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
                 if (value) setDestinationType(value as "bank" | "usdt_trc20" | "paypal");
               }}
               placeholder={t.destinationType}
-              buttonClassName="min-h-11 bg-deep-black-light p-3 focus:border-neon-purple/50 focus:ring-neon-purple/40"
+              buttonClassName="liquid-input min-h-11 p-3 focus:border-neon-purple/50 focus:ring-neon-purple/40"
               options={[
                 { value: "bank", label: t.destinationTypeBank },
                 { value: "usdt_trc20", label: t.destinationTypeUsdt },
@@ -312,7 +312,7 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
             placeholder="Telegram / email / memo"
           />
 
-          <div className="rounded-lg border border-glass-border bg-deep-black-light p-3">
+          <div className="liquid-card rounded-lg p-3">
             <p className="text-xs text-text-secondary">{t.reviewNotice}</p>
             <label className="mt-3 flex items-start gap-2 text-xs text-text-primary">
               <input
@@ -329,12 +329,12 @@ export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBa
         </form>
         </div>
 
-        <div className="shrink-0 border-t border-glass-border bg-glass-bg/40 px-6 py-4">
+        <div className="liquid-toolbar shrink-0 border-t px-6 py-4">
           <button
             form="withdrawForm"
             type="submit"
             disabled={submitting}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-purple/30 bg-neon-purple/10 py-2.5 font-medium text-neon-purple transition-colors hover:bg-neon-purple/20 disabled:opacity-40"
+            className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-purple/30 bg-neon-purple/10 py-2.5 font-medium text-neon-purple transition-colors hover:bg-neon-purple/20 disabled:opacity-40"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {submitting ? t.submitting : t.submitWithdraw}
@@ -367,7 +367,7 @@ function FormField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-purple/50 disabled:opacity-60"
+        className="liquid-input w-full rounded-lg border p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-purple/50 disabled:opacity-60"
       />
     </div>
   );

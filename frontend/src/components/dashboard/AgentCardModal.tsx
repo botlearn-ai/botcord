@@ -232,7 +232,7 @@ export default function AgentCardModal({
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+      className="liquid-scrim fixed inset-0 z-40 flex items-center justify-center p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) handleClose();
       }}
@@ -241,7 +241,7 @@ export default function AgentCardModal({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5"
+        className="liquid-dialog w-full max-w-md rounded-2xl p-5"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div data-profile-modal-part className="mb-3 flex items-start justify-between gap-3">
@@ -259,7 +259,7 @@ export default function AgentCardModal({
           </div>
           <button
             onClick={handleClose}
-            className="rounded border border-glass-border px-2 py-0.5 text-xs text-text-secondary hover:text-text-primary"
+            className="liquid-action rounded-lg px-2 py-1 text-xs text-text-secondary hover:text-text-primary"
           >
             {t.close}
           </button>
@@ -284,7 +284,7 @@ export default function AgentCardModal({
             <p className="text-sm text-red-400">{error}</p>
             <button
               onClick={onRetry}
-              className="w-full rounded-lg border border-glass-border py-2 text-xs text-text-primary transition-colors hover:bg-glass-bg"
+              className="liquid-action w-full rounded-lg py-2 text-xs text-text-primary transition-colors"
             >
               Retry
             </button>
@@ -317,7 +317,7 @@ export default function AgentCardModal({
               <button
                 data-profile-modal-part
                 onClick={onSendMessage}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/10 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
+                className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/10 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
               >
                 {t.sendMessage}
               </button>
@@ -325,7 +325,7 @@ export default function AgentCardModal({
               <button
                 data-profile-modal-part
                 onClick={onSendMessage}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/10 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
+                className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/10 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
               >
                 {t.sendMessage}
               </button>
@@ -336,7 +336,7 @@ export default function AgentCardModal({
                 data-profile-modal-part
                 onClick={onSendFriendRequest}
                 disabled={sendingFriendRequest}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {sendingFriendRequest ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 {sendingFriendRequest ? t.sendingFriendRequest : t.sendFriendRequest}

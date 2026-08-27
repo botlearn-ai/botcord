@@ -100,7 +100,7 @@ function SkillCard({
   sourceDetailLabel: string;
 }) {
   return (
-    <li className="rounded-xl border border-glass-border bg-glass-bg/35 px-3 py-3">
+    <li className="liquid-card rounded-xl border border-glass-border px-3 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -262,11 +262,11 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-xl border border-glass-border bg-glass-bg/30 px-3 py-2">
+        <div className="liquid-card rounded-xl border border-glass-border px-3 py-2">
           <div className="text-[10px] uppercase tracking-normal text-text-secondary/65">{copy.title}</div>
           <div className="mt-1 text-lg font-semibold text-text-primary">{total}</div>
         </div>
-        <div className="rounded-xl border border-glass-border bg-glass-bg/30 px-3 py-2">
+        <div className="liquid-card rounded-xl border border-glass-border px-3 py-2">
           <div className="text-[10px] uppercase tracking-normal text-text-secondary/65">
             {visibleSnapshot?.runtime ? copy.runtime : copy.lastSniffed}
           </div>
@@ -295,7 +295,7 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
           ))}
         </div>
       ) : total === 0 ? (
-        <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-4 py-8 text-center text-sm text-text-secondary">
+        <div className="liquid-empty-state rounded-xl border border-glass-border px-4 py-8 text-center text-sm text-text-secondary">
           {copy.empty}
         </div>
       ) : (

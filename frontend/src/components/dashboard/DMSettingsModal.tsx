@@ -102,10 +102,10 @@ export default function DMSettingsModal({
   }, [confirming, error]);
 
   return (
-    <div ref={overlayRef} className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
+    <div ref={overlayRef} className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
       <div
         ref={panelRef}
-        className="flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
+        className="liquid-dialog flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-xl border"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-glass-border px-6 py-4">
@@ -120,7 +120,7 @@ export default function DMSettingsModal({
           )}
 
           {isOwnAgent ? (
-            <div className="space-y-3">
+            <div className="liquid-card space-y-3 rounded-xl border p-3">
               <div>
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                   {t.displayName}
@@ -135,7 +135,7 @@ export default function DMSettingsModal({
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="liquid-card space-y-3 rounded-xl border p-3">
               <div>
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                   {t.displayName}
@@ -158,7 +158,7 @@ export default function DMSettingsModal({
               ref={removeButtonRef}
               onClick={() => void handleRemove()}
               disabled={removing}
-              className="inline-flex items-center gap-1.5 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+              className="liquid-action inline-flex items-center gap-1.5 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 disabled:opacity-50"
             >
               {removing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {confirming
@@ -168,7 +168,7 @@ export default function DMSettingsModal({
           )}
           <button
             onClick={closeWithMotion}
-            className="ml-auto rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+            className="liquid-action ml-auto rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
           >
             {t.close}
           </button>

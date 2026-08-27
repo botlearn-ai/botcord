@@ -91,7 +91,7 @@ function ActionButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex h-20 w-28 flex-col items-center justify-center gap-2 rounded-2xl border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${cls}`}
+      className={`liquid-action flex h-20 w-28 flex-col items-center justify-center gap-2 rounded-2xl border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${cls}`}
     >
       <Icon className="h-5 w-5" />
       <span className="text-xs font-medium">{label}</span>
@@ -147,8 +147,8 @@ export default function ContactsDetailPane() {
 
   if (!target) {
     return (
-      <div className="flex h-full w-full flex-1 items-center justify-center bg-deep-black px-6">
-        <div className="max-w-md text-center">
+      <div className="dashboard-main flex h-full w-full flex-1 items-center justify-center px-6">
+        <div className="liquid-empty-state max-w-md rounded-2xl border border-glass-border p-6 text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40">
             <UserCircle className="h-6 w-6 text-neon-cyan/80" />
           </div>
@@ -270,11 +270,11 @@ export default function ContactsDetailPane() {
   };
 
   return (
-    <div className="relative flex h-full w-full flex-1 flex-col bg-deep-black">
+    <div className="dashboard-main relative flex h-full w-full flex-1 flex-col">
       <button
         type="button"
         onClick={() => setSelectedContactKey(null)}
-        className="absolute left-2 top-2 hidden h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+        className="liquid-action absolute left-2 top-2 hidden h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
         aria-label="Back to contacts"
         title="Back to contacts"
       >

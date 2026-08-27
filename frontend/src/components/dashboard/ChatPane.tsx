@@ -795,7 +795,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
 
   if (!focusedRoomId) {
     return (
-      <div className="flex flex-1 items-center justify-center overflow-y-auto bg-deep-black px-6 py-10">
+      <div className="dashboard-main flex flex-1 items-center justify-center overflow-y-auto bg-deep-black px-6 py-10">
         <MessagesEmptyState filter={messagesFilter} />
       </div>
     );
@@ -819,7 +819,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
   const loginHref = openedRoom ? `/login?next=${encodeURIComponent(`/chats/messages/${openedRoom.room_id}`)}` : "/login";
 
   return (
-    <div className="flex flex-1 flex-col bg-deep-black overflow-hidden">
+    <div className="dashboard-main flex flex-1 flex-col bg-deep-black overflow-hidden">
       {openedRoomId && <RoomHeader />}
       <div className="min-h-0 flex-1 overflow-hidden flex">
         <div className="min-w-0 flex-1 overflow-hidden flex flex-col">

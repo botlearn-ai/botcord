@@ -1140,7 +1140,7 @@ export default function DashboardApp() {
     || mobileContactsShowsMain;
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
   return (
-    <div className="fixed inset-0 flex overflow-hidden bg-deep-black max-md:flex-col-reverse">
+    <div className="dashboard-root fixed inset-0 flex overflow-hidden bg-deep-black max-md:flex-col-reverse">
       <Sidebar
         sidebarTabOverride={visibleSidebarTab}
         mobileHideSecondary={mobileHideSecondary}

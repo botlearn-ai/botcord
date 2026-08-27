@@ -182,13 +182,13 @@ function AgentBrowser() {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-[320px] min-w-[320px] flex-col border-l border-glass-border bg-deep-black-light">
+    <div className="liquid-panel flex h-full min-h-0 w-[320px] min-w-[320px] flex-col border-l border-glass-border">
       {/* Header */}
-      <div className="shrink-0 flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
+      <div className="liquid-toolbar shrink-0 flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
         <h3 className="text-sm font-semibold text-text-primary">{t.agents}</h3>
         <button
           onClick={() => toggleRightPanel()}
-          className="rounded p-1 text-text-secondary hover:bg-glass-bg hover:text-text-primary"
+          className="liquid-action rounded p-1 text-text-secondary hover:bg-glass-bg hover:text-text-primary"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M3 3l8 8M11 3l-8 8" />
@@ -212,7 +212,7 @@ function AgentBrowser() {
               {activeIdentity?.type === "human" && joinedRoom && (joinedRoom.my_role === "owner" || joinedRoom.my_role === "admin") ? (
                 <button
                   onClick={() => setAddMemberModalOpen(true)}
-                  className="rounded border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 text-[11px] font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15"
+                  className="liquid-action rounded border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 text-[11px] font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15"
                 >
                   {t.addMembersEntry}
                 </button>
@@ -245,7 +245,7 @@ function AgentBrowser() {
                   return (
                     <div
                       key={member.agent_id}
-                      className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-glass-bg"
+                      className="liquid-list-row flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors"
                     >
                       <button
                         onClick={() => selectAgent(member.agent_id)}
@@ -309,7 +309,7 @@ function AgentBrowser() {
                   <button
                     onClick={() => void handleLeaveRoom()}
                     disabled={joinedRoom.my_role === "owner" || isLeavingCurrentRoom}
-                    className="w-full rounded border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+                    className="liquid-action w-full rounded border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-45"
                     title={joinedRoom.my_role === "owner" ? t.ownerCannotLeave : t.leaveRoom}
                   >
                     {isLeavingCurrentRoom ? t.leavingRoom : t.leaveRoom}
@@ -318,7 +318,7 @@ function AgentBrowser() {
                     <button
                       onClick={() => void handleCancelSubscription()}
                       disabled={cancellingSubscriptionId === activeSubscription.subscription_id}
-                      className="w-full rounded border border-yellow-500/35 bg-yellow-500/10 px-3 py-2 text-xs font-medium text-yellow-300 transition-colors hover:bg-yellow-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="liquid-action w-full rounded border border-yellow-500/35 bg-yellow-500/10 px-3 py-2 text-xs font-medium text-yellow-300 transition-colors hover:bg-yellow-500/15 disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       {cancellingSubscriptionId === activeSubscription.subscription_id
                         ? t.cancellingSubscription
@@ -344,7 +344,7 @@ function AgentBrowser() {
                           }
                         }}
                         disabled={mutingRoom}
-                        className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+                        className="liquid-action w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                       >
                         {isMuted ? t.unmuteRoom : t.muteRoom}
                       </button>
@@ -356,7 +356,7 @@ function AgentBrowser() {
                         setRoomActionError(null);
                         setTransferDialogOpen(true);
                       }}
-                      className="w-full rounded border border-neon-purple/35 bg-neon-purple/10 px-3 py-2 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/15"
+                      className="liquid-action w-full rounded border border-neon-purple/35 bg-neon-purple/10 px-3 py-2 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/15"
                     >
                       {t.transferOwnership}
                     </button>
@@ -404,7 +404,7 @@ function AgentBrowser() {
               searchResults.map((agent) => (
                 <div
                   key={agent.agent_id}
-                  className="mb-1 rounded-lg px-2 py-1.5 transition-colors hover:bg-glass-bg"
+                  className="liquid-list-row mb-1 rounded-lg px-2 py-1.5 transition-colors"
                 >
                   <button
                     onClick={() => selectAgent(agent.agent_id)}
@@ -461,7 +461,7 @@ function AgentBrowser() {
               selectedAgentConversations.map((room) => (
                 <div
                   key={room.room_id}
-                  className="mb-1 rounded-lg px-2 py-1.5 transition-colors hover:bg-glass-bg"
+                  className="liquid-list-row mb-1 rounded-lg px-2 py-1.5 transition-colors"
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
                     <button

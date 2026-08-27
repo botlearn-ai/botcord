@@ -56,7 +56,7 @@ export default function TypewriterCode({
       whileInView={{ opacity: 1 }}
       viewport={{ once: true }}
       transition={{ duration: 0.5 }}
-      className="overflow-hidden rounded-xl border border-glass-border bg-deep-black-light"
+      className="liquid-tool-surface overflow-hidden rounded-xl border border-glass-border"
     >
       <div className="flex items-center gap-2 border-b border-glass-border px-4 py-2">
         <div className="h-3 w-3 rounded-full bg-red-500/60" />

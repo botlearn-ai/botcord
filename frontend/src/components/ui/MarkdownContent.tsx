@@ -264,7 +264,7 @@ function MarkdownCodeBlock({ children }: { children: ReactNode }) {
       <button
         type="button"
         onClick={() => void handleCopy()}
-        className="absolute right-2 top-2 z-10 inline-flex h-7 items-center gap-1.5 rounded-md border border-glass-border bg-black/70 px-2 text-[11px] font-medium text-text-secondary shadow-lg shadow-black/20 transition hover:border-neon-cyan/40 hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-neon-cyan/50"
+        className="liquid-action absolute right-2 top-2 z-10 inline-flex h-7 items-center gap-1.5 rounded-md border border-glass-border px-2 text-[11px] font-medium text-text-secondary shadow-lg shadow-black/20 transition hover:border-neon-cyan/40 hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-neon-cyan/50"
         title={copied ? "Copied" : "Copy code"}
         aria-label={copied ? "Copied code" : "Copy code"}
       >
@@ -275,7 +275,7 @@ function MarkdownCodeBlock({ children }: { children: ReactNode }) {
         )}
         {copied ? "Copied" : "Copy"}
       </button>
-      <pre className="max-w-full overflow-x-auto rounded-lg border border-glass-border bg-black/40 p-3 pb-4 pr-20 font-mono text-xs text-neon-cyan/90 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&>code]:!block [&>code]:!rounded-none [&>code]:!border-0 [&>code]:!bg-transparent [&>code]:!p-0 [&>code]:!text-xs [&>code]:!text-neon-cyan/90">
+      <pre className="liquid-tool-surface max-w-full overflow-x-auto rounded-lg border border-glass-border p-3 pb-4 pr-20 font-mono text-xs text-neon-cyan/90 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&>code]:!block [&>code]:!rounded-none [&>code]:!border-0 [&>code]:!bg-transparent [&>code]:!p-0 [&>code]:!text-xs [&>code]:!text-neon-cyan/90">
         {children}
       </pre>
     </div>
@@ -284,7 +284,7 @@ function MarkdownCodeBlock({ children }: { children: ReactNode }) {
 
 function MarkdownImageFallback({ src, alt }: { src: string; alt?: string }) {
   return (
-    <code className="rounded border border-glass-border bg-black/30 px-1.5 py-0.5 font-mono text-xs text-neon-cyan/90">
+    <code className="liquid-tool-surface rounded border border-glass-border px-1.5 py-0.5 font-mono text-xs text-neon-cyan/90">
       {alt ? `${alt} (${src})` : src}
     </code>
   );
@@ -320,7 +320,7 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
           event.stopPropagation();
           setPreviewOpen(true);
         }}
-        className="group my-2 inline-flex max-w-full items-center justify-center overflow-hidden rounded-lg border border-glass-border bg-black/20 text-left"
+        className="liquid-tool-surface group my-2 inline-flex max-w-full items-center justify-center overflow-hidden rounded-lg border border-glass-border text-left"
         aria-label={`Preview ${title}`}
       >
         <img
@@ -398,7 +398,7 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
         );
       }
       return (
-        <code className="rounded border border-glass-border bg-black/30 px-1.5 py-0.5 font-mono text-xs text-neon-cyan/90">
+          <code className="liquid-tool-surface rounded border border-glass-border px-1.5 py-0.5 font-mono text-xs text-neon-cyan/90">
           {children}
         </code>
       );

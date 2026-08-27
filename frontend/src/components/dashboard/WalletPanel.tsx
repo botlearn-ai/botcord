@@ -186,11 +186,11 @@ function WalletPanel() {
       return <DashboardTabSkeleton variant="wallet" />;
     }
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-deep-black gap-3">
+      <div className="dashboard-main flex flex-1 flex-col items-center justify-center gap-3">
         <div className="text-sm text-red-400">{walletsError}</div>
         <button
           onClick={() => void loadAllWallets()}
-          className="rounded border border-glass-border px-4 py-2 text-xs text-text-secondary hover:text-text-primary"
+          className="liquid-action rounded border border-glass-border px-4 py-2 text-xs text-text-secondary hover:text-text-primary"
         >
           {tc.retry}
         </button>
@@ -199,7 +199,7 @@ function WalletPanel() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-deep-black">
+    <div className="dashboard-main h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
@@ -211,7 +211,7 @@ function WalletPanel() {
             onClick={toggleWalletAmountsHidden}
             title={walletAmountsHidden ? "显示金额" : "隐藏金额"}
             aria-label={walletAmountsHidden ? "显示金额" : "隐藏金额"}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border text-text-secondary transition-colors hover:border-neon-cyan/30 hover:text-text-primary"
+            className="liquid-action inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border text-text-secondary transition-colors hover:border-neon-cyan/30 hover:text-text-primary"
           >
             {walletAmountsHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
@@ -219,7 +219,7 @@ function WalletPanel() {
 
         <div className="space-y-6">
           {/* Total disposable card */}
-          <div className="rounded-2xl border border-glass-border bg-glass-bg p-6 backdrop-blur-xl">
+          <div className="liquid-card rounded-2xl border border-glass-border p-6">
             <div className="mb-1 text-xs font-medium uppercase tracking-wider text-text-secondary">
               {t.totalDisposable}
             </div>
@@ -231,7 +231,7 @@ function WalletPanel() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-xl border border-glass-border bg-deep-black-light p-4">
+              <div className="liquid-tool-surface rounded-xl border border-glass-border p-4">
                 <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">
                   {t.humanShare}
                 </div>
@@ -239,7 +239,7 @@ function WalletPanel() {
                   {showAmount(humanShareMinor, walletAmountsHidden)}
                 </div>
               </div>
-              <div className="rounded-xl border border-glass-border bg-deep-black-light p-4">
+              <div className="liquid-tool-surface rounded-xl border border-glass-border p-4">
                 <div className="mb-1 flex items-baseline justify-between gap-2">
                   <span className="text-[10px] font-medium uppercase tracking-wider text-text-secondary">
                     {t.botShare}
@@ -381,7 +381,7 @@ function CtaButton({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center gap-2 rounded-xl border border-glass-border bg-glass-bg p-4 transition-all ${palette.hoverBorder} ${palette.hoverBg}`}
+      className={`liquid-action flex flex-col items-center gap-2 rounded-xl border border-glass-border p-4 transition-all ${palette.hoverBorder} ${palette.hoverBg}`}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={`h-6 w-6 ${palette.iconColor}`}>
         {icon}
@@ -409,12 +409,12 @@ function BotBalancesSection({
   onClickBot: (agentId: string) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl">
+    <div className="liquid-card rounded-2xl border border-glass-border p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-text-primary">{label}</h3>
       </div>
       {ownedAgents.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-glass-border bg-deep-black-light p-4 text-sm text-text-secondary">
+        <div className="liquid-empty-state rounded-xl border border-dashed border-glass-border p-4 text-sm text-text-secondary">
           {empty}
         </div>
       ) : (
@@ -425,7 +425,7 @@ function BotBalancesSection({
               <button
                 key={agent.agent_id}
                 onClick={() => onClickBot(agent.agent_id)}
-                className="flex w-full items-center gap-3 rounded-xl border border-glass-border bg-deep-black-light px-3.5 py-3 text-left transition-colors hover:border-neon-cyan/30 hover:bg-neon-cyan/5"
+                className="liquid-list-row flex w-full items-center gap-3 rounded-xl border border-glass-border px-3.5 py-3 text-left transition-colors hover:border-neon-cyan/30 hover:bg-neon-cyan/5"
               >
                 <BotAvatar agentId={agent.agent_id} alt={agent.display_name} avatarUrl={agent.avatar_url} size={36} />
                 <div className="min-w-0 flex-1">
@@ -486,24 +486,24 @@ function MergedLedgerSection({
   txTypeLabels: { topup: string; transfer: string; withdrawal: string; subscription: string; other: string };
 }) {
   return (
-    <div className="rounded-2xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl">
+    <div className="liquid-card rounded-2xl border border-glass-border p-5">
       <div className="mb-3">
         <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
         <p className="text-xs text-text-secondary/70">{hint}</p>
       </div>
 
       {entries.length === 0 && !loading ? (
-        <div className="rounded-xl border border-dashed border-glass-border bg-deep-black-light p-4 text-sm text-text-secondary">
+        <div className="liquid-empty-state rounded-xl border border-dashed border-glass-border p-4 text-sm text-text-secondary">
           {emptyLabel}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-glass-border bg-deep-black-light">
+        <div className="liquid-tool-surface overflow-hidden rounded-xl border border-glass-border">
           {entries.map((entry) => {
             const isCredit = entry.direction === "credit";
             return (
               <div
                 key={entry.entry_id}
-                className="flex items-center justify-between gap-4 border-b border-glass-border/40 px-4 py-3 last:border-b-0"
+                className="liquid-list-row flex items-center justify-between gap-4 border-b border-glass-border/40 px-4 py-3 last:border-b-0"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -533,7 +533,7 @@ function MergedLedgerSection({
           <button
             onClick={onLoadMore}
             disabled={loading}
-            className="inline-flex min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-glass-border px-4 py-1.5 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+            className="liquid-action inline-flex min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-glass-border px-4 py-1.5 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
           >
             {loading ? (
               <>
@@ -601,7 +601,7 @@ function RecentWithdrawals({
   );
 
   return (
-    <div className="rounded-2xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl">
+    <div className="liquid-card rounded-2xl border border-glass-border p-5">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">{t.recentWithdrawals}</h3>
@@ -610,7 +610,7 @@ function RecentWithdrawals({
         <button
           onClick={onRefresh}
           disabled={isRefreshing}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+          className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
         >
           {isRefreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           {isRefreshing ? t.refreshing : t.refresh}
@@ -628,7 +628,7 @@ function RecentWithdrawals({
           {error}
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-glass-border bg-deep-black-light p-4 text-sm text-text-secondary">
+        <div className="liquid-empty-state rounded-xl border border-dashed border-glass-border p-4 text-sm text-text-secondary">
           {t.noWithdrawals}
         </div>
       ) : (
@@ -638,7 +638,7 @@ function RecentWithdrawals({
             return (
               <div
                 key={item.withdrawal_id}
-                className="rounded-xl border border-glass-border bg-deep-black-light p-4"
+                className="liquid-tool-surface rounded-xl border border-glass-border p-4"
               >
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <div>
@@ -655,10 +655,10 @@ function RecentWithdrawals({
                 </div>
 
                 <div className="flex flex-wrap gap-2 text-[11px] text-text-secondary">
-                  <span className="rounded bg-black/20 px-2 py-1">
+                  <span className="rounded bg-glass-bg/70 px-2 py-1">
                     {item.destination_type || "manual_review"}
                   </span>
-                  <span className="rounded bg-black/20 px-2 py-1">#{item.withdrawal_id}</span>
+                  <span className="rounded bg-glass-bg/70 px-2 py-1">#{item.withdrawal_id}</span>
                 </div>
 
                 {item.status === "pending" ? (
@@ -675,7 +675,7 @@ function RecentWithdrawals({
                   </div>
                 ) : null}
                 {item.review_note ? (
-                  <div className="mt-3 rounded-lg border border-glass-border bg-black/20 p-3 text-xs text-text-secondary">
+                  <div className="liquid-tool-surface mt-3 rounded-lg border border-glass-border p-3 text-xs text-text-secondary">
                     {item.review_note}
                   </div>
                 ) : null}
@@ -700,8 +700,8 @@ function getWithdrawalStatusMeta(status: string, t: (typeof walletPanel)["en"]) 
     case "rejected":
       return { label: t.rejected, className: "bg-red-500/15 text-red-300" };
     case "cancelled":
-      return { label: t.cancelled, className: "bg-white/10 text-text-secondary" };
+      return { label: t.cancelled, className: "bg-glass-bg/70 text-text-secondary" };
     default:
-      return { label: status, className: "bg-white/10 text-text-secondary" };
+      return { label: status, className: "bg-glass-bg/70 text-text-secondary" };
   }
 }

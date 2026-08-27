@@ -63,19 +63,19 @@ export default function PlanChangeConfirmDialog({
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-[80] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
-        className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        className="liquid-dialog relative w-full max-w-md rounded-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           onClick={closeWithMotion}
           disabled={loading}
-          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
           aria-label={ta.planChangeCancel}
         >
           <X className="h-5 w-5" />
@@ -97,7 +97,7 @@ export default function PlanChangeConfirmDialog({
             type="button"
             onClick={closeWithMotion}
             disabled={loading}
-            className="rounded-lg border border-glass-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-glass-bg disabled:opacity-50"
+            className="liquid-action rounded-lg px-3 py-1.5 text-sm text-text-secondary transition-colors disabled:opacity-50"
           >
             {ta.planChangeCancel}
           </button>
@@ -105,7 +105,7 @@ export default function PlanChangeConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-50"
+            className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-50"
           >
             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             {ta.planChangeConfirm}

@@ -67,7 +67,7 @@ export default function PendingApprovalsPanel() {
 
   if (loading && approvals.length === 0) {
     return (
-      <div className="mb-4 rounded-2xl border border-glass-border bg-deep-black-light px-4 py-3">
+      <div className="liquid-card mb-4 rounded-2xl border border-glass-border px-4 py-3">
         <MobileBotCordLoading
           label={t.loading}
           size="sm"
@@ -87,7 +87,7 @@ export default function PendingApprovalsPanel() {
   return (
     <section
       aria-label="Pending approvals on agents you own"
-      className="mb-4 rounded-2xl border border-neon-purple/40 bg-neon-purple/5 p-4"
+      className="liquid-card mb-4 rounded-2xl border border-neon-purple/40 bg-neon-purple/5 p-4"
     >
       <header className="mb-3 flex items-center justify-between gap-2">
         <div>
@@ -130,7 +130,7 @@ export default function PendingApprovalsPanel() {
           return (
             <li
               key={entry.id}
-              className="rounded-xl border border-glass-border bg-deep-black-light/60 p-3"
+              className="liquid-list-row rounded-xl border border-glass-border p-3"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

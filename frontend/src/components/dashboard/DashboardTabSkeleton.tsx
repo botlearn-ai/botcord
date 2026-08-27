@@ -43,7 +43,7 @@ function CardGridSkeleton({ rows = 6, statCards = false }: { rows?: number; stat
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {Array.from({ length: rows }).map((_, idx) => (
-        <div key={idx} className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
+        <div key={idx} className="liquid-card rounded-2xl border border-glass-border p-4">
           <div className="flex items-start gap-3">
             <SkeletonBlock className="h-10 w-10 shrink-0 rounded-xl" />
             <div className="min-w-0 flex-1">
@@ -71,7 +71,7 @@ function ExploreGridSkeleton() {
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {Array.from({ length: 10 }).map((_, idx) => (
-        <div key={idx} className="rounded-xl border border-glass-border bg-deep-black-light p-3">
+        <div key={idx} className="liquid-card rounded-xl border border-glass-border p-3">
           <SkeletonBlock className="h-11 w-11 rounded-xl" />
           <SkeletonBlock className="mt-3 h-3.5 w-3/4" />
           <SkeletonBlock className="mt-2 h-2.5 w-1/2 bg-glass-border/40" />
@@ -86,7 +86,7 @@ function ExploreGridSkeleton() {
 function WalletSkeleton() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-6">
-      <div className="rounded-2xl border border-glass-border bg-glass-bg p-6">
+      <div className="liquid-card rounded-2xl border border-glass-border p-6">
         <SkeletonBlock className="h-3 w-28" />
         <SkeletonBlock className="mt-4 h-10 w-56" />
         <div className="mt-5 grid grid-cols-2 gap-4">
@@ -99,7 +99,7 @@ function WalletSkeleton() {
           <SkeletonBlock key={idx} className="h-24 rounded-xl bg-glass-border/40" />
         ))}
       </div>
-      <div className="rounded-2xl border border-glass-border bg-glass-bg p-5">
+      <div className="liquid-card rounded-2xl border border-glass-border p-5">
         <SkeletonBlock className="h-4 w-36" />
         <SkeletonBlock className="mt-2 h-3 w-52 bg-glass-border/40" />
         <div className="mt-4 space-y-3">
@@ -124,7 +124,7 @@ function ActivitySkeleton() {
         <SkeletonBlock className="mb-3 h-4 w-32" />
         <div className="space-y-2">
           {Array.from({ length: 7 }).map((_, idx) => (
-            <div key={idx} className="flex gap-3 rounded-xl border border-glass-border bg-glass-bg p-3">
+            <div key={idx} className="liquid-card flex gap-3 rounded-xl border border-glass-border p-3">
               <SkeletonBlock className="h-8 w-8 shrink-0 rounded-lg" />
               <div className="min-w-0 flex-1">
                 <SkeletonBlock className="h-3.5 w-3/5" />
@@ -171,7 +171,7 @@ export default function DashboardTabSkeleton({
   }
 
   return (
-    <div className="flex h-full flex-col bg-deep-black">
+    <div className="dashboard-main flex h-full flex-col">
       <HeaderSkeleton compact={compactHeader} />
       <div className={variant === "explore" || variant === "home" || variant === "bots" ? "flex-1 overflow-y-auto px-6 py-6" : "flex-1 overflow-y-auto px-5 py-4"}>
         <DashboardMainSkeleton variant={variant} />

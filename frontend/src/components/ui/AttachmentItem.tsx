@@ -100,7 +100,7 @@ function AttachmentFileLink({
           event.stopPropagation();
           onPreview?.(attachment);
         }}
-        className="flex max-w-full items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/50 px-2.5 py-1.5 text-left text-xs text-text-primary hover:border-neon-cyan/30 transition-colors"
+        className="liquid-tool-surface flex max-w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-text-primary hover:border-neon-cyan/30 transition-colors"
       >
         {content}
       </button>
@@ -112,7 +112,7 @@ function AttachmentFileLink({
       href={attachmentUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/50 px-2.5 py-1.5 text-xs text-text-primary hover:border-neon-cyan/30 transition-colors"
+      className="liquid-tool-surface flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-text-primary hover:border-neon-cyan/30 transition-colors"
     >
       {content}
     </a>
@@ -152,7 +152,7 @@ export default function AttachmentItem({ attachment, previewAttachments, onPrevi
                 setPreviewOpen(true);
               }
             }}
-            className="group inline-flex min-h-24 min-w-24 max-w-full items-center justify-center overflow-hidden rounded-lg border border-glass-border bg-black/20 text-left"
+            className="liquid-tool-surface group inline-flex min-h-24 min-w-24 max-w-full items-center justify-center overflow-hidden rounded-xl text-left"
             aria-label={`Preview ${title}`}
           >
             <img

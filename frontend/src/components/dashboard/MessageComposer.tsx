@@ -511,7 +511,7 @@ export default function MessageComposer({
   }, [canSend, handleSend]);
 
   return (
-    <div onDrop={handleDrop} onDragOver={handleDragOver}>
+    <div onDrop={handleDrop} onDragOver={handleDragOver} className="liquid-composer rounded-2xl border border-glass-border p-1.5">
       {hasLengthError && (
         <p className="mb-1 px-1 text-[11px] leading-4 text-red-400">
           Message cannot exceed {MESSAGE_MAX_LENGTH.toLocaleString()} characters.
@@ -522,7 +522,7 @@ export default function MessageComposer({
           {files.map((pf, idx) => (
             <div
               key={idx}
-              className="relative group flex items-center gap-1.5 bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-300 max-w-[200px]"
+              className="relative group flex max-w-[200px] items-center gap-1.5 rounded-xl border border-glass-border bg-deep-black-light px-2 py-1.5 text-xs text-text-primary"
             >
               {pf.preview ? (
                 <img src={pf.preview} alt={pf.file.name} className="w-8 h-8 rounded object-cover shrink-0" />
@@ -556,7 +556,7 @@ export default function MessageComposer({
             )}
             <div className="relative">
               {actionMenuOpen && (
-                <div className="absolute bottom-full left-0 z-30 mb-2 w-36 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl">
+                <div className="liquid-menu absolute bottom-full left-0 z-30 mb-2 w-36 rounded-xl border border-glass-border bg-deep-black-light p-1 shadow-xl">
                   {allowAttachments && (
                     <button
                       type="button"
@@ -564,7 +564,7 @@ export default function MessageComposer({
                         setActionMenuOpen(false);
                         fileInputRef.current?.click();
                       }}
-                      className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-text-primary hover:bg-glass-bg"
                     >
                       <FileUp className="h-4 w-4 text-zinc-400" />
                       <span>{actionLabels?.file ?? "File"}</span>
@@ -577,7 +577,7 @@ export default function MessageComposer({
                         setActionMenuOpen(false);
                         onTransfer();
                       }}
-                      className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-text-primary hover:bg-glass-bg"
                     >
                       <Coins className="h-4 w-4 text-zinc-400" />
                       <span>{actionLabels?.transfer ?? "Transfer"}</span>
@@ -588,7 +588,7 @@ export default function MessageComposer({
               <button
                 type="button"
                 onClick={() => setActionMenuOpen((open) => !open)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-cyan-400"
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan"
                 title={actionLabels?.add ?? "Add"}
                 aria-label={actionLabels?.add ?? "Open actions"}
                 aria-expanded={actionMenuOpen}
@@ -622,7 +622,8 @@ export default function MessageComposer({
           data-bwignore="true"
           data-protonpass-ignore="true"
           aria-autocomplete={MESSAGE_COMPOSER_TEXTAREA_ARIA_AUTOCOMPLETE}
-          className={`flex-1 bg-zinc-900 border rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 resize-none focus:outline-none focus:border-cyan-500/50 transition-all ${
+          aria-invalid={hasLengthError || undefined}
+          className={`liquid-input flex-1 resize-none rounded-xl border px-3 py-2 text-sm text-text-primary placeholder-text-secondary/65 transition-all focus:outline-none ${
             hasLengthError
               ? "border-red-500/70 focus:border-red-500/80"
               : emptyState
@@ -663,7 +664,7 @@ export default function MessageComposer({
         {mentionMatch && suggestions.length > 0 && (
           <div
             ref={mentionListRef}
-            className="absolute left-0 right-12 bottom-full mb-1 z-20 max-h-56 origin-bottom overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl"
+            className="liquid-menu absolute bottom-full left-0 right-12 z-20 mb-1 max-h-56 origin-bottom overflow-y-auto rounded-xl border border-glass-border bg-deep-black-light shadow-xl"
             role="listbox"
           >
             {suggestions.map((s, i) => {
@@ -699,14 +700,14 @@ export default function MessageComposer({
                   onMouseEnter={() => setMentionIndex(i)}
                   className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
                     i === mentionIndex
-                      ? "bg-cyan-500/15 text-cyan-200"
-                      : "text-zinc-300 hover:bg-zinc-800"
+                      ? "bg-neon-cyan/15 text-neon-cyan"
+                      : "text-text-primary hover:bg-glass-bg"
                   }`}
                 >
                   <KindIcon className={`h-3.5 w-3.5 shrink-0 ${iconClass}`} />
                   <span className="truncate font-medium">{s.display_name}</span>
                   {kindLabel && (
-                    <span className={`shrink-0 rounded px-1 py-px text-[9px] font-medium uppercase tracking-wide ${iconClass} bg-zinc-800/60`}>
+                    <span className={`shrink-0 rounded px-1 py-px text-[9px] font-medium uppercase tracking-wide ${iconClass} bg-glass-bg`}>
                       {kindLabel}
                     </span>
                   )}
@@ -721,7 +722,7 @@ export default function MessageComposer({
           type="button"
           onClick={handleSendClick}
           disabled={!canSend}
-          className="flex items-center justify-center w-9 h-9 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="liquid-send-button flex h-9 w-9 items-center justify-center rounded-xl bg-neon-cyan/15 text-neon-cyan transition-colors hover:bg-neon-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="Send message"
         >
           <Send ref={sendIconRef} className="w-4 h-4" />

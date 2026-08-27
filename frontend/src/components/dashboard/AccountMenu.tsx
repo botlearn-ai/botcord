@@ -48,7 +48,7 @@ export default function AccountMenu({
       <DropdownMenu.Root open={open} onOpenChange={setOpen}>
         <DropdownMenu.Trigger asChild>
           <button
-            className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-glass-border/80 bg-deep-black-light text-sm font-bold text-neon-cyan shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition-all hover:-translate-y-0.5 hover:border-neon-cyan/35 hover:shadow-[0_14px_34px_rgba(34,211,238,0.18)] focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
+            className="liquid-menu relative flex h-10 w-10 items-center justify-center rounded-2xl border border-glass-border/80 bg-deep-black-light text-sm font-bold text-neon-cyan shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition-all hover:-translate-y-0.5 hover:border-neon-cyan/35 hover:shadow-[0_14px_34px_rgba(34,211,238,0.18)] focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
             title={t.account}
           >
             <span className="absolute inset-0 overflow-hidden rounded-[inherit]">
@@ -79,9 +79,9 @@ export default function AccountMenu({
             sideOffset={12}
             side="top"
             align="start"
-            className="z-[70] min-w-[300px] overflow-hidden rounded-[24px] border border-glass-border/80 bg-[linear-gradient(180deg,rgba(16,18,26,0.96),rgba(10,12,18,0.98))] p-1.5 shadow-[0_28px_90px_rgba(0,0,0,0.55)] backdrop-blur-xl animate-in fade-in-80 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-100 data-[state=closed]:zoom-out-95"
+            className="liquid-menu z-[70] min-w-[300px] overflow-hidden rounded-[24px] border border-glass-border/80 bg-deep-black-light p-1.5 shadow-[0_28px_90px_rgba(0,0,0,0.55)] backdrop-blur-xl animate-in fade-in-80 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-100 data-[state=closed]:zoom-out-95"
           >
-            <div className="relative mb-1 overflow-hidden rounded-[20px] border border-white/6 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] px-3 py-3.5">
+            <div className="relative mb-1 overflow-hidden rounded-[20px] border border-glass-border bg-glass-bg px-3 py-3.5">
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/14 to-transparent" />
               <div className="flex items-center gap-3">
                 {user?.avatar_url ? (
@@ -92,13 +92,13 @@ export default function AccountMenu({
                     className="h-12 w-12 shrink-0 rounded-2xl border border-white/10 object-cover shadow-[0_12px_30px_rgba(0,0,0,0.28)]"
                   />
                 ) : (
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.28),rgba(34,211,238,0.08)_55%,rgba(255,255,255,0.02)_100%)] text-base font-semibold text-white shadow-[0_12px_30px_rgba(0,0,0,0.28)]">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-glass-border bg-neon-cyan/10 text-base font-semibold text-neon-cyan shadow-[0_12px_30px_rgba(0,0,0,0.28)]">
                     {getAvatarSeed(user)}
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 flex-1 truncate text-[18px] font-semibold tracking-tight text-white">
+                    <p className="min-w-0 flex-1 truncate text-[18px] font-semibold tracking-tight text-text-primary">
                       {user?.display_name || user?.email || t.user}
                     </p>
                     <div className="flex shrink-0 items-center gap-1.5">
@@ -123,7 +123,7 @@ export default function AccountMenu({
                 </div>
               </div>
               {human ? (
-                <div className="mt-3 inline-flex max-w-full items-center rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1 text-[11px] text-text-secondary/68">
+                <div className="mt-3 inline-flex max-w-full items-center rounded-full border border-glass-border bg-glass-bg px-2.5 py-1 text-[11px] text-text-secondary/68">
                   <span className="truncate" title={human.human_id}>
                     {human.human_id}
                   </span>

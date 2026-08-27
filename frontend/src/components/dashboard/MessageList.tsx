@@ -234,7 +234,7 @@ function EmptyRoomGuide({
 
   return (
     <div className="flex flex-1 items-center justify-center overflow-y-auto px-4 py-8">
-      <div className="w-full max-w-2xl rounded-lg border border-glass-border bg-deep-black-light/70 p-5 shadow-lg shadow-black/20">
+      <div className="liquid-empty-state w-full max-w-2xl rounded-lg border border-glass-border p-5 shadow-lg shadow-black/20">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan">
             <Bot className="h-5 w-5" />
@@ -278,7 +278,7 @@ function EmptyRoomGuide({
                 type="button"
                 key={prompt}
                 onClick={() => prefillComposer(prompt)}
-                className="group flex items-start justify-between gap-3 rounded-md border border-glass-border bg-deep-black px-3 py-2 text-left transition-colors hover:border-neon-cyan/40 hover:bg-neon-cyan/5"
+                className="liquid-list-row group flex items-start justify-between gap-3 rounded-md border border-glass-border px-3 py-2 text-left transition-colors hover:border-neon-cyan/40 hover:bg-neon-cyan/5"
               >
                 <span className="min-w-0 text-sm leading-5 text-text-secondary group-hover:text-text-primary">
                   {prompt}
@@ -642,7 +642,7 @@ export default function MessageList({
           {Array.from({ length: 8 }).map((_, idx) => (
             <div
               key={idx}
-              className={`h-11 w-full animate-pulse rounded-lg border border-glass-border/60 bg-deep-black-light ${
+        className={`liquid-card h-11 w-full animate-pulse rounded-lg border border-glass-border/60 ${
                 idx % 2 === 0 ? "max-w-[72%]" : "ml-auto max-w-[64%]"
               }`}
             />
@@ -663,7 +663,7 @@ export default function MessageList({
       onClick={() => scrollToBottom("auto")}
       aria-label={t.scrollToLatest}
       title={t.scrollToLatest}
-      className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-neon-cyan/40 bg-deep-black-light/95 text-neon-cyan shadow-lg shadow-black/30 backdrop-blur transition-colors hover:bg-neon-cyan/15 hover:text-neon-cyan max-md:bottom-6"
+      className="liquid-action absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-neon-cyan/40 text-neon-cyan shadow-lg shadow-black/30 backdrop-blur transition-colors hover:bg-neon-cyan/15 hover:text-neon-cyan max-md:bottom-6"
     >
       <ArrowDown className="h-4 w-4" />
     </button>

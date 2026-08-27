@@ -291,7 +291,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
       ) : null}
 
       {schedules.length === 0 && !loading ? (
-        <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-4 py-8 text-center text-sm text-text-secondary">
+        <div className="liquid-empty-state rounded-xl border border-glass-border px-4 py-8 text-center text-sm text-text-secondary">
           暂无 schedule
         </div>
       ) : (
@@ -300,7 +300,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
             const lastRun = runsBySchedule[schedule.id]?.[0];
             const isRunningThisSchedule = runningScheduleId === schedule.id;
             return (
-              <section key={schedule.id} className="rounded-xl border border-glass-border bg-glass-bg/40 p-4">
+              <section key={schedule.id} className="liquid-card rounded-xl border border-glass-border p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -370,7 +370,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
         </div>
       )}
 
-      <section className="rounded-xl border border-glass-border bg-glass-bg/40 p-4">
+      <section className="liquid-card rounded-xl border border-glass-border p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
             {editingScheduleId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
@@ -392,7 +392,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
+            className="liquid-input rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
             placeholder="名称"
           />
           <div className="grid grid-cols-3 gap-2">
@@ -420,7 +420,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                 step={5}
                 value={everyMinutes}
                 onChange={(e) => setEveryMinutes(Number(e.target.value))}
-                className="rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
+                className="liquid-input rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
               />
             </label>
           ) : (
@@ -431,7 +431,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                   type="time"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  className="rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
+                  className="liquid-input rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
                 />
               </label>
               {scheduleMode === "weekly" ? (
@@ -477,7 +477,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={3}
-            className="resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/50"
+            className="liquid-input resize-none rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
           />
           <button
             type="button"

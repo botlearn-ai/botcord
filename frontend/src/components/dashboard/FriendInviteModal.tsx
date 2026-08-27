@@ -93,10 +93,10 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
   }, [copied, error]);
 
   return (
-    <div ref={overlayRef} className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
+    <div ref={overlayRef} className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
       <div
         ref={panelRef}
-        className="mx-4 w-full max-w-md rounded-xl border border-glass-border bg-deep-black p-6"
+        className="liquid-dialog w-full max-w-md rounded-2xl p-6"
         onClick={(event) => event.stopPropagation()}
       >
         <h2 className="mb-1 text-lg font-semibold text-text-primary">{t.title}</h2>
@@ -114,14 +114,14 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
           <div className="flex justify-end gap-2">
             <button
               onClick={closeWithMotion}
-              className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+              className="liquid-action rounded-lg px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
             >
               {tc.cancel}
             </button>
             <button
               onClick={handleCreate}
               disabled={loading}
-              className="inline-flex items-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+              className="liquid-action inline-flex items-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {loading ? t.creating : t.createInvite}
@@ -137,7 +137,7 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
                 <button
                   ref={copyButtonRef}
                   onClick={() => copyField("prompt")}
-                  className="shrink-0 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
+                  className="liquid-action shrink-0 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
                 >
                   {copied === "prompt" ? tc.copied : t.copyPrompt}
                 </button>
@@ -146,13 +146,13 @@ export default function FriendInviteModal({ onClose }: { onClose: () => void }) 
                 readOnly
                 rows={6}
                 value={buildFriendInvitePrompt({ inviteCode: invite.code, locale })}
-                className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
+                className="liquid-input w-full resize-none rounded-lg border px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
               />
             </div>
             <div className="flex justify-end">
               <button
                 onClick={closeWithMotion}
-                className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+                className="liquid-action rounded-lg px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
               >
                 {tc.done}
               </button>

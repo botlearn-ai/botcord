@@ -122,7 +122,7 @@ export default function TransferCard({ info, isNotice }: { info: TransferInfo; i
   const sc = statusStyles[info.status] ?? statusStyles.completed;
 
   return (
-    <div className="w-full min-w-[220px]">
+    <div className="liquid-card w-full min-w-[220px] rounded-xl border border-glass-border p-3">
       {/* Header */}
       <div className="mb-1.5 flex items-center justify-between">
         <div className="flex items-center gap-1.5">

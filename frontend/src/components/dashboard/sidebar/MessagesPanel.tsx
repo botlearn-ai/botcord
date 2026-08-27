@@ -268,14 +268,14 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
   return (
     <div className="flex min-h-full flex-col">
       {/* Column header — peer-level to MessagesGroupingSidebar's header */}
-      <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
+      <div className="liquid-toolbar flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           {!isGuest && !messagesGroupingOpen ? (
             <button
               onClick={() => setMessagesGroupingOpen(true)}
               title="展开分组"
               aria-label="展开分组"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-glass-border text-text-secondary/70 transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan max-md:hidden"
+              className="liquid-action flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-glass-border text-text-secondary/70 transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan max-md:hidden"
             >
               <ChevronsRight className="h-3.5 w-3.5" />
             </button>
@@ -286,9 +286,9 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
               onClick={() => setMobileGroupingOpen((open) => !open)}
               title={tGrouping.header}
               aria-label={tGrouping.header}
-              className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors max-md:flex ${
+              className={`liquid-action hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors max-md:flex ${
                 mobileGroupingOpen
-                  ? "bg-neon-cyan/10 text-neon-cyan"
+                  ? "!bg-neon-cyan/10 text-neon-cyan"
                   : "text-text-secondary hover:bg-neon-cyan/10 hover:text-neon-cyan"
               }`}
             >
@@ -332,12 +332,12 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
             ref={mobileGroupingOverlayRef}
             type="button"
             aria-label={tGrouping.collapse}
-            className="absolute inset-0 bg-black/45 backdrop-blur-sm"
+            className="liquid-scrim absolute inset-0 backdrop-blur-sm"
             onClick={() => setMobileGroupingOpen(false)}
           />
           <div
             ref={mobileGroupingPanelRef}
-            className="absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 top-0 w-[min(84vw,280px)] overflow-hidden border-r border-glass-border bg-deep-black-light shadow-2xl shadow-black/60"
+            className="liquid-drawer absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 top-0 w-[min(84vw,280px)] overflow-hidden border-r border-glass-border"
           >
             <div data-mobile-grouping-motion className="h-full">
             <MessagesGroupingSidebar
@@ -358,8 +358,8 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
             setOpenedTopicId(null);
             startTransition(() => router.push("/chats/messages"));
           }}
-          className={`flex items-center gap-3 border-b border-glass-border px-3 py-3 text-left transition-colors ${
-            messagesShowRequests ? "bg-neon-cyan/10" : "hover:bg-glass-bg/60"
+          className={`liquid-list-row flex items-center gap-3 border-b border-glass-border px-3 py-3 text-left transition-colors ${
+            messagesShowRequests ? "!bg-neon-cyan/10" : "hover:bg-glass-bg/60"
           }`}
         >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
@@ -370,7 +370,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
               <span className={`text-sm font-medium ${messagesShowRequests ? "text-neon-cyan" : "text-text-primary"}`}>
                 {locale === "zh" ? "新好友申请" : "New Requests"}
               </span>
-              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-black">
+              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-text-primary">
                 {pendingRequestCount}
               </span>
             </div>
@@ -393,7 +393,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
         </div>
       ) : null}
       {isBotsScope && ownedAgents.length === 0 ? (
-        <div ref={emptyStateRef} className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+        <div ref={emptyStateRef} className="liquid-empty-state m-3 flex flex-1 flex-col items-center justify-center rounded-2xl border border-glass-border px-6 py-12 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40">
             <Bot className="h-7 w-7 text-text-secondary/70" />
           </div>
@@ -403,7 +403,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           </p>
           <button
             onClick={() => openCreateBotModal()}
-            className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3.5 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+            className="liquid-action mt-5 inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3.5 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
           >
             <Plus className="h-3.5 w-3.5" />
             创建 Bot
@@ -414,7 +414,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           <RoomZeroState compact />
         </div>
       ) : !showOverviewSkeleton && filteredMessageRooms.length === 0 ? (
-        <div ref={emptyStateRef} className="px-4 py-6 text-center text-xs text-text-secondary">
+        <div ref={emptyStateRef} className="liquid-empty-state m-3 rounded-2xl border border-glass-border px-4 py-6 text-center text-xs text-text-secondary">
           {t.noMessages}
         </div>
       ) : (
@@ -425,7 +425,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
             searchQuery={messageQuery}
           />
           {!showOverviewSkeleton && !normalizedMessageQuery && filteredMessageRooms.length < 5 && (
-            <div className="mx-3 mb-3 mt-auto rounded-2xl border border-dashed border-glass-border/60 bg-glass-bg/20 p-4">
+            <div className="liquid-card mx-3 mb-3 mt-auto rounded-2xl border border-dashed border-glass-border/60 p-4">
               <p className="text-[11px] font-semibold text-text-secondary/80">
                 {locale === "zh" ? "发现更多社区" : "Discover communities"}
               </p>
@@ -437,7 +437,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
                   <button
                     type="button"
                     onClick={onCreateRoom}
-                    className="rounded-xl border border-neon-purple/35 bg-neon-purple/10 px-3 py-1.5 text-[11px] font-medium text-neon-purple transition-colors hover:bg-neon-purple/20"
+                    className="liquid-action rounded-xl border border-neon-purple/35 bg-neon-purple/10 px-3 py-1.5 text-[11px] font-medium text-neon-purple transition-colors hover:bg-neon-purple/20"
                   >
                     {locale === "zh" ? "创建房间" : "Create a room"}
                   </button>
@@ -449,7 +449,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
                     useDashboardUIStore.getState().setSidebarTab("explore");
                     startTransition(() => { router.push("/chats/explore/rooms"); });
                   }}
-                  className="rounded-xl border border-glass-border/70 bg-deep-black-light px-3 py-1.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-neon-cyan/35 hover:text-neon-cyan"
+                  className="liquid-action rounded-xl border border-glass-border/70 px-3 py-1.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-neon-cyan/35 hover:text-neon-cyan"
                 >
                   {locale === "zh" ? "探索公开社区" : "Explore public rooms"}
                 </button>
@@ -479,15 +479,15 @@ function TooltipIconButton({
         type="button"
         onClick={onClick}
         aria-label={label}
-        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
-          active ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-secondary"
+        className={`liquid-action flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
+          active ? "!bg-neon-cyan/10 text-neon-cyan" : "text-text-secondary"
         }`}
       >
         {children}
       </button>
       <span
         role="tooltip"
-        className="pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-glass-border bg-deep-black px-2 py-0.5 text-[11px] text-text-primary opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
+        className="liquid-menu pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-glass-border px-2 py-0.5 text-[11px] text-text-primary opacity-0 transition-opacity duration-150 group-hover:opacity-100"
       >
         {label}
       </span>

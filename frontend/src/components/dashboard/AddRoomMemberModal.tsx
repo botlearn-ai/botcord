@@ -130,10 +130,10 @@ export default function AddRoomMemberModal({
   }, [error]);
 
   return (
-    <div ref={overlayRef} className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
+    <div ref={overlayRef} className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
       <div
         ref={panelRef}
-        className="flex h-[min(760px,calc(100dvh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
+        className="liquid-dialog flex h-[min(760px,calc(100dvh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-xl border"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
@@ -143,7 +143,7 @@ export default function AddRoomMemberModal({
           </div>
           <button
             onClick={closeWithMotion}
-            className="rounded p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="liquid-action rounded p-1.5 text-text-secondary transition-colors hover:text-text-primary"
             aria-label={t.closeAddMemberModal}
             title={t.closeAddMemberModal}
           >
@@ -164,7 +164,7 @@ export default function AddRoomMemberModal({
           </div>
 
           {candidates.length === 0 ? (
-            <div className="rounded border border-dashed border-glass-border px-4 py-6 text-sm text-text-secondary/70">
+            <div className="liquid-empty-state rounded border border-dashed px-4 py-6 text-sm text-text-secondary/70">
               {t.noAddableMembers}
             </div>
           ) : (
@@ -191,14 +191,14 @@ export default function AddRoomMemberModal({
           <button
             onClick={closeWithMotion}
             disabled={saving}
-            className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+            className="liquid-action rounded px-4 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
           >
             {t.permCancel}
           </button>
           <button
             onClick={() => void handleAddMembers()}
             disabled={saving || selectedIds.size === 0}
-            className="inline-flex items-center gap-2 rounded border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
+            className="liquid-action inline-flex items-center gap-2 rounded border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {saving ? t.addingMembers : t.addMembersAction}

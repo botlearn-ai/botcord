@@ -196,21 +196,21 @@ function DeviceDetailDrawer() {
       {/* Backdrop */}
       <div
         ref={overlayRef}
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity"
+        className="liquid-scrim fixed inset-0 z-40 backdrop-blur-[2px] transition-opacity"
         onClick={closeDrawer}
         aria-hidden
       />
       {/* Drawer */}
       <aside
         ref={panelRef}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border bg-deep-black-light shadow-2xl shadow-black/50"
+        className="liquid-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border"
         role="dialog"
         aria-modal="true"
         aria-label="设备详情"
       >
         {/* Drawer header */}
-        <div className="flex items-center gap-3 border-b border-glass-border px-5 py-4" data-overlay-section>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass-bg/60 text-text-secondary">
+        <div className="liquid-toolbar flex items-center gap-3 border-b border-glass-border px-5 py-4" data-overlay-section>
+          <div className="liquid-tool-surface flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border text-text-secondary">
             <DeviceIcon className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -241,7 +241,7 @@ function DeviceDetailDrawer() {
           disabled={isRefreshing}
           title="刷新"
           aria-label="刷新设备状态"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-40"
+          className="liquid-action flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-40"
         >
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
         </button>
@@ -249,7 +249,7 @@ function DeviceDetailDrawer() {
           onClick={closeDrawer}
           title="关闭"
           aria-label="关闭"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
+          className="liquid-action flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
         >
           <X className="h-4 w-4" />
         </button>
@@ -266,7 +266,7 @@ function DeviceDetailDrawer() {
         />
       ) : (<>
       {/* Hosted bots */}
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
           托管的 Bots · {hostedBots.length}
         </h3>
@@ -278,7 +278,7 @@ function DeviceDetailDrawer() {
               <button
                 key={bot.agent_id}
                 onClick={() => setViewingBotId(bot.agent_id)}
-                className="flex items-center gap-2.5 rounded-lg border border-glass-border bg-glass-bg/60 px-2 py-1.5 text-left transition-colors hover:border-neon-cyan/40 hover:bg-neon-cyan/5"
+                className="liquid-list-row flex items-center gap-2.5 rounded-lg border border-glass-border px-2 py-1.5 text-left transition-colors hover:border-neon-cyan/40 hover:bg-neon-cyan/5"
               >
                 <BotAvatar
                   agentId={bot.agent_id}
@@ -300,7 +300,7 @@ function DeviceDetailDrawer() {
       </section>
 
       {/* Device info */}
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
           设备信息
         </h3>
@@ -312,7 +312,7 @@ function DeviceDetailDrawer() {
                 onClick={() => void handleRefresh()}
                 disabled={isRefreshing}
                 title="检查连接"
-                className="flex h-6 w-6 items-center justify-center rounded text-text-secondary/55 transition-colors hover:bg-glass-bg hover:text-text-secondary disabled:opacity-40"
+                className="liquid-action flex h-6 w-6 items-center justify-center rounded text-text-secondary/55 transition-colors hover:bg-glass-bg hover:text-text-secondary disabled:opacity-40"
               >
                 <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
               </button>
@@ -340,7 +340,7 @@ function DeviceDetailDrawer() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
           {isCloud ? "云设备操作" : "设备操作"}
         </h3>
@@ -353,7 +353,7 @@ function DeviceDetailDrawer() {
           <button
             onClick={() => void handleRestartDevice()}
             disabled={restartingId === device.id || (!isCloud && !online)}
-            className="inline-flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
+            className="liquid-action inline-flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
           >
             {restartingId === device.id ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -375,7 +375,7 @@ function DeviceDetailDrawer() {
       </section>
 
       {/* Rename */}
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
           设备名称
         </h3>
@@ -391,12 +391,12 @@ function DeviceDetailDrawer() {
             }}
             maxLength={64}
             placeholder={device.id.slice(0, 18)}
-            className="flex-1 rounded-lg border border-glass-border bg-glass-bg/30 px-3 py-2 text-sm text-text-primary placeholder-text-secondary/40 outline-none focus:border-neon-cyan/40"
+            className="liquid-input flex-1 rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary placeholder-text-secondary/40 outline-none focus:border-neon-cyan/40"
           />
           <button
             disabled={!editingName.trim() || editingName.trim() === device.label}
             onClick={() => void handleRename()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border bg-glass-bg/30 text-text-secondary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan disabled:opacity-40"
+            className="liquid-action flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border text-text-secondary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan disabled:opacity-40"
           >
             {nameSaved ? <Check className="h-4 w-4 text-neon-green" /> : <Check className="h-4 w-4" />}
           </button>
@@ -405,7 +405,7 @@ function DeviceDetailDrawer() {
 
       {/* Restart command (collapsible) */}
       {!isCloud ? (
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <button
           onClick={() => setShowInstall((v) => !v)}
           className="flex w-full items-center justify-between"
@@ -437,7 +437,7 @@ function DeviceDetailDrawer() {
 
       {/* Diagnostic log (collapsible) */}
       {!isCloud ? (
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <button
           onClick={() => setShowLogs((v) => !v)}
           className="flex w-full items-center justify-between"
@@ -474,7 +474,7 @@ function DeviceDetailDrawer() {
                   onClick={() => setForwardLogs(true)}
                   title="转发到聊天"
                   aria-label="转发日志到聊天"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
+                className="liquid-action flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
                 >
                   <Send className="h-3.5 w-3.5" />
                 </button>
@@ -486,7 +486,7 @@ function DeviceDetailDrawer() {
                   )}
                   title="下载日志文件"
                   aria-label="下载日志文件"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
+                  className="liquid-action flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
                 >
                   <Download className="h-3.5 w-3.5" />
                 </button>
@@ -545,14 +545,14 @@ function DeviceDetailDrawer() {
             <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 onClick={() => setConfirmRemove(false)}
-                className="rounded-lg border border-glass-border px-3 py-1.5 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg"
+                className="liquid-action rounded-lg border border-glass-border px-3 py-1.5 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg"
               >
                 取消
               </button>
               <button
                 onClick={() => void handleRemoveDevice()}
                 disabled={removingId === device.id}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/15 px-3 py-1.5 text-[11px] font-medium text-red-200 transition-colors hover:bg-red-500/25"
+                className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/15 px-3 py-1.5 text-[11px] font-medium text-red-200 transition-colors hover:bg-red-500/25"
               >
                 {removingId === device.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                 {removingId === device.id ? "移除中..." : "移除设备"}
@@ -634,7 +634,7 @@ function BotDetailNested({
         ) : null}
       </div>
 
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4 text-xs text-text-secondary/70">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4 text-xs text-text-secondary/70">
         此处只展示真实设备绑定关系。Bot 对话、策略和自主任务请在 Bot 详情中管理。
       </section>
     </div>
@@ -643,7 +643,7 @@ function BotDetailNested({
 
 function Stat({ label, value, delta }: { label: string; value: number | string; delta?: string }) {
   return (
-    <div className="rounded-lg bg-glass-bg/50 px-2 py-1.5">
+    <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
       <div className="text-[9px] uppercase tracking-wider text-text-secondary/55">{label}</div>
       <div className="flex items-baseline justify-center gap-1">
         <span className="text-sm font-semibold text-text-primary">{value}</span>

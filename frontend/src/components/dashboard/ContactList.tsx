@@ -30,7 +30,7 @@ export default function ContactList() {
 
   if (contacts.length === 0) {
     return (
-      <div className="p-4 text-center text-xs text-text-secondary">
+      <div className="liquid-empty-state m-3 p-4 text-center text-xs text-text-secondary">
         {t.noContacts}
       </div>
     );
@@ -58,7 +58,7 @@ export default function ContactList() {
                 void selectAgent(contact.contact_agent_id);
               }
             }}
-            className="w-full px-4 py-2.5 text-left transition-colors hover:bg-glass-bg border-l-2 border-transparent"
+            className="liquid-list-row w-full border-l-2 border-transparent px-4 py-2.5 text-left transition-colors"
           >
             <div className="flex items-center gap-2.5">
               {contact.avatar_url ? (

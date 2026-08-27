@@ -20,7 +20,7 @@ export default function ReplyQuoteBlock({ preview, onJump, className }: ReplyQuo
 
   const senderLabel = preview.sender_display_name || preview.sender_id || "Unknown";
   const baseClass =
-    "mb-1.5 flex items-start gap-1.5 rounded-md border-l-2 border-neon-cyan/40 bg-glass-bg/60 pl-2 py-1 pr-2 text-xs";
+    "liquid-tool-surface mb-1.5 flex items-start gap-1.5 rounded-md border-l-2 border-neon-cyan/40 pl-2 py-1 pr-2 text-xs";
   const interactive = preview.deleted
     ? "opacity-60"
     : "cursor-pointer transition-colors hover:bg-glass-bg hover:border-neon-cyan/70";

@@ -262,18 +262,18 @@ export default function TransferDialog({ viewer, onClose, onSuccess }: TransferD
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center ${closing ? "pointer-events-none" : ""}`}
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
-        className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-glass-border bg-glass-bg backdrop-blur-xl"
+        className="liquid-dialog relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={closeWithMotion}
           aria-label="close"
-          className="absolute right-4 top-4 z-10 rounded p-1 text-text-secondary hover:text-text-primary"
+          className="liquid-action absolute right-4 top-4 z-10 rounded-lg p-1 text-text-secondary hover:text-text-primary"
         >
           <X className="h-4 w-4" />
         </button>
@@ -322,7 +322,7 @@ export default function TransferDialog({ viewer, onClose, onSuccess }: TransferD
                   value={customRecipientId}
                   onChange={(e) => setCustomRecipientId(e.target.value)}
                   placeholder={t.enterCustomIdHint}
-                  className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 font-mono text-sm text-text-primary placeholder-text-secondary/40 outline-none focus:border-neon-cyan/50"
+                  className="liquid-input w-full rounded-lg border p-3 font-mono text-sm text-text-primary placeholder-text-secondary/40 outline-none focus:border-neon-cyan/50"
                 />
                 <button
                   type="button"
@@ -383,7 +383,7 @@ export default function TransferDialog({ viewer, onClose, onSuccess }: TransferD
                 value={amount}
                 onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
                 placeholder="0"
-                className={`w-full rounded-lg border bg-deep-black-light px-4 py-3 pr-16 font-mono text-2xl font-semibold text-text-primary placeholder-text-secondary/30 outline-none transition-colors ${
+                className={`liquid-input w-full rounded-lg border px-4 py-3 pr-16 font-mono text-2xl font-semibold text-text-primary placeholder-text-secondary/30 outline-none transition-colors ${
                   overBudget ? "border-red-400/50 focus:border-red-400/70" : "border-glass-border focus:border-neon-cyan/50"
                 }`}
               />
@@ -398,7 +398,7 @@ export default function TransferDialog({ viewer, onClose, onSuccess }: TransferD
                     key={n}
                     type="button"
                     onClick={() => setAmount(String(n))}
-                    className={`rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${
+                    className={`liquid-action rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${
                       amount === String(n)
                         ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan"
                         : "border-glass-border text-text-secondary hover:border-glass-border/80 hover:text-text-primary"
@@ -424,19 +424,19 @@ export default function TransferDialog({ viewer, onClose, onSuccess }: TransferD
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
               placeholder={t.memoPlaceholder}
-              className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
+              className="liquid-input w-full rounded-lg border p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
             />
           </div>
 
           {error && <p ref={errorRef} className="text-sm text-red-400">{error}</p>}
         </form>
 
-        <div className="shrink-0 border-t border-glass-border bg-glass-bg/40 px-6 py-4">
+        <div className="liquid-toolbar shrink-0 border-t px-6 py-4">
           <button
             form="transferForm"
             type="submit"
             disabled={!isValid || submitting}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 py-3 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neon-cyan/10"
+            className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 py-3 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neon-cyan/10"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {submitting
@@ -494,7 +494,7 @@ function FromCard({
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         onBlur={() => setTimeout(() => setOpen(false), 120)}
-        className="flex w-full items-center justify-between gap-3 rounded-lg border border-glass-border bg-deep-black-light px-3.5 py-2.5 text-left transition-colors hover:border-neon-cyan/30 disabled:cursor-default disabled:hover:border-glass-border"
+        className="liquid-action flex w-full items-center justify-between gap-3 rounded-lg px-3.5 py-2.5 text-left transition-colors hover:border-neon-cyan/30 disabled:cursor-default disabled:hover:border-glass-border"
       >
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-text-primary">{label}</div>
@@ -505,7 +505,7 @@ function FromCard({
         {!disabled ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-secondary/60" /> : null}
       </button>
       {open && !disabled ? (
-        <div ref={menuRef} className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg border border-glass-border bg-deep-black-light shadow-lg">
+        <div ref={menuRef} className="liquid-menu absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg">
           {options.map((opt) => {
             const selected =
               value?.type === opt.identity.type && value.id === opt.identity.id;
@@ -518,7 +518,7 @@ function FromCard({
                   onChange(opt.identity);
                   setOpen(false);
                 }}
-                className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-glass-bg ${
+                className={`liquid-list-row flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors ${
                   selected ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-primary"
                 }`}
               >
@@ -585,13 +585,13 @@ function RecipientPicker({
         type="button"
         onClick={() => setOpen(!open)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="flex w-full items-center justify-between gap-3 rounded-lg border border-glass-border bg-deep-black-light px-3.5 py-2.5 text-left text-sm text-text-secondary transition-colors hover:border-neon-cyan/30"
+        className="liquid-action flex w-full items-center justify-between gap-3 rounded-lg px-3.5 py-2.5 text-left text-sm text-text-secondary transition-colors hover:border-neon-cyan/30"
       >
         <span>{placeholder}</span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-secondary/60" />
       </button>
       {open ? (
-        <div ref={pickerRef} className="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-lg border border-glass-border bg-deep-black-light shadow-lg">
+        <div ref={pickerRef} className="liquid-menu absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-lg">
           {(["human-self", "my-bot", "contact"] as const).map((group) => {
             const items = grouped[group];
             if (items.length === 0) return null;
@@ -608,7 +608,7 @@ function RecipientPicker({
                       e.preventDefault();
                       onPick(opt);
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-glass-bg"
+                    className="liquid-list-row flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
                   >
                     {opt.group === "human-self" ? (
                       <HumanInitial label={opt.label} />
@@ -630,7 +630,7 @@ function RecipientPicker({
               e.preventDefault();
               onCustom();
             }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="liquid-list-row flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:text-text-primary"
           >
             <Pencil className="h-3.5 w-3.5" />
             {customLabel}
@@ -651,7 +651,7 @@ function RecipientChip({
   onChange: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-glass-border bg-deep-black-light px-3.5 py-2.5">
+    <div className="liquid-card flex items-center gap-3 rounded-lg px-3.5 py-2.5">
       {option.group === "human-self" ? (
         <HumanInitial label={option.label} />
       ) : (
@@ -664,7 +664,7 @@ function RecipientChip({
       <button
         type="button"
         onClick={onChange}
-        className="rounded-md border border-glass-border px-2 py-1 text-[11px] text-text-secondary transition-colors hover:border-neon-cyan/30 hover:text-text-primary"
+        className="liquid-action rounded-md px-2 py-1 text-[11px] text-text-secondary transition-colors hover:border-neon-cyan/30 hover:text-text-primary"
       >
         {changeLabel}
       </button>
