@@ -39,6 +39,30 @@ export function SidebarListSkeleton({ rows = 7, withAvatar = true }: { rows?: nu
   );
 }
 
+/**
+ * Room rows are visually distinct from the generic sidebar list: `RoomList`
+ * renders `mx-2 my-1 rounded-2xl px-3 py-3` cards with a 40px avatar and a
+ * trailing timestamp. Keeping one shared implementation stops the shell
+ * skeleton, the sidebar bootstrap skeleton and the in-list refresh skeleton
+ * from drifting apart from the loaded layout.
+ */
+export function RoomRowsSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="py-1">
+      {Array.from({ length: rows }).map((_, idx) => (
+        <div key={idx} className="mx-2 my-1 flex items-center gap-3 rounded-2xl px-3 py-3">
+          <SkeletonBlock className="h-10 w-10 shrink-0 rounded-xl bg-glass-border/45" />
+          <div className="min-w-0 flex-1">
+            <SkeletonBlock className="h-3.5 w-1/2" />
+            <SkeletonBlock className="mt-2 h-2.5 w-4/5 bg-glass-border/40" />
+          </div>
+          <SkeletonBlock className="h-2.5 w-10 shrink-0 bg-glass-border/30" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CardGridSkeleton({ rows = 6, statCards = false }: { rows?: number; statCards?: boolean }) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

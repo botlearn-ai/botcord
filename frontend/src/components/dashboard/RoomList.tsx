@@ -26,7 +26,7 @@ import SubscriptionBadge from "./SubscriptionBadge";
 import { resolveDmDisplayName } from "./dmRoom";
 import { CompositeAvatar } from "./CompositeAvatar";
 import BotAvatar from "./BotAvatar";
-import { SidebarListSkeleton } from "./DashboardTabSkeleton";
+import { RoomRowsSkeleton } from "./DashboardTabSkeleton";
 
 interface RoomListProps {
   rooms?: DashboardRoom[];
@@ -365,11 +365,7 @@ export default function RoomList({
   };
 
   if (loading) {
-    return (
-      <div className="py-1">
-        <SidebarListSkeleton rows={6} />
-      </div>
-    );
+    return <RoomRowsSkeleton rows={6} />;
   }
 
   return (

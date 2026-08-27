@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getShellSkeletonVariantFromPathname } from "./DashboardShellSkeleton";
+import { getShellSkeletonVariantFromPathname, shellSkeletonHasOpenConversation } from "./DashboardShellSkeleton";
 
 describe("getShellSkeletonVariantFromPathname", () => {
   it("treats /chats root and home routes as home", () => {
@@ -22,5 +22,22 @@ describe("getShellSkeletonVariantFromPathname", () => {
     expect(getShellSkeletonVariantFromPathname("/chats/wallet")).toBe("wallet");
     expect(getShellSkeletonVariantFromPathname("/chats/activity")).toBe("activity");
     expect(getShellSkeletonVariantFromPathname("/chats/bots")).toBe("bots");
+  });
+});
+
+describe("shellSkeletonHasOpenConversation", () => {
+  it("treats room-less message routes as the empty state", () => {
+    expect(shellSkeletonHasOpenConversation("/chats/messages")).toBe(false);
+    expect(shellSkeletonHasOpenConversation("/chats/dm")).toBe(false);
+    expect(shellSkeletonHasOpenConversation("/chats/rooms")).toBe(false);
+    expect(shellSkeletonHasOpenConversation("/chats/contacts")).toBe(false);
+    expect(shellSkeletonHasOpenConversation(null)).toBe(false);
+  });
+
+  it("detects routes that resolve to an open conversation", () => {
+    expect(shellSkeletonHasOpenConversation("/chats/messages/rm_123")).toBe(true);
+    expect(shellSkeletonHasOpenConversation("/chats/dm/rm_dm_123")).toBe(true);
+    expect(shellSkeletonHasOpenConversation("/chats/rooms/rm_123")).toBe(true);
+    expect(shellSkeletonHasOpenConversation("/chats/user-chat")).toBe(true);
   });
 });
