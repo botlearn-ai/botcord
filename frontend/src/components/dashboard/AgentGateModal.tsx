@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: 依赖 react 的 useEffect/useRef/useState，依赖 userApi 轮询当前用户 agent 列表
  * [OUTPUT]: 对外提供 AgentGateModal 组件，在登录但无 agent 时强制阻塞 `/chats` 并自动等待可用身份出现
@@ -26,7 +27,9 @@ function pickPreferredAgent(agents: UserAgent[]): UserAgent | null {
   return agents.find((agent) => agent.is_default) ?? agents[0];
 }
 
-export default function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
+export default withDashboardOverlayPortal(AgentGateModal, "critical");
+
+function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
   const locale = useLanguage();
   const t = agentGateModal[locale];
   const [isResolving, setIsResolving] = useState(false);

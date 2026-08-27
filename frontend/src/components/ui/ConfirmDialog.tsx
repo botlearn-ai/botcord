@@ -48,7 +48,7 @@ export default function ConfirmDialog() {
 
   return (
     <div
-      className="liquid-scrim fixed inset-0 z-[120] flex items-center justify-center p-4"
+      className="liquid-scrim fixed inset-0 z-[1100] flex items-center justify-center p-4"
       role="presentation"
       onClick={() => close(isAlert)}
     >

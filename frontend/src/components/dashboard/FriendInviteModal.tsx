@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: 依赖邀请 API 创建好友邀请码，依赖 onboarding Prompt 模板生成给 AI 的邀请文案
  * [OUTPUT]: 对外提供 FriendInviteModal 组件，展示好友邀请链接与复制 Prompt 操作
@@ -18,7 +19,9 @@ import { buildFriendInvitePrompt, rebaseToCurrentOrigin } from "@/lib/onboarding
 import { friendInviteModal } from "@/lib/i18n/translations/dashboard";
 import { Loader2 } from "lucide-react";
 
-export default function FriendInviteModal({ onClose }: { onClose: () => void }) {
+export default withDashboardOverlayPortal(FriendInviteModal);
+
+function FriendInviteModal({ onClose }: { onClose: () => void }) {
   const locale = useLanguage();
   const tc = common[locale];
   const t = friendInviteModal[locale];

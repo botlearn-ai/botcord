@@ -38,6 +38,7 @@ import {
 } from "@/store/useAgentGatewayStore";
 import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 
 interface Props {
   agentId: string;
@@ -498,7 +499,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
       )}
 
       {pendingDelete && (
-        <DeleteConfirmDialog
+        <PortaledDeleteConfirmDialog
           gateway={pendingDelete}
           busy={busyId === pendingDelete.id}
           onCancel={() => setPendingDelete(null)}
@@ -940,7 +941,7 @@ function TelegramAddForm({
         </button>
       </div>
       {tokenGuideOpen && (
-        <TelegramTokenGuideDialog onClose={() => setTokenGuideOpen(false)} />
+        <PortaledTelegramTokenGuideDialog onClose={() => setTokenGuideOpen(false)} />
       )}
     </div>
   );
@@ -2737,3 +2738,6 @@ function DeleteConfirmDialog({
     </div>
   );
 }
+
+const PortaledTelegramTokenGuideDialog = withDashboardOverlayPortal(TelegramTokenGuideDialog, "nested");
+const PortaledDeleteConfirmDialog = withDashboardOverlayPortal(DeleteConfirmDialog, "nested");

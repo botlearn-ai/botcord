@@ -14,6 +14,7 @@ import { animateIfMotion, animateOverlayPanelEnter, animateOverlayPanelExit, cle
 import { useLanguage } from "@/lib/i18n";
 import { agentBrowser } from "@/lib/i18n/translations/dashboard";
 import { useConfirm } from "@/store/useConfirmStore";
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 
 interface Props {
   roomId: string;
@@ -128,7 +129,7 @@ export default function MemberActionsMenu({
         </div>
       )}
       {permOpen && (
-        <PermissionsDialog
+        <PortaledPermissionsDialog
           roomId={roomId}
           member={member}
           onClose={() => setPermOpen(false)}
@@ -241,6 +242,8 @@ function PermissionsDialog({
     </div>
   );
 }
+
+const PortaledPermissionsDialog = withDashboardOverlayPortal(PermissionsDialog, "nested");
 
 function TriToggle({
   label, value, onChange, t,

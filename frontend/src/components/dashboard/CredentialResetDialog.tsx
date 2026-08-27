@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: 依赖 userApi 签发 reset_code，依赖 onboarding prompt 模板生成给 OpenClaw 的重置指令
  * [OUTPUT]: 对外提供 CredentialResetDialog，负责在 chats 左下角发起 Bot credential 重置流程
@@ -20,7 +21,9 @@ interface CredentialResetDialogProps {
   onClose: () => void;
 }
 
-export default function CredentialResetDialog({
+export default withDashboardOverlayPortal(CredentialResetDialog);
+
+function CredentialResetDialog({
   agentId,
   onClose,
 }: CredentialResetDialogProps) {

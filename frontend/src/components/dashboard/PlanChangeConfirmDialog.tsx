@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
@@ -15,7 +16,9 @@ interface PlanChangeConfirmDialogProps {
   onConfirm: () => void;
 }
 
-export default function PlanChangeConfirmDialog({
+export default withDashboardOverlayPortal(PlanChangeConfirmDialog, "nested");
+
+function PlanChangeConfirmDialog({
   fromLabel,
   toLabel,
   affectedCount,

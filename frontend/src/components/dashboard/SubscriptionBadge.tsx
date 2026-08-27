@@ -21,6 +21,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
+import DashboardOverlayPortal from "./DashboardOverlayPortal";
 
 interface SubscriptionBadgeProps {
   productId?: string | null;
@@ -294,21 +295,22 @@ export default function SubscriptionBadge({
       {trigger}
 
       {showModal && (
-        <div
-          className="liquid-scrim fixed inset-0 z-50 flex items-center justify-center p-4"
-          onClick={(event) => {
-            event.stopPropagation();
-            closeWithMotion();
-          }}
-          ref={overlayRef}
-        >
+        <DashboardOverlayPortal>
           <div
-            ref={panelRef}
-            role="dialog"
-            aria-modal="true"
-            className="liquid-dialog w-full max-w-sm rounded-xl border border-glass-border p-6 shadow-xl"
-            onClick={(event) => event.stopPropagation()}
+            className="liquid-scrim fixed inset-0 z-50 flex items-center justify-center p-4"
+            onClick={(event) => {
+              event.stopPropagation();
+              closeWithMotion();
+            }}
+            ref={overlayRef}
           >
+            <div
+              ref={panelRef}
+              role="dialog"
+              aria-modal="true"
+              className="liquid-dialog w-full max-w-sm rounded-xl border border-glass-border p-6 shadow-xl"
+              onClick={(event) => event.stopPropagation()}
+            >
             <h2 data-motion-item className="mb-2 flex items-center gap-2 text-lg font-semibold text-yellow-500">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
@@ -435,8 +437,9 @@ export default function SubscriptionBadge({
                 </div>
               </div>
             )}
+            </div>
           </div>
-        </div>
+        </DashboardOverlayPortal>
       )}
     </>
   );

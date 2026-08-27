@@ -21,6 +21,7 @@ import RoomList from "../RoomList";
 import RoomZeroState from "../RoomZeroState";
 import SearchBar from "../SearchBar";
 import { animateFadeUp, animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
+import DashboardOverlayPortal from "../DashboardOverlayPortal";
 
 interface MessagesPanelProps {
   isGuest: boolean;
@@ -322,32 +323,34 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
         )}
       </div>
       {!isGuest && mobileGroupingRendered ? (
-        <div
-          className="fixed inset-0 z-50 hidden max-md:block"
-          role="dialog"
-          aria-modal="true"
-          aria-label={tGrouping.header}
-        >
-          <button
-            ref={mobileGroupingOverlayRef}
-            type="button"
-            aria-label={tGrouping.collapse}
-            className="liquid-scrim absolute inset-0 backdrop-blur-sm"
-            onClick={() => setMobileGroupingOpen(false)}
-          />
+        <DashboardOverlayPortal>
           <div
-            ref={mobileGroupingPanelRef}
-            className="liquid-drawer absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 top-0 w-[min(84vw,280px)] overflow-hidden border-r border-glass-border"
+            className="fixed inset-0 z-50 hidden max-md:block"
+            role="dialog"
+            aria-modal="true"
+            aria-label={tGrouping.header}
           >
-            <div data-mobile-grouping-motion className="h-full">
-            <MessagesGroupingSidebar
-              fullWidth
-              onCollapse={() => setMobileGroupingOpen(false)}
-              onFilterSelect={() => setMobileGroupingOpen(false)}
+            <button
+              ref={mobileGroupingOverlayRef}
+              type="button"
+              aria-label={tGrouping.collapse}
+              className="liquid-scrim absolute inset-0 backdrop-blur-sm"
+              onClick={() => setMobileGroupingOpen(false)}
             />
+            <div
+              ref={mobileGroupingPanelRef}
+              className="liquid-drawer absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-0 top-0 w-[min(84vw,280px)] overflow-hidden border-r border-glass-border"
+            >
+              <div data-mobile-grouping-motion className="h-full">
+                <MessagesGroupingSidebar
+                  fullWidth
+                  onCollapse={() => setMobileGroupingOpen(false)}
+                  onFilterSelect={() => setMobileGroupingOpen(false)}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </DashboardOverlayPortal>
       ) : null}
       {pendingRequestCount > 0 ? (
         <button

@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: 依赖 agent 资料与联系人关系状态，依赖 i18n 提供文案
  * [OUTPUT]: 对外提供带 animejs 进出场动效的 AgentCardModal 统一 agent 详情模态框
@@ -41,7 +42,9 @@ function getModalParts(panel: HTMLElement | null): HTMLElement[] {
   return panel ? Array.from(panel.querySelectorAll<HTMLElement>(PROFILE_MODAL_PART_SELECTOR)) : [];
 }
 
-export default function AgentCardModal({
+export default withDashboardOverlayPortal(AgentCardModal);
+
+function AgentCardModal({
   isOpen,
   agent,
   loading = false,

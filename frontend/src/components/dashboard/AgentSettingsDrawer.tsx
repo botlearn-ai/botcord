@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, Bot, Clock, FileText, Loader2, MessageSquare, Plug, RefreshCw, Shield, Sparkles, Trash2, User, UserRound, X } from "lucide-react";
 import { apiFetch, userApi } from "@/lib/api";
@@ -272,7 +273,9 @@ function SummaryTile({
   );
 }
 
-export default function AgentSettingsDrawer({
+export default withDashboardOverlayPortal(AgentSettingsDrawer);
+
+function AgentSettingsDrawer({
   agentId,
   displayName,
   bio,

@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Loader2, Settings, Trash2, X } from "lucide-react";
 import { userApi } from "@/lib/api";
@@ -18,7 +19,9 @@ interface AgentProfileEditModalProps {
   onSaved?: () => void;
 }
 
-export default function AgentProfileEditModal({
+export default withDashboardOverlayPortal(AgentProfileEditModal);
+
+function AgentProfileEditModal({
   agentId,
   initialDisplayName,
   initialBio,

@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: 依赖 human 资料与联系人关系状态，依赖 i18n 提供文案
  * [OUTPUT]: 对外提供带 animejs 进出场动效的 HumanCardModal 统一 human 详情模态框
@@ -37,7 +38,9 @@ function getModalParts(panel: HTMLElement | null): HTMLElement[] {
   return panel ? Array.from(panel.querySelectorAll<HTMLElement>(PROFILE_MODAL_PART_SELECTOR)) : [];
 }
 
-export default function HumanCardModal({
+export default withDashboardOverlayPortal(HumanCardModal);
+
+function HumanCardModal({
   isOpen,
   human,
   loading = false,

@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Loader2, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
@@ -153,7 +154,11 @@ function formatWholeCoinAmount(amountMinor: string | number): string {
   return Number.isInteger(coins) ? String(coins) : String(coins);
 }
 
-export default function RoomSettingsModal({
+const PortaledActionConfirmDialog = withDashboardOverlayPortal(ActionConfirmDialog, "nested");
+
+export default withDashboardOverlayPortal(RoomSettingsModal);
+
+function RoomSettingsModal({
   roomId,
   roomOwnerType,
   viewerMode,
@@ -1317,7 +1322,7 @@ export default function RoomSettingsModal({
       )}
 
       {leaveDialogOpen && !isOwner && (
-        <ActionConfirmDialog
+        <PortaledActionConfirmDialog
           title={t.leaveRoomConfirmTitle}
           description={t.leaveRoomConfirmDescription}
           warning={t.leaveRoomWarning}
@@ -1354,7 +1359,7 @@ export default function RoomSettingsModal({
       )}
 
       {dissolveDialogOpen && isOwner && (
-        <ActionConfirmDialog
+        <PortaledActionConfirmDialog
           title={t.dissolveRoomConfirmTitle}
           description={t.dissolveRoomConfirmDescription}
           warning={t.dissolveRoomWarning}

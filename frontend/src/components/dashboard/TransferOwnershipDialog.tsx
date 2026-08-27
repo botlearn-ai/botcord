@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: 接收当前房间、候选成员列表与关闭回调，依赖 humansApi.transferRoomOwnership 执行转让
  * [OUTPUT]: 对外提供 TransferOwnershipDialog — 下拉选择 + 二次文字确认的转让房主弹窗
@@ -25,7 +26,9 @@ interface Props {
   onError: (msg: string) => void;
 }
 
-export default function TransferOwnershipDialog({
+export default withDashboardOverlayPortal(TransferOwnershipDialog, "nested");
+
+function TransferOwnershipDialog({
   roomId, roomName, viewerHumanId, members, onClose, onSuccess, onError,
 }: Props) {
   const locale = useLanguage();

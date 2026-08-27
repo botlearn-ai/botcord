@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: 依赖 chat/ui/session store 的消息和焦点状态，复用 MessageBubble 和 RoomHumanComposer 渲染话题线程
  * [OUTPUT]: 对外提供带 animejs 进出场动效的 TopicDrawer 组件，作为从右侧滑出的话题详情面板
@@ -34,7 +35,9 @@ function getDrawerParts(drawer: HTMLElement | null): HTMLElement[] {
   return drawer ? Array.from(drawer.querySelectorAll<HTMLElement>(DRAWER_PART_SELECTOR)) : [];
 }
 
-export default function TopicDrawer() {
+export default withDashboardOverlayPortal(TopicDrawer);
+
+function TopicDrawer() {
   const locale = useLanguage();
   const t = messageList[locale];
 

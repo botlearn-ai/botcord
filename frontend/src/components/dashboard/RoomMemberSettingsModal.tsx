@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
@@ -20,7 +21,9 @@ interface RoomMemberSettingsModalProps {
   onClose: () => void;
 }
 
-export default function RoomMemberSettingsModal({
+export default withDashboardOverlayPortal(RoomMemberSettingsModal, "nested");
+
+function RoomMemberSettingsModal({
   roomId,
   roomName,
   roomDescription,

@@ -6,6 +6,7 @@
  */
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { humansApi } from "@/lib/api";
@@ -35,7 +36,9 @@ interface AddRoomMemberModalProps {
 const EMPTY_CONTACTS: ContactInfo[] = [];
 const EMPTY_AGENTS: UserAgent[] = [];
 
-export default function AddRoomMemberModal({
+export default withDashboardOverlayPortal(AddRoomMemberModal, "nested");
+
+function AddRoomMemberModal({
   roomId,
   existingMemberIds,
   onClose,

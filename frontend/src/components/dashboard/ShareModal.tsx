@@ -6,6 +6,7 @@
  */
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { shareModal } from "@/lib/i18n/translations/dashboard";
@@ -25,7 +26,9 @@ interface ShareModalProps {
   onClose: () => void;
 }
 
-export default function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClose }: ShareModalProps) {
+export default withDashboardOverlayPortal(ShareModal);
+
+function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClose }: ShareModalProps) {
   const locale = useLanguage();
   const t = shareModal[locale];
   const tc = common[locale];

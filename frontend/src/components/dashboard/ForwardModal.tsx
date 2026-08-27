@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, FileArchive, Loader2, MessageSquare, Users, User, X } from "lucide-react";
@@ -30,7 +31,9 @@ interface ForwardModalProps {
   onClose: () => void;
 }
 
-export default function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
+export default withDashboardOverlayPortal(ForwardModal, "nested");
+
+function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);

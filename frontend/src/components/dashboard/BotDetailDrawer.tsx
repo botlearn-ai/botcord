@@ -45,6 +45,7 @@ import { CompositeAvatar } from "./CompositeAvatar";
 import BotWalletTab from "./BotWalletTab";
 import DashboardSelect from "./DashboardSelect";
 import AgentSkillsTab from "./AgentSkillsTab";
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { mergeRuntimeFileContentResult, runtimeFileNeedsContentLoad } from "@/lib/runtime-files";
 
 type TabKey = "overview" | "wallet" | "settings" | "skills" | "files";
@@ -90,7 +91,7 @@ interface BotFriendRoom {
  * Right-side drawer for a single owned bot.
  * Top-level tabs keep the drawer compact: 概览 / 钱包 / 设置 / 文件.
  */
-export default memo(BotDetailDrawer);
+export default memo(withDashboardOverlayPortal(BotDetailDrawer));
 
 function BotDetailDrawer() {
   const router = useRouter();
