@@ -318,7 +318,9 @@ export default function RoomList({
     closeMobileSidebar();
     const chatStore = useDashboardChatStore.getState();
     if (Object.prototype.hasOwnProperty.call(chatStore.messages, room.room_id)) {
-      void chatStore.pollNewMessages(room.room_id);
+      // Keep cached conversation content in place, but make an intentional
+      // room switch visibly responsive while its delta check is running.
+      void chatStore.pollNewMessages(room.room_id, { showLoading: true });
     } else {
       void chatStore.loadRoomMessages(room.room_id);
     }

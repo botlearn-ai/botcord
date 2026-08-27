@@ -212,6 +212,59 @@ describe("useOwnerChatStore empty message handling", () => {
   });
 });
 
+describe("useOwnerChatStore history loading", () => {
+  beforeEach(() => {
+    mocks.getRoomMessages.mockReset();
+    useOwnerChatStore.getState().reset();
+    useDashboardChatStore.setState({
+      ownedAgentRooms: [makeOwnedAgentRoom()],
+      optimisticOwnerChatRooms: {},
+    });
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+  });
+
+  it("drops an older-page response after the owner-chat room changes", async () => {
+    let resolvePage!: (result: { messages: DashboardMessage[]; has_more: boolean }) => void;
+    mocks.getRoomMessages.mockReturnValue(new Promise((resolve) => {
+      resolvePage = resolve;
+    }));
+    useOwnerChatStore.setState({
+      messages: [makeOwnerChatMessage({
+        clientId: "current-message",
+        hubMsgId: "hub_current",
+        sender: "agent",
+        senderName: "Owned bot",
+        status: "delivered",
+      })],
+      hasMore: true,
+    });
+
+    const request = useOwnerChatStore.getState().loadMore();
+    expect(useOwnerChatStore.getState().loadingMore).toBe(true);
+
+    useOwnerChatStore.getState().setRoom("rm_oc_other", "Other bot");
+    useOwnerChatStore.getState().addOptimistic(makeOwnerChatMessage({
+      clientId: "other-room-local",
+      text: "new room message",
+    }));
+    resolvePage({
+      messages: [makeDashboardMessage({
+        hub_msg_id: "hub_old_history",
+        msg_id: "msg_old_history",
+        room_id: "rm_oc_real",
+        created_at: "2026-05-19T07:00:00.000Z",
+      })],
+      has_more: false,
+    });
+    await request;
+
+    const state = useOwnerChatStore.getState();
+    expect(state.roomId).toBe("rm_oc_other");
+    expect(state.messages.map((message) => message.clientId)).toEqual(["other-room-local"]);
+    expect(state.loadingMore).toBe(false);
+  });
+});
+
 describe("useOwnerChatStore run failure handling", () => {
   beforeEach(() => {
     useOwnerChatStore.getState().reset();
@@ -527,6 +580,37 @@ describe("useOwnerChatStore stream-cache restore", () => {
     expect(streaming).toBeTruthy();
   });
 
+  it("drops a restored run when the reader switches to another Bot", async () => {
+    let resolveRun!: (run: RunStreamBlocksResponse) => void;
+    mocks.getRunStreamBlocks.mockReturnValue(new Promise((resolve) => {
+      resolveRun = resolve;
+    }));
+    useOwnerChatStore.getState().upsertMessage(
+      makeOwnerChatMessage({
+        clientId: "u1",
+        hubMsgId: "msg_trace",
+        sender: "user",
+        status: "confirmed",
+        text: "do a thing",
+        createdAt: new Date().toISOString(),
+      }),
+    );
+
+    const request = useOwnerChatStore.getState().restoreActiveRuns("ag_bot");
+    useOwnerChatStore.getState().setRoom("rm_oc_other", "Other bot");
+    useOwnerChatStore.getState().addOptimistic(makeOwnerChatMessage({
+      clientId: "other-room-local",
+      text: "new room message",
+    }));
+    resolveRun(runningRun());
+    await request;
+
+    const state = useOwnerChatStore.getState();
+    expect(state.roomId).toBe("rm_oc_other");
+    expect(state.messages.map((message) => message.clientId)).toEqual(["other-room-local"]);
+    expect(state.messages.some((message) => message.status === "streaming")).toBe(false);
+  });
+
   it("restoreActiveRuns skips uncovered user messages older than the restore window", async () => {
     // An uncovered run that never produced a reply (autonomous work) stays
     // "running" for the full run TTL; stale ones must not be resurrected.
@@ -628,5 +712,44 @@ describe("useOwnerChatStore stream-cache restore", () => {
     expect(
       useOwnerChatStore.getState().messages.some((m) => m.status === "streaming"),
     ).toBe(false);
+  });
+});
+
+describe("useOwnerChatStore reconnect reconciliation", () => {
+  beforeEach(() => {
+    mocks.getRoomMessages.mockReset();
+    useOwnerChatStore.getState().reset();
+    useDashboardChatStore.setState({
+      ownedAgentRooms: [makeOwnedAgentRoom()],
+      optimisticOwnerChatRooms: {},
+    });
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+  });
+
+  it("drops a reconnect response after the reader switches rooms", async () => {
+    let resolvePage!: (result: { messages: DashboardMessage[]; has_more: boolean }) => void;
+    mocks.getRoomMessages.mockReturnValue(new Promise((resolve) => {
+      resolvePage = resolve;
+    }));
+    useOwnerChatStore.setState({
+      messages: [makeOwnerChatMessage({
+        clientId: "failed-send",
+        status: "failed",
+        error: "Connection lost",
+      })],
+    });
+
+    const request = useOwnerChatStore.getState().reconcileAfterReconnect();
+    useOwnerChatStore.getState().setRoom("rm_oc_other", "Other bot");
+    useOwnerChatStore.getState().addOptimistic(makeOwnerChatMessage({
+      clientId: "other-room-local",
+      text: "new room message",
+    }));
+    resolvePage({ messages: [makeDashboardMessage()], has_more: false });
+    await request;
+
+    const state = useOwnerChatStore.getState();
+    expect(state.roomId).toBe("rm_oc_other");
+    expect(state.messages.map((message) => message.clientId)).toEqual(["other-room-local"]);
   });
 });

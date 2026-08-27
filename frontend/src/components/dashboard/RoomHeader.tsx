@@ -23,6 +23,7 @@ import ShareModal from "./ShareModal";
 import RoomSettingsModal from "./RoomSettingsModal";
 import DMSettingsModal from "./DMSettingsModal";
 import AddRoomMemberModal from "./AddRoomMemberModal";
+import { MessageRoomHeaderSkeleton } from "./DashboardMessagePaneSkeleton";
 import { dmPeerId, resolveDmDisplayName } from "./dmRoom";
 import { animateIfMotion, cleanupAnime } from "@/lib/anime";
 
@@ -66,10 +67,11 @@ export default function RoomHeader() {
     setMessagesPane: state.setMessagesPane,
     openMobileSidebar: state.openMobileSidebar,
   })));
-  const { overview, getRoomSummary, refreshOverview } = useDashboardChatStore(useShallow((state) => ({
+  const { overview, getRoomSummary, refreshOverview, roomMessagesLoading } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
     getRoomSummary: state.getRoomSummary,
     refreshOverview: state.refreshOverview,
+    roomMessagesLoading: openedRoomId ? Boolean(state.messagesLoading[openedRoomId]) : false,
   })));
   const { joinRoom, joiningRoomId } = useDashboardChatStore(useShallow((state) => ({
     joinRoom: state.joinRoom,
@@ -277,7 +279,10 @@ export default function RoomHeader() {
     };
   }, [canAddMembers, handleOpenAddMemberModal]);
 
-  if (!room) return null;
+  // A deep-linked/public room can render before its summary request resolves.
+  // Keep the header slot mounted at its final height so the message viewport
+  // and composer do not jump once the metadata arrives.
+  if (!room) return <MessageRoomHeaderSkeleton label={tc.loading} />;
 
   const handleMobileBack = () => {
     setMessagesPane("room");
@@ -370,6 +375,12 @@ export default function RoomHeader() {
         <div className="min-w-0 flex-1 py-0.5 max-md:py-0">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-text-primary">{titleText}</h3>
+            {roomMessagesLoading ? (
+              <span className="inline-flex shrink-0 text-neon-cyan" role="status" aria-label={tc.loading}>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span className="sr-only">{tc.loading}</span>
+              </span>
+            ) : null}
             {room.required_subscription_product_id ? (
               <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
             ) : null}

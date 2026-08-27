@@ -173,6 +173,9 @@ let loadInFlight = false;
 let loadRequestId = 0;
 /** In-flight guard to prevent concurrent loadMore calls. */
 let moreInFlight = false;
+let moreRequestId = 0;
+/** Changes whenever the active owner-chat room/session is replaced. */
+let roomSessionId = 0;
 
 // ---------------------------------------------------------------------------
 // State definition
@@ -184,6 +187,8 @@ export interface OwnerChatState {
   messages: OwnerChatMessage[];
   hasMore: boolean;
   loading: boolean;
+  loadingMore: boolean;
+  moreError: string | null;
   error: string | null;
   wsConnected: boolean;
   agentTyping: boolean;
@@ -246,6 +251,8 @@ const initialState = {
   messages: [] as OwnerChatMessage[],
   hasMore: false,
   loading: false,
+  loadingMore: false,
+  moreError: null as string | null,
   error: null as string | null,
   wsConnected: false,
   agentTyping: false,
@@ -262,7 +269,35 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
   // ------ Initialization ------
 
-  setRoom: (roomId, agentName) => set({ roomId, agentName }),
+  setRoom: (roomId, agentName) => {
+    if (get().roomId !== roomId) {
+      // `onAuthOk` can correct a provisional owner-chat room after the socket
+      // connects. Treat that as a true conversation switch: invalidate both
+      // requests and clear room-scoped content before the new initial page
+      // arrives, otherwise a late page (or prior messages) can bleed into the
+      // newly selected Bot conversation.
+      loadInFlight = false;
+      loadRequestId++;
+      moreInFlight = false;
+      moreRequestId++;
+      roomSessionId++;
+      set({
+        roomId,
+        agentName,
+        messages: [],
+        hasMore: false,
+        loading: false,
+        loadingMore: false,
+        moreError: null,
+        error: null,
+        agentTyping: false,
+        activeTraceId: null,
+        replyingTo: null,
+      });
+      return;
+    }
+    set({ roomId, agentName, loadingMore: false, moreError: null });
+  },
 
   setReplyingTo: (msg) => set({ replyingTo: msg }),
 
@@ -344,11 +379,23 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           roomId,
         };
       });
-      syncOwnerChatRoomSummary(roomId, get().messages);
+      if (thisRequestId === loadRequestId && get().roomId === roomId) {
+        syncOwnerChatRoomSummary(roomId, get().messages);
+      }
     } catch (err: any) {
-      set({ error: err?.message || "Failed to load messages", loading: false });
+      // A request from a previously selected Bot can fail after the reader has
+      // already switched rooms. Keep that failure scoped to its own request so
+      // it never replaces the active conversation with an unrelated error.
+      if (thisRequestId === loadRequestId && get().roomId === roomId) {
+        set({ error: err?.message || "Failed to load messages", loading: false });
+      }
     } finally {
-      loadInFlight = false;
+      // Do not release the global guard for a newer request. Without this
+      // token check, an old room response could allow duplicate initial loads
+      // while the current room was still fetching.
+      if (thisRequestId === loadRequestId) {
+        loadInFlight = false;
+      }
     }
   },
 
@@ -361,26 +408,51 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
     if (!oldest?.hubMsgId) return;
 
     moreInFlight = true;
+    const thisRequestId = ++moreRequestId;
+    set({ loadingMore: true, moreError: null });
     try {
       const result = await api.getRoomMessages(roomId, {
         before: oldest.hubMsgId,
         limit: 50,
       });
+      // Switching bots resets the store in an effect. A late response from the
+      // old room must never prepend its history into the new conversation.
+      if (thisRequestId !== moreRequestId || get().roomId !== roomId) return;
+
       const agentName = get().agentName;
       const older = result.messages
         .reverse()
         .map((m) => dashboardMsgToOwnerChat(m, agentName))
         .filter(hasVisibleOwnerChatContent);
 
-      set((state) => ({
-        messages: [...older, ...state.messages],
-        hasMore: result.has_more,
-      }));
-      syncOwnerChatRoomSummary(roomId, get().messages);
+      set((state) => {
+        if (state.roomId !== roomId || thisRequestId !== moreRequestId) return state;
+        const currentHubIds = new Set(
+          state.messages
+            .map((message) => message.hubMsgId)
+            .filter((hubMsgId): hubMsgId is string => Boolean(hubMsgId)),
+        );
+        const dedupedOlder = older.filter((message) => !message.hubMsgId || !currentHubIds.has(message.hubMsgId));
+        return {
+          messages: [...dedupedOlder, ...state.messages],
+          hasMore: result.has_more,
+        };
+      });
+      if (thisRequestId === moreRequestId && get().roomId === roomId) {
+        syncOwnerChatRoomSummary(roomId, get().messages);
+      }
     } catch (err) {
       console.error("[OwnerChatStore] Failed to load more:", err);
+      if (thisRequestId === moreRequestId && get().roomId === roomId) {
+        set({ moreError: err instanceof Error ? err.message : "Failed to load older messages" });
+      }
     } finally {
-      moreInFlight = false;
+      if (thisRequestId === moreRequestId) {
+        moreInFlight = false;
+      }
+      if (thisRequestId === moreRequestId && get().roomId === roomId) {
+        set({ loadingMore: false });
+      }
     }
   },
 
@@ -715,7 +787,9 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
   restoreActiveRuns: async (agentId) => {
     if (!agentId) return;
-    const { messages } = get();
+    const { roomId, messages } = get();
+    if (!roomId) return;
+    const sessionId = roomSessionId;
 
     // Trace ids already covered by a streaming placeholder or a finalized
     // agent reply — never re-restore those.
@@ -747,6 +821,9 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       candidates.map(async (traceId) => {
         try {
           const run = await api.getRunStreamBlocks(traceId, agentId);
+          // A restore can outlive the selected room. It must not create a
+          // streaming placeholder in whichever Bot the reader opened later.
+          if (roomSessionId !== sessionId || get().roomId !== roomId) return;
           // Discard stale result if the trace got covered while we were fetching.
           const covered = get().messages.some(
             (m) =>
@@ -873,6 +950,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
   reconcileAfterReconnect: async () => {
     const { roomId, messages, agentName } = get();
     if (!roomId) return;
+    const sessionId = roomSessionId;
 
     // Find failed user messages that were caused by disconnect (candidates for reconciliation)
     const failedMsgs = messages.filter(
@@ -887,6 +965,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         ? await api.getRoomMessages(roomId, { after: newest.hubMsgId, limit: 50 })
         : await api.getRoomMessages(roomId, { limit: 50 });
 
+      if (roomSessionId !== sessionId || get().roomId !== roomId) return;
       if (result.messages.length === 0) return;
 
       const serverMsgs = result.messages
@@ -894,6 +973,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         .filter(hasVisibleOwnerChatContent);
 
       set((state) => {
+        if (roomSessionId !== sessionId || state.roomId !== roomId) return state;
         const existingHubIds = new Set(
           state.messages.filter((m) => m.hubMsgId).map((m) => m.hubMsgId!)
         );
@@ -971,6 +1051,8 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
     loadInFlight = false;
     moreInFlight = false;
     loadRequestId++;
+    moreRequestId++;
+    roomSessionId++;
     set({ ...initialState });
   },
 }));

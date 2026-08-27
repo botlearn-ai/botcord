@@ -113,6 +113,9 @@ describe("useDashboardChatStore message polling", () => {
     mocks.getPublicRoom.mockReset();
     mocks.recallRoomMessage.mockReset();
     mocks.listAgentRooms.mockReset();
+    // Clear module-scoped request/history guards as well as Zustand state so
+    // every test starts with an independent room lifecycle.
+    useDashboardChatStore.getState().resetChatState();
     useDashboardSessionStore.setState({
       token: "test-token",
       activeIdentity: { type: "human", id: "hu_1" },
@@ -129,7 +132,10 @@ describe("useDashboardChatStore message polling", () => {
       error: null,
       messages: {},
       messagesLoading: {},
+      messagesErrors: {},
       messagesHasMore: {},
+      messagesLoadingMore: {},
+      messagesMoreErrors: {},
       ownedAgentRooms: [],
       optimisticOwnerChatRooms: {},
     });
@@ -233,6 +239,130 @@ describe("useDashboardChatStore message polling", () => {
 
     expect(useDashboardChatStore.getState().messages.rm_empty).toHaveLength(1);
     expect(useDashboardChatStore.getState().messages.rm_empty[0].hub_msg_id).toBe("hub_sender_row");
+  });
+
+  it("keeps a realtime message while an older history page is loading", async () => {
+    let resolvePage!: (result: { messages: DashboardMessage[]; has_more: boolean }) => void;
+    mocks.getRoomMessages.mockReturnValue(new Promise((resolve) => {
+      resolvePage = resolve;
+    }));
+    useDashboardChatStore.setState({
+      messages: {
+        rm_empty: [makeMessage({
+          hub_msg_id: "hub_current",
+          msg_id: "msg_current",
+          created_at: "2026-05-11T10:00:00Z",
+        })],
+      },
+      messagesHasMore: { rm_empty: true },
+    });
+
+    const request = useDashboardChatStore.getState().loadMoreMessages("rm_empty");
+    expect(useDashboardChatStore.getState().messagesLoadingMore.rm_empty).toBe(true);
+    expect(mocks.getRoomMessages).toHaveBeenCalledWith("rm_empty", {
+      before: "hub_current",
+      limit: 50,
+    });
+
+    useDashboardChatStore.getState().insertMessage("rm_empty", makeMessage({
+      hub_msg_id: "hub_live",
+      msg_id: "msg_live",
+      text: "arrived over realtime",
+      created_at: "2026-05-11T10:01:00Z",
+    }));
+    resolvePage({
+      messages: [makeMessage({
+        hub_msg_id: "hub_older",
+        msg_id: "msg_older",
+        text: "older history",
+        created_at: "2026-05-11T09:00:00Z",
+      })],
+      has_more: false,
+    });
+    await request;
+
+    expect(useDashboardChatStore.getState().messages.rm_empty.map((message) => message.hub_msg_id)).toEqual([
+      "hub_older",
+      "hub_current",
+      "hub_live",
+    ]);
+    expect(useDashboardChatStore.getState().messagesLoadingMore.rm_empty).toBe(false);
+  });
+
+  it("discards a late older-page response after the room is left", async () => {
+    let resolvePage!: (result: { messages: DashboardMessage[]; has_more: boolean }) => void;
+    mocks.getRoomMessages.mockReturnValue(new Promise((resolve) => {
+      resolvePage = resolve;
+    }));
+    mocks.leaveRoom.mockResolvedValue(undefined);
+    mocks.getOverview.mockResolvedValue({ ...makeOverview(), rooms: [] });
+    mocks.getPublicRoom.mockResolvedValue({ rooms: [] });
+    useDashboardChatStore.setState({
+      messages: { rm_empty: [makeMessage({ hub_msg_id: "hub_current", msg_id: "msg_current" })] },
+      messagesHasMore: { rm_empty: true },
+    });
+
+    const request = useDashboardChatStore.getState().loadMoreMessages("rm_empty");
+    await useDashboardChatStore.getState().leaveRoom("rm_empty");
+    resolvePage({
+      messages: [makeMessage({ hub_msg_id: "hub_old", msg_id: "msg_old" })],
+      has_more: false,
+    });
+    await request;
+
+    const state = useDashboardChatStore.getState();
+    expect(state.messages.rm_empty).toBeUndefined();
+    expect(state.messagesLoadingMore.rm_empty).toBeUndefined();
+    expect(state.messagesMoreErrors.rm_empty).toBeUndefined();
+  });
+
+  it("releases invalidated loading state when leaving a room fails", async () => {
+    let resolvePage!: (result: { messages: DashboardMessage[]; has_more: boolean }) => void;
+    mocks.getRoomMessages.mockReturnValue(new Promise((resolve) => {
+      resolvePage = resolve;
+    }));
+    mocks.leaveRoom.mockRejectedValue(new Error("leave failed"));
+    useDashboardChatStore.setState({
+      messages: { rm_empty: [makeMessage({ hub_msg_id: "hub_current", msg_id: "msg_current" })] },
+      messagesHasMore: { rm_empty: true },
+    });
+
+    const pageRequest = useDashboardChatStore.getState().loadMoreMessages("rm_empty");
+    await expect(useDashboardChatStore.getState().leaveRoom("rm_empty")).rejects.toThrow("leave failed");
+    resolvePage({ messages: [], has_more: false });
+    await pageRequest;
+
+    const state = useDashboardChatStore.getState();
+    expect(state.messages.rm_empty).toHaveLength(1);
+    expect(state.messagesLoading.rm_empty).toBeUndefined();
+    expect(state.messagesLoadingMore.rm_empty).toBeUndefined();
+  });
+
+  it("keeps exhausted history exhausted after a newest-page refresh", async () => {
+    const current = makeMessage({
+      hub_msg_id: "hub_current",
+      msg_id: "msg_current",
+      created_at: "2026-05-11T10:00:00Z",
+    });
+    mocks.getRoomMessages
+      .mockResolvedValueOnce({
+        messages: [makeMessage({
+          hub_msg_id: "hub_oldest",
+          msg_id: "msg_oldest",
+          created_at: "2026-05-11T09:00:00Z",
+        })],
+        has_more: false,
+      })
+      .mockResolvedValueOnce({ messages: [current], has_more: true });
+    useDashboardChatStore.setState({
+      messages: { rm_empty: [current] },
+      messagesHasMore: { rm_empty: true },
+    });
+
+    await useDashboardChatStore.getState().loadMoreMessages("rm_empty");
+    await useDashboardChatStore.getState().loadRoomMessages("rm_empty");
+
+    expect(useDashboardChatStore.getState().messagesHasMore.rm_empty).toBe(false);
   });
 
   it("marks a cached message recalled after the backend confirms recall", async () => {

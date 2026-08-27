@@ -456,7 +456,44 @@ html[data-theme="dark"] .liquid-message-error {
 
 .dashboard-skeleton-block {
   background-color: rgba(148, 163, 184, 0.12);
-  animation: dashboard-skeleton-breathe 1.8s ease-in-out infinite;
+  background-image: linear-gradient(
+    100deg,
+    rgba(148, 163, 184, 0.08) 22%,
+    rgba(226, 232, 240, 0.2) 46%,
+    rgba(148, 163, 184, 0.08) 70%
+  );
+  background-position: 120% 0;
+  background-size: 230% 100%;
+  animation: dashboard-skeleton-shimmer 1.65s ease-in-out infinite;
+  will-change: background-position, opacity;
+}
+
+.dashboard-message-loading-bar {
+  height: 2px;
+  overflow: hidden;
+  background: rgba(34, 211, 238, 0.08);
+}
+
+.dashboard-message-loading-bar::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 38%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.9), transparent);
+  animation: dashboard-message-loading-bar 1.05s ease-in-out infinite;
+}
+
+.dashboard-history-loader {
+  display: inline-block;
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.12), rgba(34, 211, 238, 0.7), rgba(34, 211, 238, 0.12));
+  background-position: 120% 0;
+  background-size: 220% 100%;
+  animation: dashboard-skeleton-shimmer 1.1s ease-in-out infinite;
+}
+
+.dashboard-message-feed-enter {
+  animation: dashboard-message-feed-enter 180ms ease-out both;
 }
 
 .botcord-loader {
@@ -579,16 +616,33 @@ html[data-theme="dark"] .liquid-message-error {
   }
 }
 
-@keyframes dashboard-skeleton-breathe {
+@keyframes dashboard-skeleton-shimmer {
   0%,
   100% {
-    opacity: 0.55;
-    background-color: rgba(148, 163, 184, 0.1);
+    opacity: 0.62;
+    background-position: 120% 0;
   }
 
   50% {
-    opacity: 0.9;
-    background-color: rgba(148, 163, 184, 0.18);
+    opacity: 0.98;
+    background-position: -80% 0;
+  }
+}
+
+@keyframes dashboard-message-loading-bar {
+  from { transform: translateX(-130%); }
+  to { transform: translateX(310%); }
+}
+
+@keyframes dashboard-message-feed-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

@@ -7,17 +7,21 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useRef, useCallback, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useCallback, useMemo, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
+import { common } from "@/lib/i18n/translations/common";
 import { messageList } from '@/lib/i18n/translations/dashboard';
 import { useShallow } from "zustand/react/shallow";
 import { ArrowDown, Bot, Settings, UserPlus } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import { JUMP_TO_MESSAGE_EVENT, type JumpToMessageDetail } from "./messageNavigation";
 import {
+  captureVisibleMessageScrollAnchor,
   isNearScrollBottom,
+  restoreVisibleMessageScrollAnchor,
   scrollToLatestVisibleAfterScroll,
   shouldShowScrollToLatestForNewContent,
+  type VisibleMessageScrollAnchor,
 } from "./messageScroll";
 import type { Attachment, DashboardMessage, PublicRoomMember, TopicInfo } from "@/lib/types";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
@@ -28,6 +32,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
 import { animateIfMotion, animatePop, cleanupAnime } from "@/lib/anime";
+import { MessageFeedSkeleton, MessageHistoryLoading } from "./DashboardMessagePaneSkeleton";
 
 const topicStatusColors: Record<string, { color: string; icon: string }> = {
   open:      { color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },
@@ -302,17 +307,34 @@ export default function MessageList({
 } = {}) {
   const locale = useLanguage();
   const t = messageList[locale];
+  const tc = common[locale];
   const { openedRoomId, setOpenedTopicId } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
     setOpenedTopicId: state.setOpenedTopicId,
   })));
   const roomId = openedRoomId;
-  const { messages, hasMessagesCache, isRoomMessagesLoading, hasMore, loadRoomMessages, loadMoreMessages, overview, roomMembers, loadRoomMembers } = useDashboardChatStore(
+  const {
+    messages,
+    hasMessagesCache,
+    isRoomMessagesLoading,
+    roomMessageError,
+    hasMore,
+    isRoomMessagesLoadingMore,
+    roomMoreError,
+    loadRoomMessages,
+    loadMoreMessages,
+    overview,
+    roomMembers,
+    loadRoomMembers,
+  } = useDashboardChatStore(
     useShallow((state) => ({
       messages: roomId ? (state.messages[roomId] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES,
       hasMessagesCache: roomId ? Object.prototype.hasOwnProperty.call(state.messages, roomId) : false,
       isRoomMessagesLoading: roomId ? (state.messagesLoading[roomId] ?? false) : false,
+      roomMessageError: roomId ? (state.messagesErrors[roomId] ?? null) : null,
       hasMore: roomId ? (state.messagesHasMore[roomId] ?? false) : false,
+      isRoomMessagesLoadingMore: roomId ? (state.messagesLoadingMore[roomId] ?? false) : false,
+      roomMoreError: roomId ? (state.messagesMoreErrors[roomId] ?? null) : null,
       loadRoomMessages: state.loadRoomMessages,
       loadMoreMessages: state.loadMoreMessages,
       overview: state.overview,
@@ -330,7 +352,13 @@ export default function MessageList({
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollToBottomButtonRef = useRef<HTMLButtonElement>(null);
   const prevLengthRef = useRef(0);
-  const isLoadingMore = useRef(false);
+  const isLoadingMoreRef = useRef(false);
+  const historyPrependAppliedRef = useRef(false);
+  const historyAnchorRef = useRef<{
+    roomId: string;
+    oldestMessageKey: string;
+    visibleMessage: VisibleMessageScrollAnchor | null;
+  } | null>(null);
   const messageAnimationRoomRef = useRef<string | null>(null);
   const messageAnimationPrimedRef = useRef(false);
   const animatedMessageKeysRef = useRef<Set<string>>(new Set());
@@ -461,9 +489,36 @@ export default function MessageList({
     messageAnimationPrimedRef.current = false;
     animatedMessageKeysRef.current = new Set();
     roomOpenedAtRef.current = performance.now();
+    historyAnchorRef.current = null;
+    historyPrependAppliedRef.current = false;
     showScrollToBottomButtonRef.current = false;
     setShowScrollToBottomButton(false);
   }, [roomId, setOpenedTopicId]);
+
+  // Restore only after the oldest message actually changes. A realtime append
+  // can arrive while history is fetching; anchoring to a visible message (not
+  // scrollHeight) prevents that bottom append from pushing the reader down.
+  useLayoutEffect(() => {
+    const anchor = historyAnchorRef.current;
+    const container = containerRef.current;
+    if (!anchor || !container) return;
+    if (anchor.roomId !== roomId) {
+      historyAnchorRef.current = null;
+      return;
+    }
+    const currentOldestMessageKey = messages[0] ? messageRenderKey(messages[0]) : null;
+    if (currentOldestMessageKey === anchor.oldestMessageKey) return;
+    if (anchor.visibleMessage) {
+      restoreVisibleMessageScrollAnchor(
+        container,
+        "[data-msg-key]",
+        "data-msg-key",
+        anchor.visibleMessage,
+      );
+    }
+    historyPrependAppliedRef.current = true;
+    historyAnchorRef.current = null;
+  }, [messages, roomId]);
 
   const topicsMap = useMemo(() => {
     const m = new Map<string, TopicInfo>();
@@ -539,7 +594,7 @@ export default function MessageList({
     // must not replay the entrance animation.
     const newlyVisible = messages.filter((msg) => messageSeenIds(msg).every((id) => !seenIds.has(id)));
     for (const msg of messages) for (const id of messageSeenIds(msg)) seenIds.add(id);
-    if (newlyVisible.length === 0 || isLoadingMore.current) return;
+    if (newlyVisible.length === 0 || isLoadingMoreRef.current) return;
     if (performance.now() - roomOpenedAtRef.current < MESSAGE_ENTRANCE_SETTLE_MS) return;
 
     const newlyVisibleKeys = newlyVisible.map(messageRenderKey);
@@ -568,7 +623,8 @@ export default function MessageList({
   // Uses wasNearBottomRef (snapshotted on scroll events, before DOM changes)
   // to decide whether to auto-scroll or let the user resume manually.
   useEffect(() => {
-    if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
+    const loadingMoreAtChange = isLoadingMoreRef.current;
+    if (messages.length > prevLengthRef.current && !loadingMoreAtChange) {
       if (wasNearBottomRef.current) {
         scrollToBottomAfterLayout();
         showScrollToBottomButtonRef.current = false;
@@ -579,7 +635,7 @@ export default function MessageList({
       } else if (shouldShowScrollToLatestForNewContent({
         wasNearBottom: wasNearBottomRef.current,
         hadPreviousContent: prevLengthRef.current > 0,
-        isLoadingMore: isLoadingMore.current,
+        isLoadingMore: isLoadingMoreRef.current,
       })) {
         // User is reading history, so expose an explicit way to resume following.
         showScrollToBottomButtonRef.current = true;
@@ -587,7 +643,10 @@ export default function MessageList({
       }
     }
     prevLengthRef.current = messages.length;
-    isLoadingMore.current = false;
+    if (historyPrependAppliedRef.current) {
+      historyPrependAppliedRef.current = false;
+      isLoadingMoreRef.current = false;
+    }
   }, [messages.length, roomId, commitRoomSeen, scrollToBottomAfterLayout]);
 
   // Keep ref in sync with state for use in scroll handler
@@ -600,6 +659,45 @@ export default function MessageList({
     const animation = animatePop(scrollToBottomButtonRef.current);
     return () => cleanupAnime(animation);
   }, [showScrollToBottomButton]);
+
+  const requestMoreMessages = useCallback(() => {
+    const container = containerRef.current;
+    const oldestMessage = messages[0];
+    if (
+      !container
+      || !roomId
+      || !oldestMessage
+      || !hasMore
+      || isRoomMessagesLoadingMore
+      || isLoadingMoreRef.current
+    ) {
+      return;
+    }
+
+    const oldestMessageKey = messageRenderKey(oldestMessage);
+    const previousLength = messages.length;
+    historyAnchorRef.current = {
+      roomId,
+      oldestMessageKey,
+      visibleMessage: captureVisibleMessageScrollAnchor(
+        container,
+        "[data-msg-key]",
+        "data-msg-key",
+      ),
+    };
+    isLoadingMoreRef.current = true;
+    void loadMoreMessages(roomId).finally(() => {
+      const currentMessages = useDashboardChatStore.getState().messages[roomId] ?? [];
+      const currentOldestMessageKey = currentMessages[0]
+        ? messageRenderKey(currentMessages[0])
+        : null;
+      if (currentOldestMessageKey === oldestMessageKey || currentMessages.length === previousLength) {
+        isLoadingMoreRef.current = false;
+        historyPrependAppliedRef.current = false;
+        historyAnchorRef.current = null;
+      }
+    });
+  }, [roomId, messages, hasMore, isRoomMessagesLoadingMore, loadMoreMessages]);
 
   // Track scroll position & handle infinite scroll up
   const handleScroll = useCallback(() => {
@@ -617,15 +715,14 @@ export default function MessageList({
     }
 
     // Infinite scroll up
-    if (hasMore && !isLoadingMore.current && containerRef.current.scrollTop < 100) {
-      isLoadingMore.current = true;
-      loadMoreMessages(roomId);
+    if (containerRef.current.scrollTop < 100) {
+      requestMoreMessages();
     }
 
     if (wasNearBottomRef.current) {
       commitRoomSeen(roomId);
     }
-  }, [roomId, hasMore, loadMoreMessages, commitRoomSeen]);
+  }, [roomId, requestMoreMessages, commitRoomSeen]);
 
   // Reset follow control on room change
   useEffect(() => {
@@ -635,25 +732,52 @@ export default function MessageList({
 
   if (!roomId) return null;
 
-  if (isRoomMessagesLoading && messages.length === 0) {
+  // An opened room without a cache is always an initial-load state, including
+  // the render before the `useEffect` has had a chance to start its request.
+  // This removes the empty-room flash that used to occur on deep links and
+  // Explore/Contacts entry points.
+  if (!hasMessagesCache && !roomMessageError) {
+    return <MessageFeedSkeleton label={t.loadingMessages} />;
+  }
+
+  if (!hasMessagesCache && roomMessageError) {
     return (
-      <div className="flex-1 overflow-y-auto px-4 py-3">
-        <div className="space-y-3">
-          {Array.from({ length: 8 }).map((_, idx) => (
-            <div
-              key={idx}
-        className={`liquid-card h-11 w-full animate-pulse rounded-lg border border-glass-border/60 ${
-                idx % 2 === 0 ? "max-w-[72%]" : "ml-auto max-w-[64%]"
-              }`}
-            />
-          ))}
+      <div className="flex flex-1 items-center justify-center px-4 py-8" role="alert">
+        <div className="liquid-empty-state w-full max-w-sm rounded-2xl border border-glass-border px-5 py-6 text-center">
+          <p className="text-sm font-medium text-text-primary">{t.loadMessagesFailed}</p>
+          <p className="mt-1 text-xs text-text-secondary">{roomMessageError}</p>
+          <button
+            type="button"
+            onClick={() => void loadRoomMessages(roomId, { force: true })}
+            className="liquid-action mt-4 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+          >
+            {tc.retry}
+          </button>
         </div>
       </div>
     );
   }
 
   if (messages.length === 0) {
-    return <EmptyRoomGuide room={currentRoom} />;
+    return (
+      <div className="relative flex min-h-0 flex-1">
+        <EmptyRoomGuide room={currentRoom} />
+        {roomMessageError ? (
+          <div className="absolute inset-x-0 top-0 z-20 flex min-h-7 items-center justify-center gap-2 border-b border-amber-300/15 bg-amber-300/[0.06] px-3 text-[11px] text-text-secondary" role="status">
+            <span>{t.loadMessagesFailed}</span>
+            <button
+              type="button"
+              onClick={() => void loadRoomMessages(roomId, { force: true })}
+              className="rounded px-1.5 py-0.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            >
+              {tc.retry}
+            </button>
+          </div>
+        ) : isRoomMessagesLoading ? (
+          <div className="dashboard-message-loading-bar absolute inset-x-0 top-0" role="status" aria-label={t.loadingMessages} />
+        ) : null}
+      </div>
+    );
   }
 
   const scrollToBottomButton = showScrollToBottomButton && (
@@ -670,17 +794,44 @@ export default function MessageList({
   );
 
   return (
-    <div className="relative flex-1">
+    <div className="relative flex-1" aria-busy={isRoomMessagesLoading}>
+      {roomMessageError ? (
+        <div className="absolute inset-x-0 top-0 z-20 flex min-h-7 items-center justify-center gap-2 border-b border-amber-300/15 bg-amber-300/[0.06] px-3 text-[11px] text-text-secondary" role="status">
+          <span>{t.loadMessagesFailed}</span>
+          <button
+            type="button"
+            onClick={() => void loadRoomMessages(roomId, { force: true })}
+            className="rounded px-1.5 py-0.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+          >
+            {tc.retry}
+          </button>
+        </div>
+      ) : isRoomMessagesLoading ? (
+        <div className="dashboard-message-loading-bar absolute inset-x-0 top-0 z-20" role="status" aria-label={t.loadingMessages} />
+      ) : null}
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="absolute inset-0 overflow-y-auto px-4 py-3"
+        className="dashboard-message-feed-enter absolute inset-0 overflow-y-auto px-4 py-3"
       >
-        {hasMore && (
+        {isRoomMessagesLoadingMore ? (
+          <MessageHistoryLoading label={t.loadingEarlier} />
+        ) : roomMoreError ? (
+          <div className="mb-2 flex items-center justify-center gap-2 text-xs text-text-secondary" role="status">
+            <span>{t.loadEarlierFailed}</span>
+            <button
+              type="button"
+              onClick={requestMoreMessages}
+              className="rounded px-1.5 py-0.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            >
+              {tc.retry}
+            </button>
+          </div>
+        ) : hasMore ? (
           <div className="mb-3 text-center text-xs text-text-secondary animate-pulse">
             {t.scrollUp}
           </div>
-        )}
+        ) : null}
         {timelineItems.map((item) => {
           if (item.kind === "message") {
             const msg = item.message;

@@ -39,6 +39,52 @@ let publicRoomsRequestSeq = 0;
 let publicAgentsRequestSeq = 0;
 let publicHumansRequestSeq = 0;
 const emptyRoomMessageSnapshot = new Map<string, string | null>();
+const fullyLoadedRoomHistory = new Set<string>();
+let roomMessageRequestSequence = 0;
+const roomMessageEpochByRoom = new Map<string, number>();
+const roomMessageLoadRequestByRoom = new Map<string, number>();
+const roomMessagePollRequestByRoom = new Map<string, number>();
+const roomMessageMoreRequestByRoom = new Map<string, number>();
+
+function roomMessageEpoch(roomId: string): number {
+  return roomMessageEpochByRoom.get(roomId) ?? 0;
+}
+
+function isCurrentRoomMessageRequest(
+  roomId: string,
+  epoch: number,
+  requestId: number,
+  requests: Map<string, number>,
+): boolean {
+  return roomMessageEpoch(roomId) === epoch && requests.get(roomId) === requestId;
+}
+
+function invalidateRoomMessageRequests(roomId: string): void {
+  roomMessageEpochByRoom.set(roomId, roomMessageEpoch(roomId) + 1);
+  roomMessagesInFlight.delete(roomId);
+  roomMessagesReloadPending.delete(roomId);
+  roomPollInFlight.delete(roomId);
+  roomMessageLoadRequestByRoom.delete(roomId);
+  roomMessagePollRequestByRoom.delete(roomId);
+  roomMessageMoreRequestByRoom.delete(roomId);
+  emptyRoomMessageSnapshot.delete(roomId);
+  fullyLoadedRoomHistory.delete(roomId);
+}
+
+function invalidateAllRoomMessageRequests(): void {
+  const roomIds = new Set([
+    ...roomMessageEpochByRoom.keys(),
+    ...roomMessagesInFlight,
+    ...roomMessagesReloadPending,
+    ...roomPollInFlight,
+    ...roomMessageLoadRequestByRoom.keys(),
+    ...roomMessagePollRequestByRoom.keys(),
+    ...roomMessageMoreRequestByRoom.keys(),
+    ...emptyRoomMessageSnapshot.keys(),
+    ...fullyLoadedRoomHistory,
+  ]);
+  for (const roomId of roomIds) invalidateRoomMessageRequests(roomId);
+}
 
 /**
  * Structural equality for overview snapshots. `DashboardOverview` is plain JSON
@@ -198,6 +244,19 @@ function preserveStableAttachmentPayload(
   };
 }
 
+function sortRoomMessagesChronologically(messages: DashboardMessage[]): DashboardMessage[] {
+  return messages
+    .map((message, index) => ({ message, index }))
+    .sort((a, b) => {
+      const aTime = Date.parse(a.message.created_at);
+      const bTime = Date.parse(b.message.created_at);
+      const normalizedA = Number.isNaN(aTime) ? 0 : aTime;
+      const normalizedB = Number.isNaN(bTime) ? 0 : bTime;
+      return normalizedA - normalizedB || a.index - b.index;
+    })
+    .map(({ message }) => message);
+}
+
 function mergeLoadedRoomMessages(
   currentMessages: DashboardMessage[] | undefined,
   loadedNewestFirst: DashboardMessage[],
@@ -212,11 +271,25 @@ function mergeLoadedRoomMessages(
     byHubMsgId.set(message.hub_msg_id, message);
   }
 
-  return loadedChronological.map((incoming) => {
+  const merged = loadedChronological.map((incoming) => {
     const existing = byStableId.get(dashboardMessageStableId(incoming))
       ?? byHubMsgId.get(incoming.hub_msg_id);
     return existing ? preserveStableAttachmentPayload(existing, incoming) : incoming;
   });
+
+  const loadedStableIds = new Set(merged.map(dashboardMessageStableId));
+  const loadedHubMsgIds = new Set(merged.map((message) => message.hub_msg_id));
+  for (const existing of currentMessages) {
+    if (
+      loadedStableIds.has(dashboardMessageStableId(existing))
+      || loadedHubMsgIds.has(existing.hub_msg_id)
+    ) {
+      continue;
+    }
+    merged.push(existing);
+  }
+
+  return sortRoomMessagesChronologically(merged);
 }
 
 function ownerChatRoomIdForOptimistic(agentId: string): string {
@@ -326,7 +399,10 @@ interface DashboardChatState {
   overview: DashboardOverview | null;
   messages: Record<string, DashboardMessage[]>;
   messagesLoading: Record<string, boolean>;
+  messagesErrors: Record<string, string>;
   messagesHasMore: Record<string, boolean>;
+  messagesLoadingMore: Record<string, boolean>;
+  messagesMoreErrors: Record<string, string>;
   roomMembersByRoom: Record<string, PublicRoomMember[]>;
   roomMembersLoading: Record<string, boolean>;
   error: string | null;
@@ -381,7 +457,12 @@ interface DashboardChatState {
   recallMessage: (roomId: string, msgId: string) => Promise<void>;
   loadRoomMessages: (roomId: string, opts?: { force?: boolean }) => Promise<void>;
   prefetchRoomMessages: (roomId: string) => Promise<void>;
-  pollNewMessages: (roomId: string, opts?: { expectedHubMsgId?: string | null; retries?: number }) => Promise<void>;
+  pollNewMessages: (roomId: string, opts?: {
+    expectedHubMsgId?: string | null;
+    retries?: number;
+    /** Surface a lightweight refresh signal when a user actively opens a cached room. */
+    showLoading?: boolean;
+  }) => Promise<void>;
   loadMoreMessages: (roomId: string) => Promise<void>;
   loadRoomMembers: (roomId: string, opts?: { force?: boolean }) => Promise<PublicRoomMember[]>;
   selectAgent: (agentId: string) => Promise<void>;
@@ -404,7 +485,10 @@ const initialChatState = {
   overview: null,
   messages: {},
   messagesLoading: {},
+  messagesErrors: {},
   messagesHasMore: {},
+  messagesLoadingMore: {},
+  messagesMoreErrors: {},
   roomMembersByRoom: {},
   roomMembersLoading: {},
   error: null,
@@ -444,7 +528,10 @@ function hasTransientChatState(state: DashboardChatState): boolean {
     || state.overview !== null
     || Object.keys(state.messages).length > 0
     || Object.keys(state.messagesLoading).length > 0
+    || Object.keys(state.messagesErrors).length > 0
     || Object.keys(state.messagesHasMore).length > 0
+    || Object.keys(state.messagesLoadingMore).length > 0
+    || Object.keys(state.messagesMoreErrors).length > 0
     || Object.keys(state.roomMembersByRoom).length > 0
     || Object.keys(state.roomMembersLoading).length > 0
     || state.error !== null
@@ -501,7 +588,8 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           replyingTo: { ...state.replyingTo, [roomId]: message },
         })),
 
-      resetChatState: () =>
+      resetChatState: () => {
+        invalidateAllRoomMessageRequests();
         set((state) => {
           if (!hasTransientChatState(state)) {
             return state;
@@ -513,10 +601,13 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             publicAgents: state.publicAgents,
             publicRoomDetails: state.publicRoomDetails,
           };
-        }),
+        });
+      },
 
-      logout: () =>
-        set({ ...initialChatState }),
+      logout: () => {
+        invalidateAllRoomMessageRequests();
+        set({ ...initialChatState });
+      },
 
       closeAgentCardState: () =>
         set((state) => ({
@@ -778,29 +869,55 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           }
           return;
         }
-        set((state) => ({
-          messagesLoading: { ...state.messagesLoading, [roomId]: true },
-        }));
+        const epoch = roomMessageEpoch(roomId);
+        const requestId = ++roomMessageRequestSequence;
+        roomMessageLoadRequestByRoom.set(roomId, requestId);
+        set((state) => {
+          const messagesErrors = { ...state.messagesErrors };
+          delete messagesErrors[roomId];
+          return {
+            messagesLoading: { ...state.messagesLoading, [roomId]: true },
+            messagesErrors,
+          };
+        });
         roomMessagesInFlight.add(roomId);
 
         try {
           const result = await api.getRoomMessages(roomId, { limit: 50 });
+          if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessageLoadRequestByRoom)) return;
           if (result.messages.length === 0) {
             emptyRoomMessageSnapshot.set(roomId, getRoomMessageSnapshot(get().getRoomSummary(roomId)));
           } else {
             emptyRoomMessageSnapshot.delete(roomId);
           }
-          set((state) => ({
-            messages: {
-              ...state.messages,
-              [roomId]: mergeLoadedRoomMessages(state.messages[roomId], result.messages),
-            },
-            messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
-          }));
+          if (!result.has_more) fullyLoadedRoomHistory.add(roomId);
+          set((state) => {
+            if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessageLoadRequestByRoom)) return state;
+            return {
+              messages: {
+                ...state.messages,
+                [roomId]: mergeLoadedRoomMessages(state.messages[roomId], result.messages),
+              },
+              // A full refresh only returns the newest page. Once pagination
+              // already reached the oldest message, keep that terminal state
+              // instead of reviving a misleading "load earlier" affordance.
+              messagesHasMore: {
+                ...state.messagesHasMore,
+                [roomId]: fullyLoadedRoomHistory.has(roomId) ? false : result.has_more,
+              },
+            };
+          });
         } catch (error) {
           console.error("[ChatStore] Failed to load messages:", error);
+          if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessageLoadRequestByRoom)) return;
+          const message = error instanceof Error ? error.message : "Failed to load messages";
+          set((state) => ({
+            messagesErrors: { ...state.messagesErrors, [roomId]: message },
+          }));
         } finally {
+          if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessageLoadRequestByRoom)) return;
           roomMessagesInFlight.delete(roomId);
+          roomMessageLoadRequestByRoom.delete(roomId);
           set((state) => ({
             messagesLoading: { ...state.messagesLoading, [roomId]: false },
           }));
@@ -819,6 +936,21 @@ export const useDashboardChatStore = create<DashboardChatState>()(
 
       pollNewMessages: async (roomId: string, opts) => {
         if (roomPollInFlight.has(roomId)) return;
+        const epoch = roomMessageEpoch(roomId);
+        const requestId = ++roomMessageRequestSequence;
+        roomMessagePollRequestByRoom.set(roomId, requestId);
+        const hadCachedMessages = Object.prototype.hasOwnProperty.call(get().messages, roomId);
+        const showLoading = Boolean(opts?.showLoading && hadCachedMessages);
+        if (showLoading) {
+          set((state) => {
+            const messagesErrors = { ...state.messagesErrors };
+            delete messagesErrors[roomId];
+            return {
+              messagesLoading: { ...state.messagesLoading, [roomId]: true },
+              messagesErrors,
+            };
+          });
+        }
         roomPollInFlight.add(roomId);
         try {
           const existing = get().messages[roomId];
@@ -848,8 +980,10 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             }
             const result = await api.getRoomMessages(roomId, { after: newestPersisted.hub_msg_id, limit: 50 });
             if (result.messages.length > 0) {
+              if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessagePollRequestByRoom)) return;
               const newMsgs = result.messages.reverse();
               set((state) => {
+                if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessagePollRequestByRoom)) return state;
                 const current = state.messages[roomId] || [];
                 const existingStableIds = new Set(current.map(dashboardMessageStableId));
                 const existingHubMsgIds = new Set(current.map((message) => message.hub_msg_id));
@@ -876,14 +1010,28 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           }
         } catch (error) {
           console.error("[ChatStore] Failed to poll new messages:", error);
+          if (showLoading && isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessagePollRequestByRoom)) {
+            const message = error instanceof Error ? error.message : "Failed to refresh messages";
+            set((state) => ({
+              messagesErrors: { ...state.messagesErrors, [roomId]: message },
+            }));
+          }
         } finally {
+          if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessagePollRequestByRoom)) return;
           roomPollInFlight.delete(roomId);
+          roomMessagePollRequestByRoom.delete(roomId);
+          if (showLoading) {
+            set((state) => ({
+              messagesLoading: { ...state.messagesLoading, [roomId]: false },
+            }));
+          }
         }
 
         const expectedHubMsgId = opts?.expectedHubMsgId ?? null;
         const retries = opts?.retries ?? 0;
         if (
-          expectedHubMsgId
+          roomMessageEpoch(roomId) === epoch
+          && expectedHubMsgId
           && retries > 0
           && !get().hasMessage(roomId, expectedHubMsgId)
         ) {
@@ -891,23 +1039,57 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           await get().pollNewMessages(roomId, {
             expectedHubMsgId,
             retries: retries - 1,
+            showLoading: opts?.showLoading,
           });
         }
       },
 
       loadMoreMessages: async (roomId: string) => {
         const existing = get().messages[roomId];
-        if (!existing || existing.length === 0) return;
+        if (!existing || existing.length === 0 || get().messagesLoadingMore[roomId]) return;
 
         const oldest = existing[0];
+        const epoch = roomMessageEpoch(roomId);
+        const requestId = ++roomMessageRequestSequence;
+        roomMessageMoreRequestByRoom.set(roomId, requestId);
+        set((state) => {
+          const messagesMoreErrors = { ...state.messagesMoreErrors };
+          delete messagesMoreErrors[roomId];
+          return {
+            messagesLoadingMore: { ...state.messagesLoadingMore, [roomId]: true },
+            messagesMoreErrors,
+          };
+        });
         try {
           const result = await api.getRoomMessages(roomId, { before: oldest.hub_msg_id, limit: 50 });
-          set((state) => ({
-            messages: { ...state.messages, [roomId]: [...result.messages.reverse(), ...existing] },
-            messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
-          }));
+          if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessageMoreRequestByRoom)) return;
+          if (!result.has_more) fullyLoadedRoomHistory.add(roomId);
+          set((state) => {
+            if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessageMoreRequestByRoom)) return state;
+            return {
+              messages: {
+                ...state.messages,
+                [roomId]: mergeLoadedRoomMessages(
+                  state.messages[roomId] ?? existing,
+                  result.messages,
+                ),
+              },
+              messagesHasMore: { ...state.messagesHasMore, [roomId]: result.has_more },
+            };
+          });
         } catch (error) {
           console.error("[ChatStore] Failed to load more messages:", error);
+          if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessageMoreRequestByRoom)) return;
+          const message = error instanceof Error ? error.message : "Failed to load older messages";
+          set((state) => ({
+            messagesMoreErrors: { ...state.messagesMoreErrors, [roomId]: message },
+          }));
+        } finally {
+          if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessageMoreRequestByRoom)) return;
+          roomMessageMoreRequestByRoom.delete(roomId);
+          set((state) => ({
+            messagesLoadingMore: { ...state.messagesLoadingMore, [roomId]: false },
+          }));
         }
       },
 
@@ -1072,6 +1254,9 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       leaveRoom: async (roomId: string) => {
         const { token } = useDashboardSessionStore.getState();
         if (!token) return;
+        // A leave removes this cache. Invalidate every outstanding page/poll
+        // first so a late response cannot recreate the room after cleanup.
+        invalidateRoomMessageRequests(roomId);
         set({ leavingRoomId: roomId });
         try {
           await api.leaveRoom(roomId);
@@ -1082,15 +1267,31 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           set((state) => {
             const messages = { ...state.messages };
             const messagesLoading = { ...state.messagesLoading };
+            const messagesErrors = { ...state.messagesErrors };
             const messagesHasMore = { ...state.messagesHasMore };
+            const messagesLoadingMore = { ...state.messagesLoadingMore };
+            const messagesMoreErrors = { ...state.messagesMoreErrors };
             const roomMembersByRoom = { ...state.roomMembersByRoom };
             const roomMembersLoading = { ...state.roomMembersLoading };
             delete messages[roomId];
             delete messagesLoading[roomId];
+            delete messagesErrors[roomId];
             delete messagesHasMore[roomId];
+            delete messagesLoadingMore[roomId];
+            delete messagesMoreErrors[roomId];
             delete roomMembersByRoom[roomId];
             delete roomMembersLoading[roomId];
-            return { leavingRoomId: null, messages, messagesLoading, messagesHasMore, roomMembersByRoom, roomMembersLoading };
+            return {
+              leavingRoomId: null,
+              messages,
+              messagesLoading,
+              messagesErrors,
+              messagesHasMore,
+              messagesLoadingMore,
+              messagesMoreErrors,
+              roomMembersByRoom,
+              roomMembersLoading,
+            };
           });
           const ui = useDashboardUIStore.getState();
           if (ui.openedRoomId === roomId || ui.focusedRoomId === roomId) {
@@ -1100,7 +1301,17 @@ export const useDashboardChatStore = create<DashboardChatState>()(
           }
           get().replaceOverview(overview);
         } catch (error) {
-          set({ leavingRoomId: null });
+          // Requests that started before the leave attempt were invalidated so
+          // a late response cannot re-create this room. If leaving fails, they
+          // will no longer run their own finally blocks, so release their UI
+          // loading flags here while keeping the existing cached messages.
+          set((state) => {
+            const messagesLoading = { ...state.messagesLoading };
+            const messagesLoadingMore = { ...state.messagesLoadingMore };
+            delete messagesLoading[roomId];
+            delete messagesLoadingMore[roomId];
+            return { leavingRoomId: null, messagesLoading, messagesLoadingMore };
+          });
           throw error;
         }
       },

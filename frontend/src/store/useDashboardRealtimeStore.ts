@@ -98,8 +98,13 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
 
         // Owner-chat WS handles its own realtime delivery — skip Supabase
         // realtime events for the owner-chat room when the WS is connected.
-        const ownerChatWsConnected = useOwnerChatStore.getState().wsConnected;
-        const isOwnerChatEvent = userChatRoomId && currentEvent?.room_id === userChatRoomId;
+        const ownerChatState = useOwnerChatStore.getState();
+        const ownerChatWsConnected = ownerChatState.wsConnected;
+        const isOwnerChatEvent = Boolean(
+          userChatRoomId
+          && ownerChatState.roomId === userChatRoomId
+          && currentEvent?.room_id === userChatRoomId,
+        );
 
         // Handle typing events — just toggle the UI flag, no data fetching
         if (currentEvent && isTypingRealtimeEvent(currentEvent.type)) {
@@ -193,6 +198,7 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
           && userChatRoomId !== openedRoomId
           && (!currentEvent || currentEvent.room_id === userChatRoomId)
           && !ownerChatWsConnected
+          && ownerChatState.roomId === userChatRoomId
         ) {
           try {
             const ocStore = useOwnerChatStore.getState();
@@ -201,8 +207,15 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
             const result = newest?.hubMsgId
               ? await api.getRoomMessages(userChatRoomId, { after: newest.hubMsgId, limit: 50 })
               : await api.getRoomMessages(userChatRoomId, { limit: 50 });
-            if (result.messages.length > 0) {
-              ocStore.mergeApiMessages(result.messages, "append");
+            const currentUiState = useDashboardUIStore.getState();
+            const currentOwnerChat = useOwnerChatStore.getState();
+            if (
+              result.messages.length > 0
+              && currentUiState.userChatRoomId === userChatRoomId
+              && currentOwnerChat.roomId === userChatRoomId
+              && !currentOwnerChat.wsConnected
+            ) {
+              currentOwnerChat.mergeApiMessages(result.messages, "append");
             }
           } catch { /* non-critical */ }
         }

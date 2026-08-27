@@ -19,4 +19,20 @@ describe("useDashboardUIStore", () => {
     expect(useDashboardUIStore.getState().messagesScope).toEqual({ type: "human" });
     expect(useDashboardUIStore.getState().messagesBotScope).toBe("all");
   });
+
+  it("does not let an older navigation completion clear a newer pending tab", () => {
+    const store = useDashboardUIStore.getState();
+    store.startPrimaryNavigation("home", "/chats/home");
+    const first = useDashboardUIStore.getState().pendingPrimaryNavigation;
+    store.startPrimaryNavigation("wallet", "/chats/wallet");
+    const second = useDashboardUIStore.getState().pendingPrimaryNavigation;
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    store.clearPrimaryNavigation(first!.id);
+
+    expect(useDashboardUIStore.getState().pendingPrimaryNavigation?.id).toBe(second!.id);
+    store.clearPrimaryNavigation(second!.id);
+    expect(useDashboardUIStore.getState().pendingPrimaryNavigation).toBeNull();
+  });
 });
