@@ -218,7 +218,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                       </div>
                     </div>
                     <span
-                      className="absolute right-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur-sm"
+                      className="absolute right-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-medium text-[#ffffff]/90 backdrop-blur-sm"
                       style={{ boxShadow: `0 0 0 1px ${theme.accent}55` }}
                     >
                       {room.member_count} {memberWord}

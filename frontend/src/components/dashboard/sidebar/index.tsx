@@ -412,7 +412,7 @@ function Sidebar({
               badge = (
                 <span
                   data-primary-nav-badge
-                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold leading-none text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]"
+                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold leading-none text-[var(--color-on-accent)] shadow-[0_0_12px_rgba(34,211,238,0.45)]"
                 >
                   {formatBadgeCount(unreadMessageCount)}
                 </span>
@@ -422,7 +422,7 @@ function Sidebar({
               badge = (
                 <span
                   data-primary-nav-badge
-                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]"
+                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold text-[var(--color-on-accent)] shadow-[0_0_12px_rgba(34,211,238,0.45)]"
                 >
                   {formatBadgeCount(pendingContactRequests)}
                 </span>

@@ -236,7 +236,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-text-primary">{t.newRequests}</span>
             {totalPendingRequests > 0 ? (
-              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-text-primary">
+              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-[var(--color-on-accent)]">
                 {totalPendingRequests > 99 ? "99+" : totalPendingRequests}
               </span>
             ) : null}
