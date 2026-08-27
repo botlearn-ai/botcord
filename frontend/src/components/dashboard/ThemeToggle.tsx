@@ -6,7 +6,7 @@
  * [POS]: dashboard 侧栏的全局外观控制项
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { useAppStore } from "@/store/useAppStore";
@@ -22,14 +22,22 @@ export default function ThemeToggle() {
   const locale = useLanguage();
   const theme = useAppStore((state) => state.theme);
   const setTheme = useAppStore((state) => state.setTheme);
+  const [hydrated, setHydrated] = useState(() => useAppStore.persist.hasHydrated());
   const isLight = theme === "light";
   const label = isLight
     ? (locale === "zh" ? "切换到深色模式" : "Switch to dark mode")
     : (locale === "zh" ? "切换到浅色模式" : "Switch to light mode");
 
   useEffect(() => {
+    const unsubscribe = useAppStore.persist.onFinishHydration(() => setHydrated(true));
+    setHydrated(useAppStore.persist.hasHydrated());
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
     applyTheme(theme);
-  }, [theme]);
+  }, [hydrated, theme]);
 
   return (
     <button

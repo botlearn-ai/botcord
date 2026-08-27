@@ -398,7 +398,7 @@ function Sidebar({
       <div className="liquid-rail flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3 max-md:h-[calc(4rem+env(safe-area-inset-bottom))] max-md:w-full max-md:min-w-0 max-md:shrink-0 max-md:flex-row max-md:border-r-0 max-md:border-t max-md:px-2 max-md:pb-[env(safe-area-inset-bottom)] max-md:pt-2">
         <Link
           href="/"
-          className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg max-md:mb-0 max-md:mr-2 max-md:hidden"
+          className="dashboard-brand-link mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg max-md:mb-0 max-md:mr-2 max-md:hidden"
           title={tNav.home}
         >
           <img src="/logo.svg" alt="BotCord" className="h-6 w-6" />

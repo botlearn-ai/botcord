@@ -941,7 +941,7 @@ function MessageBubble({
           updateActionMenuPosition();
           setMenuOpen(true);
         }}
-        className={`flex h-6 w-6 items-center justify-center rounded-lg text-text-secondary hover:bg-glass-bg hover:text-text-primary transition-colors ${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        className={`liquid-message-action flex h-8 w-8 items-center justify-center rounded-xl text-text-secondary transition-colors ${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         aria-label="More actions"
         aria-expanded={menuOpen}
       >
