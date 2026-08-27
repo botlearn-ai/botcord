@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: PolicySettingsClient for agent policy configuration
  * [OUTPUT]: SettingsModal — modal overlay for dashboard settings (对话与回复)
@@ -15,7 +16,9 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-export default function SettingsModal({ onClose }: SettingsModalProps) {
+export default withDashboardOverlayPortal(SettingsModal);
+
+function SettingsModal({ onClose }: SettingsModalProps) {
   const [closing, setClosing] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);

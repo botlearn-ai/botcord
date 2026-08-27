@@ -474,7 +474,7 @@ function MentionChip({
       {tooltipPosition && typeof document !== "undefined" && createPortal(
         <span
           ref={tooltipRef}
-          className="liquid-menu pointer-events-none fixed z-[9999] w-64 rounded-xl border border-glass-border bg-deep-black-light p-3 text-left shadow-xl shadow-black/30"
+          className="liquid-menu pointer-events-none fixed z-[900] w-64 rounded-xl border border-glass-border bg-deep-black-light p-3 text-left shadow-xl shadow-black/30"
           style={{ left: tooltipPosition.left, top: tooltipPosition.top }}
         >
           <span className="mb-1 flex items-center gap-2">
@@ -950,7 +950,7 @@ function MessageBubble({
       {menuOpen && menuPosition && typeof document !== "undefined" && createPortal(
         <div
           ref={actionMenuRef}
-          className="liquid-menu fixed z-[9999] min-w-[112px] rounded-xl border border-glass-border bg-deep-black-light py-1 shadow-xl"
+          className="liquid-menu fixed z-[900] min-w-[112px] rounded-xl border border-glass-border bg-deep-black-light py-1 shadow-xl"
           style={{ left: menuPosition.left, top: menuPosition.top }}
           onMouseDown={(event) => event.stopPropagation()}
         >

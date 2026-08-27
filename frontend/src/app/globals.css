@@ -117,6 +117,41 @@ body {
   z-index: 1;
 }
 
+/* Viewport-level dashboard overlays are portaled here so their z-index is
+ * compared globally, rather than inside Sidebar or a pane's local stacking
+ * context. Dashboard panes deliberately create local stacking contexts, so
+ * this host must sit above every ordinary app surface. The app-wide confirm
+ * dialog (z-1100) and image preview layer (z-9999) remain above it. */
+#dashboard-overlay-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+  isolation: isolate;
+}
+
+#dashboard-overlay-root > * {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#dashboard-overlay-root > .dashboard-overlay-layer-modal {
+  z-index: 1;
+}
+
+#dashboard-overlay-root > .dashboard-overlay-layer-nested {
+  z-index: 2;
+}
+
+#dashboard-overlay-root > .dashboard-overlay-layer-critical {
+  z-index: 3;
+}
+
+#dashboard-overlay-root > * > * {
+  pointer-events: auto;
+}
+
 .dashboard-main {
   background: transparent;
 }
@@ -139,6 +174,21 @@ body {
 .liquid-menu,
 .liquid-composer {
   border-color: var(--liquid-border);
+}
+
+/* Persistent dashboard columns sit alongside one another. Giving each one a
+ * large floating-card shadow made those shadows accumulate from left to right
+ * (rail → grouping → message list → chat), which read as a grey gradient
+ * rather than clear structure. Keep layout surfaces flat and let their
+ * borders define the split; only transient surfaces retain elevation. */
+.liquid-rail,
+.liquid-panel,
+.liquid-toolbar {
+  box-shadow: inset 0 1px 0 var(--liquid-highlight);
+}
+
+.liquid-menu,
+.liquid-composer {
   box-shadow: var(--liquid-shadow);
 }
 
@@ -183,6 +233,13 @@ html[data-theme="light"] .dashboard-brand-link:hover {
 .liquid-dialog,
 .liquid-empty-state {
   background: var(--liquid-surface);
+}
+
+/* A dialog is the foreground plane, not another translucent content card.
+ * Use the stronger surface so dimmed content remains contextual without
+ * competing with the active task, especially in the light theme. */
+.liquid-dialog {
+  background: var(--liquid-surface-strong);
 }
 
 .liquid-drawer,
@@ -253,15 +310,11 @@ html[data-theme="dark"] .liquid-list-row.liquid-room-row-selected {
 }
 
 .liquid-scrim {
-  background: rgba(35, 55, 79, 0.24);
+  background: rgba(35, 55, 79, 0.42);
 }
 
 html[data-theme="dark"] .liquid-scrim {
-  background: rgba(3, 10, 20, 0.58);
-}
-
-.liquid-toolbar {
-  box-shadow: 0 12px 28px rgba(42, 69, 101, 0.10), inset 0 1px 0 var(--liquid-highlight);
+  background: rgba(3, 10, 20, 0.62);
 }
 
 .liquid-message {

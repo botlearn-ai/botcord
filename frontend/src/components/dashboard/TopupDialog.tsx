@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useState, useEffect, useRef } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { topupDialog } from '@/lib/i18n/translations/dashboard';
@@ -32,7 +33,9 @@ interface TopupDialogProps {
   onSuccess: () => void;
 }
 
-export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
+export default withDashboardOverlayPortal(TopupDialog, "nested");
+
+function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
   const locale = useLanguage();
   const t = topupDialog[locale];
   const human = useDashboardSessionStore((s) => s.human);

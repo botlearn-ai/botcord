@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: 依赖 dashboard i18n 文案、contacts API 与 CopyableId 展示 DM 对侧或自有 Agent 的身份信息
  * [OUTPUT]: 对外提供 DMSettingsModal 组件，渲染私聊设置弹窗并支持解除好友关系
@@ -28,7 +29,9 @@ interface DMSettingsModalProps {
   onContactRemoved?: () => void;
 }
 
-export default function DMSettingsModal({
+export default withDashboardOverlayPortal(DMSettingsModal);
+
+function DMSettingsModal({
   contact,
   ownAgentName,
   ownAgentId,

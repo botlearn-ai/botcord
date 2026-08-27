@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "../DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw, Loader2, Check, Trash2, FileArchive, Download, Send } from "lucide-react";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
@@ -29,7 +30,9 @@ interface DeviceSettingsModalProps {
   onRemove: (forgetIfOffline: boolean) => Promise<void>;
 }
 
-export default function DeviceSettingsModal({
+export default withDashboardOverlayPortal(DeviceSettingsModal);
+
+function DeviceSettingsModal({
   daemonId,
   label,
   status,

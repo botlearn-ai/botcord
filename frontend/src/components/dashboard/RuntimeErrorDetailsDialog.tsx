@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Copy, X } from "lucide-react";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
@@ -20,7 +21,9 @@ function prettyJson(value: unknown): string {
   }
 }
 
-export default function RuntimeErrorDetailsDialog({
+export default withDashboardOverlayPortal(RuntimeErrorDetailsDialog, "nested");
+
+function RuntimeErrorDetailsDialog({
   title = "Runtime error",
   message,
   code,

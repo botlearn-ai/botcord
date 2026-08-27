@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: 依赖 wallet store 获取来源账户的可用余额，依赖 session/chat store 列举可选收款方
  * [OUTPUT]: 重设计后的转账 dialog — 模仿标准银行/支付场景：From 卡片(显示余额) + 可视化 To 选择器 + 大额金额输入 + 快速金额 + 校验后才能提交
@@ -51,7 +52,9 @@ function showAmount(minorStr: string | null | undefined, hidden: boolean): strin
   return hidden ? "••••••" : formatCoin(minorStr);
 }
 
-export default function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
+export default withDashboardOverlayPortal(TransferDialog, "nested");
+
+function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
   const locale = useLanguage();
   const t = transferDialog[locale];
   const wt = walletPanel[locale];

@@ -26,12 +26,13 @@ import ForwardModal from "@/components/dashboard/ForwardModal";
 import { downloadApiFile } from "@/lib/api";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import BotAvatar from "./BotAvatar";
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 
 /**
  * Right-edge slide-out drawer for one device's details + settings.
  * Driven by `selectedDeviceId` in the UI store; close = set it to null.
  */
-export default memo(DeviceDetailDrawer);
+export default memo(withDashboardOverlayPortal(DeviceDetailDrawer));
 
 function DeviceDetailDrawer() {
   const {

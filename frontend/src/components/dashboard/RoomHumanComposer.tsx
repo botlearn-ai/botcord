@@ -15,6 +15,7 @@ import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 import { CornerUpLeft, Loader2, X } from "lucide-react";
 import DashboardSelect from "./DashboardSelect";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 
 interface RoomHumanComposerProps {
   roomId: string;
@@ -226,6 +227,8 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
     </div>
   );
 }
+
+const PortaledRoomTransferDialog = withDashboardOverlayPortal(RoomTransferDialog, "nested");
 
 export async function uploadRoomAttachments(
   files: File[],
@@ -479,7 +482,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
       />
       {error && <p className="text-[11px] text-red-400">{error}</p>}
       {transferOpen ? (
-        <RoomTransferDialog
+        <PortaledRoomTransferDialog
           roomId={roomId}
           members={members}
           senderIdentity={senderIdentity}

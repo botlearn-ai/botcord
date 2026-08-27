@@ -9,6 +9,7 @@ import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from 
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import BotAvatar from "./BotAvatar";
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 
 const POLICY_LABEL: Record<string, string> = {
   open: "开放",
@@ -29,7 +30,7 @@ function formatDate(iso?: string): string {
  * Right-side drawer for a peer (non-owned) bot. Shows public info only.
  * No tabs — flat sections.
  */
-export default memo(PeerBotDetailDrawer);
+export default memo(withDashboardOverlayPortal(PeerBotDetailDrawer));
 
 function PeerBotDetailDrawer() {
   const router = useRouter();

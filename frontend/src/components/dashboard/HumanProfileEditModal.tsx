@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Loader2, UserRound, X } from "lucide-react";
 import { humansApi } from "@/lib/api";
@@ -11,7 +12,9 @@ interface HumanProfileEditModalProps {
   onClose: () => void;
 }
 
-export default function HumanProfileEditModal({ onClose }: HumanProfileEditModalProps) {
+export default withDashboardOverlayPortal(HumanProfileEditModal);
+
+function HumanProfileEditModal({ onClose }: HumanProfileEditModalProps) {
   const locale = useLanguage();
   const human = useDashboardSessionStore((s) => s.human);
   const setHuman = useDashboardSessionStore((s) => s.setHuman);

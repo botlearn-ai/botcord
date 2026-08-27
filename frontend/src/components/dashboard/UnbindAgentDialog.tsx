@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { userApi } from "@/lib/api";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
@@ -15,7 +16,9 @@ interface UnbindAgentDialogProps {
   onUnbound: (agentId: string) => Promise<void> | void;
 }
 
-export default function UnbindAgentDialog({
+export default withDashboardOverlayPortal(UnbindAgentDialog, "nested");
+
+function UnbindAgentDialog({
   agentId,
   agentName,
   deleteMode = "unbind",

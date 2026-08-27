@@ -17,7 +17,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Bell, Loader2, RotateCcw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PublicRoomMember } from "@/lib/types";
@@ -28,6 +27,7 @@ import {
   type RoomPolicyEffective,
 } from "@/store/usePolicyStore";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
+import DashboardOverlayPortal from "./DashboardOverlayPortal";
 
 const ATTENTION_OPTIONS: { value: AttentionMode; label: string; hint: string }[] = [
   { value: "always", label: "所有消息", hint: "本房间任何新消息都会唤醒 Bot" },
@@ -350,7 +350,7 @@ export default function RoomPolicyModal({
   );
 
   if (!mounted) return null;
-  return createPortal(modal, document.body);
+  return <DashboardOverlayPortal layer="nested">{modal}</DashboardOverlayPortal>;
 }
 
 function EffectiveBadge({

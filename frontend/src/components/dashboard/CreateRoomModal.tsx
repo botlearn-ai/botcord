@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: 依赖 humansApi 的创建房间能力，依赖 dashboard/session store 提供联系人、Bot 与当前身份
  * [OUTPUT]: 对外提供 CreateRoomModal 组件，完成房间名称、描述与初始成员提交
@@ -26,7 +27,9 @@ interface CreateRoomModalProps {
   onCreated?: (room: HumanRoomSummary) => void;
 }
 
-export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalProps) {
+export default withDashboardOverlayPortal(CreateRoomModal);
+
+function CreateRoomModal({ onClose, onCreated }: CreateRoomModalProps) {
   const locale = useLanguage();
   const t = createRoomModal[locale];
   const tc = common[locale];

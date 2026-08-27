@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { withdrawDialog } from '@/lib/i18n/translations/dashboard';
@@ -34,7 +35,9 @@ function formatCoinAmount(minorStr: string): string {
   return major.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: WithdrawDialogProps) {
+export default withDashboardOverlayPortal(WithdrawDialog, "nested");
+
+function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: WithdrawDialogProps) {
   const locale = useLanguage();
   const t = withdrawDialog[locale];
   const human = useDashboardSessionStore((s) => s.human);

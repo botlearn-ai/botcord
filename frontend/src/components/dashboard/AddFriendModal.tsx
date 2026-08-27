@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Check, Copy, Loader2, Search } from "lucide-react";
 import { api, humansApi } from "@/lib/api";
@@ -29,7 +30,9 @@ type PeerResult = {
   bio: string | null;
 };
 
-export default function AddFriendModal({ onClose }: AddFriendModalProps) {
+export default withDashboardOverlayPortal(AddFriendModal);
+
+function AddFriendModal({ onClose }: AddFriendModalProps) {
   const locale = useLanguage();
   const t = addFriendModal[locale];
   const tc = common[locale];

@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: daemon store refresh state + DeviceConnectPanel shared onboarding UI
  * [OUTPUT]: AddDeviceDialog — standalone add-device modal using the same device binding panel as CreateAgentDialog
@@ -18,7 +19,9 @@ interface AddDeviceDialogProps {
   onClose: () => void;
 }
 
-export default function AddDeviceDialog({ onClose }: AddDeviceDialogProps) {
+export default withDashboardOverlayPortal(AddDeviceDialog);
+
+function AddDeviceDialog({ onClose }: AddDeviceDialogProps) {
   const locale = useLanguage();
   const daemons = useDaemonStore((s) => s.daemons);
   const loading = useDaemonStore((s) => s.loading);

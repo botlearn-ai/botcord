@@ -1,5 +1,6 @@
 "use client";
 
+import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
  * [INPUT]: useDaemonStore for daemon/runtime discovery + provision_agent dispatch; i18n createAgentDialog
  * [OUTPUT]: CreateAgentDialog — picks a daemon + runtime, provisions a new agent on that daemon
@@ -259,7 +260,9 @@ function StepperPill({
   );
 }
 
-export default function CreateAgentDialog({
+export default withDashboardOverlayPortal(CreateAgentDialog);
+
+function CreateAgentDialog({
   onClose,
   onSuccess,
   preselectedDaemonId,
