@@ -3,6 +3,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { useAppStore } from "@/store/useAppStore";
 
 /**
  * [INPUT]: 依赖 @react-three/fiber 的 useFrame/useThree 与 three 的 BufferGeometry 能力
@@ -12,6 +13,9 @@ import * as THREE from "three";
  */
 const PARTICLE_COUNT = 110;
 const CONNECTION_DISTANCE = 2.5;
+/* The light canvas is near-white, so the same web of links reads as hard
+ * scribble instead of a faint glow. A shorter link radius thins the mesh. */
+const CONNECTION_DISTANCE_LIGHT = 1.85;
 const PULSE_COUNT = 14;
 const CONNECTION_UPDATE_INTERVAL = 1 / 30;
 const CELL_BIAS = 64;
@@ -19,6 +23,37 @@ const CELL_BIAS = 64;
 function packCellKey(x: number, y: number, z: number) {
   return (x + CELL_BIAS) | ((y + CELL_BIAS) << 8) | ((z + CELL_BIAS) << 16);
 }
+
+/* Additive blending assumes a dark backdrop: on the transparent canvas it also
+ * accumulates alpha, so a dark teal line composited over the light page turns
+ * into a near-black stroke. Light mode therefore uses normal blending with a
+ * solid ink color and per-edge alpha carried in the vertex color. */
+const THEME_STYLE = {
+  dark: {
+    connectionDistance: CONNECTION_DISTANCE,
+    blending: THREE.AdditiveBlending,
+    lineColor: [0, 0.72, 0.78] as const,
+    lineAlpha: 0.12,
+    nodeColor: "#6aaeb5",
+    nodeOpacity: 0.42,
+    nodeSize: 0.04,
+    pulseColor: "#7ebbc2",
+    pulseOpacity: 0.45,
+    pulseSize: 0.06,
+  },
+  light: {
+    connectionDistance: CONNECTION_DISTANCE_LIGHT,
+    blending: THREE.NormalBlending,
+    lineColor: [0.05, 0.42, 0.5] as const,
+    lineAlpha: 0.26,
+    nodeColor: "#0d6f80",
+    nodeOpacity: 0.5,
+    nodeSize: 0.035,
+    pulseColor: "#0e7490",
+    pulseOpacity: 0.55,
+    pulseSize: 0.05,
+  },
+} as const;
 
 function isMobile() {
   return typeof window !== "undefined" && window.innerWidth < 768;
@@ -32,6 +67,8 @@ export default function ParticleNetwork() {
   const connectionTickRef = useRef(0);
   const hiddenRef = useRef(false);
   const { size } = useThree();
+  const theme = useAppStore((s) => s.theme);
+  const style = THEME_STYLE[theme === "dark" ? "dark" : "light"];
 
   const count = useMemo(
     () => (isMobile() ? Math.floor(PARTICLE_COUNT * 0.55) : PARTICLE_COUNT),
@@ -73,8 +110,10 @@ export default function ParticleNetwork() {
     () => new Float32Array(maxConnections * 6),
     [maxConnections]
   );
+  /* itemSize 4: the alpha channel fades each edge with distance, which normal
+   * blending needs and additive blending consumes identically. */
   const lineColors = useMemo(
-    () => new Float32Array(maxConnections * 6),
+    () => new Float32Array(maxConnections * 8),
     [maxConnections]
   );
 
@@ -138,8 +177,9 @@ export default function ParticleNetwork() {
       connectionTickRef.current += delta;
       if (connectionTickRef.current >= CONNECTION_UPDATE_INTERVAL) {
         connectionTickRef.current = 0;
-        const maxDistanceSq = CONNECTION_DISTANCE * CONNECTION_DISTANCE;
-        const invCellSize = 1 / CONNECTION_DISTANCE;
+        const connectionDistance = style.connectionDistance;
+        const maxDistanceSq = connectionDistance * connectionDistance;
+        const invCellSize = 1 / connectionDistance;
         const grid = new Map<number, number[]>();
         let lineIdx = 0;
 
@@ -194,13 +234,16 @@ export default function ParticleNetwork() {
                   linePositions[li + 4] = pos[jx + 1];
                   linePositions[li + 5] = pos[jx + 2];
 
-                  const a = alpha * 0.12;
-                  lineColors[li] = 0;
-                  lineColors[li + 1] = 0.72 * a;
-                  lineColors[li + 2] = 0.78 * a;
-                  lineColors[li + 3] = 0;
-                  lineColors[li + 4] = 0.72 * a;
-                  lineColors[li + 5] = 0.78 * a;
+                  const a = alpha * style.lineAlpha;
+                  const ci = lineIdx * 8;
+                  lineColors[ci] = style.lineColor[0];
+                  lineColors[ci + 1] = style.lineColor[1];
+                  lineColors[ci + 2] = style.lineColor[2];
+                  lineColors[ci + 3] = a;
+                  lineColors[ci + 4] = style.lineColor[0];
+                  lineColors[ci + 5] = style.lineColor[1];
+                  lineColors[ci + 6] = style.lineColor[2];
+                  lineColors[ci + 7] = a;
                   lineIdx++;
                 }
               }
@@ -262,12 +305,12 @@ export default function ParticleNetwork() {
           />
         </bufferGeometry>
         <pointsMaterial
-          size={0.04}
-          color="#6aaeb5"
+          size={style.nodeSize}
+          color={style.nodeColor}
           transparent
-          opacity={0.42}
+          opacity={style.nodeOpacity}
           sizeAttenuation
-          blending={THREE.AdditiveBlending}
+          blending={style.blending}
           depthWrite={false}
         />
       </points>
@@ -281,13 +324,13 @@ export default function ParticleNetwork() {
           />
           <bufferAttribute
             attach="attributes-color"
-            args={[lineColors, 3]}
+            args={[lineColors, 4]}
           />
         </bufferGeometry>
         <lineBasicMaterial
           vertexColors
           transparent
-          blending={THREE.AdditiveBlending}
+          blending={style.blending}
           depthWrite={false}
         />
       </lineSegments>
@@ -301,12 +344,12 @@ export default function ParticleNetwork() {
           />
         </bufferGeometry>
         <pointsMaterial
-          size={0.06}
-          color="#7ebbc2"
+          size={style.pulseSize}
+          color={style.pulseColor}
           transparent
-          opacity={0.45}
+          opacity={style.pulseOpacity}
           sizeAttenuation
-          blending={THREE.AdditiveBlending}
+          blending={style.blending}
           depthWrite={false}
         />
       </points>

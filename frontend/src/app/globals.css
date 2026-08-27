@@ -370,6 +370,26 @@ html[data-theme="dark"] .liquid-list-row.liquid-room-row-selected {
   background: rgba(35, 55, 79, 0.42);
 }
 
+/*
+ * The marketing hero renders a WebGL particle mesh behind the copy. On the
+ * light canvas the mesh has enough contrast to compete with the headline, so a
+ * radial wash of the page background fades it out where the text sits and lets
+ * it stay visible toward the edges. Dark mode needs no wash.
+ */
+.hero-scene-veil {
+  display: none;
+}
+
+html[data-theme="light"] .hero-scene-veil {
+  display: block;
+  background: radial-gradient(
+    92% 58% at 50% 30%,
+    rgba(238, 243, 249, 0.88) 0%,
+    rgba(238, 243, 249, 0.6) 42%,
+    rgba(238, 243, 249, 0) 76%
+  );
+}
+
 html[data-theme="dark"] .liquid-scrim {
   background: rgba(3, 10, 20, 0.62);
 }
