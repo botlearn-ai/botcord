@@ -2063,6 +2063,10 @@ export const messageList: TranslationMap<{
   expired: string
   general: string
   noMessages: string
+  loadingMessages: string
+  loadingEarlier: string
+  loadMessagesFailed: string
+  loadEarlierFailed: string
   scrollUp: string
   msg: string
   msgs: string
@@ -2089,6 +2093,10 @@ export const messageList: TranslationMap<{
     expired: 'Expired',
     general: 'General',
     noMessages: 'No messages yet',
+    loadingMessages: 'Loading messages…',
+    loadingEarlier: 'Loading earlier messages…',
+    loadMessagesFailed: 'Couldn’t load this room’s messages.',
+    loadEarlierFailed: 'Couldn’t load earlier messages.',
     scrollUp: 'Scroll up for older messages...',
     msg: 'msg',
     msgs: 'msgs',
@@ -2115,6 +2123,10 @@ export const messageList: TranslationMap<{
     expired: '已过期',
     general: '通用',
     noMessages: '暂无消息',
+    loadingMessages: '正在加载消息…',
+    loadingEarlier: '正在加载更早的消息…',
+    loadMessagesFailed: '消息加载失败，请重试。',
+    loadEarlierFailed: '更早的消息加载失败。',
     scrollUp: '向上滚动查看更早的消息...',
     msg: '条消息',
     msgs: '条消息',

@@ -48,6 +48,16 @@ export function useOwnerChatWs({
 
     // Reset grace period when switching agents
     lastAgentMsgRef.current = null;
+    let disposed = false;
+    // `auth_ok` can correct a provisional room id. Keep the socket's current
+    // room separate from the React closure so queued events can be fenced.
+    let socketRoomId = roomId;
+    const isActiveSocketRoom = (eventRoomId?: string | null) => {
+      const targetRoomId = eventRoomId || socketRoomId;
+      return !disposed
+        && targetRoomId === socketRoomId
+        && store.getState().roomId === targetRoomId;
+    };
 
     const supabase = createClient();
 
@@ -60,7 +70,13 @@ export function useOwnerChatWs({
       agentId: activeAgentId,
 
       onAuthOk: (data) => {
-        if (data.room_id && data.room_id !== roomId) {
+        if (disposed) return;
+        const currentRoomId = store.getState().roomId;
+        // A detached socket can still emit a queued auth frame after the
+        // reader has selected another Bot. Never let it retarget the store.
+        if (currentRoomId !== roomId && currentRoomId !== data.room_id) return;
+        socketRoomId = data.room_id || roomId;
+        if (data.room_id && currentRoomId !== data.room_id) {
           setUserChatRoomId(data.room_id);
           // Re-initialize the store for the corrected room
           store.getState().setRoom(data.room_id, agentName);
@@ -69,13 +85,15 @@ export function useOwnerChatWs({
       },
 
       onTyping: () => {
+        if (!isActiveSocketRoom()) return;
         const grace = lastAgentMsgRef.current;
-        if (grace && grace.roomId === roomId && Date.now() - grace.at < 5_000) return;
+        if (grace && grace.roomId === socketRoomId && Date.now() - grace.at < 5_000) return;
         store.getState().setAgentTyping(true);
       },
 
       onMessage: (msg) => {
-        const msgRoomId = msg.room_id || roomId;
+        const msgRoomId = msg.room_id || socketRoomId;
+        if (!isActiveSocketRoom(msgRoomId)) return;
 
         // Agent message with trace_id → finalize the streaming placeholder
         if (msg.sender === "agent" && msg.ext?.trace_id) {
@@ -138,6 +156,7 @@ export function useOwnerChatWs({
       },
 
       onStreamBlock: (block) => {
+        if (!isActiveSocketRoom(block.room_id)) return;
         store.getState().appendStreamBlock(block);
         if (block.block.kind === "assistant") {
           streamedTraceIds.current.add(block.trace_id);
@@ -145,6 +164,7 @@ export function useOwnerChatWs({
       },
 
       onNotification: (notif) => {
+        if (!isActiveSocketRoom()) return;
         const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const notifMsg: OwnerChatMessage = {
           clientId: notifId,
@@ -161,6 +181,7 @@ export function useOwnerChatWs({
       },
 
       onRunFailed: (err) => {
+        if (!isActiveSocketRoom(err.room_id)) return;
         store.getState().failRun({
           hubMsgId: err.hub_msg_id ?? null,
           traceId: err.trace_id ?? err.hub_msg_id ?? null,
@@ -171,6 +192,7 @@ export function useOwnerChatWs({
       },
 
       onStatusChange: (connected) => {
+        if (!isActiveSocketRoom()) return;
         if (connected) {
           store.getState().setWsConnected(true);
           // Reconcile failed/partial messages against server state after reconnect
@@ -181,6 +203,7 @@ export function useOwnerChatWs({
       },
 
       onSendFailed: (errorOrText: string, clientMsgId?: string) => {
+        if (!isActiveSocketRoom()) return;
         const reason = errorOrText || "WebSocket send failed";
         if (clientMsgId) {
           store.getState().failOptimistic(clientMsgId, reason);
@@ -198,9 +221,12 @@ export function useOwnerChatWs({
     wsClientRef.current = wsClient;
 
     return () => {
+      disposed = true;
       wsClient.close();
-      wsClientRef.current = null;
-      store.getState().setWsConnected(false);
+      if (wsClientRef.current === wsClient) wsClientRef.current = null;
+      if (store.getState().roomId === socketRoomId) {
+        store.getState().setWsConnected(false);
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAgentId, roomId]);

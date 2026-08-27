@@ -49,6 +49,7 @@ import { initialsFromName } from "./roomVisualTheme";
 import { dmPeerId } from "./dmRoom";
 import ContactsDetailPane from "./ContactsDetailPane";
 import { DashboardMainSkeleton } from "./DashboardTabSkeleton";
+import { MessageComposerSkeleton } from "./DashboardMessagePaneSkeleton";
 
 const EXPLORE_GRID_CLASS = "grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5";
 type ChatPaneTab = "messages" | "contacts" | "explore";
@@ -833,7 +834,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
                   loginHref={loginHref}
                 />
               ) : (
-                <MessageList onPreviewAttachment={handlePreviewAttachment} />
+                <MessageList key={openedRoomId} onPreviewAttachment={handlePreviewAttachment} />
               )
             ) : (
               <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-text-secondary">
@@ -841,7 +842,11 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
               </div>
             )}
           </div>
-          {openedRoomId && !isPaidAndNotJoined && (
+          {openedRoomId && !openedRoom ? (
+            <div className="border-t border-glass-border px-4 py-2" aria-busy="true">
+              <MessageComposerSkeleton />
+            </div>
+          ) : openedRoomId && !isPaidAndNotJoined && (
             <>
               {originAgent ? (
                 <div className="border-t border-glass-border bg-glass-bg/30 px-4 py-2.5">

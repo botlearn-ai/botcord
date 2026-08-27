@@ -23,7 +23,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useOwnerChatStore } from "@/store/useOwnerChatStore";
 import { useOwnerChatWs } from "@/hooks/useOwnerChatWs";
 import { messageList } from "@/lib/i18n/translations/dashboard";
-import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
+import DashboardMessagePaneSkeleton, { MessageHistoryLoading } from "./DashboardMessagePaneSkeleton";
 import MarkdownContent, { normalizeMessageContent } from "@/components/ui/MarkdownContent";
 import AttachmentItem, {
   attachmentGalleryIndex,
@@ -48,9 +48,12 @@ import {
   ownerChatReplyTargetId,
 } from "@/lib/owner-chat-actions";
 import {
+  captureVisibleMessageScrollAnchor,
   isNearScrollBottom,
+  restoreVisibleMessageScrollAnchor,
   scrollToLatestVisibleAfterScroll,
   shouldShowScrollToLatestForNewContent,
+  type VisibleMessageScrollAnchor,
 } from "./messageScroll";
 import { animateFadeUp, animateIfMotion, animatePop, cleanupAnime } from "@/lib/anime";
 
@@ -114,6 +117,8 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const messages = useOwnerChatStore((s) => s.messages);
   const hasMore = useOwnerChatStore((s) => s.hasMore);
   const loading = useOwnerChatStore((s) => s.loading);
+  const loadingMore = useOwnerChatStore((s) => s.loadingMore);
+  const moreError = useOwnerChatStore((s) => s.moreError);
   const storeError = useOwnerChatStore((s) => s.error);
   const wsConnected = useOwnerChatStore((s) => s.wsConnected);
   const agentTyping = useOwnerChatStore((s) => s.agentTyping);
@@ -135,7 +140,8 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const forwardLabel = locale === "zh" ? "转发" : "Forward";
   const copyLabel = locale === "zh" ? "复制" : "Copy";
   const copiedLabel = locale === "zh" ? "已复制" : "Copied";
-  const scrollToLatestLabel = messageList[locale].scrollToLatest;
+  const tMessages = messageList[locale];
+  const scrollToLatestLabel = tMessages.scrollToLatest;
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollToBottomButtonElementRef = useRef<HTMLButtonElement>(null);
@@ -148,6 +154,12 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const motionHandlesRef = useRef<Set<ReturnType<typeof animateIfMotion>>>(new Set());
   const initialLoadRef = useRef(true);
   const isLoadingMore = useRef(false);
+  const historyPrependAppliedRef = useRef(false);
+  const historyAnchorRef = useRef<{
+    roomId: string;
+    oldestMessageKey: string;
+    visibleMessage: VisibleMessageScrollAnchor | null;
+  } | null>(null);
   const prevLengthRef = useRef(0);
   const prevMessageContentSignatureRef = useRef("");
   const wasNearBottomRef = useRef(true);
@@ -230,6 +242,8 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     wasNearBottomRef.current = true;
     entrancePrimedRef.current = false;
     roomOpenedAtRef.current = performance.now();
+    historyAnchorRef.current = null;
+    historyPrependAppliedRef.current = false;
     previousStatusRef.current = new Map();
     showScrollToBottomButtonRef.current = false;
     setShowScrollToBottomButton(false);
@@ -300,8 +314,34 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   }, [messages]);
   const hasStreamingMsg = messages.some((m) => m.status === "streaming");
 
+  // Apply a history anchor only when the oldest message changes. A live
+  // append can land while pagination is pending; anchoring to the visible
+  // message keeps that append from being mistaken for prepended history.
+  useLayoutEffect(() => {
+    const anchor = historyAnchorRef.current;
+    const container = scrollContainerRef.current;
+    if (!anchor || !container) return;
+    if (anchor.roomId !== roomId) {
+      historyAnchorRef.current = null;
+      return;
+    }
+    const currentOldestMessageKey = messages[0]?.clientId ?? null;
+    if (currentOldestMessageKey === anchor.oldestMessageKey) return;
+    if (anchor.visibleMessage) {
+      restoreVisibleMessageScrollAnchor(
+        container,
+        "[data-owner-msg-key]",
+        "data-owner-msg-key",
+        anchor.visibleMessage,
+      );
+    }
+    historyPrependAppliedRef.current = true;
+    historyAnchorRef.current = null;
+  }, [messages, roomId]);
+
   useEffect(() => {
-    if (messages.length > prevLengthRef.current && !isLoadingMore.current) {
+    const loadingMoreAtChange = isLoadingMore.current;
+    if (messages.length > prevLengthRef.current && !loadingMoreAtChange) {
       if (wasNearBottomRef.current) scrollToBottom();
       else if (shouldShowScrollToLatestForNewContent({
         wasNearBottom: wasNearBottomRef.current,
@@ -313,7 +353,10 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       }
     }
     prevLengthRef.current = messages.length;
-    isLoadingMore.current = false;
+    if (historyPrependAppliedRef.current) {
+      historyPrependAppliedRef.current = false;
+      isLoadingMore.current = false;
+    }
   }, [messages.length, scrollToBottom]);
 
   useLayoutEffect(() => {
@@ -426,6 +469,43 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     registerMotion(animateFadeUp(typingIndicatorRef.current));
   }, [agentTyping, hasStreamingMsg, registerMotion]);
 
+  const requestMoreMessages = useCallback(() => {
+    const container = scrollContainerRef.current;
+    const oldestMessage = messages[0];
+    if (
+      !container
+      || !roomId
+      || !oldestMessage
+      || !hasMore
+      || loadingMore
+      || isLoadingMore.current
+    ) {
+      return;
+    }
+
+    const oldestMessageKey = oldestMessage.clientId;
+    const previousLength = messages.length;
+    historyAnchorRef.current = {
+      roomId,
+      oldestMessageKey,
+      visibleMessage: captureVisibleMessageScrollAnchor(
+        container,
+        "[data-owner-msg-key]",
+        "data-owner-msg-key",
+      ),
+    };
+    isLoadingMore.current = true;
+    void useOwnerChatStore.getState().loadMore().finally(() => {
+      const currentMessages = useOwnerChatStore.getState().messages;
+      const currentOldestMessageKey = currentMessages[0]?.clientId ?? null;
+      if (currentOldestMessageKey === oldestMessageKey || currentMessages.length === previousLength) {
+        isLoadingMore.current = false;
+        historyPrependAppliedRef.current = false;
+        historyAnchorRef.current = null;
+      }
+    });
+  }, [roomId, messages, hasMore, loadingMore]);
+
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -438,11 +518,10 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       showScrollToBottomButtonRef.current = shouldShow;
       setShowScrollToBottomButton(shouldShow);
     }
-    if (hasMore && !isLoadingMore.current && el.scrollTop < 100) {
-      isLoadingMore.current = true;
-      useOwnerChatStore.getState().loadMore();
+    if (el.scrollTop < 100) {
+      requestMoreMessages();
     }
-  }, [hasMore]);
+  }, [requestMoreMessages]);
 
   // ------ Typing auto-dismiss ------
   useEffect(() => {
@@ -712,11 +791,24 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
 
       {/* Messages */}
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {hasMore && (
-          <div className="mb-1 text-center text-xs text-zinc-500 animate-pulse">
-            Scroll up for older messages
+        {loadingMore ? (
+          <MessageHistoryLoading label={tMessages.loadingEarlier} />
+        ) : moreError ? (
+          <div className="mb-1 flex items-center justify-center gap-2 text-xs text-text-secondary" role="status">
+            <span>{tMessages.loadEarlierFailed}</span>
+            <button
+              type="button"
+              onClick={requestMoreMessages}
+              className="rounded px-1.5 py-0.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            >
+              {locale === "zh" ? "重试" : "Retry"}
+            </button>
           </div>
-        )}
+        ) : hasMore ? (
+          <div className="mb-1 text-center text-xs text-zinc-500 animate-pulse">
+            {tMessages.scrollUp}
+          </div>
+        ) : null}
 
         {messages.map((msg) => {
           const isUser = msg.sender === "user";

@@ -23,7 +23,14 @@ export interface DashboardUIState {
   /** Mobile-only temporary drawer for the secondary sidebar/list panel. */
   mobileSidebarOpen: boolean;
   sidebarTab: "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
-  pendingPrimaryNavigation: { tab: DashboardUIState["sidebarTab"]; path: string } | null;
+  pendingPrimaryNavigation: {
+    id: number;
+    tab: DashboardUIState["sidebarTab"];
+    path: string;
+    startedAt: number;
+  } | null;
+  /** Monotonic token used to prevent an old navigation timer from clearing a newer one. */
+  primaryNavigationSequence: number;
   /** Currently selected owned bot (agent_id) in the My Bots tab. Null = list view. */
   selectedBotAgentId: string | null;
   /** Active sub-tab inside the My Bots tab. */
@@ -93,7 +100,7 @@ export interface DashboardUIState {
   setUserChatAgentId: (agentId: string | null) => void;
   setSidebarTab: (tab: DashboardUIState["sidebarTab"]) => void;
   startPrimaryNavigation: (tab: DashboardUIState["sidebarTab"], path: string) => void;
-  clearPrimaryNavigation: () => void;
+  clearPrimaryNavigation: (id?: number) => void;
   setMessagesPane: (pane: DashboardUIState["messagesPane"]) => void;
   setMessagesFilter: (filter: DashboardUIState["messagesFilter"]) => void;
   setMessagesScope: (scope: DashboardUIState["messagesScope"]) => void;
@@ -133,6 +140,7 @@ const initialUIState = {
   mobileSidebarOpen: false,
   sidebarTab: "messages" as DashboardUIState["sidebarTab"],
   pendingPrimaryNavigation: null as DashboardUIState["pendingPrimaryNavigation"],
+  primaryNavigationSequence: 0,
   selectedBotAgentId: null as string | null,
   myBotsTab: "bots" as DashboardUIState["myBotsTab"],
   selectedDeviceId: null as string | null,
@@ -179,8 +187,20 @@ export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
         : { sidebarTab, pendingPrimaryNavigation: null }
     )),
   startPrimaryNavigation: (sidebarTab, path) =>
-    set({ sidebarTab, pendingPrimaryNavigation: { tab: sidebarTab, path } }),
-  clearPrimaryNavigation: () => set({ pendingPrimaryNavigation: null }),
+    set((state) => {
+      const id = state.primaryNavigationSequence + 1;
+      return {
+        sidebarTab,
+        primaryNavigationSequence: id,
+        pendingPrimaryNavigation: { id, tab: sidebarTab, path, startedAt: Date.now() },
+      };
+    }),
+  clearPrimaryNavigation: (id) =>
+    set((state) => {
+      if (!state.pendingPrimaryNavigation) return state;
+      if (id !== undefined && state.pendingPrimaryNavigation.id !== id) return state;
+      return { pendingPrimaryNavigation: null };
+    }),
   setMyBotsTab: (myBotsTab) =>
     set((state) => (state.myBotsTab === myBotsTab ? state : { myBotsTab })),
   setSelectedDeviceId: (selectedDeviceId) =>

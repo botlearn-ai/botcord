@@ -247,6 +247,8 @@ export interface FileUploadResult {
 export interface StreamBlockEntry {
   trace_id: string;
   seq: number;
+  /** Present on live owner-chat WebSocket blocks; absent on cached run rows. */
+  room_id?: string | null;
   block: {
     kind: string;
     /** Legacy shape: structured payload. */

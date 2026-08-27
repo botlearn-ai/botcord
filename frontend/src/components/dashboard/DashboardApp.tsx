@@ -49,6 +49,7 @@ import { animateIfMotion, cleanupAnime, prefersReducedMotion } from "@/lib/anime
 const USER_CHAT_SUBTAB = "__user-chat__";
 type DashboardSidebarTab = "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
 const MESSAGES_DIRECTORY_SYNC_INTERVAL_MS = 30_000;
+const PRIMARY_NAVIGATION_MIN_VISIBLE_MS = 180;
 
 type BotcordDebugRealtimeSnapshot = {
   supabaseUrl: string | undefined;
@@ -147,22 +148,16 @@ export default function DashboardApp() {
   const routeSidebarTab = useMemo(() => getSidebarTabFromPathParts(pathnameParts), [pathnameParts]);
   const userChatAgentIdFromQuery = searchParams.get("agent_id");
   const shouldShowBootstrapSkeleton = !sessionStore.authResolved || sessionStore.authBootstrapping;
-  const primaryNavigationPending = Boolean(
-    uiStore.pendingPrimaryNavigation && pathname !== uiStore.pendingPrimaryNavigation.path,
-  );
+  const primaryNavigationPending = Boolean(uiStore.pendingPrimaryNavigation);
   const visibleSidebarTab = primaryNavigationPending
     ? uiStore.pendingPrimaryNavigation?.tab ?? uiStore.sidebarTab
     : routeSidebarTab;
-  // Sub-view switches inside explore/contacts animate themselves (MotionGrid
-  // entrance in ChatPane); replaying the whole-pane fade on top reads as the
-  // page rendering twice, so exploreView/contactsView stay out of this key.
+  // Room changes have their own local loading states in MessageList. Keeping
+  // room/pane ids out of this key prevents the header, composer, and adjacent
+  // panes from fading out together every time a conversation is selected.
   const mainContentAnimationKey = [
     primaryNavigationPending ? "pending" : "ready",
     visibleSidebarTab,
-    uiStore.messagesPane,
-    uiStore.messagesShowRequests ? "requests" : "",
-    uiStore.openedRoomId ?? "",
-    uiStore.selectedContactKey ?? "",
   ].join(":");
   // Human-first: never force-block on "no agent". Authed users always proceed
   // into /chats as their Human identity; creating an Agent is a later,
@@ -311,7 +306,14 @@ export default function DashboardApp() {
     const pendingPrimaryNavigation = uiStore.pendingPrimaryNavigation;
     if (pendingPrimaryNavigation) {
       if (pathname === pendingPrimaryNavigation.path) {
-        uiStore.clearPrimaryNavigation();
+        const remaining = Math.max(
+          0,
+          PRIMARY_NAVIGATION_MIN_VISIBLE_MS - (Date.now() - pendingPrimaryNavigation.startedAt),
+        );
+        const timer = window.setTimeout(() => {
+          uiStore.clearPrimaryNavigation(pendingPrimaryNavigation.id);
+        }, remaining);
+        return () => window.clearTimeout(timer);
       } else {
         return;
       }
