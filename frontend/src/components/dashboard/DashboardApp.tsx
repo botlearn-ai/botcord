@@ -1151,7 +1151,15 @@ export default function DashboardApp() {
       />
       <div ref={mainContentRef} className={mainPaneClass}>
         {primaryNavigationPending ? (
-          <DashboardTabSkeleton variant={visibleSidebarTab} />
+          // A pending click on Messages usually lands on the empty
+          // "pick a conversation" pane, so only paint a chat skeleton when a
+          // conversation is actually open.
+          <DashboardTabSkeleton
+            variant={visibleSidebarTab}
+            hasOpenConversation={
+              Boolean(uiStore.focusedRoomId) || uiStore.messagesPane === "user-chat"
+            }
+          />
         ) : visibleSidebarTab === "home" ? (
           <HomePanel />
         ) : visibleSidebarTab === "activity" ? (

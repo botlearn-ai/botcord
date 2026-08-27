@@ -8,7 +8,12 @@
  */
 
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
-import DashboardTabSkeleton, { RoomRowsSkeleton, SidebarListSkeleton } from "./DashboardTabSkeleton";
+import DashboardTabSkeleton, {
+  ContactSectionsSkeleton,
+  MessagesEmptyStateSkeleton,
+  PinnedRequestRowSkeleton,
+  RoomRowsSkeleton,
+} from "./DashboardTabSkeleton";
 import { BotCordLoader } from "@/components/ui/BotCordLoader";
 import { Activity, Bot, Home, LogIn, MessageSquare, Search, UserRound, Wallet } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -51,20 +56,6 @@ export function getShellSkeletonVariantFromPathname(pathname: string | null): Sh
   return "home";
 }
 
-/** Mirrors `ChatPane`'s `MessagesEmptyState`, which is what /chats/messages resolves to. */
-function MessagesEmptyStateSkeleton() {
-  return (
-    <div className="dashboard-main flex min-w-0 flex-1 items-center justify-center px-6 py-10" aria-busy="true">
-      <div className="w-full max-w-md text-center">
-        <SkeletonLine className="mx-auto mb-5 h-14 w-14 rounded-2xl bg-glass-border/35" />
-        <SkeletonLine className="mx-auto h-5 w-40" />
-        <SkeletonLine className="mx-auto mt-3 h-3.5 w-72 max-w-full bg-glass-border/40" />
-        <SkeletonLine className="mx-auto mt-5 h-6 w-56 max-w-full rounded-full bg-glass-border/30" />
-      </div>
-    </div>
-  );
-}
-
 function SecondaryPanelSkeleton({ variant }: { variant: ShellSkeletonVariant }) {
   if (variant === "messages") {
     return (
@@ -104,13 +95,21 @@ function SecondaryPanelSkeleton({ variant }: { variant: ShellSkeletonVariant }) 
 
   if (variant !== "contacts" && variant !== "activity") return null;
 
+  // The secondary panel is `sidebarWidth` wide (360 by default) and carries the
+  // tab title header. Activity has no secondary content at all, so its panel
+  // must stay empty below the header instead of showing a phantom list.
   return (
-    <div className="flex h-full w-[280px] shrink-0 flex-col border-r border-glass-border bg-deep-black-light">
-      <div className="flex h-14 items-center justify-between border-b border-glass-border px-4">
+    <div className="liquid-panel flex h-full w-[360px] shrink-0 flex-col border-r border-glass-border bg-deep-black-light">
+      <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
         <SkeletonLine className="h-4 w-24" />
-        <SkeletonLine className="h-8 w-8 rounded-lg bg-glass-border/40" />
+        {variant === "contacts" ? <SkeletonLine className="h-8 w-8 rounded-lg bg-glass-border/40" /> : null}
       </div>
-      <SidebarListSkeleton rows={variant === "contacts" ? 9 : 7} withAvatar={variant === "contacts"} />
+      {variant === "contacts" ? (
+        <>
+          <PinnedRequestRowSkeleton />
+          <ContactSectionsSkeleton />
+        </>
+      ) : null}
     </div>
   );
 }

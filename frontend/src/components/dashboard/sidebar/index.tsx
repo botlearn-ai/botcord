@@ -37,7 +37,7 @@ import ContactsPanel from "./ContactsPanel";
 import MessagesGroupingSidebar from "./MessagesGroupingSidebar";
 import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
-import { RoomRowsSkeleton, SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
+import { ContactSectionsSkeleton, PinnedRequestRowSkeleton, RoomRowsSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
@@ -605,9 +605,12 @@ function Sidebar({
                   </div>
                   <RoomRowsSkeleton />
                 </>
-              ) : (
-                <SidebarListSkeleton rows={visibleSidebarTab === "contacts" ? 9 : 7} />
-              )}
+              ) : visibleSidebarTab === "contacts" ? (
+                <>
+                  <PinnedRequestRowSkeleton />
+                  <ContactSectionsSkeleton />
+                </>
+              ) : null}
             </>
           ) : visibleSidebarTab === "messages" && (
             <MessagesPanel
