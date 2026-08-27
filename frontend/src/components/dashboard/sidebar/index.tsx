@@ -37,7 +37,7 @@ import ContactsPanel from "./ContactsPanel";
 import MessagesGroupingSidebar from "./MessagesGroupingSidebar";
 import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
-import { SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
+import { RoomRowsSkeleton, SidebarListSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
@@ -593,15 +593,21 @@ function Sidebar({
           {secondaryPanelLoading ? (
             <>
               {visibleSidebarTab === "messages" ? (
-                <div className="flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
-                  <SkeletonBlock className="h-4 w-28" />
-                  <div className="flex gap-1">
-                    <SkeletonBlock className="h-8 w-8 rounded-lg" />
-                    <SkeletonBlock className="h-8 w-8 rounded-lg" />
+                <>
+                  {/* Mirrors MessagesPanel's toolbar: title + three icon buttons. */}
+                  <div className="liquid-toolbar flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
+                    <SkeletonBlock className="h-4 w-28" />
+                    <div className="flex gap-1">
+                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
+                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
+                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
+                    </div>
                   </div>
-                </div>
-              ) : null}
-              <SidebarListSkeleton rows={visibleSidebarTab === "contacts" ? 9 : 7} />
+                  <RoomRowsSkeleton />
+                </>
+              ) : (
+                <SidebarListSkeleton rows={visibleSidebarTab === "contacts" ? 9 : 7} />
+              )}
             </>
           ) : visibleSidebarTab === "messages" && (
             <MessagesPanel

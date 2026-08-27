@@ -8,7 +8,7 @@
  */
 
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
-import DashboardTabSkeleton, { SidebarListSkeleton } from "./DashboardTabSkeleton";
+import DashboardTabSkeleton, { RoomRowsSkeleton, SidebarListSkeleton } from "./DashboardTabSkeleton";
 import { BotCordLoader } from "@/components/ui/BotCordLoader";
 import { Activity, Bot, Home, LogIn, MessageSquare, Search, UserRound, Wallet } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -17,6 +17,21 @@ type ShellSkeletonVariant = "home" | "messages" | "bots" | "contacts" | "explore
 
 function SkeletonLine({ className }: { className: string }) {
   return <div className={`dashboard-skeleton-block rounded ${className}`} />;
+}
+
+/**
+ * `/chats/messages` without a room id lands on the empty "pick a conversation"
+ * state, not on a chat pane — so the shell skeleton must not paint a message
+ * feed there. Only routes that actually resolve to a room (or an explicit
+ * user-chat deep link) get the conversation skeleton.
+ */
+export function shellSkeletonHasOpenConversation(pathname: string | null): boolean {
+  const parts = (pathname || "/chats").split("/").filter(Boolean);
+  const tab = parts[1];
+  const subtab = parts[2];
+  if (tab === "user-chat") return true;
+  if (tab === "dm" || tab === "rooms" || tab === "messages") return Boolean(subtab);
+  return false;
 }
 
 export function getShellSkeletonVariantFromPathname(pathname: string | null): ShellSkeletonVariant {
@@ -36,15 +51,16 @@ export function getShellSkeletonVariantFromPathname(pathname: string | null): Sh
   return "home";
 }
 
-function SkeletonRoomList() {
+/** Mirrors `ChatPane`'s `MessagesEmptyState`, which is what /chats/messages resolves to. */
+function MessagesEmptyStateSkeleton() {
   return (
-    <div className="space-y-2 p-3">
-      {Array.from({ length: 7 }).map((_, idx) => (
-        <div key={idx} className="liquid-card rounded-lg border border-glass-border p-3">
-          <SkeletonLine className="h-3 w-2/3" />
-          <SkeletonLine className="mt-2 h-2.5 w-1/2 bg-glass-border/40" />
-        </div>
-      ))}
+    <div className="dashboard-main flex min-w-0 flex-1 items-center justify-center px-6 py-10" aria-busy="true">
+      <div className="w-full max-w-md text-center">
+        <SkeletonLine className="mx-auto mb-5 h-14 w-14 rounded-2xl bg-glass-border/35" />
+        <SkeletonLine className="mx-auto h-5 w-40" />
+        <SkeletonLine className="mx-auto mt-3 h-3.5 w-72 max-w-full bg-glass-border/40" />
+        <SkeletonLine className="mx-auto mt-5 h-6 w-56 max-w-full rounded-full bg-glass-border/30" />
+      </div>
     </div>
   );
 }
@@ -74,7 +90,7 @@ function SecondaryPanelSkeleton({ variant }: { variant: ShellSkeletonVariant }) 
             <SkeletonLine className="h-3 w-20" />
             <SkeletonLine className="mt-2 h-2.5 w-28 bg-glass-border/40" />
           </div>
-          {Array.from({ length: 4 }).map((_, idx) => (
+          {Array.from({ length: 5 }).map((_, idx) => (
             <div key={`bots-${idx}`} className="flex items-center gap-2 py-1.5 pl-[28px] pr-3">
               <SkeletonLine className="h-3.5 w-3.5 bg-glass-border/45" />
               <SkeletonLine className="h-3 w-24 bg-glass-border/45" />
@@ -102,6 +118,7 @@ function SecondaryPanelSkeleton({ variant }: { variant: ShellSkeletonVariant }) 
 export default function DashboardShellSkeleton({ variant: variantProp }: { variant?: ShellSkeletonVariant }) {
   const pathname = usePathname();
   const variant = variantProp ?? getShellSkeletonVariantFromPathname(pathname);
+  const hasOpenConversation = shellSkeletonHasOpenConversation(pathname);
   const primaryNav = [
     { key: "home", label: "Home", icon: <Home className="h-5 w-5" strokeWidth={1.5} /> },
     { key: "messages", label: "Messages", icon: <MessageSquare className="h-5 w-5" strokeWidth={1.5} /> },
@@ -142,22 +159,22 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
         <SecondaryPanelSkeleton variant={variant} />
 
         {variant === "messages" ? (
-          <div className="flex h-full min-w-0 flex-1 flex-col border-r border-glass-border">
-          <div className="flex h-14 items-center justify-between border-b border-glass-border px-3">
-            <span className="text-sm font-semibold text-text-primary">Messages</span>
-            <div className="flex items-center gap-3 text-text-secondary">
-              <Search className="h-4 w-4" />
-              <UserRound className="h-4 w-4" />
-              <MessageSquare className="h-4 w-4" />
+          <div className="flex h-full w-[360px] shrink-0 flex-col border-r border-glass-border">
+            <div className="liquid-toolbar flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
+              <span className="text-sm font-semibold text-text-primary">Messages</span>
+              <div className="flex items-center gap-1" aria-hidden="true">
+                <SkeletonLine className="h-8 w-8 rounded-lg bg-glass-border/35" />
+                <SkeletonLine className="h-8 w-8 rounded-lg bg-glass-border/35" />
+                <SkeletonLine className="h-8 w-8 rounded-lg bg-glass-border/35" />
+              </div>
             </div>
-          </div>
-          <SkeletonRoomList />
+            <RoomRowsSkeleton />
           </div>
         ) : null}
       </div>
 
       {variant === "messages" ? (
-        <DashboardMessagePaneSkeleton />
+        hasOpenConversation ? <DashboardMessagePaneSkeleton /> : <MessagesEmptyStateSkeleton />
       ) : (
         <div className="min-w-0 flex-1">
           <DashboardTabSkeleton variant={variant} />
