@@ -8,6 +8,7 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import NextTopLoader from "nextjs-toploader";
+import Script from "next/script";
 import { inter, jetbrainsMono } from "@/lib/fonts";
 import { getAppBaseUrl } from "@/lib/share-metadata";
 import { GoogleAnalytics } from "@/components/analytics/GoogleAnalytics";
@@ -32,7 +33,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0a0a0f",
+  themeColor: "#08111f",
 };
 
 export default function RootLayout({
@@ -41,7 +42,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        <Script id="botcord-theme" strategy="beforeInteractive">
+          {`try {
+            const stored = JSON.parse(localStorage.getItem("app-storage") || "{}");
+            const theme = stored && stored.state && stored.state.theme;
+            if (theme === "light" || theme === "dark") {
+              document.documentElement.dataset.theme = theme;
+              document.documentElement.style.colorScheme = theme;
+            }
+          } catch {}`}
+        </Script>
+      </head>
       <body className="min-h-screen bg-deep-black text-text-primary antialiased">
         <NextTopLoader
           color="#00f0ff"

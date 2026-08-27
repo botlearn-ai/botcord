@@ -28,6 +28,7 @@ import { createClient } from "@/lib/supabase/client";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
 import AccountMenu from "../AccountMenu";
+import ThemeToggle from "../ThemeToggle";
 import AddFriendModal from "../AddFriendModal";
 import CreateRoomModal from "../CreateRoomModal";
 import CreateAgentDialog from "../CreateAgentDialog";
@@ -394,7 +395,7 @@ function Sidebar({
   return (
     <div className={`flex h-full max-md:w-full max-md:flex-col-reverse ${mobileHideSecondary ? "max-md:h-[calc(4rem+env(safe-area-inset-bottom))]" : "max-md:h-full"}`}>
       {/* Primary rail */}
-      <div className="flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3 max-md:h-[calc(4rem+env(safe-area-inset-bottom))] max-md:w-full max-md:min-w-0 max-md:shrink-0 max-md:flex-row max-md:border-r-0 max-md:border-t max-md:px-2 max-md:pb-[env(safe-area-inset-bottom)] max-md:pt-2">
+      <div className="liquid-rail flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3 max-md:h-[calc(4rem+env(safe-area-inset-bottom))] max-md:w-full max-md:min-w-0 max-md:shrink-0 max-md:flex-row max-md:border-r-0 max-md:border-t max-md:px-2 max-md:pb-[env(safe-area-inset-bottom)] max-md:pt-2">
         <Link
           href="/"
           className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg max-md:mb-0 max-md:mr-2 max-md:hidden"
@@ -444,6 +445,7 @@ function Sidebar({
         </div>
 
         <div className="flex flex-col items-center gap-2 border-t border-glass-border pt-3 max-md:ml-1 max-md:shrink-0 max-md:gap-1 max-md:border-l max-md:border-t-0 max-md:pl-1 max-md:pt-0">
+          <ThemeToggle />
           <button
             onClick={() => setLanguage(locale === "zh" ? "en" : "zh")}
             aria-label="Toggle language"
@@ -523,7 +525,7 @@ function Sidebar({
       {/* Secondary panel — hidden on Home, My Bots, Explore, Wallet (those pages get full width). */}
       {visibleSidebarTab !== "home" && visibleSidebarTab !== "bots" && visibleSidebarTab !== "explore" && visibleSidebarTab !== "wallet" && (
       <div
-        className={`relative flex h-full flex-col border-r border-glass-border bg-deep-black-light max-md:min-h-0 max-md:flex-1 max-md:!min-w-0 max-md:border-r-0 ${
+        className={`liquid-panel relative flex h-full flex-col border-r border-glass-border bg-deep-black-light max-md:min-h-0 max-md:flex-1 max-md:!min-w-0 max-md:border-r-0 ${
           mobileHideSecondary
             ? mobileSecondaryRendered
               ? "max-md:fixed max-md:inset-x-3 max-md:bottom-[calc(5rem+env(safe-area-inset-bottom))] max-md:top-4 max-md:z-40 max-md:!w-auto max-md:rounded-xl max-md:border max-md:border-glass-border max-md:shadow-2xl max-md:shadow-black/50"

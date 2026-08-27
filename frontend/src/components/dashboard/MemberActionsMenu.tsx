@@ -100,7 +100,7 @@ export default function MemberActionsMenu({
         ⋯
       </button>
       {open && (
-        <div ref={menuRef} className="absolute right-0 z-20 mt-1 min-w-[140px] rounded-md border border-glass-border bg-deep-black-light p-1 shadow-lg">
+        <div ref={menuRef} className="liquid-menu absolute right-0 z-20 mt-1 min-w-[140px] rounded-md border border-glass-border p-1 shadow-lg">
           {canPromoteDemote && (
             <button
               onClick={toggleRole}
@@ -208,12 +208,12 @@ function PermissionsDialog({
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-30 flex items-center justify-center bg-black/60 ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-30 flex items-center justify-center ${closing ? "pointer-events-none" : ""}`}
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
-        className="w-[320px] rounded-lg border border-glass-border bg-deep-black-light p-4"
+        className="liquid-dialog w-[320px] rounded-lg border border-glass-border p-4"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-3 text-sm font-semibold text-text-primary">

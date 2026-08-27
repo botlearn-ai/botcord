@@ -129,14 +129,14 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+      className="liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm"
       onClick={() => closeWithMotion()}
     >
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="relative w-full max-w-md rounded-xl border border-glass-border bg-glass-bg p-5 backdrop-blur-xl"
+        className="liquid-dialog relative w-full max-w-md rounded-xl border border-glass-border p-5 backdrop-blur-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <button
@@ -184,7 +184,7 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
               placeholder="1"
-              className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
+              className="liquid-input w-full rounded-lg border border-glass-border p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none"
             />
           </div>
 
@@ -197,7 +197,7 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
               value={memo}
               onChange={(event) => setMemo(event.target.value)}
               placeholder={t.memoPlaceholder}
-              className="w-full rounded-lg border border-glass-border bg-deep-black-light p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
+              className="liquid-input w-full rounded-lg border border-glass-border p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none"
             />
           </div>
 

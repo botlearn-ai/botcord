@@ -59,7 +59,7 @@ export default function WalletAccountSelector({ value, onChange, label }: Props)
   }
 
   return (
-    <div className="mb-4 rounded-xl border border-glass-border bg-deep-black-light px-3 py-2.5">
+    <div className="liquid-card mb-4 rounded-xl border border-glass-border px-3 py-2.5">
       <div className="flex items-center justify-between gap-3">
         <span className="text-[11px] font-medium uppercase tracking-wider text-text-secondary">
           {label ?? t.fromAccount}
@@ -69,13 +69,13 @@ export default function WalletAccountSelector({ value, onChange, label }: Props)
             type="button"
             onClick={() => setOpen((v) => !v)}
             onBlur={() => setTimeout(() => setOpen(false), 120)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg px-2.5 py-1 text-xs text-text-primary hover:border-neon-cyan/30"
+            className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-2.5 py-1 text-xs text-text-primary hover:border-neon-cyan/30"
           >
             <span className="font-medium">{current?.label ?? "—"}</span>
             <ChevronDown className="h-3.5 w-3.5" />
           </button>
           {open ? (
-            <div className="absolute right-0 top-full z-30 mt-1 min-w-[220px] overflow-hidden rounded-lg border border-glass-border bg-deep-black-light shadow-lg">
+            <div className="liquid-menu absolute right-0 top-full z-30 mt-1 min-w-[220px] overflow-hidden rounded-lg border border-glass-border shadow-lg">
               {options.map((opt) => {
                 const selected = value?.type === opt.identity.type && value.id === opt.identity.id;
                 return (

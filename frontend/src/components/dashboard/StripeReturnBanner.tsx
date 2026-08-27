@@ -89,7 +89,7 @@ function StripeReturnBanner() {
   // Cancelled
   if (mode === "cancelled") {
     return (
-      <div className="fixed bottom-4 right-4 z-40 max-w-sm rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 backdrop-blur-xl">
+      <div className="liquid-card fixed bottom-4 right-4 z-40 max-w-sm rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 backdrop-blur-xl">
         <div className="flex items-start gap-3">
           <span className="text-yellow-400 text-lg">!</span>
           <div className="flex-1">
@@ -112,7 +112,7 @@ function StripeReturnBanner() {
   const credited = status?.wallet_credited ?? false;
 
   return (
-    <div className={`fixed bottom-4 right-4 z-40 max-w-sm rounded-xl border p-4 backdrop-blur-xl ${
+    <div className={`liquid-card fixed bottom-4 right-4 z-40 max-w-sm rounded-xl border p-4 backdrop-blur-xl ${
       credited
         ? "border-neon-green/30 bg-neon-green/10"
         : "border-neon-cyan/30 bg-neon-cyan/10"

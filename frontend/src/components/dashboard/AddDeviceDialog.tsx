@@ -69,7 +69,7 @@ export default function AddDeviceDialog({ onClose }: AddDeviceDialogProps) {
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-[110] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeWithMotion();
       }}
@@ -79,9 +79,9 @@ export default function AddDeviceDialog({ onClose }: AddDeviceDialogProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-device-title"
-        className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-glass-border bg-deep-black-light shadow-2xl"
+        className="liquid-dialog relative flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl"
       >
-        <div className="flex shrink-0 items-center gap-3 border-b border-glass-border/40 px-4 py-3 sm:px-5">
+        <div className="liquid-toolbar flex shrink-0 items-center gap-3 border-b px-4 py-3 sm:px-5">
           <h3
             id="add-device-title"
             className="flex min-w-0 flex-1 items-center gap-2 text-base font-semibold text-text-primary"
@@ -93,7 +93,7 @@ export default function AddDeviceDialog({ onClose }: AddDeviceDialogProps) {
             type="button"
             onClick={closeWithMotion}
             aria-label={locale === "zh" ? "关闭" : "Close"}
-            className="shrink-0 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="liquid-action shrink-0 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary"
           >
             <X className="h-5 w-5" />
           </button>

@@ -31,8 +31,8 @@ export default function DashboardMessagePaneSkeleton({
   roundedClassName = "rounded-2xl",
 }: DashboardMessagePaneSkeletonProps) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-deep-black">
-      <div className={`border-b border-glass-border ${headerPaddingClassName}`}>
+    <div className="dashboard-main flex min-w-0 flex-1 flex-col">
+      <div className={`liquid-toolbar border-b border-glass-border ${headerPaddingClassName}`}>
         <div className="flex items-center gap-2">
           {headerIcon ? (
             <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-neon-cyan/20 bg-neon-cyan/5 text-neon-cyan/70">
@@ -51,7 +51,7 @@ export default function DashboardMessagePaneSkeleton({
           const isRight = idx % 2 === 1;
           return (
             <div key={idx} className={`flex ${isRight ? "justify-end" : "justify-start"}`}>
-              <div className={`w-full ${messageMaxWidthClassName} ${roundedClassName} border border-glass-border bg-deep-black-light p-4`}>
+              <div className={`liquid-card w-full ${messageMaxWidthClassName} ${roundedClassName} border border-glass-border p-4`}>
                 {!isRight && <SkeletonBlock className="h-3 w-20" />}
                 <SkeletonBlock className="mt-3 h-3 w-5/6 bg-glass-border/40" />
                 <SkeletonBlock className="mt-2 h-3 w-2/3 bg-glass-border/40" />
@@ -62,9 +62,9 @@ export default function DashboardMessagePaneSkeleton({
         })}
       </div>
 
-      <div className={`border-t border-glass-border ${composerPaddingClassName}`}>
+      <div className={`liquid-toolbar border-t border-glass-border ${composerPaddingClassName}`}>
         <div className="flex items-end gap-2">
-          <div className={`flex-1 ${roundedClassName} border border-glass-border bg-deep-black-light px-4 py-3`}>
+          <div className={`liquid-composer flex-1 ${roundedClassName} border border-glass-border px-4 py-3`}>
             <SkeletonBlock className="h-4 w-1/3" />
           </div>
           {headerIcon ? (

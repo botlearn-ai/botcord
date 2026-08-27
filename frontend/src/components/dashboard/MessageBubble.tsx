@@ -474,7 +474,7 @@ function MentionChip({
       {tooltipPosition && typeof document !== "undefined" && createPortal(
         <span
           ref={tooltipRef}
-          className="pointer-events-none fixed z-[9999] w-64 rounded-lg border border-glass-border bg-zinc-950/95 p-3 text-left shadow-xl shadow-black/30"
+          className="liquid-menu pointer-events-none fixed z-[9999] w-64 rounded-xl border border-glass-border bg-deep-black-light p-3 text-left shadow-xl shadow-black/30"
           style={{ left: tooltipPosition.left, top: tooltipPosition.top }}
         >
           <span className="mb-1 flex items-center gap-2">
@@ -941,7 +941,7 @@ function MessageBubble({
           updateActionMenuPosition();
           setMenuOpen(true);
         }}
-        className={`flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 transition-colors ${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        className={`flex h-6 w-6 items-center justify-center rounded-lg text-text-secondary hover:bg-glass-bg hover:text-text-primary transition-colors ${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         aria-label="More actions"
         aria-expanded={menuOpen}
       >
@@ -950,7 +950,7 @@ function MessageBubble({
       {menuOpen && menuPosition && typeof document !== "undefined" && createPortal(
         <div
           ref={actionMenuRef}
-          className="fixed z-[9999] min-w-[112px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl"
+          className="liquid-menu fixed z-[9999] min-w-[112px] rounded-xl border border-glass-border bg-deep-black-light py-1 shadow-xl"
           style={{ left: menuPosition.left, top: menuPosition.top }}
           onMouseDown={(event) => event.stopPropagation()}
         >
@@ -959,7 +959,7 @@ function MessageBubble({
               data-message-action-item
               type="button"
               onMouseDown={(e) => { e.preventDefault(); handleReplyClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
             >
               <CornerUpLeft className="h-3.5 w-3.5 text-zinc-500" />
               {locale === "zh" ? "回复" : "Reply"}
@@ -970,7 +970,7 @@ function MessageBubble({
               data-message-action-item
               type="button"
               onMouseDown={(e) => { e.preventDefault(); handleForwardClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
             >
               <Forward className="h-3.5 w-3.5 text-zinc-500" />
               转发
@@ -982,7 +982,7 @@ function MessageBubble({
               type="button"
               disabled={recallPending}
               onMouseDown={(e) => { e.preventDefault(); void handleRecallClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
             >
               <RotateCcw className="h-3.5 w-3.5 text-zinc-500" />
               {locale === "zh" ? "撤回" : "Recall"}
@@ -993,7 +993,7 @@ function MessageBubble({
               data-message-action-item
               type="button"
               onMouseDown={(e) => { e.preventDefault(); void handleCopyClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
             >
               {copied ? (
                 <Check className="h-3.5 w-3.5 text-emerald-400" />
@@ -1026,12 +1026,12 @@ function MessageBubble({
       {isOwn && !fullWidth && actionButtons}
       {!isOwn && sideAvatar}
       <div
-        className={`${fullWidth ? "w-full" : "max-w-[70%]"} rounded-xl px-3 py-2 ${
+        className={`${fullWidth ? "w-full" : "max-w-[70%]"} liquid-message rounded-2xl border px-3 py-2 ${
           isErrorMessage
-            ? "border border-zinc-700/45 bg-zinc-900/35"
+            ? "liquid-message-error"
             : isOwn
-              ? "border border-neon-cyan/30 bg-neon-cyan/5"
-              : "border border-glass-border bg-glass-bg"
+              ? "liquid-message-own"
+              : "liquid-message-peer"
         }`}
       >
         <div

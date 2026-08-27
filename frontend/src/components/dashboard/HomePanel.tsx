@@ -69,7 +69,7 @@ function SectionHeader({
       {onShowAll ? (
         <button
           onClick={onShowAll}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+          className="liquid-action inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
         >
           {t.viewAll} <ArrowRight className="h-3 w-3" />
         </button>
@@ -90,7 +90,7 @@ function BotActivityCard({ bot, stats, onClick }: { bot: UserAgent; stats: Agent
     <button
       type="button"
       onClick={onClick}
-      className="w-full rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-colors hover:border-neon-cyan/40 focus:outline-none focus:ring-2 focus:ring-neon-cyan/40"
+      className="liquid-card w-full rounded-2xl border border-glass-border p-4 text-left transition-colors hover:border-neon-cyan/40 focus:outline-none focus:ring-2 focus:ring-neon-cyan/40"
     >
       <div className="mb-3 flex items-center gap-2.5">
         <BotAvatar agentId={bot.agent_id} avatarUrl={bot.avatar_url} size={36} alt={bot.display_name} />
@@ -118,7 +118,7 @@ function CreateNewBotCard({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[148px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-glass-border/80 bg-deep-black-light/45 p-4 text-center opacity-85 transition-colors hover:border-text-secondary/45 hover:bg-glass-bg/35 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-text-secondary/25"
+      className="liquid-empty-state flex min-h-[148px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-glass-border/80 p-4 text-center opacity-85 transition-colors hover:border-text-secondary/45 hover:bg-glass-bg/35 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-text-secondary/25"
     >
       <div className="flex flex-col items-center">
         <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-glass-bg/45 text-text-secondary">
@@ -132,7 +132,7 @@ function CreateNewBotCard({ onClick }: { onClick: () => void }) {
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-lg bg-glass-bg px-2 py-1.5">
+    <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
       <div className="text-[10px] uppercase tracking-wider text-text-secondary/60">{label}</div>
       <div className="text-sm font-semibold text-text-primary">{value}</div>
     </div>
@@ -155,7 +155,7 @@ function InlineTooltip({
     <span className="group relative inline-flex focus:outline-none" tabIndex={0}>
       {children}
       <span
-        className={`pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-lg border border-glass-border bg-deep-black px-3 py-2 text-left text-xs font-normal leading-relaxed text-text-secondary opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${sizeClass}`}
+        className={`liquid-menu pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-lg border border-glass-border px-3 py-2 text-left text-xs font-normal leading-relaxed text-text-secondary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${sizeClass}`}
       >
         {label}
       </span>
@@ -166,7 +166,7 @@ function InlineTooltip({
 export function BotEmptyHero({ onCreateBot }: { onCreateBot: () => void }) {
   const t = homePanelI18n[useLanguage()];
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-dashed border-glass-border bg-deep-black-light/40">
+    <div className="liquid-empty-state relative overflow-hidden rounded-2xl border border-dashed border-glass-border">
       <div className="pointer-events-none absolute -left-12 -top-16 h-48 w-48 rounded-full bg-neon-cyan/10 blur-3xl" />
       <div className="pointer-events-none absolute -right-12 -bottom-16 h-48 w-48 rounded-full bg-neon-purple/10 blur-3xl" />
       <div className="relative flex flex-col items-center gap-5 px-6 py-12 text-center sm:py-14">
@@ -184,7 +184,7 @@ export function BotEmptyHero({ onCreateBot }: { onCreateBot: () => void }) {
         <button
           type="button"
           onClick={onCreateBot}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/15 px-5 text-sm font-semibold text-neon-cyan transition-colors hover:bg-neon-cyan/25"
+          className="liquid-action inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/15 px-5 text-sm font-semibold text-neon-cyan transition-colors hover:bg-neon-cyan/25"
         >
           <Plus className="h-4 w-4" />
           {t.createFirstBot}
@@ -212,7 +212,7 @@ export function BotOnboardingSteps({
       type="button"
       onClick={onCreateBot}
       disabled={!hasOnlineDaemon}
-      className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border px-4 text-sm font-medium transition-colors ${
+      className={`liquid-action inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border px-4 text-sm font-medium transition-colors ${
         hasOnlineDaemon
           ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan/20"
           : "cursor-not-allowed border-glass-border bg-glass-bg/35 text-text-secondary/50"
@@ -224,7 +224,7 @@ export function BotOnboardingSteps({
   );
 
   return (
-    <div className="rounded-2xl border border-dashed border-glass-border bg-deep-black-light/40">
+    <div className="liquid-card rounded-2xl border border-dashed border-glass-border">
       <div className="grid lg:grid-cols-2">
         <div className="flex min-h-48 flex-col justify-between gap-6 border-b border-glass-border/70 p-5 sm:p-6 lg:border-b-0 lg:border-r">
           <div>
@@ -265,7 +265,7 @@ export function BotOnboardingSteps({
             <button
               type="button"
               onClick={onConnectDevice}
-              className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-4 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              className="liquid-action inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-4 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
               {t.connectDevice}
               <ArrowRight className="h-4 w-4" />
@@ -407,7 +407,7 @@ const TerminalHowToPopoverBody = forwardRef<
     <span
       ref={ref}
       style={{ top, left }}
-      className="pointer-events-none fixed z-[200] w-80 rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left shadow-2xl shadow-black/50">
+      className="liquid-menu pointer-events-none fixed z-[200] w-80 rounded-2xl border border-glass-border p-4 text-left">
       <span className="block border-b border-glass-border pb-3">
         <span className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-neon-cyan/25 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan">
           <Terminal className="h-3.5 w-3.5" />
@@ -439,7 +439,7 @@ const TerminalHowToPopoverBody = forwardRef<
                 </span>
               ) : null}
               {index === 1 ? (
-                <span className="mt-3 block rounded-xl border border-glass-border bg-deep-black">
+                <span className="liquid-tool-surface mt-3 block rounded-xl border border-glass-border">
                   <span className="flex items-center gap-2 border-b border-glass-border/60 px-3 py-2">
                     <span className="flex gap-1">
                       <span className="h-2 w-2 rounded-full bg-red-400/70" />
@@ -569,7 +569,7 @@ export function DeviceConnectPanel({
 
   return (
     <div className="space-y-4">
-          <div className="rounded-2xl border border-glass-border bg-glass-bg/25 p-4">
+          <div className="liquid-card rounded-2xl border border-glass-border p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary/60">
@@ -586,7 +586,7 @@ export function DeviceConnectPanel({
               <TerminalHowToButton />
             </div>
 
-            <div className="mt-4 overflow-hidden rounded-xl border border-glass-border bg-deep-black">
+            <div className="liquid-tool-surface mt-4 overflow-hidden rounded-xl border border-glass-border">
               <div className="flex items-center justify-between border-b border-glass-border/60 px-3 py-2">
                 <div className="flex items-center gap-2">
                   <span className="flex gap-1">
@@ -611,7 +611,7 @@ export function DeviceConnectPanel({
                 onClick={() => void handleCopy()}
                 disabled={copyDisabled}
                 title={copyDisabled ? "Wait until the install command is ready" : "Copy"}
-                className={`inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-lg border px-5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`liquid-action inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-lg border px-5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                   copied
                     ? "border-neon-green/50 bg-neon-green/15 text-neon-green hover:bg-neon-green/20"
                     : "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan/20 disabled:hover:bg-neon-cyan/10"
@@ -636,7 +636,7 @@ export function DeviceConnectPanel({
                 type="button"
                 onClick={handleRefresh}
                 disabled={loading}
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-glass-border px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+                className="liquid-action inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-glass-border px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
               >
                 {loading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -675,7 +675,7 @@ function PersonCard({
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-colors hover:border-neon-cyan/40 focus:outline-none focus:ring-2 focus:ring-neon-cyan/40"
+      className="liquid-card flex flex-col rounded-2xl border border-glass-border p-4 text-left transition-colors hover:border-neon-cyan/40 focus:outline-none focus:ring-2 focus:ring-neon-cyan/40"
     >
       <div className="mb-2 flex items-center gap-2">
         {badge === "AGENT" && agentId ? (
@@ -820,7 +820,7 @@ function HomePanel() {
     [publicRooms],
   );
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="dashboard-main h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 pb-10 pt-16">
         <div className="mb-10">
           <h1 className="text-4xl font-semibold tracking-tight text-text-primary">
@@ -884,7 +884,7 @@ function HomePanel() {
               ))}
             </div>
           ) : (
-            <p className="rounded-2xl border border-glass-border bg-deep-black-light/40 px-4 py-6 text-sm text-text-secondary/70">
+            <p className="liquid-empty-state rounded-2xl border border-glass-border px-4 py-6 text-sm text-text-secondary/70">
               {t.noPublicRooms}
             </p>
           )}
@@ -914,7 +914,7 @@ function HomePanel() {
               ))}
             </div>
           ) : (
-            <p className="rounded-2xl border border-glass-border bg-deep-black-light/40 px-4 py-6 text-sm text-text-secondary/70">
+            <p className="liquid-empty-state rounded-2xl border border-glass-border px-4 py-6 text-sm text-text-secondary/70">
               {t.noPublicBots}
             </p>
           )}
@@ -942,7 +942,7 @@ function HomePanel() {
               ))}
             </div>
           ) : (
-            <p className="rounded-2xl border border-glass-border bg-deep-black-light/40 px-4 py-6 text-sm text-text-secondary/70">
+            <p className="liquid-empty-state rounded-2xl border border-glass-border px-4 py-6 text-sm text-text-secondary/70">
               {t.noPublicHumans}
             </p>
           )}

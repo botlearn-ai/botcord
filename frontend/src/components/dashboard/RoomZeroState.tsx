@@ -114,7 +114,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
 
   if (compact) {
     return (
-      <div className="m-3 rounded-2xl border border-dashed border-glass-border bg-glass-bg/30 p-4">
+      <div className="liquid-empty-state m-3 rounded-2xl border border-dashed border-glass-border p-4">
         <p className="text-sm font-semibold text-text-primary">{titleCopy}</p>
         <p className="mt-1 text-xs leading-5 text-text-secondary">{descCopy}</p>
         <div className="mt-3 flex flex-col gap-2">
@@ -130,7 +130,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
           <button
             type="button"
             onClick={() => router.push("/chats/explore/rooms")}
-            className="rounded-xl border border-glass-border bg-deep-black-light px-4 py-2 text-xs font-medium text-text-primary transition-colors hover:border-neon-cyan/35 hover:text-neon-cyan"
+            className="liquid-action rounded-xl border border-glass-border px-4 py-2 text-xs font-medium text-text-primary transition-colors hover:border-neon-cyan/35 hover:text-neon-cyan"
           >
             {t.openExplore}
           </button>
@@ -199,7 +199,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                   type="button"
                   disabled={joiningId === room.room_id}
                   onClick={() => handleJoin(room)}
-                  className="group overflow-hidden rounded-xl border border-glass-border bg-deep-black-light text-left transition-all hover:border-neon-cyan/60 hover:shadow-md hover:shadow-neon-cyan/10 disabled:opacity-60"
+                  className="liquid-card group overflow-hidden rounded-xl border border-glass-border text-left transition-all hover:border-neon-cyan/60 hover:shadow-md hover:shadow-neon-cyan/10 disabled:opacity-60"
                 >
                   <div
                     className="relative h-14 w-full"
@@ -257,7 +257,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                   key={agent.agent_id}
                   type="button"
                   onClick={() => selectAgent(agent.agent_id)}
-                  className="group rounded-xl border border-glass-border bg-deep-black-light p-3 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg"
+                  className="liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg"
                 >
                   <div className="mb-2 flex items-center gap-2">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-purple/30 bg-neon-purple/10 text-xs font-semibold text-neon-purple">
@@ -300,7 +300,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                   key={human.human_id}
                   type="button"
                   onClick={() => onHumanOpen(human)}
-                  className="group rounded-xl border border-glass-border bg-deep-black-light p-3 text-left transition-all hover:border-neon-green/60 hover:bg-glass-bg"
+                  className="liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-green/60 hover:bg-glass-bg"
                 >
                   <div className="mb-2 flex items-center gap-2">
                     {human.avatar_url ? (

@@ -105,15 +105,15 @@ export default function MessagesGroupingSidebar({
   };
 
   return (
-    <div className={`flex h-full ${fullWidth ? "w-full" : "w-[200px]"} shrink-0 flex-col border-r border-glass-border bg-deep-black/50`}>
-      <div className="flex h-14 items-center justify-between border-b border-glass-border px-3">
+    <div className={`liquid-rail flex h-full ${fullWidth ? "w-full" : "w-[200px]"} shrink-0 flex-col border-r border-glass-border`}>
+      <div className="liquid-toolbar flex h-14 items-center justify-between border-b border-glass-border px-3">
         <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">{t.header}</span>
         <button
           type="button"
           onClick={() => (onCollapse ? onCollapse() : setMessagesGroupingOpen(false))}
           title={t.collapse}
           aria-label={t.collapse}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary"
+          className="liquid-action flex h-7 w-7 items-center justify-center rounded-md text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary"
         >
           <ChevronsLeft className="h-3.5 w-3.5" />
         </button>
@@ -191,7 +191,7 @@ function GroupHeader({
       type="button"
       onClick={onToggle}
       aria-expanded={open}
-      className="flex w-full items-center gap-1.5 px-3 py-2 text-left transition-colors hover:bg-glass-bg/40"
+      className="liquid-list-row flex w-full items-center gap-1.5 px-3 py-2 text-left transition-colors"
     >
       {open ? (
         <ChevronDown className="h-3 w-3 shrink-0 text-text-secondary/60" />
@@ -226,9 +226,9 @@ function FilterButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center justify-between gap-2 py-1.5 pl-[28px] pr-3 text-[12px] transition-colors ${
+      className={`liquid-list-row flex w-full items-center justify-between gap-2 py-1.5 pl-[28px] pr-3 text-[12px] transition-colors ${
         active
-          ? "bg-neon-cyan/10 text-neon-cyan"
+          ? "!bg-neon-cyan/10 text-neon-cyan"
           : "text-text-secondary hover:bg-glass-bg/50 hover:text-text-primary"
       }`}
     >

@@ -795,7 +795,7 @@ export default function CreateAgentDialog({
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-[110] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeWithMotion();
       }}
@@ -805,7 +805,7 @@ export default function CreateAgentDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-agent-title"
-        className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-glass-border bg-deep-black-light shadow-2xl"
+        className="liquid-dialog relative flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl"
       >
         {(() => {
           const onStep1 = showEmptyState || addingDevice;
@@ -817,7 +817,7 @@ export default function CreateAgentDialog({
             : t.step1Description;
           return (
             <>
-              <div className="flex shrink-0 items-center gap-3 border-b border-glass-border/40 px-4 py-3 sm:px-5">
+              <div className="liquid-toolbar flex shrink-0 items-center gap-3 border-b px-4 py-3 sm:px-5">
                 <div className="min-w-0 flex-1">
                   {!showWizardHeader ? (
                     <h3
@@ -841,7 +841,7 @@ export default function CreateAgentDialog({
                   onClick={() => closeWithMotion()}
                   disabled={submitting}
                   aria-label={t.cancel}
-                  className="shrink-0 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+                  className="liquid-action shrink-0 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -899,7 +899,7 @@ export default function CreateAgentDialog({
             <button
               type="button"
               onClick={() => setAddingDevice(false)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+              className="liquid-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               {t.backLabel}
@@ -918,7 +918,7 @@ export default function CreateAgentDialog({
                 {t.runtimeSectionLabel}
               </div>
             )}
-            <div className={hasExistingBots ? "space-y-3.5" : "space-y-3.5 rounded-2xl border border-glass-border/60 bg-glass-bg/20 p-3.5"}>
+            <div className={hasExistingBots ? "space-y-3.5" : "liquid-card space-y-3.5 rounded-2xl p-3.5"}>
             <section>
               <div className="mb-1.5 flex items-center justify-between gap-3">
                 <label className="text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
@@ -933,7 +933,7 @@ export default function CreateAgentDialog({
                     setAddingDevice(true);
                   }}
                   disabled={submitting}
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-neon-cyan/80 transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
+                  className="liquid-action inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-neon-cyan/80 transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
                 >
                   <Plus className="h-3 w-3" />
                   {t.addDeviceLabel}
@@ -956,7 +956,7 @@ export default function CreateAgentDialog({
                   options={deviceOptions}
                 />
               ) : isCloudAgentSelected ? (
-                <div className="flex h-11 items-center gap-2 rounded-xl border border-glass-border bg-deep-black px-3 text-xs text-text-secondary">
+                <div className="liquid-card flex h-11 items-center gap-2 rounded-xl px-3 text-xs text-text-secondary">
                   <Cloud className="h-3.5 w-3.5 text-neon-cyan" />
                   <span className="text-text-primary">
                     {t.cloudAgentOptionLabel}
@@ -966,7 +966,7 @@ export default function CreateAgentDialog({
                   </span>
                 </div>
               ) : selectedDaemon ? (
-                <div className="flex h-11 items-center gap-2 rounded-xl border border-glass-border bg-deep-black px-3 text-xs text-text-secondary">
+                <div className="liquid-card flex h-11 items-center gap-2 rounded-xl px-3 text-xs text-text-secondary">
                   <Server className="h-3.5 w-3.5 text-neon-cyan" />
                   <span className="text-text-primary">
                     {selectedDaemon.label || selectedDaemon.id}
@@ -1046,7 +1046,7 @@ export default function CreateAgentDialog({
                 {t.identitySectionLabel}
               </div>
             )}
-            <div className={hasExistingBots ? "space-y-3.5" : "space-y-3.5 rounded-2xl border border-glass-border/60 bg-glass-bg/20 p-3.5"}>
+            <div className={hasExistingBots ? "space-y-3.5" : "liquid-card space-y-3.5 rounded-2xl p-3.5"}>
             <section>
               <div className="mb-1 flex items-center justify-between gap-3">
                 <label className="text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
@@ -1058,7 +1058,7 @@ export default function CreateAgentDialog({
                   disabled={submitting}
                   title={t.randomizeTooltip}
                   aria-label={t.randomizeTooltip}
-                  className="inline-flex items-center justify-center rounded-md p-1 text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan disabled:opacity-50"
+                  className="liquid-action inline-flex items-center justify-center rounded-md p-1 text-text-secondary transition-colors hover:text-neon-cyan disabled:opacity-50"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                 </button>
@@ -1081,7 +1081,7 @@ export default function CreateAgentDialog({
                 }}
                 placeholder={t.namePlaceholder}
                 disabled={submitting}
-                className="h-10 w-full rounded-xl border border-glass-border bg-deep-black px-3 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+                className="liquid-input h-10 w-full rounded-xl border px-3 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
                 maxLength={64}
               />
             </section>
@@ -1099,7 +1099,7 @@ export default function CreateAgentDialog({
                 placeholder={t.bioPlaceholder}
                 disabled={submitting}
                 rows={2}
-                className="h-16 w-full resize-none rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+                className="liquid-input h-16 w-full resize-none rounded-xl border px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
                 maxLength={240}
               />
             </section>
@@ -1115,12 +1115,12 @@ export default function CreateAgentDialog({
               </div>
 
               {!showEmptyState && !addingDevice && loaded && (
-                <div className="flex shrink-0 items-center justify-end gap-3 border-t border-glass-border/40 px-4 py-3 sm:px-5">
+                <div className="liquid-toolbar flex shrink-0 items-center justify-end gap-3 border-t px-4 py-3 sm:px-5">
                   <button
                     type="button"
                     onClick={() => closeWithMotion()}
                     disabled={submitting}
-                    className="rounded-xl border border-glass-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+                    className="liquid-action rounded-xl px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                   >
                     {t.cancel}
                   </button>
@@ -1128,7 +1128,7 @@ export default function CreateAgentDialog({
                     type="button"
                     onClick={() => void handleSubmit()}
                     disabled={!canSubmit}
-                    className="flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm font-bold text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="liquid-action flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm font-bold text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {submitting ? (
                       <>
@@ -1198,7 +1198,7 @@ function RuntimePicker({
           type="button"
           onClick={onRefresh}
           disabled={refreshing || disabled || !daemon}
-          className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg px-2 py-0.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-neon-cyan/60 hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
+          className="liquid-action inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-neon-cyan/60 hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
         >
           {refreshing ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -1210,7 +1210,7 @@ function RuntimePicker({
       </div>
 
       {!hasAny ? (
-        <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-4 text-center text-xs text-text-secondary">
+        <div className="liquid-empty-state rounded-xl border border-dashed px-3 py-4 text-center text-xs text-text-secondary">
           {labels.noRuntimesDetected}
         </div>
       ) : (
@@ -1235,7 +1235,7 @@ function RuntimePicker({
               })}
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-4 text-center text-xs text-text-secondary">
+            <div className="liquid-empty-state rounded-xl border border-dashed px-3 py-4 text-center text-xs text-text-secondary">
               {labels.noRuntimesDetected}
             </div>
           )}
@@ -1246,7 +1246,7 @@ function RuntimePicker({
                 type="button"
                 aria-expanded={unavailableExpanded}
                 onClick={() => setUnavailableExpanded((expanded) => !expanded)}
-                className="flex w-full items-center justify-between gap-3 rounded-xl border border-glass-border bg-glass-bg/30 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+                className="liquid-action flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:text-text-primary"
               >
                 <span>
                   <span className="font-semibold uppercase tracking-wider">
@@ -1343,12 +1343,12 @@ function RuntimeCard({
   availableLabel?: string;
 }) {
   const base =
-    "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors";
+    "liquid-action flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors";
   const state = !runtime.available
     ? "cursor-not-allowed border-glass-border bg-glass-bg/35 text-text-secondary/75"
     : selected
       ? "border-neon-cyan bg-neon-cyan/15 text-text-primary"
-      : "border-glass-border bg-deep-black text-text-primary hover:border-neon-cyan/45 hover:bg-neon-cyan/10";
+      : "border-glass-border text-text-primary hover:border-neon-cyan/45 hover:bg-neon-cyan/10";
   return (
     <button
       type="button"
@@ -1423,7 +1423,7 @@ function RuntimeModelOptions({
   if (models.length === 0 && !hasReasoning && !hasThinking) return null;
 
   return (
-    <section className="rounded-xl border border-glass-border bg-glass-bg/30 p-2.5">
+    <section className="liquid-card rounded-xl p-2.5">
       <div className="grid gap-2.5 sm:grid-cols-2">
         {models.length > 0 ? (
           <div className={hasReasoning || hasThinking ? "" : "sm:col-span-2"}>
@@ -1480,20 +1480,20 @@ function RuntimeModelOptions({
                 onChange={(event) =>
                   onSelectReasoningEffort(event.target.value.trim() || null)
                 }
-                className="h-10 w-full rounded-xl border border-glass-border bg-deep-black px-3 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+                className="liquid-input h-10 w-full rounded-xl border px-3 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
               />
             )}
           </div>
         ) : null}
 
         {hasThinking ? (
-          <label className="flex min-h-10 items-center gap-2 rounded-xl border border-glass-border bg-deep-black px-3 text-sm text-text-primary sm:col-span-2">
+          <label className="liquid-card flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm text-text-primary sm:col-span-2">
             <input
               type="checkbox"
               checked={selectedThinking === true}
               disabled={disabled}
               onChange={(event) => onSelectThinking(event.target.checked)}
-              className="h-4 w-4 rounded border-glass-border bg-deep-black text-neon-cyan focus:ring-neon-cyan/50"
+              className="h-4 w-4 rounded border-glass-border bg-transparent text-neon-cyan focus:ring-neon-cyan/50"
             />
             <span>{labels.thinkingLabel}</span>
           </label>
@@ -1535,7 +1535,7 @@ function OpenclawGatewayPicker({
   const boundCount = agents.length - availableAgents.length;
   if (endpoints.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-3 text-xs text-text-secondary">
+      <div className="liquid-empty-state rounded-xl border border-dashed px-3 py-3 text-xs text-text-secondary">
         No OpenClaw gateways configured on this daemon. Add an entry to
         <code className="mx-1 font-mono">openclawGateways</code>
         in the daemon config and refresh.
@@ -1544,7 +1544,7 @@ function OpenclawGatewayPicker({
   }
   return (
     <section>
-      <div className="rounded-xl border border-glass-border bg-glass-bg/30 p-2.5">
+      <div className="liquid-card rounded-xl p-2.5">
         <div className="grid gap-2.5">
       <div>
         <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
@@ -1590,7 +1590,7 @@ function OpenclawGatewayPicker({
             value={selectedAgent ?? ""}
             placeholder={labels.subagentPlaceholder}
             onChange={(e) => onSelectAgent(e.target.value.trim() || null)}
-            className="h-10 w-full rounded-xl border border-glass-border bg-deep-black px-3 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+            className="liquid-input h-10 w-full rounded-xl border px-3 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
           />
         ) : (
           <div className="relative">
@@ -1640,7 +1640,7 @@ function HermesProfilePicker({
   }
   if (profiles.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 px-3 py-3 text-xs text-text-secondary">
+      <div className="liquid-empty-state rounded-xl border border-dashed px-3 py-3 text-xs text-text-secondary">
         No hermes profiles detected. Make sure hermes is installed and run{" "}
         <code className="mx-1 font-mono">hermes profile create &lt;name&gt;</code>
         on this device, then refresh runtimes.
@@ -1805,7 +1805,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-glass-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="liquid-action rounded-xl px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
           >
             Got it
           </button>
@@ -1849,7 +1849,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
             type="button"
             onClick={() => setTarget({ kind: "new" })}
             disabled={submitting}
-            className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+            className={`liquid-action flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
               target.kind === "new"
                 ? "border-neon-cyan/60 bg-neon-cyan/10 text-text-primary"
                 : "border-glass-border text-text-secondary hover:bg-glass-bg hover:text-text-primary"
@@ -1882,7 +1882,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. research-bot"
           disabled={submitting}
-          className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+          className="liquid-input w-full rounded-xl border px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
           maxLength={64}
         />
       </div>
@@ -1897,7 +1897,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
           placeholder="What this bot is for"
           disabled={submitting}
           rows={2}
-          className="w-full resize-none rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+          className="liquid-input w-full resize-none rounded-xl border px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
           maxLength={240}
         />
       </div>
@@ -1913,7 +1913,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
           type="button"
           onClick={onClose}
           disabled={submitting}
-          className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          className="liquid-action rounded-xl px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
         >
           Cancel
         </button>
@@ -1921,7 +1921,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
           type="button"
           onClick={() => void handleSubmit()}
           disabled={submitting || !name.trim()}
-          className="flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+          className="liquid-action flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? (
             <>
@@ -1955,7 +1955,7 @@ function HostCard({
       type="button"
       onClick={onSelect}
       disabled={disabled || !host.online}
-      className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+      className={`liquid-action flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
         selected
           ? "border-neon-cyan/60 bg-neon-cyan/10 text-text-primary"
           : "border-glass-border text-text-secondary hover:bg-glass-bg hover:text-text-primary"

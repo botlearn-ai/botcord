@@ -48,7 +48,7 @@ export default function ConfirmDialog() {
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="liquid-scrim fixed inset-0 z-[120] flex items-center justify-center p-4"
       role="presentation"
       onClick={() => close(isAlert)}
     >
@@ -56,13 +56,13 @@ export default function ConfirmDialog() {
         role="alertdialog"
         aria-modal="true"
         aria-label={current.title}
-        className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        className="liquid-dialog relative w-full max-w-md rounded-2xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           onClick={() => close(isAlert)}
-          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary"
           aria-label={cancelLabel}
         >
           <X className="h-5 w-5" />
@@ -89,7 +89,7 @@ export default function ConfirmDialog() {
             <button
               type="button"
               onClick={() => close(false)}
-              className="rounded-lg border border-glass-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-glass-bg"
+              className="liquid-action rounded-lg px-3 py-1.5 text-sm text-text-secondary transition-colors"
             >
               {cancelLabel}
             </button>
@@ -98,7 +98,7 @@ export default function ConfirmDialog() {
             ref={confirmButtonRef}
             type="button"
             onClick={() => close(true)}
-            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${confirmClasses}`}
+            className={`liquid-action rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${confirmClasses}`}
           >
             {confirmLabel}
           </button>

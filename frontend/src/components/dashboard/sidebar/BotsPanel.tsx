@@ -29,9 +29,9 @@ function AgentRow({ bot, isSelected, locale, onSelect, onOpenSettings }: AgentRo
     <div className="group relative">
       <button
         onClick={() => onSelect(bot.agent_id)}
-        className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 pr-11 text-left transition-colors ${
+        className={`liquid-list-row flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 pr-11 text-left transition-colors ${
           isSelected
-            ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
+            ? "!border-neon-cyan/60 !bg-neon-cyan/10 text-neon-cyan"
             : "border-transparent text-text-secondary hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
         }`}
       >
@@ -64,9 +64,9 @@ function AgentRow({ bot, isSelected, locale, onSelect, onOpenSettings }: AgentRo
         title={settingsLabel}
         aria-label={`${bot.display_name || bot.agent_id} ${settingsLabel}`}
         onClick={(e) => { e.stopPropagation(); onOpenSettings(bot); }}
-        className={`absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md border transition-colors ${
+        className={`liquid-action absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md border transition-colors ${
           isSelected
-            ? "border-neon-cyan/30 bg-deep-black/30 text-neon-cyan hover:bg-neon-cyan/10"
+            ? "border-neon-cyan/30 bg-glass-bg/70 text-neon-cyan hover:bg-neon-cyan/10"
             : "border-transparent text-text-secondary/60 hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
         }`}
       >
@@ -165,7 +165,7 @@ export default function BotsPanel({
         const label = daemon?.label || did.slice(0, 8);
         const isOnline = daemon?.status === "online";
         return (
-          <div key={did} className="rounded-xl border border-glass-border/50 bg-glass-bg/20">
+          <div key={did} className="liquid-card rounded-xl border border-glass-border/50">
             <div className="flex items-center gap-2 px-3 py-2">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5 flex-shrink-0 text-text-secondary/60">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0H3" />
@@ -219,7 +219,7 @@ export default function BotsPanel({
 
       {/* Unbound agents */}
       {unbound.length > 0 && (
-        <div className="rounded-xl border border-glass-border/50 bg-glass-bg/20">
+        <div className="liquid-card rounded-xl border border-glass-border/50">
           <div className="flex items-center gap-2 px-3 py-2">
             <Bot className="h-3.5 w-3.5 flex-shrink-0 text-text-secondary/60" />
             <span className="flex-1 text-[11px] font-semibold text-text-secondary/80">
@@ -243,12 +243,12 @@ export default function BotsPanel({
 
       {/* Empty state */}
       {isEmpty && (
-        <div className="rounded-lg border border-dashed border-glass-border px-3 py-6 text-center">
+        <div className="liquid-empty-state rounded-lg border border-dashed border-glass-border px-3 py-6 text-center">
           <p className="text-xs text-text-secondary/70">{t.myBotsEmpty}</p>
           <button
             type="button"
             onClick={onOpenCreateBot}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+            className="liquid-action mt-4 inline-flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>{t.createBot}</span>
@@ -261,7 +261,7 @@ export default function BotsPanel({
         <button
           type="button"
           onClick={() => setShowAddDevice(true)}
-          className="flex w-full items-center gap-2 rounded-lg border border-dashed border-glass-border/60 px-3 py-2 text-left text-xs text-text-secondary/60 transition-colors hover:border-neon-cyan/30 hover:text-neon-cyan/80"
+          className="liquid-action flex w-full items-center gap-2 rounded-lg border border-dashed border-glass-border/60 px-3 py-2 text-left text-xs text-text-secondary/60 transition-colors hover:border-neon-cyan/30 hover:text-neon-cyan/80"
         >
           <Plus className="h-3.5 w-3.5" />
           <span>{locale === "zh" ? "添加设备" : "Add Device"}</span>

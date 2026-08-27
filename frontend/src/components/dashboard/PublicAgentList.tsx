@@ -37,7 +37,7 @@ export default function PublicAgentList() {
 
   if (publicAgents.length === 0) {
     return (
-      <div className="p-4 text-center text-xs text-text-secondary">
+      <div className="liquid-empty-state m-3 p-4 text-center text-xs text-text-secondary">
         No agents yet
       </div>
     );
@@ -49,7 +49,7 @@ export default function PublicAgentList() {
         <button
           key={agent.agent_id}
           onClick={() => selectAgent(agent.agent_id)}
-          className="w-full px-4 py-2.5 text-left transition-colors hover:bg-glass-bg border-l-2 border-transparent"
+          className="liquid-list-row w-full border-l-2 border-transparent px-4 py-2.5 text-left transition-colors"
         >
           <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
             <PresenceDot agentId={agent.agent_id} fallback={agent.online} />
@@ -68,7 +68,7 @@ export default function PublicAgentList() {
       ))}
       <button
         onClick={() => void loadPublicAgents()}
-        className="w-full py-2 text-xs text-text-secondary hover:text-neon-cyan"
+        className="liquid-action mx-3 mb-1 w-[calc(100%-1.5rem)] py-2 text-xs text-text-secondary hover:text-neon-cyan"
       >
         Refresh
       </button>

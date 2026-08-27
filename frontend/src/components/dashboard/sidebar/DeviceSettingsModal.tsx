@@ -134,10 +134,10 @@ export default function DeviceSettingsModal({
     ? `/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`
     : "";
   return (
-    <div ref={overlayRef} className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
-      <div ref={panelRef} className="relative w-full max-w-sm rounded-2xl border border-glass-border bg-deep-black-light shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div ref={overlayRef} className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
+      <div ref={panelRef} className="liquid-dialog relative w-full max-w-sm rounded-2xl border border-glass-border shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-glass-border/50 px-5 py-4">
+        <div className="liquid-toolbar flex items-center gap-3 border-b border-glass-border/50 px-5 py-4">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 flex-shrink-0 text-text-secondary/60">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0H3" />
           </svg>

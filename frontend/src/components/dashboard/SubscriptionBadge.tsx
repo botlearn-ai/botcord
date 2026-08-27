@@ -295,7 +295,7 @@ export default function SubscriptionBadge({
 
       {showModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="liquid-scrim fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={(event) => {
             event.stopPropagation();
             closeWithMotion();
@@ -306,7 +306,7 @@ export default function SubscriptionBadge({
             ref={panelRef}
             role="dialog"
             aria-modal="true"
-            className="w-full max-w-sm rounded-xl border border-glass-border bg-deep-black p-6 shadow-xl"
+            className="liquid-dialog w-full max-w-sm rounded-xl border border-glass-border p-6 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
             <h2 data-motion-item className="mb-2 flex items-center gap-2 text-lg font-semibold text-yellow-500">

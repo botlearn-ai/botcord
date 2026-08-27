@@ -60,7 +60,7 @@ function Section({
     <div className="border-b border-glass-border/50">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70 transition-colors hover:text-text-primary"
+        className="liquid-list-row flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70 transition-colors hover:text-text-primary"
       >
         <span className="flex items-center gap-1.5">
           <ChevronDown
@@ -103,9 +103,9 @@ function ListRow({
     <button
       data-contact-section-item
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors ${
+      className={`liquid-list-row flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors ${
         active
-          ? "bg-neon-cyan/10"
+          ? "!bg-neon-cyan/10"
           : "hover:bg-glass-bg/60"
       }`}
     >
@@ -113,7 +113,7 @@ function ListRow({
         {avatar}
         {online !== undefined ? (
           <span
-            className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-deep-black-light ${
+            className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-glass-border ${
               online ? "bg-neon-green" : "bg-text-secondary/40"
             }`}
           />
@@ -233,7 +233,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
       {/* Pinned: New Requests */}
       <button
         onClick={openRequests}
-        className="flex items-center gap-3 border-b border-glass-border px-3 py-3 text-left transition-colors hover:bg-glass-bg/60"
+        className="liquid-list-row flex items-center gap-3 border-b border-glass-border px-3 py-3 text-left transition-colors"
       >
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
           <UserPlus2 className="h-4.5 w-4.5" />
@@ -242,7 +242,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-text-primary">{t.newRequests}</span>
             {totalPendingRequests > 0 ? (
-              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-black">
+              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-text-primary">
                 {totalPendingRequests > 99 ? "99+" : totalPendingRequests}
               </span>
             ) : null}

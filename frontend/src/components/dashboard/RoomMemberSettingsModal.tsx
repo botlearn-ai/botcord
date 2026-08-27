@@ -109,12 +109,12 @@ export default function RoomMemberSettingsModal({
   };
 
   return (
-    <div ref={overlayRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={() => closeWithMotion()}>
+    <div ref={overlayRef} className="liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm" onClick={() => closeWithMotion()}>
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
+        className="liquid-dialog flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-xl border"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-glass-border px-6 py-4">
@@ -128,7 +128,7 @@ export default function RoomMemberSettingsModal({
             </div>
           )}
 
-          <div>
+          <div className="liquid-card rounded-xl border p-3">
             <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
               {t.name}
             </p>
@@ -136,7 +136,7 @@ export default function RoomMemberSettingsModal({
           </div>
 
           {roomDescription && (
-            <div>
+            <div className="liquid-card rounded-xl border p-3">
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                 {t.description}
               </p>
@@ -145,7 +145,7 @@ export default function RoomMemberSettingsModal({
           )}
 
           {roomRule && (
-            <div>
+            <div className="liquid-card rounded-xl border p-3">
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                 {t.rule}
               </p>
@@ -166,7 +166,7 @@ export default function RoomMemberSettingsModal({
               <button
                 onClick={() => void handleCancelSubscription()}
                 disabled={cancellingSubscription}
-                className="inline-flex items-center gap-1.5 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                className="liquid-action inline-flex items-center gap-1.5 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 disabled:opacity-50"
               >
                 {cancellingSubscription && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {cancellingSubscription ? t.cancellingSubscription : t.cancelSubscription}
@@ -175,7 +175,7 @@ export default function RoomMemberSettingsModal({
               <button
                 onClick={() => void handleLeave()}
                 disabled={isLeaving}
-                className="inline-flex items-center gap-1.5 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                className="liquid-action inline-flex items-center gap-1.5 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 disabled:opacity-50"
               >
                 {isLeaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {confirmingLeave
@@ -186,7 +186,7 @@ export default function RoomMemberSettingsModal({
           )}
           <button
             onClick={() => closeWithMotion()}
-            className="ml-auto rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+            className="liquid-action ml-auto rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
           >
             {t.close}
           </button>

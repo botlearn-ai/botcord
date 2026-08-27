@@ -158,7 +158,7 @@ function StepSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-glass-border bg-deep-black/30 p-3">
+    <section className="liquid-card rounded-xl border border-glass-border p-3">
       <div className="mb-3 flex items-start gap-2.5">
         <span
           className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${
@@ -269,7 +269,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-2 text-[11px] text-text-tertiary">
+      <div className="liquid-card rounded-lg border border-glass-border px-3 py-2 text-[11px] text-text-tertiary">
         {isCloudAgent
           ? "Cloud Agent 的第三方接入由云端 ingress 服务托管，setup 不依赖你的本机。"
           : "Local Agent 的第三方接入运行在你本地 daemon 中。"}
@@ -320,7 +320,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
         </div>
 
         {loading && list.length === 0 ? (
-          <div className="rounded-xl border border-glass-border bg-glass-bg/40 p-4 text-xs text-text-secondary">
+          <div className="liquid-empty-state rounded-xl border border-glass-border p-4 text-xs text-text-secondary">
             <MobileBotCordLoading
               label="加载中…"
               size="sm"
@@ -348,7 +348,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
               return (
                 <li
                   key={g.id}
-                  className="rounded-xl border border-glass-border bg-glass-bg/40 p-3"
+                  className="liquid-card rounded-xl border border-glass-border p-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -444,7 +444,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
 
       {/* Add gateway form. */}
       {addMode && (
-        <section className="rounded-2xl border border-glass-border bg-glass-bg/40 p-4">
+        <section className="liquid-card rounded-2xl border border-glass-border p-4">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-text-primary">添加接入</h3>
             <button
@@ -976,14 +976,14 @@ function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      className="liquid-scrim fixed inset-0 z-[70] flex items-center justify-center px-4 backdrop-blur-sm"
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-md rounded-2xl border border-glass-border bg-deep-black p-5 shadow-2xl"
+        className="liquid-dialog w-full max-w-md rounded-2xl border border-glass-border p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div data-motion-item className="mb-4 flex items-start justify-between gap-3">
@@ -2693,14 +2693,14 @@ function DeleteConfirmDialog({
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4"
+      className="liquid-scrim fixed inset-0 z-[60] flex items-center justify-center px-4"
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-sm rounded-2xl border border-glass-border bg-deep-black p-5 shadow-2xl"
+        className="liquid-dialog w-full max-w-sm rounded-2xl border border-glass-border p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 data-motion-item className="mb-2 text-base font-semibold text-text-primary">

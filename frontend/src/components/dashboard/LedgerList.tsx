@@ -92,7 +92,7 @@ export default function LedgerList() {
         return (
           <div
             key={entry.entry_id}
-            className="flex items-center gap-3 rounded-xl border border-glass-border bg-glass-bg p-4 transition-colors hover:bg-glass-bg/80"
+            className="liquid-list-row flex items-center gap-3 rounded-xl border border-glass-border p-4 transition-colors"
           >
             {/* Direction icon */}
             <div

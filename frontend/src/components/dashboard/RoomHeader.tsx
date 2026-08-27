@@ -348,7 +348,7 @@ export default function RoomHeader() {
 
   return (
     <>
-      <div className="flex min-h-16 items-center justify-between gap-2 border-b border-glass-border px-4 py-3 max-md:min-h-12 max-md:gap-1 max-md:px-2 max-md:py-2">
+      <div className="liquid-toolbar flex min-h-16 items-center justify-between gap-2 border-b border-glass-border px-4 py-3 max-md:min-h-12 max-md:gap-1 max-md:px-2 max-md:py-2">
         <button
           type="button"
           onClick={handleMobileBack}

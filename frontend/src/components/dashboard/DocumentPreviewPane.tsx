@@ -355,7 +355,7 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
     <aside
       ref={paneRef}
       style={paneStyle}
-      className="relative flex h-full w-[var(--document-preview-pane-width)] max-w-[78vw] min-w-[360px] shrink-0 flex-col border-l border-glass-border bg-deep-black shadow-2xl shadow-black/40 will-change-transform max-md:absolute max-md:inset-0 max-md:z-40 max-md:w-full max-md:max-w-none max-md:min-w-0"
+      className="liquid-drawer relative flex h-full w-[var(--document-preview-pane-width)] max-w-[78vw] min-w-[360px] shrink-0 flex-col border-l will-change-transform max-md:absolute max-md:inset-0 max-md:z-40 max-md:w-full max-md:max-w-none max-md:min-w-0"
     >
       {resizing && (
         <div className="fixed inset-0 z-[80] cursor-col-resize max-md:hidden" aria-hidden="true" />
@@ -376,7 +376,7 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
       >
         <span className="h-12 w-px rounded-full bg-text-secondary/40" />
       </div>
-      <div className="flex min-h-14 items-center gap-2 border-b border-glass-border px-3">
+      <div className="liquid-toolbar flex min-h-14 items-center gap-2 border-b border-glass-border px-3">
         <FileText className="h-4 w-4 shrink-0 text-neon-cyan" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-text-primary">{title}</div>
@@ -389,7 +389,7 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
           target="_blank"
           rel="noopener noreferrer"
           download={title}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+          className="liquid-action inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary"
           aria-label="Download attachment"
           title="Download"
         >
@@ -398,14 +398,14 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
         <button
           type="button"
           onClick={handleClose}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+          className="liquid-action inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary"
           aria-label="Close preview"
           title="Close preview"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className={`min-h-0 flex-1 overflow-auto bg-zinc-950/30 ${resizing ? "pointer-events-none" : ""}`}>
+      <div className={`liquid-tool-surface min-h-0 flex-1 overflow-auto ${resizing ? "pointer-events-none" : ""}`}>
         {renderedBody}
       </div>
     </aside>

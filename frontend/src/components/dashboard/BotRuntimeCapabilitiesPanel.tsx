@@ -332,7 +332,7 @@ export default function BotRuntimeCapabilitiesPanel({
   }
 
   return (
-    <section className={`rounded-2xl border border-glass-border bg-glass-bg/30 p-4 ${className ?? ""}`}>
+    <section className={`liquid-card rounded-2xl border border-glass-border p-4 ${className ?? ""}`}>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
@@ -353,7 +353,7 @@ export default function BotRuntimeCapabilitiesPanel({
           disabled={!daemon?.id || isRefreshing}
           onClick={handleRefresh}
           title={labels.refresh}
-          className="inline-flex min-h-8 items-center gap-2 rounded-lg border border-glass-border bg-deep-black/50 px-2.5 text-xs font-medium text-text-secondary transition-colors hover:border-neon-cyan/45 hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-50"
+          className="liquid-action inline-flex min-h-8 items-center gap-2 rounded-lg border border-glass-border px-2.5 text-xs font-medium text-text-secondary transition-colors hover:border-neon-cyan/45 hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
           {isRefreshing ? labels.refreshing : labels.refresh}
@@ -410,7 +410,7 @@ export default function BotRuntimeCapabilitiesPanel({
                     leadingIcon={<Brain className="h-4 w-4 text-neon-cyan" />}
                   />
                 ) : (
-                  <div className="flex min-h-10 items-center gap-2 rounded-xl border border-glass-border bg-deep-black px-3">
+                  <div className="liquid-tool-surface flex min-h-10 items-center gap-2 rounded-xl border border-glass-border px-3">
                     <Brain className="h-4 w-4 shrink-0 text-neon-cyan" />
                     <input
                       disabled={saving}
@@ -431,7 +431,7 @@ export default function BotRuntimeCapabilitiesPanel({
                   type="button"
                   disabled={saving}
                   onClick={() => setSelectedThinking((value) => value !== true)}
-                  className="flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-glass-border bg-deep-black px-3 text-sm text-text-primary transition-colors hover:border-neon-cyan/45 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="liquid-action flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-glass-border px-3 text-sm text-text-primary transition-colors hover:border-neon-cyan/45 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-neon-cyan" />

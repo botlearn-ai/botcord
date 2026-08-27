@@ -103,7 +103,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         tabIndex={0}
         onClick={() => props.onRoomOpen?.(room)}
         onKeyDown={(event) => handleKeyActivate(event, () => props.onRoomOpen?.(room))}
-        className={`group overflow-hidden rounded-xl border border-glass-border bg-deep-black-light text-left transition-all hover:border-neon-cyan/60 hover:shadow-md hover:shadow-neon-cyan/10 ${className}`}
+        className={`liquid-card group overflow-hidden rounded-xl border border-glass-border text-left transition-all hover:border-neon-cyan/60 hover:shadow-md hover:shadow-neon-cyan/10 ${className}`}
       >
         <div
           className="relative h-14 w-full"
@@ -115,14 +115,14 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         >
           <div className="absolute left-3 top-2 flex items-center gap-2">
             <div
-              className="flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-bold text-white/90 backdrop-blur-sm"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-bold text-text-primary backdrop-blur-sm"
               style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}55` }}
             >
               {roomInitials}
             </div>
           </div>
           <span
-            className="absolute right-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur-sm"
+            className="absolute right-2 top-2 rounded-full border border-glass-border bg-glass-bg/70 px-2 py-0.5 text-[10px] font-medium text-text-primary backdrop-blur-sm"
             style={{ boxShadow: `0 0 0 1px ${theme.accent}55` }}
           >
             {room.member_count} {memberWord}
@@ -170,7 +170,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         tabIndex={0}
         onClick={() => props.onAgentOpen?.(agent)}
         onKeyDown={(event) => handleKeyActivate(event, () => props.onAgentOpen?.(agent))}
-        className={`group rounded-xl border border-glass-border bg-deep-black-light p-3 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg ${className}`}
+        className={`liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg ${className}`}
       >
         <div className="flex items-start gap-2.5">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-purple/30 bg-neon-purple/10 text-xs font-semibold text-neon-purple">
@@ -188,7 +188,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
                 className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium leading-3 ${
                   online
                     ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
-                    : "border-white/10 bg-white/5 text-text-secondary/60"
+                    : "border-glass-border bg-glass-bg/60 text-text-secondary/60"
                 }`}
               >
                 <PresenceDot agentId={agent.agent_id} fallback={agent.online} size="xs" />
@@ -233,7 +233,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
       tabIndex={0}
       onClick={() => props.onHumanOpen?.(human)}
       onKeyDown={(event) => handleKeyActivate(event, () => props.onHumanOpen?.(human))}
-      className={`group rounded-xl border border-glass-border bg-deep-black-light p-3 text-left transition-all hover:border-neon-green/60 hover:bg-glass-bg ${className}`}
+      className={`liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-green/60 hover:bg-glass-bg ${className}`}
     >
       <div className="flex items-start gap-2.5">
         {human.avatar_url ? (

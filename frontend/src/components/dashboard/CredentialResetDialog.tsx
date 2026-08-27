@@ -111,11 +111,11 @@ export default function CredentialResetDialog({
   }, [copied, error]);
 
   return (
-    <div ref={overlayRef} className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`} onMouseDown={(event) => { if (event.target === event.currentTarget) closeWithMotion(); }}>
-      <div ref={panelRef} className="relative w-full max-w-xl rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+    <div ref={overlayRef} className={`liquid-scrim fixed inset-0 z-[110] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`} onMouseDown={(event) => { if (event.target === event.currentTarget) closeWithMotion(); }}>
+      <div ref={panelRef} className="liquid-dialog relative w-full max-w-xl rounded-2xl p-5">
         <button
           onClick={closeWithMotion}
-          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary"
         >
           <X className="h-5 w-5" />
         </button>
@@ -128,7 +128,7 @@ export default function CredentialResetDialog({
           </p>
         </div>
 
-        <div className="rounded-xl border border-glass-border bg-deep-black p-4">
+        <div className="liquid-card rounded-xl p-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-[11px] font-bold uppercase tracking-widest text-text-secondary opacity-60">
               {t.prompt}
@@ -137,7 +137,7 @@ export default function CredentialResetDialog({
               ref={copyButtonRef}
               onClick={handleCopyPrompt}
               disabled={!promptText}
-              className="flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-semibold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-60"
+              className="liquid-action flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-semibold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-60"
             >
               {copied ? (
                 <>
@@ -154,7 +154,7 @@ export default function CredentialResetDialog({
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center rounded-lg border border-glass-border bg-deep-black-light p-6 text-neon-cyan">
+            <div className="liquid-tool-surface flex items-center justify-center rounded-lg p-6 text-neon-cyan">
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
           ) : (
@@ -162,7 +162,7 @@ export default function CredentialResetDialog({
               readOnly
               value={promptText}
               rows={9}
-              className="w-full resize-none rounded-lg border border-glass-border bg-deep-black-light p-3 font-mono text-[11px] leading-relaxed text-text-primary outline-none"
+              className="liquid-input w-full resize-none rounded-lg border p-3 font-mono text-[11px] leading-relaxed text-text-primary outline-none"
             />
           )}
 
@@ -182,7 +182,7 @@ export default function CredentialResetDialog({
         <div className="mt-6 flex items-center justify-center">
           <button
             onClick={closeWithMotion}
-            className="min-h-11 rounded-xl border border-neon-cyan/50 bg-neon-cyan px-5 py-3 text-sm font-bold text-black transition-all hover:bg-neon-cyan/90"
+            className="liquid-action min-h-11 rounded-xl border border-neon-cyan/50 bg-neon-cyan px-5 py-3 text-sm font-bold text-deep-black transition-all hover:bg-neon-cyan/90"
           >
             {t.close}
           </button>

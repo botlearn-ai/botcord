@@ -152,12 +152,12 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
+        className="liquid-dialog flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-glass-border px-6 py-4">
@@ -178,7 +178,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t.namePlaceholder}
                 maxLength={128}
-                className="w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
+                className="liquid-input w-full rounded border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
               />
             </label>
 
@@ -189,7 +189,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t.descriptionPlaceholder}
-                className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
+                className="liquid-input w-full resize-none rounded border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
               />
             </label>
 
@@ -207,7 +207,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
               </div>
               <p className="mb-2 text-[11px] text-text-secondary/70">{t.membersHint}</p>
               {contacts.length === 0 && ownedAgents.length === 0 ? (
-                <p className="rounded border border-dashed border-glass-border px-3 py-3 text-xs text-text-secondary/70">
+                <p className="liquid-empty-state rounded border border-dashed px-3 py-3 text-xs text-text-secondary/70">
                   {t.noContacts}
                 </p>
               ) : (
@@ -235,7 +235,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
           <button
             onClick={closeWithMotion}
             disabled={saving}
-            className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-50"
+            className="liquid-action rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-50"
           >
             {t.cancel}
           </button>
@@ -243,7 +243,7 @@ export default function CreateRoomModal({ onClose, onCreated }: CreateRoomModalP
             onClick={handleCreate}
             disabled={saving || !identityReady}
             title={!identityReady ? t.createFailed : undefined}
-            className="inline-flex items-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+            className="liquid-action inline-flex items-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {saving ? t.creating : t.create}

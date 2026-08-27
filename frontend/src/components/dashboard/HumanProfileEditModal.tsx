@@ -105,7 +105,7 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-[110] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeWithMotion();
       }}
@@ -114,13 +114,13 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        className="liquid-dialog relative w-full max-w-md rounded-2xl p-5"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <button
           onClick={() => closeWithMotion()}
           disabled={saving}
-          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
         >
           <X className="h-5 w-5" />
         </button>
@@ -144,7 +144,7 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={saving}
             maxLength={128}
-            className="w-full rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-purple/50 disabled:opacity-60"
+            className="liquid-input w-full rounded-lg border px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-purple/50 disabled:opacity-60"
           />
         </label>
 
@@ -157,17 +157,17 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
             disabled={saving}
             maxLength={2048}
             placeholder={tAvatarPlaceholder}
-            className="w-full rounded-lg border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-purple/50 disabled:opacity-60"
+            className="liquid-input w-full rounded-lg border px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-purple/50 disabled:opacity-60"
           />
         </label>
 
         {trimmedAvatar && (
-          <div data-human-profile-modal-part className="mt-3 flex items-center gap-2 rounded-lg border border-glass-border bg-glass-bg p-2">
+          <div data-human-profile-modal-part className="liquid-card mt-3 flex items-center gap-2 rounded-lg p-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={trimmedAvatar}
               alt="Avatar preview"
-              className="h-10 w-10 rounded-full border border-white/10 object-cover"
+              className="h-10 w-10 rounded-full border border-glass-border object-cover"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.display = "none";
               }}
@@ -186,14 +186,14 @@ export default function HumanProfileEditModal({ onClose }: HumanProfileEditModal
           <button
             onClick={() => closeWithMotion()}
             disabled={saving}
-            className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+            className="liquid-action rounded-xl px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
           >
             {tCancel}
           </button>
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className="flex items-center gap-2 rounded-xl border border-neon-purple/40 bg-neon-purple/10 px-4 py-2.5 text-sm font-bold text-neon-purple transition-all hover:bg-neon-purple/20 disabled:opacity-60"
+            className="liquid-action flex items-center gap-2 rounded-xl border border-neon-purple/40 bg-neon-purple/10 px-4 py-2.5 text-sm font-bold text-neon-purple transition-all hover:bg-neon-purple/20 disabled:opacity-60"
           >
             {saving ? (
               <>

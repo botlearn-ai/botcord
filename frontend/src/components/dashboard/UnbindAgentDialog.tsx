@@ -104,12 +104,12 @@ export default function UnbindAgentDialog({
   }, [error]);
 
   return (
-    <div ref={overlayRef} className={`fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`} onMouseDown={(event) => { if (event.target === event.currentTarget) closeWithMotion(); }}>
-      <div ref={panelRef} className="relative w-full max-w-md rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl">
+    <div ref={overlayRef} className={`liquid-scrim fixed inset-0 z-[110] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`} onMouseDown={(event) => { if (event.target === event.currentTarget) closeWithMotion(); }}>
+      <div ref={panelRef} className="liquid-dialog relative w-full max-w-md rounded-2xl p-5">
         <button
           onClick={closeWithMotion}
           disabled={loading}
-          className="absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
         >
           <X className="h-5 w-5" />
         </button>
@@ -122,7 +122,7 @@ export default function UnbindAgentDialog({
           <p className="mt-2 text-sm text-text-secondary">{copy.description}</p>
         </div>
 
-        <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3">
+        <div className="liquid-card rounded-xl border border-amber-400/20 bg-amber-400/5 p-3">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
             <p className="text-xs text-amber-300">{copy.warning}</p>
@@ -145,14 +145,14 @@ export default function UnbindAgentDialog({
           <button
             onClick={closeWithMotion}
             disabled={loading}
-            className="rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+            className="liquid-action rounded-xl px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
           >
             {t.cancel}
           </button>
           <button
             onClick={handleUnbind}
             disabled={loading}
-            className="flex items-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 disabled:opacity-60"
+            className="liquid-action flex items-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 disabled:opacity-60"
           >
             {loading ? (
               <>

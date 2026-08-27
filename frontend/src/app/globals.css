@@ -18,6 +18,70 @@
   --font-mono: var(--font-mono);
 }
 
+:root {
+  color-scheme: dark;
+  --liquid-canvas:
+    radial-gradient(circle at 12% 8%, rgba(0, 240, 255, 0.11), transparent 30%),
+    radial-gradient(circle at 85% 13%, rgba(139, 92, 246, 0.10), transparent 29%),
+    linear-gradient(145deg, #09111f 0%, #080d18 48%, #0a0d17 100%);
+  --liquid-surface: linear-gradient(145deg, rgba(25, 36, 55, 0.78), rgba(12, 19, 32, 0.66));
+  --liquid-surface-strong: linear-gradient(145deg, rgba(24, 34, 52, 0.93), rgba(10, 16, 28, 0.89));
+  --liquid-border: rgba(255, 255, 255, 0.15);
+  --liquid-highlight: rgba(255, 255, 255, 0.09);
+  --liquid-control: rgba(255, 255, 255, 0.06);
+  --liquid-shadow: 0 20px 52px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --color-zinc-950: rgba(7, 11, 18, 0.90);
+  --color-zinc-900: rgba(18, 26, 39, 0.84);
+  --color-zinc-800: rgba(39, 50, 66, 0.76);
+  --color-zinc-700: rgba(82, 96, 118, 0.68);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --color-deep-black: #eef3f9;
+  --color-deep-black-light: rgba(255, 255, 255, 0.72);
+  --color-neon-cyan: #007b93;
+  --color-neon-purple: #6d4dd8;
+  --color-neon-green: #087a59;
+  --color-neon-cyan-dim: #007b9330;
+  --color-neon-purple-dim: #6d4dd830;
+  --color-neon-green-dim: #087a5930;
+  --color-glass-bg: rgba(255, 255, 255, 0.58);
+  --color-glass-border: rgba(113, 137, 166, 0.34);
+  --color-text-primary: #17283d;
+  --color-text-secondary: #52657c;
+
+  /*
+   * Several established dashboard primitives use Tailwind's zinc palette
+   * directly. Remapping those variables keeps menus, input states, and
+   * streaming bubbles legible without duplicating a light-mode branch in each
+   * component.
+   */
+  --color-zinc-950: rgba(245, 248, 252, 0.94);
+  --color-zinc-900: rgba(232, 239, 247, 0.82);
+  --color-zinc-800: rgba(215, 226, 238, 0.78);
+  --color-zinc-700: rgba(194, 208, 222, 0.72);
+  --color-zinc-600: #8395aa;
+  --color-zinc-500: #64778d;
+  --color-zinc-400: #50637a;
+  --color-zinc-300: #3e5066;
+  --color-zinc-200: #2c3e54;
+  --color-zinc-100: #17283d;
+  --color-white: #17283d;
+
+  --liquid-canvas:
+    radial-gradient(circle at 10% 4%, rgba(0, 149, 182, 0.14), transparent 31%),
+    radial-gradient(circle at 88% 5%, rgba(109, 77, 216, 0.12), transparent 28%),
+    radial-gradient(circle at 50% 102%, rgba(64, 151, 200, 0.11), transparent 37%),
+    linear-gradient(145deg, #f8fbff 0%, #edf3f9 48%, #e8eff7 100%);
+  --liquid-surface: linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(247, 250, 255, 0.64));
+  --liquid-surface-strong: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(246, 250, 255, 0.84));
+  --liquid-border: rgba(255, 255, 255, 0.82);
+  --liquid-highlight: rgba(255, 255, 255, 0.82);
+  --liquid-control: rgba(255, 255, 255, 0.58);
+  --liquid-shadow: 0 18px 46px rgba(44, 69, 99, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -28,6 +92,246 @@ body {
   font-family: var(--font-sans);
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.dashboard-root {
+  isolation: isolate;
+  background: var(--liquid-canvas);
+}
+
+.dashboard-root::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, transparent 15%, var(--liquid-highlight) 47%, transparent 74%),
+    radial-gradient(circle at 76% 88%, rgba(0, 240, 255, 0.06), transparent 27%);
+  opacity: 0.62;
+}
+
+.dashboard-root > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-main {
+  background: transparent;
+}
+
+.dashboard-root [class*="bg-deep-black-light"],
+.dashboard-root [class*="bg-glass-bg"],
+.dashboard-root [class*="bg-zinc-"] {
+  background-image: linear-gradient(135deg, var(--liquid-highlight), transparent 56%);
+}
+
+[role="dialog"],
+[role="menu"],
+[role="listbox"] {
+  background-image: linear-gradient(135deg, var(--liquid-highlight), transparent 58%);
+}
+
+.liquid-rail,
+.liquid-panel,
+.liquid-toolbar,
+.liquid-menu,
+.liquid-composer {
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+}
+
+.liquid-rail {
+  background: var(--liquid-surface-strong);
+}
+
+.liquid-panel,
+.liquid-toolbar,
+.liquid-menu,
+.liquid-composer {
+  background: var(--liquid-surface);
+}
+
+.liquid-menu {
+  border: 1px solid var(--liquid-border);
+}
+
+.liquid-card,
+.liquid-dialog,
+.liquid-drawer,
+.liquid-tool-surface,
+.liquid-empty-state {
+  border: 1px solid var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+}
+
+.liquid-card,
+.liquid-dialog,
+.liquid-empty-state {
+  background: var(--liquid-surface);
+}
+
+.liquid-drawer,
+.liquid-tool-surface {
+  background: var(--liquid-surface-strong);
+}
+
+.liquid-list-row {
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: inset 0 1px 0 transparent;
+}
+
+.liquid-list-row:hover,
+.liquid-list-row:focus-visible {
+  border-color: var(--liquid-border);
+  background: var(--liquid-control);
+  box-shadow: inset 0 1px 0 var(--liquid-highlight);
+}
+
+.liquid-action {
+  border: 1px solid var(--liquid-border);
+  background: var(--liquid-control);
+  box-shadow: inset 0 1px 0 var(--liquid-highlight);
+}
+
+.liquid-action:hover,
+.liquid-action:focus-visible {
+  background: var(--liquid-surface);
+  box-shadow: var(--liquid-shadow);
+}
+
+.liquid-tabs {
+  border: 1px solid var(--liquid-border);
+  background: var(--liquid-control);
+  box-shadow: inset 0 1px 0 var(--liquid-highlight);
+}
+
+.liquid-scrim {
+  background: rgba(3, 10, 20, 0.58);
+}
+
+html[data-theme="light"] .liquid-scrim {
+  background: rgba(35, 55, 79, 0.24);
+}
+
+.liquid-toolbar {
+  box-shadow: 0 10px 26px rgba(15, 24, 40, 0.05), inset 0 1px 0 var(--liquid-highlight);
+}
+
+.liquid-message {
+  box-shadow: inset 0 1px 0 var(--liquid-highlight), 0 8px 20px rgba(15, 24, 40, 0.05);
+}
+
+.liquid-message-peer {
+  background: var(--liquid-surface);
+  border-color: var(--liquid-border);
+}
+
+.liquid-message-own {
+  background: linear-gradient(135deg, rgba(0, 155, 185, 0.28), rgba(0, 112, 145, 0.14));
+  border-color: rgba(0, 194, 229, 0.34);
+}
+
+html[data-theme="light"] .liquid-message-own {
+  background: linear-gradient(135deg, rgba(205, 243, 248, 0.92), rgba(221, 239, 255, 0.82));
+  border-color: rgba(0, 123, 147, 0.23);
+}
+
+.liquid-message-error {
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.22), rgba(69, 10, 10, 0.12));
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
+html[data-theme="light"] .liquid-message-error {
+  background: linear-gradient(135deg, rgba(255, 239, 239, 0.94), rgba(255, 248, 248, 0.80));
+  border-color: rgba(220, 38, 38, 0.20);
+}
+
+.liquid-input {
+  border: 1px solid var(--liquid-border);
+  background: var(--liquid-control);
+  box-shadow: inset 0 1px 0 var(--liquid-highlight);
+}
+
+.liquid-input:focus {
+  border-color: color-mix(in srgb, var(--color-neon-cyan) 56%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-neon-cyan) 13%, transparent), inset 0 1px 0 var(--liquid-highlight);
+}
+
+.liquid-input[aria-invalid="true"],
+.liquid-input[aria-invalid="true"]:focus {
+  border-color: rgba(239, 68, 68, 0.72);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.10), inset 0 1px 0 var(--liquid-highlight);
+}
+
+.liquid-send-button {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 8px 18px rgba(0, 172, 205, 0.16);
+}
+
+.liquid-theme-toggle {
+  border: 1px solid transparent;
+  background: var(--liquid-control);
+  box-shadow: inset 0 1px 0 var(--liquid-highlight);
+}
+
+.liquid-empty-state.border-dashed {
+  border-style: dashed;
+}
+
+.liquid-theme-toggle:hover {
+  border-color: var(--liquid-border);
+  background: var(--liquid-surface);
+  box-shadow: var(--liquid-shadow);
+  transform: translateY(-1px);
+}
+
+.liquid-nav-button {
+  border: 1px solid transparent;
+  box-shadow: inset 0 1px 0 transparent;
+}
+
+.liquid-nav-button:hover,
+.liquid-nav-button:focus-visible {
+  border-color: var(--liquid-border);
+  box-shadow: inset 0 1px 0 var(--liquid-highlight);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .liquid-rail,
+  .liquid-panel,
+  .liquid-toolbar,
+  .liquid-menu,
+  .liquid-composer,
+  .liquid-card,
+  .liquid-dialog,
+  .liquid-drawer,
+  .liquid-tool-surface,
+  .liquid-empty-state,
+  .liquid-action,
+  .liquid-tabs,
+  .liquid-theme-toggle {
+    -webkit-backdrop-filter: blur(20px) saturate(118%);
+    backdrop-filter: blur(20px) saturate(118%);
+  }
+
+  .liquid-scrim {
+    -webkit-backdrop-filter: blur(8px) saturate(105%);
+    backdrop-filter: blur(8px) saturate(105%);
+  }
+
+  .liquid-message-peer {
+    -webkit-backdrop-filter: blur(14px) saturate(112%);
+    backdrop-filter: blur(14px) saturate(112%);
+  }
+
+  [role="dialog"],
+  [role="menu"],
+  [role="listbox"] {
+    -webkit-backdrop-filter: blur(20px) saturate(118%);
+    backdrop-filter: blur(20px) saturate(118%);
+  }
 }
 
 /* iOS Safari/Chrome auto-zooms when focusing inputs with font-size < 16px.

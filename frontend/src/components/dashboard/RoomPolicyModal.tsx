@@ -180,14 +180,14 @@ export default function RoomPolicyModal({
   const modal = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur"
+      className="liquid-scrim fixed inset-0 z-[80] flex items-center justify-center px-4 py-6 backdrop-blur"
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="max-h-[calc(100vh-48px)] w-full max-w-lg overflow-y-auto rounded-2xl border border-glass-border bg-deep-black-light p-5 shadow-2xl"
+        className="liquid-dialog max-h-[calc(100vh-48px)] w-full max-w-lg overflow-y-auto rounded-2xl border p-5"
         onClick={(event) => event.stopPropagation()}
       >
         <div data-motion-item className="mb-4 flex items-start justify-between">
@@ -204,7 +204,7 @@ export default function RoomPolicyModal({
           <button
             type="button"
             onClick={closeWithMotion}
-            className="rounded p-1 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="liquid-action rounded p-1 text-text-secondary transition-colors hover:text-text-primary"
             aria-label="关闭"
           >
             <X className="h-4 w-4" />
@@ -212,7 +212,7 @@ export default function RoomPolicyModal({
         </div>
 
         {loading && !data ? (
-          <div data-motion-item className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg/40 px-3 py-3 text-sm text-text-secondary">
+          <div data-motion-item className="liquid-card flex items-center gap-2 rounded-xl border px-3 py-3 text-sm text-text-secondary">
             <MobileBotCordLoading
               label="加载中…"
               size="sm"
@@ -226,7 +226,7 @@ export default function RoomPolicyModal({
           </div>
         ) : data && effective ? (
           isDM ? (
-            <div data-motion-item className="rounded-xl border border-neon-cyan/25 bg-neon-cyan/5 px-4 py-4">
+            <div data-motion-item className="liquid-card rounded-xl border border-neon-cyan/25 bg-neon-cyan/5 px-4 py-4">
               <div className="text-sm font-medium text-neon-cyan">私聊始终唤醒</div>
               <p className="mt-1 text-xs text-text-secondary">
                 DM 房间当前强制使用所有消息唤醒，不能在房间级静音或覆盖。
@@ -247,7 +247,7 @@ export default function RoomPolicyModal({
                     void apply(() => snoozeRoom(agentId, roomId, 60))
                   }
                   disabled={busy}
-                  className="rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-1.5 text-xs text-text-primary transition-colors hover:bg-glass-bg disabled:opacity-50"
+                  className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors disabled:opacity-50"
                 >
                   静音 1 小时
                 </button>
@@ -259,7 +259,7 @@ export default function RoomPolicyModal({
                     )
                   }
                   disabled={busy}
-                  className="rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-1.5 text-xs text-text-primary transition-colors hover:bg-glass-bg disabled:opacity-50"
+                  className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors disabled:opacity-50"
                 >
                   静音到今天结束
                 </button>
@@ -269,7 +269,7 @@ export default function RoomPolicyModal({
                     void apply(() => snoozeRoom(agentId, roomId, 7 * 24 * 60))
                   }
                   disabled={busy}
-                  className="rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-1.5 text-xs text-text-primary transition-colors hover:bg-glass-bg disabled:opacity-50"
+                  className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors disabled:opacity-50"
                 >
                   静音 7 天
                 </button>
@@ -281,14 +281,14 @@ export default function RoomPolicyModal({
                     )
                   }
                   disabled={busy}
-                  className="rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-1.5 text-xs text-text-primary transition-colors hover:bg-glass-bg disabled:opacity-50"
+                  className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors disabled:opacity-50"
                 >
                   永久静音
                 </button>
                 </div>
               </div>
 
-              <div data-motion-item className="mt-4 rounded-xl border border-glass-border bg-glass-bg/30 p-3">
+              <div data-motion-item className="liquid-card mt-4 rounded-xl border p-3">
                 <button
                   type="button"
                   onClick={() => setExpanded((v) => !v)}
@@ -332,7 +332,7 @@ export default function RoomPolicyModal({
                       )
                     }
                     disabled={busy}
-                    className="rounded-lg border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+                    className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                   >
                     恢复默认（继承全局）
                   </button>
@@ -369,7 +369,7 @@ function EffectiveBadge({
         ? "本房间专属"
         : "继承全局";
   return (
-    <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-3 py-3">
+    <div className="liquid-card rounded-xl border px-3 py-3">
       <div className="text-xs text-text-secondary">当前</div>
       <div className="mt-1 flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-text-primary">
@@ -395,7 +395,7 @@ function EffectiveBadge({
           {effective.keywords.map((k) => (
             <span
               key={k}
-              className="rounded-full border border-glass-border bg-glass-bg px-2 py-0.5 text-[10px] text-text-secondary"
+              className="liquid-card rounded-full border px-2 py-0.5 text-[10px] text-text-secondary"
             >
               {k}
             </span>
@@ -526,13 +526,13 @@ function OverrideForm({
             onBlur={addKeyword}
             disabled={busy}
             placeholder="输入关键词后按回车添加"
-            className="rounded-xl border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-neon-cyan/40 focus:outline-none disabled:opacity-50"
+            className="liquid-input rounded-xl border border-glass-border px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
           />
         </div>
       ) : null}
 
       {mode === "allowed_senders" ? (
-        <div className="mt-3 rounded-xl border border-glass-border bg-deep-black/30 p-2">
+        <div className="liquid-card mt-3 rounded-xl border p-2">
           {membersLoading ? (
             <div className="flex items-center gap-2 px-1 py-2 text-xs text-text-secondary">
               <MobileBotCordLoading
@@ -551,7 +551,7 @@ function OverrideForm({
                 return (
                   <label
                     key={member.agent_id}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-text-primary hover:bg-glass-bg/50"
+                    className="liquid-list-row flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-text-primary"
                   >
                     <input
                       type="checkbox"
@@ -594,7 +594,7 @@ function OverrideForm({
               setAllowedSenderIds(currentAllowedSenderIds);
             }}
             disabled={busy}
-            className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+            className="liquid-action mr-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             撤销更改
@@ -604,7 +604,7 @@ function OverrideForm({
           type="button"
           onClick={() => onApply(mode, keywords, allowedSenderIds)}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
+          className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           应用到本房间

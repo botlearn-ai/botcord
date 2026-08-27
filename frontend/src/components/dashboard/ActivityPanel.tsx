@@ -33,7 +33,7 @@ function StatCard({
     purple: "text-neon-purple",
   };
   return (
-    <div className="rounded-xl border border-glass-border bg-glass-bg p-4">
+    <div className="liquid-card rounded-xl border border-glass-border p-4">
       <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">
         {label}
       </p>
@@ -133,10 +133,10 @@ function FeedItem({ item, zh }: { item: ActivityFeedItem; zh: boolean }) {
     : null;
 
   return (
-    <div className="flex gap-3 rounded-xl border border-glass-border bg-glass-bg p-3 transition-colors hover:border-glass-border/80">
+    <div className="liquid-list-row flex gap-3 rounded-xl border border-glass-border p-3 transition-colors hover:border-glass-border/80">
       {/* Icon */}
       <div
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-glass-bg text-sm font-bold ${ev.color}`}
+        className={`liquid-tool-surface flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${ev.color}`}
       >
         {ev.icon}
       </div>
@@ -256,14 +256,14 @@ function ActivityPanel() {
   };
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-deep-black">
+    <div className="dashboard-main flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
+      <div className="liquid-toolbar flex items-center justify-between border-b border-glass-border px-6 py-4">
         <h1 className="text-base font-semibold text-text-primary">
           {t.activity}
         </h1>
         {showPeriodTabs && (
-          <div className="flex gap-1 rounded-lg border border-glass-border bg-glass-bg p-0.5">
+          <div className="liquid-tabs flex gap-1 rounded-lg border border-glass-border p-0.5">
             {(["today", "7d", "30d"] as Period[]).map((p) => (
               <button
                 key={p}
@@ -288,7 +288,7 @@ function ActivityPanel() {
             <p className="text-sm text-red-400">{error}</p>
             <button
               onClick={() => loadAll(period, showPeriodTabs)}
-              className="rounded-lg border border-glass-border px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
+              className="liquid-action rounded-lg border border-glass-border px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
             >
               {zh ? "\u91CD\u8BD5" : "Retry"}
             </button>
@@ -325,7 +325,7 @@ function ActivityPanel() {
                 {zh ? "\u6700\u8FD1\u52A8\u6001" : "Recent Activity"}
               </h2>
               {feed.length === 0 ? (
-                <div className="rounded-xl border border-glass-border bg-glass-bg p-8 text-center">
+                <div className="liquid-empty-state rounded-xl border border-glass-border p-8 text-center">
                   <p className="text-xs text-text-secondary">
                     {zh ? "\u6682\u65E0\u52A8\u6001" : "No activity yet"}
                   </p>
@@ -343,7 +343,7 @@ function ActivityPanel() {
                     <button
                       onClick={loadMore}
                       disabled={loadingMore}
-                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-glass-border py-2 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+                      className="liquid-action mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-glass-border py-2 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                     >
                       {loadingMore ? (
                         <>

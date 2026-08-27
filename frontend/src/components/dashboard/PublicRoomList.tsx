@@ -60,7 +60,7 @@ export default function PublicRoomList() {
 
   if (publicRooms.length === 0) {
     return (
-      <div className="p-4 text-center text-xs text-text-secondary">
+      <div className="liquid-empty-state m-3 p-4 text-center text-xs text-text-secondary">
         {t.noPublicRooms}
       </div>
     );
@@ -87,9 +87,9 @@ export default function PublicRoomList() {
           <button
             key={room.room_id}
             onClick={() => handleSelect(room.room_id)}
-            className={`w-full px-4 py-2.5 text-left transition-colors ${
+            className={`liquid-list-row w-full px-4 py-2.5 text-left transition-colors ${
               isSelected
-                ? "bg-neon-cyan/10 border-l-2 border-neon-cyan"
+                ? "!border-neon-cyan !bg-neon-cyan/10 border-l-2"
                 : "hover:bg-glass-bg border-l-2 border-transparent"
             }`}
           >
@@ -127,7 +127,7 @@ export default function PublicRoomList() {
       })}
       <button
         onClick={() => void loadPublicRooms()}
-        className="w-full py-2 text-xs text-text-secondary hover:text-neon-cyan"
+        className="liquid-action mx-3 mb-1 w-[calc(100%-1.5rem)] py-2 text-xs text-text-secondary hover:text-neon-cyan"
       >
         {tc.refresh}
       </button>

@@ -80,7 +80,7 @@ export default function ImagePreviewOverlay({
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      className="fixed inset-0 z-[9999] flex flex-col bg-black/90 backdrop-blur-sm"
+      className="liquid-scrim fixed inset-0 z-[9999] flex flex-col"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -90,7 +90,7 @@ export default function ImagePreviewOverlay({
         pointerStartRef.current = null;
       }}
     >
-      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-glass-border bg-deep-black/85 px-3 py-2 sm:px-5">
+      <div className="liquid-toolbar flex min-h-14 items-center justify-between gap-3 border-b px-3 py-2 sm:px-5">
         <div className="min-w-0">
           <span className="block truncate text-sm font-medium text-text-primary">{title}</span>
           {hasGallery && (
@@ -104,7 +104,7 @@ export default function ImagePreviewOverlay({
             href={src}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+            className="liquid-action inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary"
             aria-label="Open original image"
             onClick={(event) => event.stopPropagation()}
           >
@@ -116,7 +116,7 @@ export default function ImagePreviewOverlay({
               event.stopPropagation();
               onClose();
             }}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-white/10 hover:text-text-primary"
+            className="liquid-action inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary"
             aria-label="Close image preview"
           >
             <X className="h-5 w-5" />
@@ -132,7 +132,7 @@ export default function ImagePreviewOverlay({
               onPrevious?.();
             }}
             disabled={!canGoPrevious}
-            className="absolute left-3 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/55 text-text-primary shadow-lg transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 sm:inline-flex"
+            className="liquid-action absolute left-3 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-text-primary shadow-lg transition disabled:cursor-not-allowed disabled:opacity-30 sm:inline-flex"
             aria-label="Previous image"
             title="Previous image"
           >
@@ -153,7 +153,7 @@ export default function ImagePreviewOverlay({
               onNext?.();
             }}
             disabled={!canGoNext}
-            className="absolute right-3 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/55 text-text-primary shadow-lg transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 sm:inline-flex"
+            className="liquid-action absolute right-3 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full text-text-primary shadow-lg transition disabled:cursor-not-allowed disabled:opacity-30 sm:inline-flex"
             aria-label="Next image"
             title="Next image"
           >

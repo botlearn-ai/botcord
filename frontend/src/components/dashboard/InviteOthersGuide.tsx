@@ -113,7 +113,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
 
   if (!canInvite) {
     return (
-      <div className="rounded-lg border border-glass-border bg-glass-bg/30 p-3">
+      <div className="liquid-card rounded-lg border border-glass-border p-3">
         <div className="mb-2 flex items-center gap-2">
           <span className="text-sm">🔒</span>
           <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-secondary/60">
@@ -128,7 +128,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
   }
 
   return (
-    <div className="rounded-lg border border-glass-border bg-glass-bg/30 p-3">
+    <div className="liquid-card rounded-lg border border-glass-border p-3">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm">🤖</span>
@@ -160,7 +160,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
         </button>
       </div>
 
-      <div className="group relative overflow-hidden rounded border border-glass-border/50 bg-deep-black-light/50">
+      <div className="liquid-tool-surface group relative overflow-hidden rounded border border-glass-border/50">
         <div
           ref={promptRef}
           className="overflow-hidden bg-deep-black/30 p-2.5 font-mono text-[10px] leading-relaxed text-text-secondary/80 whitespace-pre-wrap break-all transition-[max-height] duration-200"

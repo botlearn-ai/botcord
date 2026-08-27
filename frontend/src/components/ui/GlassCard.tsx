@@ -30,7 +30,7 @@ export default function GlassCard({
       viewport={{ once: true, margin: "-50px" }}
       transition={{ duration: 0.6, ease: "easeOut" }}
       className={clsx(
-        "rounded-2xl border border-glass-border bg-glass-bg p-6 backdrop-blur-xl",
+        "liquid-card rounded-2xl p-6",
         "transition-all duration-300",
         glowMap[glowColor],
         className

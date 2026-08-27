@@ -263,7 +263,7 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
       onClick={(e) => {
         e.stopPropagation();
         if (e.target === e.currentTarget) closeModal();
@@ -273,15 +273,15 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+        className="liquid-dialog w-full max-w-sm rounded-xl border"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-          <span className="text-sm font-medium text-zinc-200">转发消息</span>
+        <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
+          <span className="text-sm font-medium text-text-primary">转发消息</span>
           <button
             type="button"
             onClick={closeModal}
-            className="text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="liquid-action rounded-md p-1 text-text-secondary transition-colors hover:text-text-primary"
             aria-label="Close forward modal"
           >
             <X className="h-4 w-4" />
@@ -289,19 +289,19 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
         </div>
 
         {/* Quote / file preview */}
-        <div className="mx-4 mt-3 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-2">
+        <div className="liquid-card mx-4 mt-3 rounded-lg border px-3 py-2">
           {sourceFile ? (
-            <div className="flex items-center gap-2 text-zinc-300">
+            <div className="flex items-center gap-2 text-text-primary">
               <FileArchive className="h-4 w-4 shrink-0 text-cyan-400" />
               <div className="min-w-0">
                 <p className="truncate text-xs font-medium">{sourceFile.filename}</p>
                 {sourceFile.sizeBytes != null && (
-                  <p className="text-[10px] text-zinc-500">{sourceFile.sizeBytes} bytes</p>
+                  <p className="text-[10px] text-text-secondary">{sourceFile.sizeBytes} bytes</p>
                 )}
               </div>
             </div>
           ) : (
-            <pre className="max-h-24 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] text-zinc-400 leading-relaxed">
+            <pre className="max-h-24 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-text-secondary">
               {quoteText}
             </pre>
           )}
@@ -339,7 +339,7 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-zinc-800 px-4 py-3">
+        <div className="flex items-center justify-between border-t border-glass-border px-4 py-3">
           {error && <p className="text-[11px] text-red-400">{error}</p>}
           {done && (
             <p ref={statusRef} className="flex origin-center items-center gap-1.5 text-[11px] text-emerald-400">
@@ -348,7 +348,7 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
             </p>
           )}
           {!error && !done && (
-            <span className="text-[11px] text-zinc-500">
+            <span className="text-[11px] text-text-secondary">
               {selected.size > 0 ? `已选 ${selected.size} 个` : "选择发送目标"}
             </span>
           )}
@@ -356,7 +356,7 @@ export default function ForwardModal({ quoteText, sourceFile, onClose }: Forward
             type="button"
             disabled={selected.size === 0 || sending || done}
             onClick={handleSend}
-            className="ml-auto flex items-center gap-1.5 rounded-lg bg-cyan-500/20 px-3 py-1.5 text-xs font-medium text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="liquid-action ml-auto flex items-center gap-1.5 rounded-lg border border-neon-cyan/35 bg-neon-cyan/15 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/25 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
           >
             {sending && <Loader2 className="h-3 w-3 animate-spin" />}
             发送

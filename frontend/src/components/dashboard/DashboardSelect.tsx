@@ -202,7 +202,7 @@ export default function DashboardSelect({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((next) => !next)}
-        className={`flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-glass-border bg-deep-black px-3 text-left text-sm text-text-primary transition-colors hover:border-neon-cyan/45 focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:cursor-not-allowed disabled:opacity-50 ${buttonClassName}`}
+        className={`liquid-input flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-glass-border px-3 text-left text-sm text-text-primary transition-colors hover:border-neon-cyan/45 focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:cursor-not-allowed disabled:opacity-50 ${buttonClassName}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={`${id}-panel`}
@@ -228,7 +228,7 @@ export default function DashboardSelect({
           ref={panelRef}
           id={`${id}-panel`}
           role="listbox"
-          className={`absolute left-0 right-0 z-50 mt-2 max-h-64 overflow-y-auto rounded-xl border border-glass-border bg-deep-black-light py-1 shadow-2xl shadow-black/40 ${panelClassName}`}
+          className={`liquid-menu absolute left-0 right-0 z-50 mt-2 max-h-64 overflow-y-auto rounded-xl border border-glass-border py-1 ${panelClassName}`}
         >
           {options.length === 0 ? (
             <p className="px-3 py-3 text-xs text-text-secondary/70">{placeholder}</p>
@@ -249,8 +249,8 @@ export default function DashboardSelect({
                     closeAfterSelection(shouldDelayClose);
                   }}
                   data-dashboard-select-option
-                  className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-                    isSelected ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-primary hover:bg-glass-bg"
+                  className={`liquid-list-row flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                    isSelected ? "!bg-neon-cyan/10 text-neon-cyan" : "text-text-primary hover:bg-glass-bg"
                   }`}
                 >
                   <span

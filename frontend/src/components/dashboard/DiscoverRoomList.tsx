@@ -64,7 +64,7 @@ export default function DiscoverRoomList() {
         return (
           <div
             key={room.room_id}
-            className="border-l-2 border-transparent px-4 py-2.5 hover:bg-glass-bg"
+            className="liquid-list-row border-l-2 border-transparent px-4 py-2.5"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 min-w-0">

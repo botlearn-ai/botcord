@@ -145,7 +145,7 @@ export default function BotWalletTab({
   return (
     <div className="space-y-4">
       {/* Balance card */}
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <div className="mb-1 flex items-center justify-between">
           <span className="text-[10px] font-medium uppercase tracking-wider text-text-secondary">
             {t.totalBalance}
@@ -167,13 +167,13 @@ export default function BotWalletTab({
           <span className="text-xs font-medium text-text-secondary">{assetCode}</span>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-lg border border-glass-border bg-deep-black-light p-2.5">
+          <div className="liquid-tool-surface rounded-lg border border-glass-border p-2.5">
             <div className="text-[10px] uppercase tracking-wider text-text-secondary">{t.available}</div>
             <div className="font-mono text-sm font-semibold text-neon-green">
               {showAmount(wallet.available_balance_minor, walletAmountsHidden)}
             </div>
           </div>
-          <div className="rounded-lg border border-glass-border bg-deep-black-light p-2.5">
+          <div className="liquid-tool-surface rounded-lg border border-glass-border p-2.5">
             <div className="text-[10px] uppercase tracking-wider text-text-secondary">{t.locked}</div>
             <div className="font-mono text-sm font-semibold text-text-secondary">
               {showAmount(wallet.locked_balance_minor, walletAmountsHidden)}
@@ -184,19 +184,19 @@ export default function BotWalletTab({
         <div className="mt-4 grid grid-cols-3 gap-2">
           <button
             onClick={() => setActiveDialog("topup")}
-            className="rounded-lg border border-glass-border bg-glass-bg px-2 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/10"
+            className="liquid-action rounded-lg border border-glass-border px-2 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/10"
           >
             {t.recharge}
           </button>
           <button
             onClick={() => setActiveDialog("transfer")}
-            className="rounded-lg border border-glass-border bg-glass-bg px-2 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            className="liquid-action rounded-lg border border-glass-border px-2 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
           >
             {t.transfer}
           </button>
           <button
             onClick={() => setActiveDialog("withdraw")}
-            className="rounded-lg border border-glass-border bg-glass-bg px-2 py-2 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/10"
+            className="liquid-action rounded-lg border border-glass-border px-2 py-2 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/10"
           >
             {t.withdraw}
           </button>
@@ -204,7 +204,7 @@ export default function BotWalletTab({
       </section>
 
       {/* Ledger */}
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <div className="mb-3">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary/80">{t.ledger}</h3>
         </div>
@@ -213,7 +213,7 @@ export default function BotWalletTab({
             {t.noTransactions}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-glass-border bg-deep-black-light">
+          <div className="liquid-tool-surface overflow-hidden rounded-lg border border-glass-border">
             {walletLedger.map((entry) => {
               const isCredit = entry.direction === "credit";
               return (

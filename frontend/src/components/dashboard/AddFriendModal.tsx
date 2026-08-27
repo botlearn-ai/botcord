@@ -64,17 +64,17 @@ export default function AddFriendModal({ onClose }: AddFriendModalProps) {
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 ${closing ? "pointer-events-none" : ""}`}
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-glass-border bg-deep-black"
+        className="liquid-dialog flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-glass-border px-6 pt-4">
+        <div className="liquid-toolbar border-b px-6 pt-4">
           <h2 className="mb-3 text-lg font-semibold text-text-primary">{t.title}</h2>
-          <div className="flex gap-1">
+          <div className="liquid-tabs flex gap-1">
             {(["search", "invite"] as TabKey[]).map((k) => (
               <button
                 key={k}
@@ -95,10 +95,10 @@ export default function AddFriendModal({ onClose }: AddFriendModalProps) {
           {tab === "search" ? <SearchPane onClose={closeWithMotion} /> : <InvitePane />}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-glass-border px-6 py-3">
+        <div className="liquid-toolbar flex justify-end gap-2 border-t px-6 py-3">
           <button
             onClick={closeWithMotion}
-            className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+            className="liquid-action rounded-lg px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
           >
             {t.close}
           </button>
@@ -269,12 +269,12 @@ function SearchPane({ onClose }: { onClose: () => void }) {
             setMessage("");
             setError(null);
           }}
-          className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
+          className="liquid-action inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-text-secondary hover:text-text-primary"
         >
           <ArrowLeft className="h-3 w-3" /> {t.back}
         </button>
 
-        <div className="rounded border border-glass-border bg-glass-bg p-4">
+        <div className="liquid-card rounded-xl p-4">
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold text-text-primary">{selected.display_name}</p>
             <PeerKindBadge kind={selected.kind} />
@@ -290,15 +290,15 @@ function SearchPane({ onClose }: { onClose: () => void }) {
             {t.requestSent}
           </div>
         ) : status === "exists" ? (
-          <div ref={statusRef} className="rounded border border-glass-border px-3 py-2 text-sm text-text-secondary">
+          <div ref={statusRef} className="liquid-card rounded-lg px-3 py-2 text-sm text-text-secondary">
             {t.alreadyContact}
           </div>
         ) : status === "pending" ? (
-          <div ref={statusRef} className="rounded border border-glass-border px-3 py-2 text-sm text-text-secondary">
+          <div ref={statusRef} className="liquid-card rounded-lg px-3 py-2 text-sm text-text-secondary">
             {t.alreadyRequested}
           </div>
         ) : isContact ? (
-          <div className="rounded border border-glass-border px-3 py-2 text-sm text-text-secondary">
+          <div className="liquid-card rounded-lg px-3 py-2 text-sm text-text-secondary">
             {t.alreadyContact}
           </div>
         ) : (
@@ -309,7 +309,7 @@ function SearchPane({ onClose }: { onClose: () => void }) {
               placeholder={t.requestMessagePlaceholder}
               rows={3}
               maxLength={500}
-              className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
+              className="liquid-input w-full resize-none rounded-lg border px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
             />
             {error && (
               <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
@@ -320,7 +320,7 @@ function SearchPane({ onClose }: { onClose: () => void }) {
               onClick={handleSend}
               disabled={sending || !identityReady}
               title={!identityReady ? t.requestFailed : undefined}
-              className="inline-flex w-full items-center justify-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+              className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
             >
               {sending && <Loader2 className="h-4 w-4 animate-spin" />}
               {sending ? t.sending : t.sendRequest}
@@ -333,7 +333,7 @@ function SearchPane({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 rounded border border-glass-border bg-glass-bg px-3">
+      <div className="liquid-input flex items-center gap-2 rounded-lg border px-3">
         <Search className="h-4 w-4 text-text-secondary/70" />
         <input
           autoFocus
@@ -356,14 +356,14 @@ function SearchPane({ onClose }: { onClose: () => void }) {
       ) : !loading && results.length === 0 ? (
         <p className="py-8 text-center text-xs text-text-secondary/60">{t.searchEmpty}</p>
       ) : (
-        <div className="divide-y divide-glass-border/60 rounded border border-glass-border">
+        <div className="liquid-card divide-y divide-glass-border/60 overflow-hidden rounded-xl">
           {results.map((a) => {
             const isContact = contactIds.has(a.id);
             return (
               <button
                 key={a.id}
                 onClick={() => setSelected(a)}
-                className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-glass-bg"
+                className="liquid-list-row flex w-full items-center gap-3 px-3 py-2.5 text-left"
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neon-cyan/15 text-xs font-semibold uppercase text-neon-cyan">
                   {a.display_name.slice(0, 1)}
@@ -457,7 +457,7 @@ function InvitePane() {
         <button
           onClick={create}
           disabled={loading}
-          className="inline-flex w-full items-center justify-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+          className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
         >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           {loading ? t.creating : t.createInvite}
@@ -471,7 +471,7 @@ function InvitePane() {
             <button
               ref={copyRef}
               onClick={() => copy("prompt")}
-              className="inline-flex items-center gap-1 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-2.5 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
+              className="liquid-action inline-flex items-center gap-1 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 px-2.5 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
             >
               <Copy className="h-3 w-3" />
               {copied === "prompt" ? t.copied : t.copyPrompt}
@@ -481,7 +481,7 @@ function InvitePane() {
             readOnly
             rows={6}
             value={buildFriendInvitePrompt({ inviteCode: invite.code, locale })}
-            className="w-full resize-none rounded border border-glass-border bg-glass-bg px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
+            className="liquid-input w-full resize-none rounded-lg border px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
           />
         </div>
       )}

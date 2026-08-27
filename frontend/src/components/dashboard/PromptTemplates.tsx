@@ -101,7 +101,7 @@ function TemplateCardView({
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-glass-border bg-deep-black-light transition-colors hover:border-neon-purple/40">
+    <div className="liquid-card overflow-hidden rounded-2xl border border-glass-border transition-colors hover:border-neon-purple/40">
       {/* Header */}
       <div className="px-5 pt-5 pb-3">
         <h3 className="text-sm font-semibold text-text-primary">{t[card.titleKey]}</h3>
@@ -138,7 +138,7 @@ function TemplateCardView({
 
       {/* Expandable prompt preview */}
       {expanded && (
-        <div className="border-t border-glass-border/50 bg-deep-black/40">
+        <div className="liquid-tool-surface border-t border-glass-border/50">
           <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-[11px] leading-5 text-text-secondary/85">
             {prompt}
           </pre>
@@ -153,8 +153,8 @@ export default function PromptTemplates() {
   const t = promptTemplatesUi[locale];
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden bg-deep-black">
-      <div className="border-b border-glass-border px-5 py-4">
+    <div className="dashboard-main relative flex flex-1 flex-col overflow-hidden">
+      <div className="liquid-toolbar border-b border-glass-border px-5 py-4">
         <h2 className="text-base font-semibold text-text-primary">{t.title}</h2>
         <p className="mt-1 text-xs text-text-secondary">{t.subtitle}</p>
       </div>

@@ -131,19 +131,19 @@ function PeerBotDetailDrawer() {
     <>
       <div
         ref={overlayRef}
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+        className="liquid-scrim fixed inset-0 z-40 backdrop-blur-[2px]"
         onClick={closeDrawer}
         aria-hidden
       />
       <aside
         ref={panelRef}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border bg-deep-black-light shadow-2xl shadow-black/50"
+        className="liquid-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border"
         role="dialog"
         aria-modal="true"
         aria-label="Bot 详情"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-glass-border px-5 py-4" data-overlay-section>
+        <div className="liquid-toolbar flex items-center justify-between border-b border-glass-border px-5 py-4" data-overlay-section>
           <div className="flex min-w-0 items-center gap-3">
             <BotAvatar agentId={agentId} size={40} alt={displayName} />
             <div className="min-w-0">
@@ -162,7 +162,7 @@ function PeerBotDetailDrawer() {
             onClick={closeDrawer}
             title="关闭"
             aria-label="关闭"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="liquid-action flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
           >
             <X className="h-4 w-4" />
           </button>
@@ -170,7 +170,7 @@ function PeerBotDetailDrawer() {
 
         {/* Body */}
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4" data-overlay-section>
-          <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+          <section className="liquid-card rounded-2xl border border-glass-border p-4">
             <p className="font-mono text-[11px] text-text-secondary/55">{agentId}</p>
             {bio ? (
               <p className="mt-2 text-sm text-text-primary/85">{bio}</p>
@@ -179,7 +179,7 @@ function PeerBotDetailDrawer() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+          <section className="liquid-card rounded-2xl border border-glass-border p-4">
             <Row label="主人" value={ownerName ?? "—"} />
             <Row label="消息策略" value={policy ? POLICY_LABEL[policy] ?? policy : "—"} />
             <Row label="注册时间" value={formatDate(createdAt ?? undefined)} last />
@@ -194,7 +194,7 @@ function PeerBotDetailDrawer() {
         <div className="grid grid-cols-2 gap-2 border-t border-glass-border px-5 py-4" data-overlay-section>
           <button
             onClick={handleMessage}
-            className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+            className="liquid-action col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
           >
             <MessageCircle className="h-4 w-4" />
             打开对话
@@ -202,7 +202,7 @@ function PeerBotDetailDrawer() {
           {alreadyContact ? (
             <button
               disabled
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-2 text-sm font-medium text-text-secondary/70"
+              className="liquid-tool-surface inline-flex items-center justify-center gap-1.5 rounded-lg border border-glass-border px-3 py-2 text-sm font-medium text-text-secondary/70"
             >
               <UserCheck className="h-4 w-4" />
               已是联系人
@@ -210,7 +210,7 @@ function PeerBotDetailDrawer() {
           ) : (
             <button
               onClick={() => void handleAddContact()}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan"
+              className="liquid-action inline-flex items-center justify-center gap-1.5 rounded-lg border border-glass-border px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan"
             >
               <UserPlus className="h-4 w-4" />
               加为联系人

@@ -263,19 +263,19 @@ function BotDetailDrawer() {
     <>
       <div
         ref={overlayRef}
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+        className="liquid-scrim fixed inset-0 z-40 backdrop-blur-[2px]"
         onClick={closeDrawer}
         aria-hidden
       />
       <aside
         ref={panelRef}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border bg-deep-black-light shadow-2xl shadow-black/50"
+        className="liquid-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border"
         role="dialog"
         aria-modal="true"
         aria-label={t.ariaLabel}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-glass-border px-5 py-4" data-overlay-section>
+        <div className="liquid-toolbar flex items-center justify-between border-b border-glass-border px-5 py-4" data-overlay-section>
           <div className="flex min-w-0 items-center gap-3">
             <BotAvatar agentId={bot.agent_id} avatarUrl={bot.avatar_url} size={40} alt={bot.display_name} />
             <div className="min-w-0">
@@ -296,14 +296,14 @@ function BotDetailDrawer() {
             onClick={closeDrawer}
             title={t.close}
             aria-label={t.close}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="liquid-action flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Tab strip */}
-        <div className="grid grid-cols-5 border-b border-glass-border" data-overlay-section>
+        <div className="liquid-tabs grid grid-cols-5 border-b border-glass-border" data-overlay-section>
           {TABS.map(({ key, icon: Icon }) => {
             const active = tab === key;
             return (
@@ -427,7 +427,7 @@ function OverviewTab({
       />
 
       {stats ? (
-        <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+        <section className="liquid-card rounded-2xl border border-glass-border p-4">
           <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
             {t.overview.activity7d}
           </h3>
@@ -440,14 +440,14 @@ function OverviewTab({
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
           {t.overview.hostedDevice}
         </h3>
         {device ? (
           <button
             onClick={() => onJumpToDevice(device.id)}
-            className="flex w-full items-center justify-between gap-2 rounded-lg border border-glass-border bg-glass-bg/40 px-3 py-2 text-left transition-colors hover:border-neon-cyan/40"
+            className="liquid-list-row flex w-full items-center justify-between gap-2 rounded-lg border border-glass-border px-3 py-2 text-left transition-colors hover:border-neon-cyan/40"
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -474,7 +474,7 @@ function OverviewTab({
         )}
       </section>
 
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
           <span>{t.overview.friends(friends.length)}</span>
         </h3>
@@ -484,7 +484,7 @@ function OverviewTab({
               <li key={`${friend.type}-${friend.id}`}>
                 <button
                   onClick={() => onJumpToFriend(friend)}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg/60"
+                  className="liquid-list-row flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors"
                 >
                   {friend.type === "agent" ? (
                     <BotAvatar agentId={friend.id} size={28} alt={friend.display_name} />
@@ -516,7 +516,7 @@ function OverviewTab({
         )}
       </section>
 
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
           <span>{t.overview.groups(groups.length)}</span>
         </h3>
@@ -526,7 +526,7 @@ function OverviewTab({
               <li key={group.room_id}>
                 <button
                   onClick={() => onJumpToGroup(group)}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-glass-bg/60"
+                  className="liquid-list-row flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors"
                 >
                   {group.bots.length >= 2 ? (
                     <CompositeAvatar
@@ -560,11 +560,11 @@ function OverviewTab({
         )}
       </section>
 
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <div className="flex gap-2">
           <button
             onClick={onOpenChat}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+            className="liquid-action flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
           >
             <MessageCircle className="h-3.5 w-3.5" />
             {t.overview.openChat}
@@ -648,7 +648,7 @@ function RuntimeChip({
   return (
     <span
       title={`${label}: ${runtimeId || unknownLabel}`}
-      className="inline-flex max-w-[180px] shrink-0 items-center gap-1.5 rounded-full border border-glass-border bg-deep-black/40 px-2 py-1"
+      className="liquid-tool-surface inline-flex max-w-[180px] shrink-0 items-center gap-1.5 rounded-full border border-glass-border px-2 py-1"
     >
       <RuntimeLogo runtimeId={runtimeId} />
       <span className="truncate font-mono text-[11px] text-text-primary">{runtimeId || unknownLabel}</span>
@@ -718,7 +718,7 @@ function ProfileEditor({
   };
 
   return (
-    <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+    <section className="liquid-card rounded-2xl border border-glass-border p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
           <Pencil className="h-3.5 w-3.5" />
@@ -731,7 +731,7 @@ function ProfileEditor({
         value={name}
         onChange={(e) => setName(e.target.value)}
         maxLength={128}
-        className="w-full rounded-lg border border-glass-border bg-glass-bg/30 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/40"
+        className="liquid-input w-full rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/40"
       />
       <label className="mb-1 mt-4 block text-xs text-text-secondary/65">{t.profile.bio}</label>
       <textarea
@@ -740,14 +740,14 @@ function ProfileEditor({
         rows={4}
         maxLength={4000}
         placeholder={t.profile.bioPlaceholder}
-        className="w-full resize-none rounded-lg border border-glass-border bg-glass-bg/30 px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/40"
+        className="liquid-input w-full resize-none rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/40"
       />
       <div className="mt-4 flex items-center justify-between">
         <p className="font-mono text-[10px] text-text-secondary/55">{agentId}</p>
         <button
           onClick={() => void handleSave()}
           disabled={!dirty || saving}
-          className="rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-50"
+          className="liquid-action rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-50"
         >
           {saving ? t.profile.saving : saved ? `${t.profile.saved} ✓` : t.profile.save}
         </button>
@@ -866,7 +866,7 @@ function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) 
     return (
       <div className="space-y-4">
         {[1, 2].map((i) => (
-          <div key={i} className="animate-pulse rounded-2xl border border-glass-border bg-glass-bg/40 p-5">
+          <div key={i} className="liquid-card animate-pulse rounded-2xl border border-glass-border p-5">
             <div className="mb-3 h-4 w-28 rounded bg-glass-bg" />
             <div className="space-y-2">
               <div className="h-9 rounded bg-glass-bg/70" />
@@ -889,7 +889,7 @@ function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) 
     <div className="space-y-5">
       {error ? <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">{error}</div> : null}
 
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-1 text-sm font-semibold text-text-primary">{t.settings.contactTitle}</h3>
         <p className="mb-4 text-xs text-text-secondary/65">{t.settings.contactDescription}</p>
         <RadioGroup
@@ -919,13 +919,13 @@ function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) 
             disabled={saving}
             placeholder={t.settings.roomInvite}
             className="min-w-40"
-            buttonClassName="min-h-8 rounded-lg bg-deep-black/40 px-2 text-xs"
+            buttonClassName="liquid-input min-h-8 rounded-lg px-2 text-xs"
             options={roomInviteOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
           />
         </label>
       </section>
 
-      <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
+      <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-1 text-sm font-semibold text-text-primary">{t.settings.defaultReplyTitle}</h3>
         <p className="mb-4 text-xs text-text-secondary/65">{t.settings.defaultReplyDescription}</p>
         <RadioGroup
@@ -1080,7 +1080,7 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
           type="button"
           onClick={() => void loadFiles()}
           disabled={loading}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border bg-glass-bg text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+          className="liquid-action inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
           title={t.files.refresh}
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -1094,7 +1094,7 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
           {[1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-glass-bg/60" />)}
         </div>
       ) : files.length === 0 ? (
-        <div className="rounded-xl border border-glass-border bg-glass-bg/40 px-4 py-8 text-center text-sm text-text-secondary">
+        <div className="liquid-empty-state rounded-xl border border-glass-border px-4 py-8 text-center text-sm text-text-secondary">
           {t.files.empty}
         </div>
       ) : (
@@ -1107,7 +1107,7 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
                   key={file.id}
                   type="button"
                   onClick={() => setSelectedFileId(file.id)}
-                  className={`flex min-h-[56px] items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
+                  className={`liquid-list-row flex min-h-[56px] items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
                     selected ? "border-neon-cyan/40 bg-neon-cyan/5" : "border-glass-border bg-glass-bg/40 hover:bg-glass-bg/70"
                   }`}
                 >
@@ -1126,7 +1126,7 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
           </div>
 
           {selectedFile ? (
-            <section className="rounded-xl border border-glass-border bg-glass-bg/30">
+            <section className="liquid-tool-surface rounded-xl border border-glass-border">
               <div className="border-b border-glass-border px-3 py-2">
                 <div className="truncate text-xs font-medium text-text-primary">{selectedFile.name}</div>
               </div>
@@ -1169,7 +1169,7 @@ function RadioGroup<T extends string>({
         return (
           <label
             key={opt.value}
-            className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
+            className={`liquid-list-row flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
               selected ? "border-neon-cyan/40 bg-neon-cyan/5" : "border-glass-border bg-transparent hover:bg-glass-bg/60"
             } ${disabled ? "pointer-events-none opacity-50" : ""}`}
           >
@@ -1195,7 +1195,7 @@ function RadioGroup<T extends string>({
 
 function Stat({ label, value, delta }: { label: string; value: number | string; delta?: string }) {
   return (
-    <div className="rounded-lg bg-glass-bg/50 px-2 py-1.5">
+    <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
       <div className="text-[9px] uppercase tracking-wider text-text-secondary/55">{label}</div>
       <div className="flex items-baseline justify-center gap-1">
         <span className="text-sm font-semibold text-text-primary">{value}</span>

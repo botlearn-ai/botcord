@@ -139,17 +139,17 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
+      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center ${closing ? "pointer-events-none" : ""}`}
       onClick={closeWithMotion}
     >
       <div
         ref={panelRef}
-        className="relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-glass-border bg-glass-bg backdrop-blur-xl"
+        className="liquid-dialog relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={closeWithMotion}
-          className="absolute right-4 top-4 z-10 rounded p-1 text-text-secondary hover:text-text-primary"
+          className="liquid-action absolute right-4 top-4 z-10 rounded-lg p-1 text-text-secondary hover:text-text-primary"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M4 4l8 8M12 4l-8 8" />
@@ -184,10 +184,10 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
                   <button
                     key={pkg.package_code}
                     onClick={() => setSelectedPackage(pkg.package_code)}
-                    className={`w-full rounded-xl border p-4 text-left transition-colors ${
+                    className={`liquid-action w-full rounded-xl border p-4 text-left transition-colors ${
                       activePackage?.package_code === pkg.package_code
                         ? "border-neon-green/50 bg-neon-green/5"
-                        : "border-glass-border bg-deep-black-light hover:border-glass-border/80"
+                        : "border-glass-border hover:border-glass-border/80"
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -202,7 +202,7 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
                 ))}
               </div>
             ) : activePackage ? (
-              <div className="rounded-xl border border-neon-green/30 bg-neon-green/5 p-4">
+              <div className="liquid-card rounded-xl border border-neon-green/30 bg-neon-green/5 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium uppercase tracking-wider text-text-secondary">
                     {t.unitPrice}
@@ -219,7 +219,7 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
 
             {activePackage ? (
               <>
-                <div className="mt-4 rounded-xl border border-glass-border bg-deep-black-light p-4">
+                <div className="liquid-card mt-4 rounded-xl p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <span className="text-sm font-medium text-text-primary">{t.quantity}</span>
                     <span className="text-xs text-text-secondary">{t.quantityRange}</span>
@@ -229,7 +229,7 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
                       type="button"
                       onClick={() => updateQuantity(quantity - 1)}
                       disabled={quantity <= 1 || submitting}
-                      className="h-10 w-10 rounded-lg border border-glass-border text-lg text-text-primary transition-colors hover:border-neon-green/40 disabled:opacity-40"
+                      className="liquid-action h-10 w-10 rounded-lg text-lg text-text-primary transition-colors hover:border-neon-green/40 disabled:opacity-40"
                     >
                       -
                     </button>
@@ -240,20 +240,20 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
                       step={1}
                       value={quantity}
                       onChange={(e) => updateQuantity(parseInt(e.target.value, 10))}
-                      className="h-10 flex-1 rounded-lg border border-glass-border bg-deep-black px-3 text-center font-mono text-text-primary outline-none transition-colors focus:border-neon-green/40"
+                      className="liquid-input h-10 flex-1 rounded-lg border px-3 text-center font-mono text-text-primary outline-none transition-colors focus:border-neon-green/40"
                     />
                     <button
                       type="button"
                       onClick={() => updateQuantity(quantity + 1)}
                       disabled={quantity >= 100 || submitting}
-                      className="h-10 w-10 rounded-lg border border-glass-border text-lg text-text-primary transition-colors hover:border-neon-green/40 disabled:opacity-40"
+                      className="liquid-action h-10 w-10 rounded-lg text-lg text-text-primary transition-colors hover:border-neon-green/40 disabled:opacity-40"
                     >
                       +
                     </button>
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-xl border border-glass-border bg-deep-black-light p-4">
+                <div className="liquid-card mt-4 rounded-xl p-4">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-text-secondary">{t.perUnit}</span>
                     <span className="font-mono text-text-primary">
@@ -291,11 +291,11 @@ export default function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogP
         </div>
 
         {!packagesLoading && !packagesError && packages.length > 0 ? (
-          <div className="shrink-0 border-t border-glass-border bg-glass-bg/40 px-6 py-4">
+          <div className="liquid-toolbar shrink-0 border-t px-6 py-4">
             <button
               onClick={handleCheckout}
               disabled={!activePackage || submitting}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/30 bg-neon-green/10 py-2.5 font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-40"
+              className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/30 bg-neon-green/10 py-2.5 font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-40"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {submitting ? t.redirectingToStripe : `${t.continueToPayment}${activePackage ? ` • $${formatFiat(totalFiat)}` : ""}`}

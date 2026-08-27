@@ -100,7 +100,7 @@ export default function PaidRoomPreview({
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center rounded-lg border border-glass-border bg-deep-black-light px-3 py-5 text-xs text-text-secondary">
+            <div className="liquid-empty-state flex items-center justify-center rounded-lg border border-glass-border px-3 py-5 text-xs text-text-secondary">
               <MobileBotCordLoading
                 label={t.loadingPreviewMessages}
                 size="sm"
@@ -112,7 +112,7 @@ export default function PaidRoomPreview({
               {previewMessages.map(({ message, text }) => (
                 <div
                   key={message.hub_msg_id}
-                  className="rounded-lg border border-glass-border bg-glass-bg px-3 py-2.5"
+                  className="liquid-card rounded-lg border border-glass-border px-3 py-2.5"
                 >
                   <div className="mb-1 flex min-w-0 items-center gap-2 text-[11px] text-text-secondary/70">
                     <span className="truncate font-medium text-neon-purple/90">{senderName(message)}</span>
@@ -124,7 +124,7 @@ export default function PaidRoomPreview({
               ))}
             </div>
           ) : (
-            <div className="rounded-lg border border-glass-border bg-deep-black-light px-3 py-5 text-center text-xs text-text-secondary">
+            <div className="liquid-empty-state rounded-lg border border-glass-border px-3 py-5 text-center text-xs text-text-secondary">
               {t.noPreviewMessages}
             </div>
           )}
