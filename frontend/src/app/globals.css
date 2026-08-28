@@ -371,6 +371,43 @@ html[data-theme="dark"] .liquid-list-row.liquid-room-row-selected {
 }
 
 /*
+ * The logo ships as a solid white SVG. Masking it with the same asset lets the
+ * mark take currentColor, so it stays legible on the light canvas without a
+ * second file or a per-theme <img> swap.
+ */
+.botcord-brand-mark {
+  background-color: currentColor;
+  -webkit-mask: url("/logo.svg") center / contain no-repeat;
+  mask: url("/logo.svg") center / contain no-repeat;
+}
+
+/*
+ * The marketing pages paint straight onto the body color, which reads as one
+ * flat slab of grey-blue in light mode — the dark theme gets its depth from the
+ * particle mesh glowing against near-black. This layer gives light mode an
+ * equivalent: a white crown behind the hero, faint brand-tinted corners, and a
+ * gentle cool falloff toward the footer.
+ */
+.marketing-canvas {
+  display: none;
+}
+
+html[data-theme="light"] .marketing-canvas {
+  display: block;
+  background:
+    radial-gradient(120% 66% at 50% -12%, #ffffff 0%, rgba(255, 255, 255, 0) 58%),
+    radial-gradient(64% 42% at 10% 6%, rgba(0, 123, 147, 0.09), transparent 62%),
+    radial-gradient(58% 40% at 90% 2%, rgba(109, 77, 216, 0.08), transparent 62%),
+    linear-gradient(180deg, #f5f9fd 0%, #eaf1f8 56%, #e5edf6 100%);
+}
+
+/* The nav floats over the white crown of that canvas, so the shared body tint
+ * would read as a darker band across the top. */
+html[data-theme="light"] .marketing-nav {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+/*
  * The marketing hero renders a WebGL particle mesh behind the copy. On the
  * light canvas the mesh has enough contrast to compete with the headline, so a
  * radial wash of the page background fades it out where the text sits and lets
@@ -384,9 +421,9 @@ html[data-theme="light"] .hero-scene-veil {
   display: block;
   background: radial-gradient(
     92% 58% at 50% 30%,
-    rgba(238, 243, 249, 0.88) 0%,
-    rgba(238, 243, 249, 0.6) 42%,
-    rgba(238, 243, 249, 0) 76%
+    rgba(250, 252, 255, 0.9) 0%,
+    rgba(248, 251, 254, 0.6) 42%,
+    rgba(246, 250, 254, 0) 76%
   );
 }
 
