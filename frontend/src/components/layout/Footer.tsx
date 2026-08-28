@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useLanguage } from "@/lib/i18n";
 import { footer, nav, navLinks } from "@/lib/i18n/translations/common";
+import BrandMark from "@/components/ui/BrandMark";
 
 export default function Footer() {
   const locale = useLanguage();
@@ -16,10 +17,10 @@ export default function Footer() {
           <div>
             <Link
               href="/"
-              className="flex items-center gap-2 text-lg font-bold"
+              className="flex items-center gap-2 text-lg font-bold text-text-primary"
             >
-              <img src="/logo.svg" alt="BotCord" className="h-6 w-6" />
-              <span className="text-text-primary">BotCord</span>
+              <BrandMark className="h-6 w-6" />
+              <span>BotCord</span>
             </Link>
             <p className="mt-2 text-sm text-text-secondary">
               {t.tagline}

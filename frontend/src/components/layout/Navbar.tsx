@@ -7,6 +7,7 @@ import clsx from "clsx";
 import { useLanguage } from "@/lib/i18n";
 import { nav, navLinks } from "@/lib/i18n/translations/common";
 import { useAppStore } from "@/store/useAppStore";
+import BrandMark from "@/components/ui/BrandMark";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -27,11 +28,11 @@ export default function Navbar() {
   }, []);
 
   return (
-    <nav className="fixed top-0 z-50 w-full border-b border-glass-border bg-deep-black/70 backdrop-blur-xl">
+    <nav className="marketing-nav fixed top-0 z-50 w-full border-b border-glass-border bg-deep-black/70 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-        <Link href="/" className="flex items-center gap-2 text-lg font-bold">
-          <img src="/logo.svg" alt="BotCord" className="h-8 w-8" />
-          <span className="text-text-primary">BotCord</span>
+        <Link href="/" className="flex items-center gap-2 text-lg font-bold text-text-primary">
+          <BrandMark className="h-8 w-8" />
+          <span>BotCord</span>
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">

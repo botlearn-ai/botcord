@@ -126,7 +126,7 @@ function buildCoverStyle(room: PublicRoom) {
   return {
     theme,
     style: {
-      backgroundImage: `linear-gradient(135deg, ${theme.accentDim}, rgba(10,10,15,0.28)), ${theme.patternUrl}`,
+      backgroundImage: `linear-gradient(135deg, ${theme.accentDim}, var(--mock-cover-fade)), ${theme.patternUrl}`,
       backgroundRepeat: "no-repeat, repeat",
       backgroundSize: "cover, auto",
     } as const,
@@ -155,31 +155,31 @@ function FeaturedRoomCard({
     <Link href={roomHref(room.room_id)} className="group block h-full">
       <article
         className="flex h-full min-h-[320px] flex-col overflow-hidden rounded-[28px] border border-glass-border bg-deep-black-light/85 transition-all duration-300 hover:-translate-y-1 hover:border-neon-cyan/45"
-        style={{ boxShadow: `0 0 0 1px ${theme.accent}14, 0 18px 44px rgba(0, 0, 0, 0.22)` }}
+        style={{ boxShadow: `0 0 0 1px ${theme.accent}14, var(--mock-shadow-soft)` }}
       >
         <div className="relative min-h-[156px] px-5 py-5" style={style}>
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-deep-black/10 to-deep-black/60" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent,var(--mock-cover-scrim-mid),var(--mock-cover-scrim))]" />
           <div className="relative flex items-start justify-between gap-4">
             <div className="inline-flex items-center gap-3">
               <div
-                className="flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-bold text-white/95 backdrop-blur-sm"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-bold text-[var(--mock-cover-ink)] backdrop-blur-sm"
                 style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}66` }}
               >
                 {initialsFromName(room.name || "Room")}
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-white/75">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-[var(--mock-cover-ink-soft)]">
                   {strings.featuredLabel}
                 </p>
-                <p className="mt-1 text-sm text-white/90">
+                <p className="mt-1 text-sm text-[var(--mock-cover-ink)]">
                   {formatCompactCount(room.member_count, locale)} {memberWord}
                 </p>
               </div>
             </div>
 
             <span
-              className="rounded-full px-3 py-1 text-[11px] font-medium text-white/90 backdrop-blur-sm"
-              style={{ background: "rgba(0,0,0,0.32)", boxShadow: `0 0 0 1px ${theme.accent}55` }}
+              className="rounded-full px-3 py-1 text-[11px] font-medium text-[var(--mock-cover-ink)] backdrop-blur-sm"
+              style={{ background: "var(--mock-chip)", boxShadow: `0 0 0 1px ${theme.accent}55` }}
             >
               {formatRelativeTime(room.last_message_at, locale, strings)}
             </span>
@@ -239,19 +239,19 @@ function SpotlightRoomCard({
     <Link href={roomHref(room.room_id)} className="group block h-full">
       <article
         className="flex h-full min-h-[156px] flex-col overflow-hidden rounded-[24px] border border-glass-border bg-deep-black-light/82 transition-all duration-300 hover:-translate-y-1 hover:border-neon-cyan/35"
-        style={{ boxShadow: `0 0 0 1px ${theme.accent}12, 0 14px 32px rgba(0, 0, 0, 0.18)` }}
+        style={{ boxShadow: `0 0 0 1px ${theme.accent}12, var(--mock-shadow-card)` }}
       >
         <div className="relative h-[84px] px-4 py-3.5" style={style}>
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-deep-black/60" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent,var(--mock-cover-scrim))]" />
           <div className="relative flex items-start justify-between gap-3">
             <div
-              className="flex h-9 w-9 items-center justify-center rounded-xl text-xs font-bold text-white/90 backdrop-blur-sm"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-xs font-bold text-[var(--mock-cover-ink)] backdrop-blur-sm"
               style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}55` }}
             >
               {initialsFromName(room.name || "Room")}
             </div>
             <span
-              className="rounded-full bg-black/30 px-2.5 py-1 text-[10px] font-medium text-white/85 backdrop-blur-sm"
+              className="rounded-full bg-[var(--mock-chip)] px-2.5 py-1 text-[10px] font-medium text-[var(--mock-cover-ink)] backdrop-blur-sm"
               style={{ boxShadow: `0 0 0 1px ${theme.accent}44` }}
             >
               {formatCompactCount(room.member_count, locale)} {memberWord}
@@ -306,23 +306,23 @@ function CompactRoomCard({
     <Link href={roomHref(room.room_id)} className="group block h-full">
       <article
         className="flex h-full flex-col overflow-hidden rounded-[22px] border border-glass-border bg-deep-black-light/80 transition-all duration-300 hover:-translate-y-1 hover:border-neon-cyan/30"
-        style={{ boxShadow: `0 0 0 1px ${theme.accent}10, 0 12px 28px rgba(0, 0, 0, 0.15)` }}
+        style={{ boxShadow: `0 0 0 1px ${theme.accent}10, var(--mock-shadow-card-sm)` }}
       >
         <div className="relative h-14 px-3.5 py-2.5" style={style}>
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-deep-black/55" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent,var(--mock-cover-scrim))]" />
           <div className="relative flex items-center justify-between gap-3">
             <div className="inline-flex items-center gap-2.5">
               <div
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-bold text-white/90"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-bold text-[var(--mock-cover-ink)]"
                 style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}55` }}
               >
                 {initialsFromName(room.name || "Room")}
               </div>
-              <span className="text-[10px] font-medium text-white/80">
+              <span className="text-[10px] font-medium text-[var(--mock-cover-ink)]">
                 {formatCompactCount(room.member_count, locale)} {memberWord}
               </span>
             </div>
-            <span className="text-[10px] text-white/75">
+            <span className="text-[10px] text-[var(--mock-cover-ink-soft)]">
               {formatRelativeTime(room.last_message_at, locale, strings)}
             </span>
           </div>

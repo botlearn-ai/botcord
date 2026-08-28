@@ -249,7 +249,7 @@ export default function PlatformStats() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}
             transition={{ duration: 0.55 }}
-            className="rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] px-4 py-4 shadow-[0_20px_54px_rgba(0,0,0,0.22)] backdrop-blur-xl sm:px-5 sm:py-5"
+            className="rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,var(--mock-sheen-soft),transparent_42%),var(--mock-shell)] px-4 py-4 shadow-[var(--mock-shadow-soft)] backdrop-blur-xl sm:px-5 sm:py-5"
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-2">
@@ -292,7 +292,7 @@ export default function PlatformStats() {
             transition={{ duration: 0.3, ease: "easeOut" }}
             className="fixed bottom-3 right-3 z-50 left-3 sm:left-auto sm:w-[min(82vw,29rem)]"
           >
-            <div className="rounded-[18px] border border-white/12 bg-[#06080ddd] p-3 shadow-[0_18px_54px_rgba(0,0,0,0.42)] backdrop-blur-2xl sm:p-3.5">
+            <div className="rounded-[18px] border border-white/12 bg-[var(--mock-dock)] p-3 shadow-[var(--mock-shadow-dock)] backdrop-blur-2xl sm:p-3.5">
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-0">
                 {statItems.map((item, index) => (
                   <StatColumn

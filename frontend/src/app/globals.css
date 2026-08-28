@@ -38,6 +38,29 @@ html[data-theme="dark"] {
   --color-zinc-900: rgba(18, 26, 39, 0.84);
   --color-zinc-800: rgba(39, 50, 66, 0.76);
   --color-zinc-700: rgba(82, 96, 118, 0.68);
+
+  /* Marketing mock illustrations — the fake room/panel screenshots on the home
+   * page. They are drawn as glass floating on the canvas, so every surface has
+   * to flip with the theme rather than stay a literal rgba(0,0,0,...). */
+  --mock-shell: rgba(0, 0, 0, 0.30);
+  --mock-shell-tint: rgba(0, 0, 0, 0.23);
+  --mock-sheen-strong: rgba(255, 255, 255, 0.08);
+  --mock-sheen-soft: rgba(255, 255, 255, 0.04);
+  --mock-inset: rgba(0, 0, 0, 0.24);
+  --mock-stroke: rgba(255, 255, 255, 0.18);
+  --mock-chip: rgba(0, 0, 0, 0.32);
+  --mock-dock: #06080ddd;
+  --mock-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  --mock-shadow-soft: 0 18px 44px rgba(0, 0, 0, 0.22);
+  --mock-shadow-card: 0 14px 32px rgba(0, 0, 0, 0.18);
+  --mock-shadow-card-sm: 0 12px 28px rgba(0, 0, 0, 0.15);
+  --mock-shadow-dock: 0 18px 54px rgba(0, 0, 0, 0.42);
+  /* Room-card covers are saturated art; text sits directly on them. */
+  --mock-cover-ink: rgba(255, 255, 255, 0.95);
+  --mock-cover-ink-soft: rgba(255, 255, 255, 0.75);
+  --mock-cover-scrim: rgba(10, 10, 15, 0.60);
+  --mock-cover-scrim-mid: rgba(10, 10, 15, 0.10);
+  --mock-cover-fade: rgba(10, 10, 15, 0.28);
 }
 
 html[data-theme="light"] {
@@ -137,6 +160,27 @@ html[data-theme="light"] {
   --liquid-highlight: rgba(255, 255, 255, 0.94);
   --liquid-control: rgba(255, 255, 255, 0.72);
   --liquid-shadow: 0 20px 44px rgba(42, 69, 101, 0.17), 0 3px 10px rgba(42, 69, 101, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.94);
+
+  /* Mirror of the mock surfaces above: white glass over the light canvas, with
+   * shadows tinted toward the canvas blue instead of neutral black. */
+  --mock-shell: rgba(255, 255, 255, 0.66);
+  --mock-shell-tint: rgba(255, 255, 255, 0.58);
+  --mock-sheen-strong: rgba(255, 255, 255, 0.85);
+  --mock-sheen-soft: rgba(255, 255, 255, 0.5);
+  --mock-inset: rgba(23, 40, 61, 0.05);
+  --mock-stroke: rgba(23, 40, 61, 0.2);
+  --mock-chip: rgba(255, 255, 255, 0.78);
+  --mock-dock: rgba(255, 255, 255, 0.94);
+  --mock-shadow: 0 22px 48px rgba(42, 69, 101, 0.14);
+  --mock-shadow-soft: 0 16px 34px rgba(42, 69, 101, 0.11);
+  --mock-shadow-card: 0 13px 28px rgba(42, 69, 101, 0.10);
+  --mock-shadow-card-sm: 0 11px 24px rgba(42, 69, 101, 0.09);
+  --mock-shadow-dock: 0 16px 42px rgba(42, 69, 101, 0.20);
+  --mock-cover-ink: rgba(23, 40, 61, 0.95);
+  --mock-cover-ink-soft: rgba(23, 40, 61, 0.80);
+  --mock-cover-scrim: rgba(255, 255, 255, 0.42);
+  --mock-cover-scrim-mid: rgba(255, 255, 255, 0.12);
+  --mock-cover-fade: rgba(255, 255, 255, 0.42);
 }
 
 html {
@@ -371,6 +415,43 @@ html[data-theme="dark"] .liquid-list-row.liquid-room-row-selected {
 }
 
 /*
+ * The logo ships as a solid white SVG. Masking it with the same asset lets the
+ * mark take currentColor, so it stays legible on the light canvas without a
+ * second file or a per-theme <img> swap.
+ */
+.botcord-brand-mark {
+  background-color: currentColor;
+  -webkit-mask: url("/logo.svg") center / contain no-repeat;
+  mask: url("/logo.svg") center / contain no-repeat;
+}
+
+/*
+ * The marketing pages paint straight onto the body color, which reads as one
+ * flat slab of grey-blue in light mode — the dark theme gets its depth from the
+ * particle mesh glowing against near-black. This layer gives light mode an
+ * equivalent: a white crown behind the hero, faint brand-tinted corners, and a
+ * gentle cool falloff toward the footer.
+ */
+.marketing-canvas {
+  display: none;
+}
+
+html[data-theme="light"] .marketing-canvas {
+  display: block;
+  background:
+    radial-gradient(120% 66% at 50% -12%, #ffffff 0%, rgba(255, 255, 255, 0) 58%),
+    radial-gradient(64% 42% at 10% 6%, rgba(0, 123, 147, 0.09), transparent 62%),
+    radial-gradient(58% 40% at 90% 2%, rgba(109, 77, 216, 0.08), transparent 62%),
+    linear-gradient(180deg, #f5f9fd 0%, #eaf1f8 56%, #e5edf6 100%);
+}
+
+/* The nav floats over the white crown of that canvas, so the shared body tint
+ * would read as a darker band across the top. */
+html[data-theme="light"] .marketing-nav {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+/*
  * The marketing hero renders a WebGL particle mesh behind the copy. On the
  * light canvas the mesh has enough contrast to compete with the headline, so a
  * radial wash of the page background fades it out where the text sits and lets
@@ -384,9 +465,9 @@ html[data-theme="light"] .hero-scene-veil {
   display: block;
   background: radial-gradient(
     92% 58% at 50% 30%,
-    rgba(238, 243, 249, 0.88) 0%,
-    rgba(238, 243, 249, 0.6) 42%,
-    rgba(238, 243, 249, 0) 76%
+    rgba(250, 252, 255, 0.9) 0%,
+    rgba(248, 251, 254, 0.6) 42%,
+    rgba(246, 250, 254, 0) 76%
   );
 }
 
