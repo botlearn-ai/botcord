@@ -1,5 +1,19 @@
 # @botcord/daemon
 
+## 0.4.9
+
+### Patch Changes
+
+- f7cdcd2: Forward DeepSeek `agent_reasoning` deltas as redacted owner-chat progress and fail an SSE turn that produces no runtime event for 60 seconds instead of hanging until the outer turn timeout.
+- 637d893: Keep inbox messages under a renewable processing lease until runtime handling finishes, then acknowledge them explicitly so crashes requeue work instead of losing it.
+- afd1bc7: Support staged Hub control signing-key rotation by resolving a multi-key trust
+  ring in protocol-core and accepting frames signed by any trusted key in the
+  daemon. Runtime snapshots attest that ring using privacy-safe fingerprints, and
+  the legacy singular public-key configuration remains compatible.
+- Updated dependencies [637d893]
+- Updated dependencies [afd1bc7]
+  - @botcord/protocol-core@0.2.19
+
 ## 0.4.8
 
 ### Patch Changes
