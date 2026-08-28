@@ -1,7 +1,10 @@
 """
 Apply numbered SQL files under backend/migrations/ once per database.
 
-Uses hub.config (loads backend/.env) for DATABASE_URL / DATABASE_SCHEMA.
+Reads DATABASE_URL / DATABASE_SCHEMA from the environment (loading
+backend/.env like hub.config does), without importing hub.config —
+service-level startup gates there (e.g. required signing keys) must not
+block standalone migrations.
 Requires the `psql` client on PATH (e.g. Homebrew `libpq`).
 
 Idempotency: records applied filenames in _botcord_schema_migrations.
@@ -9,22 +12,47 @@ Idempotency: records applied filenames in _botcord_schema_migrations.
 
 from __future__ import annotations
 
+import os
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import psycopg2
+from dotenv import load_dotenv
 from psycopg2 import sql as psql
+
+load_dotenv()
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 MIGRATIONS_DIR = BACKEND_ROOT / "migrations"
 
 
-def _sync_dsn() -> str:
-    from hub.config import DATABASE_URL
+def _database_url() -> str:
+    # Mirrors hub.config._build_database_url (URL or DB_* components).
+    url = os.getenv("DATABASE_URL")
+    if url:
+        return url
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASS")
+    host = os.getenv("DB_HOST")
+    port = os.getenv("DB_PORT", "5432")
+    name = os.getenv("DB_NAME")
+    if user and host and name:
+        return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{name}"
+    return "postgresql+asyncpg://botcord:botcord@localhost:5432/botcord"
 
-    url = DATABASE_URL
+
+def _database_schema() -> str | None:
+    schema = os.getenv("DATABASE_SCHEMA")
+    if schema and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema):
+        raise ValueError(f"DATABASE_SCHEMA must be a valid SQL identifier, got: {schema!r}")
+    return schema
+
+
+def _sync_dsn() -> str:
+    url = _database_url()
     if url.startswith("postgresql+asyncpg://"):
         return "postgresql://" + url[len("postgresql+asyncpg://") :]
     if url.startswith("postgres://"):
@@ -60,7 +88,7 @@ def _run_psql_file(dsn: str, schema: str | None, path: Path) -> None:
 
 
 def main() -> None:
-    from hub.config import DATABASE_SCHEMA
+    DATABASE_SCHEMA = _database_schema()
 
     dsn = _sync_dsn()
     sql_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
