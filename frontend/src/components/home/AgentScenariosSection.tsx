@@ -87,9 +87,9 @@ function VisualShell({
 }) {
   return (
     <div
-      className={`relative aspect-[4/3] overflow-hidden rounded-[26px] border border-white/10 bg-black/30 p-4 shadow-[0_24px_60px_rgba(0,0,0,0.28)] backdrop-blur-sm ${className}`}
+      className={`relative aspect-[4/3] overflow-hidden rounded-[26px] border border-white/10 bg-[var(--mock-shell)] p-4 shadow-[var(--mock-shadow)] backdrop-blur-sm ${className}`}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.04),transparent_70%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,var(--mock-sheen-strong),transparent_42%),linear-gradient(180deg,var(--mock-sheen-soft),transparent_70%)]" />
       {children}
     </div>
   );
@@ -106,7 +106,7 @@ function ScenarioVisual({
 
   if (index === 0) {
     return (
-      <VisualShell className="bg-[radial-gradient(circle_at_top_right,rgba(0,240,255,0.15),transparent_38%),rgba(0,0,0,0.22)]">
+      <VisualShell className="bg-[radial-gradient(circle_at_top_right,rgba(0,240,255,0.15),transparent_38%),var(--mock-shell-tint)]">
         <div className="relative flex flex-wrap gap-2">
           {copy.chips.map((chip) => (
             <span
@@ -146,7 +146,7 @@ function ScenarioVisual({
               <div className="h-2 w-4/5 rounded-full bg-white/10" />
               <div className="h-2 w-3/5 rounded-full bg-white/10" />
             </div>
-            <div className="mt-auto rounded-2xl border border-white/8 bg-black/25 px-3 py-2 text-[10px] text-text-secondary">
+            <div className="mt-auto rounded-2xl border border-white/8 bg-[var(--mock-inset)] px-3 py-2 text-[10px] text-text-secondary">
               {copy.footer}
             </div>
           </div>
@@ -157,14 +157,14 @@ function ScenarioVisual({
 
   if (index === 1) {
     return (
-      <VisualShell className="bg-[radial-gradient(circle_at_center,rgba(139,92,246,0.16),transparent_36%),rgba(0,0,0,0.24)]">
+      <VisualShell className="bg-[radial-gradient(circle_at_center,rgba(139,92,246,0.16),transparent_36%),var(--mock-shell-tint)]">
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full opacity-70"
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
         >
           <path d="M22 24 C35 38, 42 48, 52 70" fill="none" stroke="rgba(139,92,246,0.28)" strokeWidth="1.2" />
-          <path d="M50 18 C58 34, 56 48, 52 70" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1" />
+          <path d="M50 18 C58 34, 56 48, 52 70" fill="none" stroke="var(--mock-stroke)" strokeWidth="1" />
           <path d="M78 28 C68 40, 60 50, 52 70" fill="none" stroke="rgba(0,240,255,0.22)" strokeWidth="1.2" />
         </svg>
 
@@ -203,7 +203,7 @@ function ScenarioVisual({
 
   if (index === 2) {
     return (
-      <VisualShell className="bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.14),transparent_34%),rgba(0,0,0,0.24)]">
+      <VisualShell className="bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.14),transparent_34%),var(--mock-shell-tint)]">
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full opacity-60"
           viewBox="0 0 100 100"
@@ -247,7 +247,7 @@ function ScenarioVisual({
             ))}
           </div>
 
-          <div className="mt-4 rounded-2xl border border-white/8 bg-black/20 p-3">
+          <div className="mt-4 rounded-2xl border border-white/8 bg-[var(--mock-inset)] p-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-neon-green/75">
               {copy.focus}
             </p>
@@ -263,7 +263,7 @@ function ScenarioVisual({
   }
 
   return (
-    <VisualShell className="bg-[radial-gradient(circle_at_top,rgba(0,240,255,0.12),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(139,92,246,0.12),transparent_28%),rgba(0,0,0,0.26)]">
+    <VisualShell className="bg-[radial-gradient(circle_at_top,rgba(0,240,255,0.12),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(139,92,246,0.12),transparent_28%),var(--mock-shell-tint)]">
       <div className="relative grid grid-cols-2 gap-3">
         {copy.chips.map((chip, idx) => (
           <div
