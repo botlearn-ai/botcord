@@ -1,5 +1,15 @@
 # @botcord/protocol-core
 
+## 0.2.19
+
+### Patch Changes
+
+- 637d893: Keep inbox messages under a renewable processing lease until runtime handling finishes, then acknowledge them explicitly so crashes requeue work instead of losing it.
+- afd1bc7: Support staged Hub control signing-key rotation by resolving a multi-key trust
+  ring in protocol-core and accepting frames signed by any trusted key in the
+  daemon. Runtime snapshots attest that ring using privacy-safe fingerprints, and
+  the legacy singular public-key configuration remains compatible.
+
 ## 0.2.18
 
 ### Patch Changes
