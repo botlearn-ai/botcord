@@ -298,7 +298,7 @@ async def _build_dashboard_rooms(
 
         member_count = member_counts.get(rid, 0)
         previews: list[RoomMemberPreview] | None = None
-        if member_count > 2:
+        if room.room_id.startswith("rm_dm_") or member_count > 2:
             entries = members_by_room.get(rid, [])
             previews_list: list[RoomMemberPreview] = []
             for pid, ptype in entries:

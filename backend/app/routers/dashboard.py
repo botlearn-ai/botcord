@@ -26,6 +26,7 @@ from app.auth_room import (
 )
 from app.helpers import escape_like, extract_text_from_envelope
 from hub.database import get_db
+from hub.dm_room_names import build_dm_room_name
 from hub.dashboard_message_shaping import (
     HUMAN_SOURCE_TYPES,
     derive_sender_fields,
@@ -620,7 +621,8 @@ async def _build_rooms_from_membership(
             "visibility": room.visibility.value if hasattr(room.visibility, "value") else str(room.visibility),
             "join_policy": room.join_policy.value if hasattr(room.join_policy, "value") else str(room.join_policy),
             "member_count": member_counts.get(rid, 0),
-            "members_preview": members_preview.get(rid) if member_counts.get(rid, 0) > 2 else None,
+            "members_preview": members_preview.get(rid)
+            if rid.startswith("rm_dm_") or member_counts.get(rid, 0) > 2 else None,
             "my_role": my_role,
             "can_invite": computed_can_invite,
             "allow_human_send": room.allow_human_send,
@@ -2779,7 +2781,7 @@ async def _ensure_dashboard_dm_room(
 
     room = Room(
         room_id=room_id,
-        name=f"DM {a} & {b}",
+        name=await build_dm_room_name(db, [a, b]),
         owner_id=sender_id,
         visibility=RoomVisibility.private,
         join_policy=RoomJoinPolicy.invite_only,

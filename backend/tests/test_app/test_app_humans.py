@@ -772,6 +772,63 @@ async def test_list_owned_agent_rooms_excludes_current_human_rooms(
 
 
 @pytest.mark.asyncio
+async def test_list_owned_agent_rooms_includes_member_names_for_legacy_bot_dm(
+    client, seed, db_session: AsyncSession
+):
+    """Old ID-based DM titles still include enough names for the UI to relabel them."""
+    owned_bot = Agent(
+        agent_id="ag_alpha00001",
+        display_name="Alpha Bot",
+        message_policy=MessagePolicy.open,
+        user_id=seed["user_id"],
+    )
+    peer_bot = Agent(
+        agent_id="ag_beta000001",
+        display_name="Beta Bot",
+        message_policy=MessagePolicy.open,
+    )
+    room = Room(
+        room_id="rm_dm_ag_alpha00001_ag_beta000001",
+        name="DM ag_alpha00001 & ag_beta000001",
+        description="",
+        owner_id=owned_bot.agent_id,
+        owner_type=ParticipantType.agent,
+        visibility=RoomVisibility.private,
+        join_policy=RoomJoinPolicy.invite_only,
+    )
+    db_session.add_all([
+        owned_bot,
+        peer_bot,
+        room,
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=owned_bot.agent_id,
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+        RoomMember(
+            room_id=room.room_id,
+            agent_id=peer_bot.agent_id,
+            participant_type=ParticipantType.agent,
+            role=RoomRole.member,
+        ),
+    ])
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/humans/me/agent-rooms",
+        headers={"Authorization": f"Bearer {seed['token']}"},
+    )
+
+    assert response.status_code == 200, response.text
+    [result] = response.json()["rooms"]
+    assert result["members_preview"] == [
+        {"agent_id": "ag_alpha00001", "avatar_url": None, "display_name": "Alpha Bot"},
+        {"agent_id": "ag_beta000001", "avatar_url": None, "display_name": "Beta Bot"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_list_owned_agent_rooms_keeps_owner_chat_even_with_human_member(
     client, seed, db_session: AsyncSession
 ):

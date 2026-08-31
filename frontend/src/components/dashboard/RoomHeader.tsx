@@ -110,10 +110,17 @@ export default function RoomHeader() {
   const dmContact = isDMRoom && dmPartnerAgentId
     ? (overview?.contacts.find((c) => c.contact_agent_id === dmPartnerAgentId) ?? null)
     : null;
-  // For DMs, surface the peer's display name instead of the raw "DM ag_X & ag_Y"
-  // string the backend stores on Room.name.
+  // For participant views, show the peer. For an owner observing a bot-to-bot
+  // DM, show both Bot names rather than the persisted legacy ID title.
   const titleText = isDMRoom && room
-    ? resolveDmDisplayName(openedRoomId, selfId, overview?.contacts ?? [], room.name)
+    ? resolveDmDisplayName(
+      openedRoomId,
+      selfId,
+      overview?.contacts ?? [],
+      room.name,
+      room.members_preview,
+      locale,
+    )
     : room?.name ?? "";
   const canInvite = isHumanView
     ? isOwnerOrAdmin || (Boolean(myRole) && Boolean(humanRoom?.default_invite))

@@ -834,6 +834,9 @@ async def test_human_owner_can_open_dm_with_own_contacts_only_agent(
     member_ids = {m.agent_id for m in members}
     assert agent_id in member_ids
     assert any(m.participant_type == ParticipantType.human for m in members)
+    room = await db_session.scalar(select(Room).where(Room.room_id == room_id))
+    assert room is not None
+    assert room.name == "Owned Bot & Dashboard User 的私聊"
 
 
 @pytest.mark.asyncio

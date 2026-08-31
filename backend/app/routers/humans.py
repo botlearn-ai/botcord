@@ -720,7 +720,7 @@ async def list_human_rooms(
                 effective_roles.get(room.room_id, role),
                 member_count=member_counts.get(room.room_id, 0),
                 members_preview=previews_by_room.get(room.room_id)
-                if member_counts.get(room.room_id, 0) > 2 else None,
+                if room.room_id.startswith("rm_dm_") or member_counts.get(room.room_id, 0) > 2 else None,
             )
         )
     return HumanRoomListResponse(rooms=rooms)
@@ -808,7 +808,7 @@ async def list_owned_agent_only_rooms(
                 last_sender_name=preview.get("last_sender_name"),
                 allow_human_send=preview.get("allow_human_send"),
                 members_preview=previews_by_room.get(room_id)
-                if int(preview.get("member_count") or 0) > 2 else None,
+                if room_id.startswith("rm_dm_") or int(preview.get("member_count") or 0) > 2 else None,
                 bots=sorted(bots, key=lambda bot: agent_names.get(bot.agent_id) or bot.agent_id),
             )
         )

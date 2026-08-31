@@ -40,6 +40,7 @@ from hub.validators import normalize_file_url
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.dashboard_message_shaping import load_user_display_names
 from hub.database import async_session, get_db
+from hub.dm_room_names import build_dm_room_name
 from hub.services import presence as presence_service
 from hub.services.cloud_agent_activity import (
     bump_if_cloud_agent,
@@ -1060,7 +1061,7 @@ async def _ensure_dm_room(
 
     room = Room(
         room_id=room_id,
-        name=f"DM {ids[0]} & {ids[1]}",
+        name=await build_dm_room_name(db, ids),
         owner_id=sender_id,
         visibility="private",
         join_policy="invite_only",
