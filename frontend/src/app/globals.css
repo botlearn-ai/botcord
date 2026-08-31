@@ -348,6 +348,190 @@ html[data-theme="light"] .dashboard-brand-link:hover {
   background: var(--liquid-surface-strong);
 }
 
+/* Attachment previews use the same visual language as the dashboard, but a
+ * long-form document needs a quieter, more deliberate reading rhythm than a
+ * tool surface. Keep the panel chrome compact and make the document itself a
+ * clearly bounded reading page. */
+.document-preview-pane {
+  container-type: inline-size;
+  box-shadow: -14px 0 34px rgba(42, 69, 101, 0.10), inset 0 1px 0 var(--liquid-highlight);
+}
+
+.document-preview-toolbar {
+  min-height: 4rem;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  box-shadow: 0 7px 18px rgba(42, 69, 101, 0.07), inset 0 1px 0 var(--liquid-highlight);
+}
+
+.document-preview-file-icon {
+  display: inline-flex;
+  height: 2rem;
+  width: 2rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-neon-cyan) 30%, var(--liquid-border));
+  border-radius: 0.625rem;
+  background: color-mix(in srgb, var(--color-neon-cyan) 8%, transparent);
+  box-shadow: inset 0 1px 0 var(--liquid-highlight);
+}
+
+.document-preview-surface {
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--color-neon-cyan) 9%, transparent), transparent 29%),
+    linear-gradient(180deg, color-mix(in srgb, var(--liquid-highlight) 45%, transparent), transparent 15%),
+    var(--liquid-canvas);
+}
+
+.document-preview-page {
+  width: 100%;
+  max-width: 47.5rem;
+  min-height: calc(100% - 1.25rem);
+  margin: 0 auto 1.25rem;
+  padding: clamp(1.5rem, 3vw, 2rem) clamp(1.25rem, 4vw, 2.5rem) clamp(2.5rem, 5vw, 3.5rem);
+  border: 1px solid var(--liquid-border);
+  border-radius: 1rem;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-neon-cyan) 3%, transparent), transparent 37%),
+    var(--liquid-surface-strong);
+  box-shadow: 0 14px 30px rgba(42, 69, 101, 0.10), inset 0 1px 0 var(--liquid-highlight);
+}
+
+.document-preview-markdown {
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  letter-spacing: 0.002em;
+}
+
+.document-preview-markdown h1 {
+  margin: 0 0 1.35rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--liquid-border);
+  font-size: clamp(1.3rem, 2vw, 1.65rem);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.025em;
+}
+
+.document-preview-markdown h2 {
+  margin: 2.15rem 0 0.9rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--liquid-border) 82%, transparent);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: -0.012em;
+}
+
+.document-preview-markdown h3 {
+  margin: 1.6rem 0 0.65rem;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.document-preview-markdown p {
+  margin: 0 0 1rem;
+}
+
+.document-preview-markdown ul,
+.document-preview-markdown ol {
+  margin: 0.9rem 0 1.2rem;
+  padding-left: 1.3rem;
+}
+
+.document-preview-markdown li {
+  margin: 0.34rem 0;
+}
+
+.document-preview-markdown li::marker {
+  color: color-mix(in srgb, var(--color-neon-cyan) 65%, var(--color-text-secondary));
+}
+
+.document-preview-markdown blockquote {
+  margin: 1.2rem 0;
+  padding: 0.8rem 1rem;
+  border-left-width: 3px;
+  border-left-color: color-mix(in srgb, var(--color-neon-purple) 62%, var(--liquid-border));
+  border-radius: 0 0.75rem 0.75rem 0;
+  background: color-mix(in srgb, var(--color-neon-purple) 6%, transparent);
+  color: var(--color-text-secondary);
+}
+
+.document-preview-markdown hr {
+  margin: 1.7rem 0;
+  border-color: var(--liquid-border);
+}
+
+.document-preview-markdown .markdown-table-wrapper {
+  margin: 1.25rem 0;
+  border: 1px solid var(--liquid-border);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-glass-bg) 72%, transparent);
+  box-shadow: inset 0 1px 0 var(--liquid-highlight);
+}
+
+.document-preview-markdown .markdown-table {
+  min-width: 100%;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.document-preview-markdown .markdown-table thead {
+  border-bottom-color: var(--liquid-border);
+  background: color-mix(in srgb, var(--color-neon-cyan) 7%, transparent);
+}
+
+.document-preview-markdown .markdown-table th {
+  padding: 0.6rem 0.75rem;
+  color: var(--color-text-primary);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.document-preview-markdown .markdown-table td {
+  padding: 0.55rem 0.75rem;
+  border-top-color: color-mix(in srgb, var(--liquid-border) 65%, transparent);
+  line-height: 1.4;
+}
+
+.document-preview-markdown .markdown-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--color-neon-cyan) 3%, transparent);
+}
+
+@container (max-width: 460px) {
+  .document-preview-surface {
+    padding: 0;
+  }
+
+  .document-preview-page {
+    min-height: 100%;
+    margin: 0;
+    padding: 1.25rem 1rem 2rem;
+    border-color: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .document-preview-markdown {
+    font-size: 0.875rem;
+    line-height: 1.75;
+  }
+
+  .document-preview-markdown h1 {
+    font-size: 1.25rem;
+  }
+
+  .document-preview-markdown .markdown-table-wrapper {
+    margin-right: -0.25rem;
+    margin-left: -0.25rem;
+    border-radius: 0.5rem;
+  }
+}
+
 .liquid-list-row {
   border: 1px solid transparent;
   background: transparent;

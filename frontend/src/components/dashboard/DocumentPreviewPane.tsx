@@ -293,9 +293,9 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
     }
     if (kind === "markdown") {
       return (
-        <div className="min-h-full px-4 py-3">
-          <MarkdownContent content={content} />
-        </div>
+        <article className="document-preview-page">
+          <MarkdownContent content={content} className="document-preview-markdown" />
+        </article>
       );
     }
     if (kind === "html") {
@@ -355,7 +355,7 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
     <aside
       ref={paneRef}
       style={paneStyle}
-      className="liquid-drawer relative flex h-full w-[var(--document-preview-pane-width)] max-w-[78vw] min-w-[360px] shrink-0 flex-col border-l will-change-transform max-md:absolute max-md:inset-0 max-md:z-40 max-md:w-full max-md:max-w-none max-md:min-w-0"
+      className="document-preview-pane liquid-drawer relative flex min-h-0 self-stretch w-[var(--document-preview-pane-width)] max-w-[78vw] min-w-[360px] shrink-0 flex-col border-l will-change-transform max-md:absolute max-md:inset-0 max-md:z-40 max-md:w-full max-md:max-w-none max-md:min-w-0"
     >
       {resizing && (
         <div className="fixed inset-0 z-[80] cursor-col-resize max-md:hidden" aria-hidden="true" />
@@ -376,8 +376,10 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
       >
         <span className="h-12 w-px rounded-full bg-text-secondary/40" />
       </div>
-      <div className="liquid-toolbar flex min-h-14 items-center gap-2 border-b border-glass-border px-3">
-        <FileText className="h-4 w-4 shrink-0 text-neon-cyan" />
+      <div className="document-preview-toolbar liquid-toolbar flex min-h-14 shrink-0 items-center gap-3 border-b border-glass-border px-3">
+        <div className="document-preview-file-icon" aria-hidden="true">
+          <FileText className="h-4 w-4 text-neon-cyan" />
+        </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-text-primary">{title}</div>
           <div className="truncate text-[11px] text-text-secondary/70">
@@ -405,7 +407,7 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className={`liquid-tool-surface min-h-0 flex-1 overflow-auto ${resizing ? "pointer-events-none" : ""}`}>
+      <div className={`document-preview-surface min-h-0 flex-1 overflow-auto ${resizing ? "pointer-events-none" : ""}`}>
         {renderedBody}
       </div>
     </aside>
