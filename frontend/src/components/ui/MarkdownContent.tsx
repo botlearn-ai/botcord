@@ -11,6 +11,7 @@ import ImagePreviewOverlay from "@/components/ui/ImagePreviewOverlay";
 
 interface MarkdownContentProps {
   content: string;
+  className?: string;
   renderMention?: (mention: { id: string; label: string }) => ReactNode;
   mentionCandidates?: MentionTextCandidate[];
 }
@@ -422,8 +423,8 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
       <hr className="my-2 border-glass-border" />
     ),
     table: ({ children }) => (
-      <div className="mb-2 overflow-x-auto last:mb-0">
-        <table className="w-full border-collapse text-xs">{children}</table>
+      <div className="markdown-table-wrapper mb-2 overflow-x-auto last:mb-0">
+        <table className="markdown-table w-full border-collapse text-xs">{children}</table>
       </div>
     ),
     thead: ({ children }) => (
@@ -438,11 +439,11 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
   };
 }
 
-export default function MarkdownContent({ content, renderMention, mentionCandidates }: MarkdownContentProps) {
+export default function MarkdownContent({ content, className = "", renderMention, mentionCandidates }: MarkdownContentProps) {
   const normalizedContent = normalizeMessageContent(content);
 
   return (
-    <div className="break-words text-sm text-text-primary [&>*:first-child]:mt-0">
+    <div className={`break-words text-sm text-text-primary [&>*:first-child]:mt-0 ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks]}
         rehypePlugins={[[rehypeMentions, { candidates: mentionCandidates ?? [] }]]}
