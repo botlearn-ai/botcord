@@ -456,7 +456,14 @@ export default function RoomList({
         const metaLine = roomMeta?.[room.room_id] ?? null;
         const messageTime = formatLastMessageTime(ownerChatLatestForRoom?.createdAt || room.last_message_at || cachedLatestMessage?.created_at || null);
         const selfRoomId = viewMode === "human" ? humanId : activeAgentId;
-        const displayName = resolveDmDisplayName(room.room_id, selfRoomId, contacts, room.name);
+        const displayName = resolveDmDisplayName(
+          room.room_id,
+          selfRoomId,
+          contacts,
+          room.name,
+          room.members_preview,
+          locale,
+        );
         const avatarLabel = buildRoomAvatarLabel(displayName);
         const avatarTone = buildAvatarTone(room.room_id);
         const isGroup = (room.member_count ?? 0) > 2;

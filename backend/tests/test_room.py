@@ -1186,6 +1186,11 @@ async def test_dm_room_order_independent(client: AsyncClient):
     assert len(a_dm) == 1
     assert len(b_dm) == 1
     assert a_dm[0]["room_id"] == b_dm[0]["room_id"]
+    names_by_id = {a_id: "alice", b_id: "bob"}
+    assert a_dm[0]["name"] == (
+        f"{names_by_id[sorted(names_by_id)[0]]} & "
+        f"{names_by_id[sorted(names_by_id)[1]]} 的私聊"
+    )
 
 
 @pytest.mark.asyncio
