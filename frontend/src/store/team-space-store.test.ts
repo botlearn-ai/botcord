@@ -36,6 +36,25 @@ describe("Team space loading", () => {
       .mockResolvedValue({ spaces: [personal, org] });
     vi.mocked(teamSpacesApi.members).mockReset().mockResolvedValue(empty);
   });
+  it("opens an active organization when entering Team mode", async () => {
+    const store = createTeamSpaceStore(true);
+    await store.getState().load();
+    expect(store.getState().snapshot?.selected.id).toBe("a");
+  });
+  it("uses the personal snapshot for onboarding when no organizations exist", async () => {
+    vi.mocked(teamSpacesApi.list).mockResolvedValue({ spaces: [personal] });
+    const store = createTeamSpaceStore(true);
+    await store.getState().load();
+    expect(store.getState().snapshot?.selected.id).toBe("p");
+    expect(store.getState().error).toBeNull();
+  });
+  it("opens an invitation without requesting member data in Team mode", async () => {
+    vi.mocked(teamSpacesApi.list).mockResolvedValue({ spaces: [personal, { ...org, membership: { ...org.membership, status: "invited" } }] });
+    const store = createTeamSpaceStore(true);
+    await store.getState().load();
+    expect(store.getState().snapshot?.selected.id).toBe("a");
+    expect(teamSpacesApi.members).not.toHaveBeenCalled();
+  });
   it("discards a late response from the previous organization", async () => {
     let finish!: (value: SpaceMembers) => void;
     vi.mocked(teamSpacesApi.members).mockImplementation((id) =>

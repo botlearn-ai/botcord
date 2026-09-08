@@ -23,7 +23,7 @@ interface TeamState {
   cancel: () => void;
 }
 
-export function createTeamSpaceStore() {
+export function createTeamSpaceStore(preferOrganization = false) {
   let generation = 0;
   let controller: AbortController | null = null;
   return createStore<TeamState>((set) => ({
@@ -49,7 +49,11 @@ export function createTeamSpaceStore() {
         if (current !== generation) return;
         const selected = spaceId
           ? spaces.find((space) => space.id === spaceId)
-          : spaces.find((space) => space.kind === "personal");
+          : (preferOrganization
+              ? spaces.find((space) => space.kind === "organization" && space.status === "active" && space.membership.status === "active")
+                ?? spaces.find((space) => space.kind === "organization" && space.status === "active" && space.membership.status === "invited")
+              : undefined)
+            ?? spaces.find((space) => space.kind === "personal");
         if (!selected) throw new ApiError(404, "space_not_available");
         const members =
           selected.membership.status === "active" &&
