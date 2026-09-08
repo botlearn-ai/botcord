@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 pathname 同步首帧 tab，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
- * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期与三栏布局编排
+ * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期、顶部个人/Team 模式切换与三栏布局编排
  * [POS]: /chats 页面的顶层容器，连接路由状态、实时事件流与拆分后的 dashboard store
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -44,6 +44,8 @@ import StripeReturnBanner from "./StripeReturnBanner";
 import UserChatPane from "./UserChatPane";
 import WalletPanel from "./WalletPanel";
 import ActivityPanel from "./ActivityPanel";
+import WorkspaceModeSwitch from "./WorkspaceModeSwitch";
+import TeamSpacesPage from "@/components/team/TeamSpacesPage";
 import { animateIfMotion, cleanupAnime, prefersReducedMotion } from "@/lib/anime";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
@@ -128,6 +130,14 @@ export default function DashboardApp() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const teamMode = pathname === "/chats/team";
+  const personalHref = useRef("/chats/messages");
+  useEffect(() => {
+    if (!teamMode) {
+      const query = searchParams.toString();
+      personalHref.current = pathname + (query ? `?${query}` : "");
+    }
+  }, [pathname, searchParams, teamMode]);
   const supabase = useMemo(() => createClient(), []);
   const locale = useLanguage();
   const tSidebar = sidebarI18n[locale];
@@ -325,6 +335,7 @@ export default function DashboardApp() {
     // /chats/messages, /chats/explore, /chats/contacts etc. as their Human
     // identity.
 
+    if (pathname === "/chats/team") return;
     const tab = pathnameParts[1];
     const subtab = pathnameParts[2];
     const normalizedTab =
@@ -1142,60 +1153,67 @@ export default function DashboardApp() {
     || mobileContactsShowsMain;
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
   return (
-    <div className="dashboard-root fixed inset-0 flex overflow-hidden bg-deep-black max-md:flex-col-reverse">
-      <Sidebar
-        sidebarTabOverride={visibleSidebarTab}
-        mobileHideSecondary={mobileHideSecondary}
-        mobileSecondaryOpen={uiStore.mobileSidebarOpen}
-        onMobileSecondaryClose={uiStore.closeMobileSidebar}
-      />
-      <div ref={mainContentRef} className={mainPaneClass}>
-        {primaryNavigationPending ? (
-          // A pending click on Messages usually lands on the empty
-          // "pick a conversation" pane, so only paint a chat skeleton when a
-          // conversation is actually open.
-          <DashboardTabSkeleton
-            variant={visibleSidebarTab}
-            hasOpenConversation={
-              Boolean(uiStore.focusedRoomId) || uiStore.messagesPane === "user-chat"
-            }
-          />
-        ) : visibleSidebarTab === "home" ? (
-          <HomePanel />
-        ) : visibleSidebarTab === "activity" ? (
-          <ActivityPanel />
-        ) : visibleSidebarTab === "wallet" ? (
-          <WalletPanel />
-        ) : visibleSidebarTab === "bots" ? (
-          <MyBotsPanel />
-        ) : visibleSidebarTab === "messages" && uiStore.messagesShowRequests ? (
-          <ContactRequestsInbox
-            title={tChatPane.contactRequests}
-            hideTabs
-          />
-        ) : visibleSidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
-          <div className="h-full min-w-0">
-            <UserChatPane agentId={uiStore.userChatAgentId || userChatAgentIdFromQuery} />
-          </div>
-        ) : (
-          <div className="flex h-full min-w-0">
-            <ChatPane
-              sidebarTabOverride={
-                visibleSidebarTab === "contacts" || visibleSidebarTab === "explore"
-                  ? visibleSidebarTab
-                  : "messages"
+    <div className="dashboard-root fixed inset-0 flex flex-col overflow-hidden bg-deep-black">
+      <WorkspaceModeSwitch teamMode={teamMode} personalHref={personalHref.current} />
+      {teamMode ? (
+        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
+          <TeamSpacesPage teamMode />
+        </main>
+      ) : <div className="flex min-h-0 flex-1 overflow-hidden max-md:flex-col-reverse">
+        <Sidebar
+          sidebarTabOverride={visibleSidebarTab}
+          mobileHideSecondary={mobileHideSecondary}
+          mobileSecondaryOpen={uiStore.mobileSidebarOpen}
+          onMobileSecondaryClose={uiStore.closeMobileSidebar}
+        />
+        <div ref={mainContentRef} className={mainPaneClass}>
+          {primaryNavigationPending ? (
+            // A pending click on Messages usually lands on the empty
+            // "pick a conversation" pane, so only paint a chat skeleton when a
+            // conversation is actually open.
+            <DashboardTabSkeleton
+              variant={visibleSidebarTab}
+              hasOpenConversation={
+                Boolean(uiStore.focusedRoomId) || uiStore.messagesPane === "user-chat"
               }
-              onHumanOpen={(human) => {
-                void handleOpenHumanCard({
-                  humanId: human.human_id,
-                  displayName: human.display_name,
-                });
-              }}
             />
-            {visibleSidebarTab !== "explore" && uiStore.rightPanelOpen && <AgentBrowser />}
-          </div>
-        )}
-      </div>
+          ) : visibleSidebarTab === "home" ? (
+            <HomePanel />
+          ) : visibleSidebarTab === "activity" ? (
+            <ActivityPanel />
+          ) : visibleSidebarTab === "wallet" ? (
+            <WalletPanel />
+          ) : visibleSidebarTab === "bots" ? (
+            <MyBotsPanel />
+          ) : visibleSidebarTab === "messages" && uiStore.messagesShowRequests ? (
+            <ContactRequestsInbox
+              title={tChatPane.contactRequests}
+              hideTabs
+            />
+          ) : visibleSidebarTab === "messages" && uiStore.messagesPane === "user-chat" ? (
+            <div className="h-full min-w-0">
+              <UserChatPane agentId={uiStore.userChatAgentId || userChatAgentIdFromQuery} />
+            </div>
+          ) : (
+            <div className="flex h-full min-w-0">
+              <ChatPane
+                sidebarTabOverride={
+                  visibleSidebarTab === "contacts" || visibleSidebarTab === "explore"
+                    ? visibleSidebarTab
+                    : "messages"
+                }
+                onHumanOpen={(human) => {
+                  void handleOpenHumanCard({
+                    humanId: human.human_id,
+                    displayName: human.display_name,
+                  });
+                }}
+              />
+              {visibleSidebarTab !== "explore" && uiStore.rightPanelOpen && <AgentBrowser />}
+            </div>
+          )}
+        </div>
+      </div>}
       <StripeReturnBanner />
       <BotDetailDrawer />
       <DeviceDetailDrawer />

@@ -47,6 +47,23 @@ describe("Team governance rendering", () => {
     } as unknown as TeamSnapshot;
     fixture.snapshot.spaces = [fixture.snapshot.selected];
   });
+  it("offers creation and joining when Team mode has no organization", () => {
+    fixture.spaceId = null;
+    fixture.snapshot!.selected.kind = "personal";
+    const html = renderToStaticMarkup(<TeamSpacesPage teamMode />);
+    expect(html).toContain("开启你的团队空间");
+    expect(html).toContain("开始创建");
+    expect(html).toContain("加入组织");
+    expect(html).not.toContain("你的个人空间");
+    expect(html).not.toContain("当前空间");
+  });
+  it("shows the selected organization on initial Team entry", () => {
+    fixture.spaceId = null;
+    const html = renderToStaticMarkup(<TeamSpacesPage teamMode />);
+    expect(html).toContain("Acme");
+    expect(html).toContain("邀请用户");
+    expect(html).not.toContain("开启你的团队空间");
+  });
   it("lets owners manage settings while explaining the unopened content entry", () => {
     const html = renderToStaticMarkup(<TeamSpacesPage />);
     expect(html).toContain("邀请用户");

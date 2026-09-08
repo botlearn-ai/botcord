@@ -37,19 +37,19 @@ const button =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-neon-cyan/10 focus-visible:outline-2 focus-visible:outline-neon-cyan disabled:cursor-not-allowed disabled:opacity-50";
 const primary = `${button} border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan`;
 
-export default function TeamSpacesPage() {
+export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolean }) {
   const zh = useLanguage() === "zh";
   const t = (cn: string, en: string) => (zh ? cn : en);
   const router = useRouter();
   const query = useSearchParams();
   const requestedId = query.get("space");
-  const store = useMemo(createTeamSpaceStore, []);
+  const store = useMemo(() => createTeamSpaceStore(teamMode), [teamMode]);
   const { snapshot: loadedSnapshot, loading, error, load } = useStore(store);
   const snapshot =
     loadedSnapshot &&
     (requestedId
       ? loadedSnapshot.selected.id === requestedId
-      : loadedSnapshot.selected.kind === "personal")
+      : teamMode || loadedSnapshot.selected.kind === "personal")
       ? loadedSnapshot
       : null;
   const currentRoute = useRef(requestedId);
@@ -68,6 +68,12 @@ export default function TeamSpacesPage() {
   const [humanId, setHumanId] = useState("");
   const [agentId, setAgentId] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [showJoin, setShowJoin] = useState(false);
+  const createNameRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (showCreate) createNameRef.current?.focus();
+  }, [showCreate]);
+  const basePath = teamMode ? "/chats/team" : "/settings/spaces";
 
   useEffect(() => {
     mounted.current = true;
@@ -102,7 +108,9 @@ export default function TeamSpacesPage() {
   }, [load, requestedId]);
 
   const select = (id: string) =>
-    router.push(`/settings/spaces?space=${encodeURIComponent(id)}`);
+    router.push(teamMode && snapshot?.spaces.find((s) => s.id === id)?.kind === "personal"
+      ? basePath
+      : `${basePath}?space=${encodeURIComponent(id)}`);
   async function confirmForSpace(options: ConfirmOptions) {
     const origin = currentRoute.current;
     const result = confirm({
@@ -192,7 +200,7 @@ export default function TeamSpacesPage() {
             Team
           </p>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            {t("空间与组织", "Spaces & organizations")}
+            {teamMode ? t("团队空间", "Team workspace") : t("空间与组织", "Spaces & organizations")}
           </h1>
           <p className="mt-2 max-w-xl text-sm leading-6 text-text-secondary">
             {t(
@@ -241,7 +249,7 @@ export default function TeamSpacesPage() {
               <RefreshCw size={16} />
               {t("重试", "Retry")}
             </button>
-            <Link className={button} href="/settings/spaces">
+            <Link className={button} href={basePath}>
               {t("返回我的空间", "My spaces")}
             </Link>
             <Link className={button} href="/login">
@@ -253,7 +261,7 @@ export default function TeamSpacesPage() {
 
       {snapshot && space && (
         <>
-          <section
+          {!(teamMode && personal) && <section
             className={`${panel} flex flex-wrap items-center justify-between gap-4`}
             aria-label={t("选择空间", "Choose space")}
           >
@@ -272,7 +280,7 @@ export default function TeamSpacesPage() {
                   disabled={busy}
                   onChange={(e) => select(e.target.value)}
                 >
-                  {snapshot.spaces.map((s) => (
+                  {snapshot.spaces.filter((s) => !teamMode || s.kind === "organization").map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.kind === "personal"
                         ? t("个人空间", "Personal space")
@@ -296,7 +304,7 @@ export default function TeamSpacesPage() {
             >
               <RefreshCw size={16} />
             </button>
-          </section>
+          </section>}
 
           {snapshot.spaces.some(
             (s) => s.membership.status === "invited" && s.id !== space.id,
@@ -333,6 +341,42 @@ export default function TeamSpacesPage() {
             </section>
           )}
 
+          {teamMode && personal && (
+            <section className="mx-auto w-full max-w-3xl py-8 sm:py-16">
+              <div className="mb-8 text-center">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan">
+                  <Building2 size={30} />
+                </div>
+                <h2 className="text-2xl font-semibold sm:text-3xl">{t("开启你的团队空间", "Start your team workspace")}</h2>
+                <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-text-secondary">
+                  {t("还没有加入组织。创建一个新组织，或接受邀请，与团队成员和 Agent 一起协作。", "You haven’t joined an organization yet. Create one or accept an invitation to work with your team and Agents.")}
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <button className={`${panel} group text-left transition-colors hover:border-neon-cyan/40 focus-visible:outline-2 focus-visible:outline-neon-cyan`} disabled={busy} aria-expanded={showCreate} onClick={() => { setShowCreate(true); setShowJoin(false); }}>
+                  <Plus size={24} className="mb-5 text-neon-cyan" />
+                  <h3 className="text-lg font-semibold">{t("创建组织", "Create organization")}</h3>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">{t("为你的团队建立空间，邀请成员并添加 Agent。", "Set up a space for your team, invite people and add Agents.")}</p>
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm text-neon-cyan">{t("开始创建", "Get started")} <ArrowRight size={16} /></span>
+                </button>
+                <button className={`${panel} group text-left transition-colors hover:border-neon-cyan/40 focus-visible:outline-2 focus-visible:outline-neon-cyan`} disabled={busy} aria-expanded={showJoin} onClick={() => { setShowJoin(true); setShowCreate(false); }}>
+                  <Users size={24} className="mb-5 text-neon-cyan" />
+                  <h3 className="text-lg font-semibold">{t("加入组织", "Join organization")}</h3>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">{t("已经有团队？让管理员邀请你加入现有组织。", "Already have a team? Ask an administrator to invite you.")}</p>
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm text-neon-cyan">{t("查看加入方式", "How to join")} <ArrowRight size={16} /></span>
+                </button>
+              </div>
+              {showJoin && (
+                <div className={`${panel} mt-4 space-y-4`}>
+                  <h3 className="font-semibold">{t("通过邀请加入组织", "Join by invitation")}</h3>
+                  <p className="text-sm leading-6 text-text-secondary">{t("将下方用户 ID 发给组织管理员。收到邀请后，刷新此页即可查看并接受邀请。", "Share your user ID with an organization administrator. Once invited, refresh this page to review and accept the invitation.")}</p>
+                  <code className="block select-all break-all rounded-xl bg-deep-black p-3 text-sm">{snapshot.human.human_id}</code>
+                  <button className={primary} disabled={busy || loading} onClick={() => void load(requestedId)}><RefreshCw size={16} />{t("刷新邀请", "Refresh invitations")}</button>
+                </div>
+              )}
+            </section>
+          )}
+
           {showCreate && (
             <form
               className={`${panel} space-y-4`}
@@ -354,6 +398,7 @@ export default function TeamSpacesPage() {
                   <span>{t("组织名称", "Organization name")}</span>
                   <input
                     className={input}
+                    ref={createNameRef}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
@@ -399,7 +444,7 @@ export default function TeamSpacesPage() {
             </form>
           )}
 
-          <section className="flex flex-wrap items-center justify-between gap-3 px-1 text-sm text-text-secondary">
+          {!(teamMode && personal) && <section className="flex flex-wrap items-center justify-between gap-3 px-1 text-sm text-text-secondary">
             <span>
               {snapshot.user.display_name} · {t("你的用户 ID", "Your user ID")}
               ：
@@ -413,7 +458,7 @@ export default function TeamSpacesPage() {
                 : space.roles.map(role).join(" · ") ||
                   status(space.membership.status)}
             </span>
-          </section>
+          </section>}
 
           {space.status !== "active" ? (
             <div className={panel}>
@@ -462,7 +507,7 @@ export default function TeamSpacesPage() {
               </button>
             </section>
           ) : active && personal ? (
-            <section className={`${panel} space-y-4`}>
+            teamMode ? null : <section className={`${panel} space-y-4`}>
               <h2 className="text-lg font-semibold">
                 {t("你的个人空间", "Your personal space")}
               </h2>
