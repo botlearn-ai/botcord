@@ -18,28 +18,45 @@ export interface TeamSnapshot {
 interface TeamState {
   snapshot: TeamSnapshot | null;
   loading: boolean;
+  refreshing: boolean;
   error: unknown;
-  load: (spaceId?: string | null) => Promise<void>;
+  load: (spaceId?: string | null, options?: { background?: boolean }) => Promise<void>;
+  refresh: (spaceId?: string | null) => Promise<void>;
   cancel: () => void;
 }
 
 export function createTeamSpaceStore(preferOrganization = false) {
   let generation = 0;
   let controller: AbortController | null = null;
-  return createStore<TeamState>((set) => ({
+  let lastStartedAt = 0;
+  let lastSpaceId: string | null = null;
+  return createStore<TeamState>((set, get) => ({
     snapshot: null,
     loading: true,
+    refreshing: false,
     error: null,
     cancel: () => {
       generation += 1;
       controller?.abort();
     },
-    load: async (spaceId) => {
+    refresh: async (spaceId) => {
+      if (get().loading || get().refreshing || Date.now() - lastStartedAt < 30_000) return;
+      await get().load(spaceId, { background: true });
+    },
+    load: async (spaceId, options) => {
+      const keepContent = Boolean(options?.background && get().snapshot && lastSpaceId === (spaceId ?? null));
+      lastStartedAt = Date.now();
+      lastSpaceId = spaceId ?? null;
       const current = ++generation;
       controller?.abort();
       controller = new AbortController();
       const { signal } = controller;
-      set({ loading: true, error: null, snapshot: null });
+      set({
+        loading: !keepContent,
+        refreshing: keepContent,
+        error: null,
+        ...(keepContent ? {} : { snapshot: null }),
+      });
       try {
         const [{ spaces }, user, human] = await Promise.all([
           teamSpacesApi.list(signal),
@@ -64,10 +81,11 @@ export function createTeamSpaceStore(preferOrganization = false) {
         set({
           snapshot: { spaces, selected, members, user, human },
           loading: false,
+          refreshing: false,
         });
       } catch (error) {
         if (current === generation)
-          set({ error, loading: false, snapshot: null });
+          set({ error, loading: false, refreshing: false, snapshot: null });
       }
     },
   }));

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/api", () => ({
   ApiError: class extends Error {
     constructor(
@@ -30,6 +30,50 @@ const org = { ...personal, id: "a", kind: "organization" } as TeamSpace;
 const empty: SpaceMembers = { users: [], agents: [] };
 
 describe("Team space loading", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps fresh data and coalesces repeated background refresh requests", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(100_000);
+    const store = createTeamSpaceStore(true);
+    await store.getState().load();
+    const snapshot = store.getState().snapshot;
+    await store.getState().refresh();
+    expect(teamSpacesApi.list).toHaveBeenCalledTimes(1);
+    now.mockReturnValue(131_000);
+    let finish!: (value: SpaceMembers) => void;
+    vi.mocked(teamSpacesApi.members).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const request = store.getState().refresh();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await store.getState().refresh();
+    expect(teamSpacesApi.list).toHaveBeenCalledTimes(2);
+    expect(store.getState().snapshot).toBe(snapshot);
+    expect(store.getState().loading).toBe(false);
+    expect(store.getState().refreshing).toBe(true);
+    finish(empty);
+    await request;
+    expect(store.getState().refreshing).toBe(false);
+  });
+
+  it("clears retained content if background refresh discovers revoked membership", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(100_000);
+    const store = createTeamSpaceStore(true);
+    await store.getState().load("a");
+    now.mockReturnValue(131_000);
+    vi.mocked(teamSpacesApi.list).mockResolvedValue({ spaces: [personal] });
+    await store.getState().refresh("a");
+    expect(store.getState().snapshot).toBeNull();
+    expect(store.getState().error).toMatchObject({ status: 404 });
+    expect(store.getState().refreshing).toBe(false);
+  });
+
+  it("does not throttle an explicit retry or a space change", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(100_000);
+    const store = createTeamSpaceStore(true);
+    await store.getState().load("a");
+    await store.getState().load("p");
+    expect(teamSpacesApi.list).toHaveBeenCalledTimes(2);
+    expect(store.getState().snapshot?.selected.id).toBe("p");
+  });
   beforeEach(() => {
     vi.mocked(teamSpacesApi.list)
       .mockReset()

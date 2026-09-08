@@ -759,7 +759,7 @@ export default function DashboardApp() {
   }, [sessionStore.authResolved]);
 
   useEffect(() => {
-    if (!sessionStore.authResolved || !sessionStore.token || uiStore.sidebarTab !== "messages") {
+    if (teamMode || !sessionStore.authResolved || !sessionStore.token || uiStore.sidebarTab !== "messages") {
       return;
     }
 
@@ -817,6 +817,7 @@ export default function DashboardApp() {
     sessionStore.authResolved,
     sessionStore.token,
     uiStore.sidebarTab,
+    teamMode,
   ]);
 
   useEffect(() => {

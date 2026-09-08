@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TeamSnapshot } from "@/store/team-space-store";
 const fixture = vi.hoisted(() => ({
   snapshot: null as TeamSnapshot | null,
+  loading: false,
+  refreshing: false,
   spaceId: "a" as string | null,
 }));
 vi.mock("next/navigation", () => ({
@@ -17,7 +19,9 @@ vi.mock("@/store/team-space-store", async () => {
     createTeamSpaceStore: () =>
       createStore(() => ({
         snapshot: fixture.snapshot,
-        loading: false,
+        loading: fixture.loading,
+        refreshing: fixture.refreshing,
+        refresh: vi.fn(),
         error: null,
         load: vi.fn(),
         cancel: vi.fn(),
@@ -28,6 +32,8 @@ import TeamSpacesPage from "./TeamSpacesPage";
 
 describe("Team governance rendering", () => {
   beforeEach(() => {
+    fixture.loading = false;
+    fixture.refreshing = false;
     fixture.spaceId = "a";
     fixture.snapshot = {
       selected: {
@@ -46,6 +52,22 @@ describe("Team governance rendering", () => {
       members: { users: [], agents: [] },
     } as unknown as TeamSnapshot;
     fixture.snapshot.spaces = [fixture.snapshot.selected];
+  });
+  it("retains the organization while refreshing and disables mutations", () => {
+    fixture.refreshing = true;
+    const html = renderToStaticMarkup(<TeamSpacesPage teamMode />);
+    expect(html).toContain("Acme");
+    expect(html).not.toContain("正在加载团队空间");
+    expect(html.match(/<button[^>]*role="switch"[^>]*>/)?.[0]).toContain(' disabled=""');
+  });
+  it("uses the shared Team skeleton while space data is loading", () => {
+    fixture.loading = true;
+    fixture.snapshot = null;
+    const html = renderToStaticMarkup(<TeamSpacesPage teamMode />);
+    expect(html).toContain("正在加载团队空间");
+    expect(html).toContain('aria-busy="true"');
+    expect(html).not.toContain("开启你的团队空间");
+    expect(html).not.toContain("邀请用户");
   });
   it("offers creation and joining when Team mode has no organization", () => {
     fixture.spaceId = null;
