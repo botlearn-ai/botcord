@@ -27,7 +27,8 @@ jobs:
   # ── Build + push docker image ────────────────────────────────────────────────
   deploy:
     name: Build & Push
-    runs-on: self-hosted
+    # ECR credentials, preview Compose files and prod kubeconfig live on the US deploy host.
+    runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
     timeout-minutes: 20
     outputs:
       image_tag: ${{ steps.build.outputs.image_tag }}
@@ -61,23 +62,37 @@ jobs:
     name: Restart Preview
     needs: [deploy]
     if: inputs.env_name == 'preview'
-    runs-on: self-hosted
+    # ECR credentials, preview Compose files and prod kubeconfig live on the US deploy host.
+    runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
     timeout-minutes: 10
     env:
       PROJECT: botcord-backend
     steps:
-      - name: docker compose down/up
+      - name: Pull image and update preview
+        env:
+          DEPLOY_ROOT: ${{ secrets.DEPLOY_ROOT }}
         run: |
-          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT/docker-compose.yaml down
-          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT/docker-compose.yaml up -d
-          echo "✅ Preview restarted"
+          COMPOSE_FILE="$DEPLOY_ROOT/$PROJECT/docker-compose.yaml"
+          docker compose -f "$COMPOSE_FILE" pull
+          docker compose -f "$COMPOSE_FILE" up -d --no-build
+          for attempt in $(seq 1 30); do
+            if docker compose -f "$COMPOSE_FILE" exec -T botcord-backend python -c \
+              'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=3)' 2>/dev/null; then
+              echo "✅ Preview updated and healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ Preview did not become healthy" >&2
+          exit 1
 
   # ── Rollout prod (k8s) ───────────────────────────────────────────────────────
   restart-prod:
     name: Rollout Production
     needs: [deploy]
     if: inputs.env_name == 'prod'
-    runs-on: self-hosted
+    # ECR credentials, preview Compose files and prod kubeconfig live on the US deploy host.
+    runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
     timeout-minutes: 15
     env:
       PROJECT: botcord-backend
