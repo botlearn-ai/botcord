@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Supabase session for auth gating, current pathname for active-nav highlight
- * [OUTPUT]: SettingsLayout — sidebar + auth gate for /settings/* dashboard subroutes
+ * [OUTPUT]: SettingsLayout — responsive sidebar + auth gate, including Team space governance
  * [POS]: shared shell for dashboard settings pages (daemons, etc.)
  * [PROTOCOL]: update header on changes
  */
@@ -10,7 +10,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, MessageSquare } from "lucide-react";
+import { ArrowLeft, Building2, Loader2, MessageSquare } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
 
 function SettingsNavLink({
@@ -47,6 +48,7 @@ export default function SettingsLayout({
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [checking, setChecking] = useState(true);
+  const zh = useLanguage() === "zh";
 
   useEffect(() => {
     let cancelled = false;
@@ -74,17 +76,20 @@ export default function SettingsLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-deep-black text-text-primary">
-      <aside className="flex w-56 shrink-0 flex-col border-r border-glass-border">
+    <div className="flex min-h-screen flex-col bg-deep-black text-text-primary sm:flex-row">
+      <aside className="flex shrink-0 flex-col border-b border-glass-border sm:w-56 sm:border-r sm:border-b-0">
         <div className="px-5 py-5">
-          <span className="text-sm font-bold text-neon-cyan">Settings</span>
+          <span className="text-sm font-bold text-neon-cyan">{zh ? "设置" : "Settings"}</span>
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
+          <SettingsNavLink href="/settings/spaces" icon={<Building2 className="h-4 w-4" />}>
+            {zh ? "空间与组织" : "Spaces & organizations"}
+          </SettingsNavLink>
           <SettingsNavLink
             href="/settings/policy"
             icon={<MessageSquare className="h-4 w-4" />}
           >
-            对话与回复
+            {zh ? "对话与回复" : "Conversations & replies"}
           </SettingsNavLink>
         </nav>
         <div className="border-t border-glass-border px-3 py-3">
@@ -93,11 +98,11 @@ export default function SettingsLayout({
             className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to dashboard
+            {zh ? "返回个人对话" : "Back to personal conversations"}
           </Link>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto px-8 py-8">{children}</main>
+      <main className="min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">{children}</main>
     </div>
   );
 }

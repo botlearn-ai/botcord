@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 SQLAlchemy Base、枚举与关系定义，承载 Hub 与 dashboard 的持久化真相源
-[OUTPUT]: 对外提供 Agent、Invite、ShortCode 等领域模型，供路由与服务共享
+[OUTPUT]: 对外提供 Agent、Invite、ShortCode 及 Space/Organization 成员身份模型，供路由与服务共享
 [POS]: backend 数据模型中枢，负责把身份、社交、支付、绑定等状态收敛到统一 schema
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
@@ -18,6 +18,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -64,6 +65,125 @@ from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
 
 class Base(DeclarativeBase):
     pass
+
+
+class Space(Base):
+    __tablename__ = "spaces"
+    __table_args__ = (
+        CheckConstraint("kind IN ('personal', 'organization')", name="ck_space_kind"),
+        CheckConstraint("status IN ('active', 'suspended', 'archived')", name="ck_space_status"),
+        CheckConstraint("policy_version > 0", name="ck_space_version"),
+    )
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    kind: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16), default="active", server_default="active")
+    policy_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    settings: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+
+
+class PersonalSpace(Base):
+    __tablename__ = "personal_spaces"
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"), primary_key=True)
+    user_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("public.users.id"), unique=True)
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"), unique=True)
+    slug: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
+
+
+class OrganizationPolicy(Base):
+    __tablename__ = "organization_policies"
+    organization_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("organizations.id"), primary_key=True)
+    admin_dm_content_access_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_text("FALSE"))
+    external_communication_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_text("FALSE"))
+
+
+class SpaceUserMembership(Base):
+    __tablename__ = "space_user_memberships"
+    __table_args__ = (
+        UniqueConstraint("space_id", "user_id"),
+        UniqueConstraint("space_id", "id"),
+        CheckConstraint("status IN ('invited', 'active', 'suspended', 'removed')", name="ck_space_user_status"),
+        CheckConstraint("version > 0", name="ck_space_user_version"),
+    )
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"))
+    user_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("public.users.id"))
+    status: Mapped[str] = mapped_column(String(16), default="active", server_default="active")
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+
+
+class AgentOwnership(Base):
+    __tablename__ = "agent_ownerships"
+    __table_args__ = (CheckConstraint(
+        "(owner_user_id IS NOT NULL AND owner_organization_id IS NULL) OR "
+        "(owner_user_id IS NULL AND owner_organization_id IS NOT NULL)", name="ck_agent_exactly_one_owner"
+    ),)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.agent_id"), primary_key=True)
+    owner_user_id: Mapped[_uuid.UUID | None] = mapped_column(ForeignKey("public.users.id"))
+    owner_organization_id: Mapped[_uuid.UUID | None] = mapped_column(ForeignKey("organizations.id"))
+
+
+class SpaceAgentMembership(Base):
+    __tablename__ = "space_agent_memberships"
+    __table_args__ = (
+        UniqueConstraint("space_id", "agent_id"),
+        UniqueConstraint("space_id", "id"),
+        ForeignKeyConstraint(["space_id", "sponsor_user_membership_id"],
+                             ["space_user_memberships.space_id", "space_user_memberships.id"]),
+        CheckConstraint("status IN ('invited', 'active', 'suspended', 'removed')", name="ck_space_agent_status"),
+        CheckConstraint("version > 0 AND sponsor_version > 0", name="ck_space_agent_version"),
+    )
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"))
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.agent_id"))
+    sponsor_user_membership_id: Mapped[_uuid.UUID] = mapped_column(Uuid)
+    sponsor_version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="invited", server_default="invited")
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+
+
+class SpaceAgentProfile(Base):
+    __tablename__ = "space_agent_profiles"
+    membership_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("space_agent_memberships.id"), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(128))
+    bio: Mapped[str | None] = mapped_column(Text)
+    function_label: Mapped[str | None] = mapped_column(String(128))
+
+
+class SpaceRoleBinding(Base):
+    __tablename__ = "space_role_bindings"
+    __table_args__ = (
+        ForeignKeyConstraint(["space_id", "user_membership_id"], ["space_user_memberships.space_id", "space_user_memberships.id"]),
+        ForeignKeyConstraint(["space_id", "agent_membership_id"], ["space_agent_memberships.space_id", "space_agent_memberships.id"]),
+        UniqueConstraint("user_membership_id", "role_key"),
+        UniqueConstraint("agent_membership_id", "role_key"),
+        CheckConstraint(
+            "(user_membership_id IS NOT NULL AND agent_membership_id IS NULL AND role_key IN ('owner', 'admin', 'member')) OR "
+            "(user_membership_id IS NULL AND agent_membership_id IS NOT NULL AND role_key = 'participant')",
+            name="ck_space_role_subject",
+        ),
+    )
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"))
+    user_membership_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid)
+    agent_membership_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid)
+    role_key: Mapped[str] = mapped_column(String(16))
+
+
+class SpaceAuditEvent(Base):
+    __tablename__ = "space_audit_events"
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"), index=True)
+    actor_user_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("public.users.id"))
+    action: Mapped[str] = mapped_column(String(64))
+    resource_id: Mapped[str] = mapped_column(String(64))
+    details: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Agent(Base):

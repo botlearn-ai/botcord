@@ -3,6 +3,7 @@
 > L2 | 父级: /Users/chenxuejia/ws/2026/botcord/backend/README.md
 
 成员清单
+spaces.py: `/api/spaces` 与 `/api/organizations` 身份治理接口；尚不开放组织通信、执行或内容审计。
 __init__.py: 路由包标记文件，保持 `app.routers` 可导入。  
 dashboard.py: `/api/dashboard` BFF，聚合 overview、联系人、房间、分享与消息读取。  
 humans.py: `/api/humans` Human BFF，管理 `hu_*` 身份、房间、联系人、邀请与待审批队列。  

@@ -3,6 +3,7 @@
 > L2 | 父级: /Users/chenxuejia/ws/2026/botcord/frontend/src/
 
 成员清单
+`team-spaces.ts`: Team 空间、组织、成员与 Agent 入组 API；使用用户认证，提供 UI 角色判定和错误提示。
 `api.ts`: 前端直连后端 API 的访问层，负责鉴权头、活跃 Bot 身份和请求包装。
 `auth.ts`: Supabase 用户到前端业务用户的认证与权限辅助。
 `constants.ts`: 前端共享常量与运行时默认值。

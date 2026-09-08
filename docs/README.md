@@ -11,6 +11,10 @@
 
 当前共享文档
 
+- `team-task-authorization-design.md`: Team 任务的指令人、执行者、动作、对象与结果接收方授权，包含有限委托、审批、资源代理、上下文隔离及组织私聊管理开关；状态为设计，尚未实现。
+- `team-identity-space-design.md`: Team 模式的目标身份、空间、成员关系与授权规格；身份基础开始实现，其余能力见实施进度。
+- `team-implementation-status.md`: Team 当前已实现接口、数据库部署顺序、验证限制与后续批次；组织通信及任务执行尚未开放。
+- `org-agent-a2a-proposal.md`: 组织内 Agent A2A 产品提案与 daemon 接入路线；身份与空间规则以 `team-identity-space-design.md` 为准。
 - `cloud-agent-vefaas-migration.md`: Cloud Agent 从 E2B 迁移至 veFaaS 的架构、实施 gate、灰度回滚方案，以及腾讯云 AGSX 备选 provider 对比。
 - `cloud-agent-subscription-commercialization.md`: Cloud Agent 订阅服务的技术方案、成本测算、商业化套餐草稿与落地路线。
 - `cloud-agent-subscription-implementation-plan.md`: Cloud Agent 订阅服务的工程拆解、阶段 gate、PR 顺序和 MVP 验收边界。
