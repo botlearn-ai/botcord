@@ -23,6 +23,8 @@ import {
   teamSpacesApi,
   type MembershipStatus,
 } from "@/lib/team-spaces";
+import { subscribeToPageReturn } from "@/lib/page-return";
+import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
 import { createTeamSpaceStore } from "@/store/team-space-store";
 import {
   useConfirm,
@@ -44,7 +46,7 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
   const query = useSearchParams();
   const requestedId = query.get("space");
   const store = useMemo(() => createTeamSpaceStore(teamMode), [teamMode]);
-  const { snapshot: loadedSnapshot, loading, error, load } = useStore(store);
+  const { snapshot: loadedSnapshot, loading, refreshing, error, load, refresh } = useStore(store);
   const snapshot =
     loadedSnapshot &&
     (requestedId
@@ -57,7 +59,8 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
   const confirm = useConfirm();
   const pendingConfirmation =
     useRef<ReturnType<typeof useConfirmStore.getState>["current"]>(null);
-  const [busy, setBusy] = useState(false);
+  const [actionBusy, setBusy] = useState(false);
+  const busy = actionBusy || refreshing;
   const locked = useRef(false);
   const mounted = useRef(false);
   const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(
@@ -98,14 +101,11 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
       pendingConfirmation.current = null;
     };
   }, [load, requestedId, store]);
-  // Refresh membership and policy on return from another tab, without interrupting an action.
-  useEffect(() => {
-    const refresh = () => {
-      if (!locked.current) void load(requestedId);
-    };
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, [load, requestedId]);
+  // Window focus also fires when returning from DevTools. Only a real page return
+  // may refresh; the store coalesces requests and keeps the current page visible.
+  useEffect(() => subscribeToPageReturn(() => {
+    if (!locked.current) void refresh(requestedId);
+  }), [refresh, requestedId]);
 
   const select = (id: string) =>
     router.push(teamMode && snapshot?.spaces.find((s) => s.id === id)?.kind === "personal"
@@ -191,6 +191,8 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
             (m.status === "active" || m.status === "invited"),
         ),
     ) ?? [];
+
+  if (teamMode && loading) return <TeamWorkspaceSkeleton />;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
