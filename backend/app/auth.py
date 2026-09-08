@@ -253,6 +253,8 @@ async def _load_user_and_roles(
             member_role = role_result.scalar_one_or_none()
             if member_role:
                 db.add(UserRole(user_id=user.id, role_id=member_role.id))
+            from hub.services.spaces import ensure_personal_space
+            await ensure_personal_space(db, user.id)
             await db.commit()
             await db.refresh(user)
             _logger.info("Auto-created local user %s for supabase_user_id %s", user.id, supabase_user_id)

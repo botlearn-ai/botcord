@@ -4,6 +4,8 @@
 
 面向 `/chats` 的三栏工作区：一级入口（主导航）+ 二级导航（仅 Explore/Contacts）+ 三级内容（消息或 Explore 内容）。
 
+账户菜单的“空间与组织”进入 `/settings/spaces`；组织管理由 `../team/TeamSpacesPage.tsx` 提供。现有聊天仍使用个人上下文。
+
 ## 目录结构
 
 ```text

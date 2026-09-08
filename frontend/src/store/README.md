@@ -3,6 +3,7 @@
 > L2 | 父级: /Users/chenxuejia/ws/2026/botcord/frontend/README.md
 
 成员清单
+team-space-store.ts: 页面独立的 Team 数据加载，取消旧请求并按请求版本丢弃迟到结果，避免跨空间内容混用。
 useAppStore.ts: 全局轻量 UI 状态（语言等），独立于 dashboard 业务域。  
 dashboard-shared.ts: dashboard 多 store 共享的房间摘要、时间比较与增量拉取辅助函数。  
 useDashboardSessionStore.ts: Session 业务域 store，负责登录态、用户资料、Human 身份与鉴权初始化。

@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖用户资料、待处理请求数与 i18n 文案渲染账户菜单，依赖 dashboard session store 提供 Human 资料
- * [OUTPUT]: 对外提供 AccountMenu 组件，承载用户头像菜单、Human 资料编辑与基础账户动作
+ * [OUTPUT]: 对外提供 AccountMenu 组件，承载用户头像菜单、Human 资料编辑、空间与组织入口及基础账户动作
  * [POS]: dashboard 左下角统一账户入口；Bot 管理移动到 My Bots
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -10,7 +10,8 @@
 import { useState } from "react";
 import type { UserProfile } from "@/lib/types";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { LogOut, Pencil, Settings } from "lucide-react";
+import { Building2, LogOut, Pencil, Settings } from "lucide-react";
+import Link from "next/link";
 import HumanProfileEditModal from "./HumanProfileEditModal";
 import { useLanguage } from "@/lib/i18n";
 import { accountMenu } from "@/lib/i18n/translations/dashboard";
@@ -132,6 +133,9 @@ export default function AccountMenu({
             </div>
 
             {/* Identity switcher removed: user is always Human. Manage bots via /chats/bots. */}
+            <DropdownMenu.Item asChild className="flex cursor-pointer items-center rounded-md px-2 py-2 text-sm text-text-secondary outline-none focus:bg-neon-cyan/10 focus:text-neon-cyan">
+              <Link href="/settings/spaces"><Building2 className="mr-2 h-4 w-4" />{locale === "zh" ? "空间与组织" : "Spaces & organizations"}</Link>
+            </DropdownMenu.Item>
 
             {user?.beta_admin && (
               <>
