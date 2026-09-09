@@ -49,6 +49,8 @@ BotCord 本批组织房间允许全部有效成员访问，不提供飞书公开
 
 ## 部署与当前边界
 
+Hub 启动时已有 `Base.metadata.create_all`，会自动创建本批缺失的新表，因此现有预览部署可通过启动初始化完成建表；这不是现有列变更的通用迁移机制。需要显式管理数据库版本的环境使用以下流程：
+
 1. 在配置的 Hub 数据 schema 下先应用 `backend/migrations/002_team_identity_spaces.sql`（若尚未应用），再应用 `003_team_conversations.sql`。
 2. 部署 Hub，再部署 frontend。新表不迁移个人消息，不将旧多 Agent 编排归为组织任务。
 3. 在独立 PostgreSQL 测试数据库验证实际迁移及并发撤权/发送，再上线。此次本地 SQLite 测试不能替代 PostgreSQL 多连接锁验证。
