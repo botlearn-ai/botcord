@@ -45,7 +45,7 @@ import UserChatPane from "./UserChatPane";
 import WalletPanel from "./WalletPanel";
 import ActivityPanel from "./ActivityPanel";
 import WorkspaceModeSwitch from "./WorkspaceModeSwitch";
-import TeamSpacesPage from "@/components/team/TeamSpacesPage";
+import TeamWorkspacePage from "@/components/team/TeamWorkspacePage";
 import { animateIfMotion, cleanupAnime, prefersReducedMotion } from "@/lib/anime";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
@@ -132,10 +132,14 @@ export default function DashboardApp() {
   const searchParams = useSearchParams();
   const teamMode = pathname === "/chats/team";
   const personalHref = useRef("/chats/messages");
+  const teamHref = useRef("/chats/team");
   useEffect(() => {
     if (!teamMode) {
       const query = searchParams.toString();
       personalHref.current = pathname + (query ? `?${query}` : "");
+    } else {
+      const query = searchParams.toString();
+      teamHref.current = pathname + (query ? `?${query}` : "");
     }
   }, [pathname, searchParams, teamMode]);
   const supabase = useMemo(() => createClient(), []);
@@ -1155,11 +1159,11 @@ export default function DashboardApp() {
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
   return (
     <div className="dashboard-root fixed inset-0 flex flex-col overflow-hidden bg-deep-black">
-      <WorkspaceModeSwitch teamMode={teamMode} personalHref={personalHref.current} />
+      <WorkspaceModeSwitch teamMode={teamMode} personalHref={personalHref.current} teamHref={teamMode ? pathname + (searchParams.toString() ? `?${searchParams}` : "") : teamHref.current} />
       {teamMode ? (
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
-          <TeamSpacesPage teamMode />
-        </main>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <TeamWorkspacePage />
+        </div>
       ) : <div className="flex min-h-0 flex-1 overflow-hidden max-md:flex-col-reverse">
         <Sidebar
           sidebarTabOverride={visibleSidebarTab}

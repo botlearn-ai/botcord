@@ -119,4 +119,21 @@ describe("Team governance rendering", () => {
     expect(html).not.toContain("Acme");
     expect(html).not.toContain("邀请用户");
   });
+  it("embeds only the requested management section in the workspace", () => {
+    const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="members" />);
+    expect(html).toContain("邀请用户");
+    expect(html).not.toContain("组织 Agent");
+    expect(html).not.toContain("管理员访问组织私聊");
+    expect(html).not.toContain("当前空间");
+    expect(html).not.toContain("创建组织");
+  });
+  it("offers direct admission only when the Hub supports it", () => {
+    fixture.snapshot!.selected.agent_direct_admission_available = true;
+    const current = renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />);
+    expect(current).toContain("添加 Agent");
+    fixture.snapshot!.selected.agent_direct_admission_available = false;
+    const legacy = renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />);
+    expect(legacy).toContain("申请加入");
+    expect(legacy).not.toContain(">添加 Agent<");
+  });
 });

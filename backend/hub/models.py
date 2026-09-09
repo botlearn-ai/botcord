@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 SQLAlchemy Base、枚举与关系定义，承载 Hub 与 dashboard 的持久化真相源
-[OUTPUT]: 对外提供 Agent、Invite、ShortCode 及 Space/Organization 成员身份模型，供路由与服务共享
+[OUTPUT]: 对外提供 Agent、Invite、ShortCode、Space/Organization 身份及隔离的团队会话模型
 [POS]: backend 数据模型中枢，负责把身份、社交、支付、绑定等状态收敛到统一 schema
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
@@ -184,6 +184,74 @@ class SpaceAuditEvent(Base):
     resource_id: Mapped[str] = mapped_column(String(64))
     details: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeamConversation(Base):
+    """Organization-only conversations; never exposed through legacy Room APIs."""
+    __tablename__ = "team_conversations"
+    __table_args__ = (
+        UniqueConstraint("space_id", "id"),
+        UniqueConstraint("space_id", "dm_key"),
+        CheckConstraint("kind IN ('room', 'dm')", name="ck_team_conversation_kind"),
+        CheckConstraint("visibility IN ('organization', 'private')", name="ck_team_conversation_visibility"),
+        CheckConstraint("kind != 'dm' OR (visibility = 'private' AND dm_key IS NOT NULL)", name="ck_team_dm_private"),
+        CheckConstraint("last_sequence >= 0", name="ck_team_conversation_sequence"),
+        ForeignKeyConstraint(["space_id", "creator_membership_id"],
+                             ["space_user_memberships.space_id", "space_user_memberships.id"]),
+        Index("ix_team_conversations_space_updated", "space_id", "updated_at"),
+    )
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"))
+    creator_membership_id: Mapped[_uuid.UUID] = mapped_column(Uuid)
+    kind: Mapped[str] = mapped_column(String(8))
+    visibility: Mapped[str] = mapped_column(String(16))
+    name: Mapped[str] = mapped_column(String(128))
+    dm_key: Mapped[str | None] = mapped_column(String(128))
+    last_sequence: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeamConversationMember(Base):
+    __tablename__ = "team_conversation_members"
+    __table_args__ = (
+        ForeignKeyConstraint(["space_id", "conversation_id"], ["team_conversations.space_id", "team_conversations.id"]),
+        ForeignKeyConstraint(["space_id", "membership_id"], ["space_user_memberships.space_id", "space_user_memberships.id"]),
+        CheckConstraint("membership_version > 0", name="ck_team_participant_version"),
+    )
+    conversation_id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    membership_id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    space_id: Mapped[_uuid.UUID] = mapped_column(Uuid)
+    membership_version: Mapped[int] = mapped_column(Integer)
+
+
+class TeamMessage(Base):
+    __tablename__ = "team_messages"
+    __table_args__ = (
+        ForeignKeyConstraint(["space_id", "conversation_id"], ["team_conversations.space_id", "team_conversations.id"]),
+        ForeignKeyConstraint(["space_id", "author_membership_id"], ["space_user_memberships.space_id", "space_user_memberships.id"]),
+        UniqueConstraint("conversation_id", "author_membership_id", "client_id"),
+        CheckConstraint("sequence > 0", name="ck_team_message_sequence"),
+    )
+    conversation_id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    sequence: Mapped[int] = mapped_column(Integer, primary_key=True)
+    space_id: Mapped[_uuid.UUID] = mapped_column(Uuid)
+    author_membership_id: Mapped[_uuid.UUID] = mapped_column(Uuid)
+    client_id: Mapped[_uuid.UUID] = mapped_column(Uuid)
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TeamConversationRead(Base):
+    __tablename__ = "team_conversation_reads"
+    __table_args__ = (
+        ForeignKeyConstraint(["space_id", "conversation_id"], ["team_conversations.space_id", "team_conversations.id"]),
+        ForeignKeyConstraint(["space_id", "membership_id"], ["space_user_memberships.space_id", "space_user_memberships.id"]),
+        CheckConstraint("last_sequence >= 0", name="ck_team_read_sequence"),
+    )
+    conversation_id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    membership_id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    space_id: Mapped[_uuid.UUID] = mapped_column(Uuid)
+    last_sequence: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class Agent(Base):

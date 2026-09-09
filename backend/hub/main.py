@@ -83,6 +83,7 @@ from app.routers.auth import router as app_auth_router
 from app.routers.telegram import router as app_telegram_router
 from app.routers.team_orchestration import router as app_team_orchestration_router
 from app.routers.spaces import router as app_spaces_router
+from app.routers.team_conversations import router as app_team_conversations_router
 from app.routers.agent_management import router as app_agent_management_router
 from app.auth import require_beta_user
 
@@ -357,6 +358,7 @@ app.include_router(app_runtime_skills_router, dependencies=_beta_gate)
 app.include_router(app_schedules_router, dependencies=_beta_gate)
 app.include_router(app_team_orchestration_router, dependencies=_beta_gate)
 app.include_router(app_spaces_router, dependencies=_beta_gate)
+app.include_router(app_team_conversations_router, dependencies=_beta_gate)
 app.include_router(app_agent_management_router, dependencies=_beta_gate)
 app.include_router(app_prompts_router)
 app.include_router(app_presence_router, dependencies=_beta_gate)

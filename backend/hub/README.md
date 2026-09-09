@@ -11,7 +11,7 @@ enums.py: Hub 领域枚举总表。
 id_generators.py: Agent、Room、Share 等实体 ID 生成器。  
 i18n.py: Hub 错误文案与多语言映射。  
 main.py: FastAPI 应用装配与路由挂载。  
-models.py: Hub 领域 SQLAlchemy 模型，包含 Agent、Invite、通用短码及 Team 空间、所有权与成员关系。
+models.py: Hub 领域 SQLAlchemy 模型，包含 Agent、Invite、通用短码、Team 身份及独立的组织会话、参与者、消息与已读状态。
 routers/: Hub 原生路由集合，服务 registry/hub/room/dashboard。  
 schemas.py: Registry/room/hub API 的基础响应模型。  
 share_payloads.py: 分享与邀请的 URL/entry_type 拼装中枢，避免 app/hub 双份逻辑漂移。  
