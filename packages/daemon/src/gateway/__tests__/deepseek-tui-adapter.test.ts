@@ -1,9 +1,13 @@
 import { afterAll, describe, expect, it } from "vitest";
 import http, { type ServerResponse } from "node:http";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { DeepseekTuiAdapter } from "../runtimes/deepseek-tui.js";
+import {
+  __withReportProgressSystemPromptForTests,
+  __writeReportProgressMcpConfigForTests,
+  DeepseekTuiAdapter,
+} from "../runtimes/deepseek-tui.js";
 
 const tmpRoot = mkdtempSync(path.join(os.tmpdir(), "gateway-deepseek-tui-"));
 
@@ -147,6 +151,34 @@ function runAdapter(
 }
 
 describe("DeepseekTuiAdapter", () => {
+  it("adds stable progress reporting rules without replacing existing system context", () => {
+    const prompt = __withReportProgressSystemPromptForTests("course runtime rules", true);
+    expect(prompt).toContain("[BotCord User-Visible Progress]");
+    expect(prompt).toContain("mcp_botlearn_report_progress");
+    expect(prompt).toContain("Never include hidden reasoning");
+    expect(prompt).toContain("course runtime rules");
+    expect(__withReportProgressSystemPromptForTests("course runtime rules", false))
+      .toBe("course runtime rules");
+  });
+
+  it("writes an isolated, owner-only MCP config for the BotLearn progress server", () => {
+    const configPath = path.join(tmpRoot, "agent-progress", "mcp.json");
+    expect(__writeReportProgressMcpConfigForTests(configPath, "/opt/botcord/report-progress.js"))
+      .toBe(configPath);
+    expect(JSON.parse(readFileSync(configPath, "utf8"))).toEqual({
+      servers: {
+        botlearn: {
+          command: process.execPath,
+          args: ["/opt/botcord/report-progress.js"],
+          env: {},
+          disabled: false,
+          required: true,
+        },
+      },
+    });
+    expect(statSync(configPath).mode & 0o777).toBe(0o600);
+  });
+
   it("creates a thread, starts a turn, parses SSE assistant text, and emits tool blocks", async () => {
     const server = await startMockDeepseekServer();
     try {
@@ -337,6 +369,86 @@ describe("DeepseekTuiAdapter", () => {
       await expect(result).resolves.toMatchObject({ text: "done" });
       expect(blocks).toEqual(expect.arrayContaining(["tool_use", "tool_result", "assistant_text"]));
       expect(status).toContainEqual({ phase: "updated", label: "web_search" });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("turns report_progress into a dedicated block and suppresses its tool result", async () => {
+    const server = await startMockDeepseekServer({
+      events: [
+        {
+          event: "turn.started",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.started" },
+        },
+        {
+          event: "item.started",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.started",
+            payload: {
+              item: { id: "item_progress", kind: "tool_call", status: "in_progress" },
+              tool: {
+                id: "call_progress",
+                name: "mcp_botlearn_report_progress",
+                input: {
+                  summary: "已读取项目结构，正在核对测试入口。",
+                  status: "in_progress",
+                  secret: "must-not-leak",
+                },
+              },
+            },
+          },
+        },
+        {
+          event: "item.completed",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.completed",
+            payload: {
+              item: {
+                id: "item_progress",
+                kind: "tool_call",
+                status: "completed",
+                detail: "progress_reported",
+              },
+            },
+          },
+        },
+        {
+          event: "item.delta",
+          data: {
+            thread_id: "thr_test",
+            turn_id: "turn_test",
+            event: "item.delta",
+            payload: { kind: "agent_message", delta: "done" },
+          },
+        },
+        {
+          event: "turn.completed",
+          data: { thread_id: "thr_test", turn_id: "turn_test", event: "turn.completed" },
+        },
+      ],
+    });
+    try {
+      const { result, blocks, blockEvents, status } = runAdapter(server.baseUrl, server.token);
+      await expect(result).resolves.toMatchObject({ text: "done" });
+      expect(blocks).toContain("progress");
+      expect(blocks).not.toContain("tool_use");
+      expect(blocks).not.toContain("tool_result");
+      const progress = blockEvents.find((block) => block.kind === "progress");
+      expect(progress?.raw).toEqual({
+        summary: "已读取项目结构，正在核对测试入口。",
+        status: "in_progress",
+        source: "report_progress",
+      });
+      expect(JSON.stringify(progress)).not.toContain("must-not-leak");
+      expect(status).not.toContainEqual({
+        phase: "updated",
+        label: "mcp_botlearn_report_progress",
+      });
     } finally {
       await server.close();
     }

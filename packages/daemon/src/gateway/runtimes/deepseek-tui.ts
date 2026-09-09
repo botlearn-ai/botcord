@@ -1,10 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import net from "node:net";
 import { buildCliEnv } from "../cli-resolver.js";
 import { consoleLogger } from "../log.js";
+import {
+  REPORT_PROGRESS_MAX_SUMMARY_LENGTH,
+  reportProgressMcpServerPath,
+} from "../../mcp/report-progress-server.js";
 import { prependSystemRules } from "../../system-rules.js";
 import {
   readCommandVersion,
@@ -34,6 +38,25 @@ const REASONING_PROGRESS_INTERVAL_MS = 4_000;
 const STARTUP_TIMEOUT_MS = 30_000;
 const STARTUP_POLL_MS = 250;
 const SSE_TEXT_CAP = 1 * 1024 * 1024;
+const REPORT_PROGRESS_RUNTIME_TOOL_NAMES = new Set([
+  "report_progress",
+  "mcp_botlearn_report_progress",
+  "mcp__botlearn__report_progress",
+]);
+const REPORT_PROGRESS_SYSTEM_INSTRUCTIONS = [
+  "[BotCord User-Visible Progress]",
+  "For non-trivial work, call mcp_botlearn_report_progress after understanding the task and at meaningful phase boundaries.",
+  "Use status=in_progress while work continues and status=completed only when a meaningful phase has finished.",
+  "Keep summary to one short factual sentence about completed work or the next visible action.",
+  "Never include hidden reasoning, secrets, credentials, raw tool output, or unsupported claims.",
+  "This tool reports UI progress only. It does not complete a course task, replace the final answer, or prove acceptance criteria.",
+  "Do not call it for trivial requests or for every low-level tool invocation.",
+].join("\n");
+
+interface DeepseekProgressReport {
+  summary: string;
+  status: "in_progress" | "completed";
+}
 
 interface DeepseekProcessHandle {
   child: ChildProcess;
@@ -164,12 +187,16 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
 
       if (!threadId) {
         threadId = await this.createThread(handle.baseUrl, headers, opts, turnAbort.signal);
-      } else if (opts.systemContext !== undefined || opts.systemRules?.length) {
+      } else if (
+        opts.systemContext !== undefined ||
+        opts.systemRules?.length ||
+        this.progressReportingEnabled(opts)
+      ) {
         await this.patchThreadSystemContext(
           handle.baseUrl,
           headers,
           threadId,
-          prependSystemRules(opts.systemContext, opts.systemRules),
+          this.systemPrompt(opts),
           turnAbort.signal,
         );
       }
@@ -296,11 +323,24 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
       NO_COLOR: "1",
     };
     if (opts.accountId) {
-      const runtimeDir = path.join(agentDeepseekHomeDir(opts.accountId), "runtime");
+      const agentHome = agentDeepseekHomeDir(opts.accountId);
+      const runtimeDir = path.join(agentHome, "runtime");
       mkdirSync(runtimeDir, { recursive: true });
       env.DEEPSEEK_RUNTIME_DIR = runtimeDir;
+      env.DEEPSEEK_MCP_CONFIG = writeReportProgressMcpConfig(
+        path.join(agentHome, "mcp.json"),
+      );
     }
     return env;
+  }
+
+  private systemPrompt(opts: RuntimeRunOptions): string | undefined {
+    const base = prependSystemRules(opts.systemContext, opts.systemRules);
+    return withReportProgressSystemPrompt(base, this.progressReportingEnabled(opts));
+  }
+
+  private progressReportingEnabled(opts: RuntimeRunOptions): boolean {
+    return !this.explicitServerUrl && !!opts.accountId;
   }
 
   private async createThread(
@@ -320,7 +360,7 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
     const selection = parseDeepseekRuntimeSelection(opts.extraArgs);
     if (selection.model) body.model = selection.model;
     if (selection.reasoningEffort) body.reasoning_effort = selection.reasoningEffort;
-    const systemPrompt = prependSystemRules(opts.systemContext, opts.systemRules);
+    const systemPrompt = this.systemPrompt(opts);
     if (systemPrompt) body.system_prompt = systemPrompt;
     const res = await this.requestJson<any>(`${baseUrl}/v1/threads`, {
       method: "POST",
@@ -417,6 +457,7 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
       let errorText = "";
       let capped = false;
       let lastReasoningProgressAt = 0;
+      const progressToolIds = new Set<string>();
       let idleTimer: NodeJS.Timeout | undefined;
       let rejectIdle: ((err: Error) => void) | undefined;
       const idleFailure = new Promise<never>((_resolve, reject) => {
@@ -454,7 +495,7 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
         const eventTurnId = stringField(payload, "turn_id") ?? stringField(payload?.payload, "turn_id");
         if (turnId && eventTurnId && eventTurnId !== turnId) return false;
         seq += 1;
-        let block = normalizeDeepseekEvent(eventName, payload, seq);
+        let block = normalizeDeepseekEvent(eventName, payload, seq, progressToolIds);
         if (block?.kind === "thinking" && eventName === "item.delta") {
           const now = Date.now();
           if (now - lastReasoningProgressAt < REASONING_PROGRESS_INTERVAL_MS) {
@@ -473,7 +514,10 @@ export class DeepseekTuiAdapter implements RuntimeAdapter {
         }
         if (eventName === "turn.started" || embeddedDeepseekEvent(payload) === "turn.started") {
           opts.onStatus?.({ kind: "thinking", phase: "started", label: "Thinking" });
-        } else if (eventName === "tool.started" || isToolStarted(eventName, payload)) {
+        } else if (
+          (eventName === "tool.started" || isToolStarted(eventName, payload)) &&
+          !isReportProgressToolName(deepseekToolName(payload))
+        ) {
           const label =
             stringField(payload, "name") ??
             stringField(payload?.tool, "name") ??
@@ -544,14 +588,38 @@ export function __resetDeepseekTuiPoolForTests(): void {
   }
 }
 
-function normalizeDeepseekEvent(eventName: string, payload: any, seq: number): StreamBlock | null {
+function normalizeDeepseekEvent(
+  eventName: string,
+  payload: any,
+  seq: number,
+  progressToolIds: Set<string>,
+): StreamBlock | null {
   if (eventName === "message.delta") {
     return { raw: { event: eventName, payload }, kind: "assistant_text", seq };
   }
   if (eventName === "tool.started" || isToolStarted(eventName, payload)) {
+    const toolName = deepseekToolName(payload);
+    if (isReportProgressToolName(toolName)) {
+      for (const id of deepseekToolIds(payload)) progressToolIds.add(id);
+      const report = deepseekProgressReport(payload);
+      if (!report) return null;
+      return {
+        raw: { ...report, source: "report_progress" },
+        kind: "progress",
+        seq,
+      };
+    }
     return { raw: { event: eventName, payload }, kind: "tool_use", seq };
   }
   if (eventName === "tool.completed" || isToolCompleted(eventName, payload)) {
+    const ids = deepseekToolIds(payload);
+    const isProgressCompletion =
+      isReportProgressToolName(deepseekToolName(payload)) ||
+      ids.some((id) => progressToolIds.has(id));
+    if (isProgressCompletion) {
+      for (const id of ids) progressToolIds.delete(id);
+      return null;
+    }
     return { raw: { event: eventName, payload }, kind: "tool_result", seq };
   }
   if (eventName === "item.delta" && isAgentMessageDelta(payload)) {
@@ -650,6 +718,95 @@ function inferDeepseekToolName(item: any): string | undefined {
     if (match?.[1] && match[1] !== "tool_call") return match[1];
   }
   return undefined;
+}
+
+function deepseekPayloadLayers(payload: any): any[] {
+  const layers = [payload, payload?.payload, payload?.payload?.payload];
+  return layers.filter((value, index) => (
+    value && typeof value === "object" && layers.indexOf(value) === index
+  ));
+}
+
+function deepseekToolName(payload: any): string | undefined {
+  for (const layer of deepseekPayloadLayers(payload)) {
+    const tool = layer.tool && typeof layer.tool === "object" ? layer.tool : undefined;
+    const item = layer.item && typeof layer.item === "object" ? layer.item : undefined;
+    const name =
+      stringField(layer, "name") ??
+      stringField(tool, "name") ??
+      stringField(item, "name") ??
+      inferDeepseekToolName(item);
+    if (name) return name;
+  }
+  return undefined;
+}
+
+function isReportProgressToolName(name: string | undefined): boolean {
+  return !!name && REPORT_PROGRESS_RUNTIME_TOOL_NAMES.has(name.trim().toLowerCase());
+}
+
+function deepseekToolIds(payload: any): string[] {
+  const ids = new Set<string>();
+  for (const layer of deepseekPayloadLayers(payload)) {
+    const tool = layer.tool && typeof layer.tool === "object" ? layer.tool : undefined;
+    const item = layer.item && typeof layer.item === "object" ? layer.item : undefined;
+    for (const value of [
+      stringField(layer, "id"),
+      stringField(layer, "item_id"),
+      stringField(tool, "id"),
+      stringField(item, "id"),
+    ]) {
+      if (value) ids.add(value);
+    }
+  }
+  return [...ids];
+}
+
+function progressInput(payload: any): Record<string, unknown> | null {
+  for (const layer of deepseekPayloadLayers(payload)) {
+    const tool = layer.tool && typeof layer.tool === "object" ? layer.tool : undefined;
+    const item = layer.item && typeof layer.item === "object" ? layer.item : undefined;
+    const candidates = [
+      layer.input,
+      layer.arguments,
+      layer.params,
+      tool?.input,
+      tool?.arguments,
+      tool?.params,
+      item?.input,
+      item?.arguments,
+      item?.params,
+      item?.detail,
+    ];
+    for (const candidate of candidates) {
+      if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+        return candidate as Record<string, unknown>;
+      }
+      if (typeof candidate === "string") {
+        try {
+          const parsed = JSON.parse(candidate);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return parsed as Record<string, unknown>;
+          }
+        } catch {
+          // Ignore display-only detail strings that are not JSON tool arguments.
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function deepseekProgressReport(payload: any): DeepseekProgressReport | null {
+  const input = progressInput(payload);
+  if (!input) return null;
+  const summary = typeof input.summary === "string" ? input.summary.trim() : "";
+  const status = input.status;
+  if (!summary || (status !== "in_progress" && status !== "completed")) return null;
+  return {
+    summary: summary.slice(0, REPORT_PROGRESS_MAX_SUMMARY_LENGTH),
+    status,
+  };
 }
 
 function emptyCompletionError(stderrTail: string): string {
@@ -872,6 +1029,38 @@ function resolveDownloadedDeepseekBinary(onPath: string, deps: ProbeDeps = {}): 
 function agentDeepseekHomeDir(accountId: string): string {
   return path.join(homedir(), ".botcord", "agents", accountId, "deepseek-tui");
 }
+
+function writeReportProgressMcpConfig(configPath: string, serverPath = reportProgressMcpServerPath()): string {
+  mkdirSync(path.dirname(configPath), { recursive: true });
+  const config = {
+    servers: {
+      botlearn: {
+        command: process.execPath,
+        args: [serverPath],
+        env: {},
+        disabled: false,
+        required: true,
+      },
+    },
+  };
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  chmodSync(configPath, 0o600);
+  return configPath;
+}
+
+export { writeReportProgressMcpConfig as __writeReportProgressMcpConfigForTests };
+
+function withReportProgressSystemPrompt(base: string | undefined, enabled: boolean): string | undefined {
+  if (!enabled) return base;
+  return base
+    ? `${REPORT_PROGRESS_SYSTEM_INSTRUCTIONS}\n\n${base}`
+    : REPORT_PROGRESS_SYSTEM_INSTRUCTIONS;
+}
+
+export { withReportProgressSystemPrompt as __withReportProgressSystemPromptForTests };
 
 function nullChild(): ChildProcess {
   return {
