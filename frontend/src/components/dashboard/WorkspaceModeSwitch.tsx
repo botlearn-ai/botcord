@@ -7,9 +7,11 @@ import { useLanguage } from "@/lib/i18n";
 export default function WorkspaceModeSwitch({
   teamMode,
   personalHref,
+  teamHref = "/chats/team",
 }: {
   teamMode: boolean;
   personalHref: string;
+  teamHref?: string;
 }) {
   const zh = useLanguage() === "zh";
   return (
@@ -17,7 +19,7 @@ export default function WorkspaceModeSwitch({
       <nav aria-label={zh ? "工作模式" : "Workspace mode"} className="inline-flex items-center gap-1 rounded-xl border border-glass-border bg-deep-black p-1">
         {[
           { team: false, href: personalHref, label: zh ? "个人" : "Personal", Icon: UserRound },
-          { team: true, href: "/chats/team", label: "Team", Icon: Users },
+          { team: true, href: teamHref, label: "Team", Icon: Users },
         ].map(({ team, href, label, Icon }) => (
           <Link
             key={label}

@@ -1,4 +1,4 @@
-"""User-authenticated identity APIs; organization messaging remains unavailable."""
+"""User-authenticated identity APIs; Agent execution remains unavailable."""
 
 from uuid import UUID
 
@@ -77,6 +77,8 @@ async def list_spaces(ctx: RequestContext = Depends(require_user), db: AsyncSess
         "admin_dm_content_access_enabled": policy.admin_dm_content_access_enabled if policy else False,
         "external_communication_enabled": False,
         "organization_execution_available": False,
+        "organization_messaging_available": space.kind == "organization",
+        "agent_direct_admission_available": space.kind == "organization",
     } for space, member, org, policy in rows]}
 
 
@@ -141,6 +143,16 @@ async def remove_member(space_id: UUID, user_id: UUID, ctx: RequestContext = Dep
 async def request_admission(space_id: UUID, agent_id: str, ctx: RequestContext = Depends(require_user),
                             db: AsyncSession = Depends(transaction, scope="function")):
     return member_out(await service.request_agent_admission(db, space_id, ctx.user_id, agent_id))
+
+
+@router.post("/spaces/{space_id}/agents/{agent_id}/admission/add")
+async def add_owned_agent(space_id: UUID, agent_id: str, ctx: RequestContext = Depends(require_user),
+                          db: AsyncSession = Depends(transaction, scope="function")):
+    # One UI action, one transaction, retaining both ownership and manager checks.
+    await service.organization_space(db, space_id)
+    await service.require_manager(db, space_id, ctx.user_id)
+    await service.request_agent_admission(db, space_id, ctx.user_id, agent_id)
+    return member_out(await service.approve_agent(db, space_id, ctx.user_id, agent_id))
 
 
 @router.post("/spaces/{space_id}/agents/{agent_id}/admission/approve")

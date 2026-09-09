@@ -138,7 +138,7 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
         personalHref={variant === "team" ? "/chats/messages" : pathname || "/chats/messages"}
       />
       {variant === "team" ? (
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
+        <main className="min-h-0 flex-1 overflow-hidden">
           <TeamWorkspaceSkeleton />
         </main>
       ) : (

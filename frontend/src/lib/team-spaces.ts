@@ -21,6 +21,8 @@ export interface TeamSpace {
   admin_dm_content_access_enabled: boolean;
   external_communication_enabled: boolean;
   organization_execution_available: boolean;
+  organization_messaging_available?: boolean;
+  agent_direct_admission_available?: boolean;
 }
 export interface SpaceUser extends Membership {
   user_id: string;
@@ -83,6 +85,8 @@ export const teamSpacesApi = {
       `${spacePath(id)}/agents/${part(agentId)}/admission`,
       post(),
     ),
+  addOwnedAgent: (id: string, agentId: string) =>
+    request<Membership>(`${spacePath(id)}/agents/${part(agentId)}/admission/add`, post()),
   approveAgent: (id: string, agentId: string) =>
     request<Membership>(
       `${spacePath(id)}/agents/${part(agentId)}/admission/approve`,
@@ -137,6 +141,10 @@ export function canRemoveUser(
 
 export function spaceError(error: unknown, zh: boolean): string {
   const messages: Record<string, [string, string]> = {
+    conversation_not_available: ["会话不存在或你已失去访问权限。", "This conversation is unavailable or you no longer have access."],
+    conversation_not_writable: ["对方已离开或暂停组织成员身份，暂不能发送消息。", "The other member has left or is suspended. You cannot send messages."],
+    conversation_member_not_active: ["所选成员已发生变化，请刷新后重试。", "The selected membership changed. Refresh and try again."],
+    message_retry_conflict: ["消息已发送，请刷新查看。", "The message was already sent. Refresh to view it."],
     policy_version_stale: [
       "设置已被更新，请刷新后确认最新状态再修改。",
       "Settings changed. Refresh and review them before trying again.",

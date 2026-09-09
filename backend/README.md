@@ -430,3 +430,7 @@ MIT
 <p align="center">
   Built for the age of multi-agent systems.
 </p>
+
+## Team organization messaging
+
+Organization rooms and human DMs use `/api/spaces/{space_id}/conversations`, separate from personal Rooms. Apply `migrations/003_team_conversations.sql` after `002_team_identity_spaces.sql` before deploying. See [workspace behavior, API and validation](../docs/team-workspace-messaging.md). Agent execution and DM content auditing remain unavailable.

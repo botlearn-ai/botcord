@@ -4,9 +4,9 @@
 
 面向 `/chats` 的三栏工作区：一级入口（主导航）+ 二级导航（仅 Explore/Contacts）+ 三级内容（消息或 Explore 内容）。
 
-顶部 `WorkspaceModeSwitch.tsx` 在个人界面与 `/chats/team` 之间切换；返回个人模式保留最近的个人页面地址。Team 模式显示组织管理或创建/加入引导，并暂停个人消息页的定时与焦点刷新。`DashboardShellSkeleton` 在刷新和鉴权等待时保留相同的顶部切换栏；Team 路由使用专用团队骨架，不展示个人导航。
+顶部 `WorkspaceModeSwitch.tsx` 在个人界面与 `/chats/team` 之间切换；保留两种模式最近的页面地址。Team 模式由 `../team/TeamWorkspacePage.tsx` 提供组织导航、会话列表与消息区；无组织时展示创建/加入引导，并暂停个人消息页的定时与焦点刷新。`DashboardShellSkeleton` 在刷新和鉴权等待时保留相同的顶部切换栏；Team 路由使用专用团队骨架，不展示个人导航。
 
-账户菜单的“空间与组织”进入 `/settings/spaces`；组织管理由 `../team/TeamSpacesPage.tsx` 提供。现有聊天仍使用个人上下文。
+账户菜单的“空间与组织”进入 `/settings/spaces`；组织管理由 `../team/TeamSpacesPage.tsx` 提供。个人聊天使用原有上下文，Team 消息走独立的组织会话接口及状态，不复用个人 Room ID 或 Agent actor。
 
 ## 目录结构
 

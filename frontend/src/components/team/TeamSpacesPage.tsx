@@ -39,7 +39,11 @@ const button =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-neon-cyan/10 focus-visible:outline-2 focus-visible:outline-neon-cyan disabled:cursor-not-allowed disabled:opacity-50";
 const primary = `${button} border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan`;
 
-export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolean }) {
+export default function TeamSpacesPage({ teamMode = false, section, onChanged }: {
+  teamMode?: boolean;
+  section?: "members" | "agents" | "settings";
+  onChanged?: () => void;
+}) {
   const zh = useLanguage() === "zh";
   const t = (cn: string, en: string) => (zh ? cn : en);
   const router = useRouter();
@@ -149,6 +153,7 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
         select(nextId);
       } else {
         await load(origin);
+        if (mounted.current && currentRoute.current === origin) onChanged?.();
       }
     } catch (cause) {
       if (mounted.current && currentRoute.current === origin) {
@@ -182,6 +187,7 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
     space?.status === "active" && space.membership.status === "active";
   const manager = space ? canManage(space) : false;
   const owner = manager && space?.roles.includes("owner");
+  const directAgentAdmission = manager && space?.agent_direct_admission_available === true;
   const availableAgents =
     snapshot?.user.agents.filter(
       (agent) =>
@@ -192,11 +198,11 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
         ),
     ) ?? [];
 
-  if (teamMode && loading) return <TeamWorkspaceSkeleton />;
+  if (teamMode && loading && !section) return <TeamWorkspaceSkeleton />;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      {!section && <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-neon-cyan">
             Team
@@ -220,7 +226,7 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
           <Plus size={16} />
           {t("创建组织", "Create organization")}
         </button>
-      </header>
+      </header>}
 
       {notice && (
         <div
@@ -263,7 +269,7 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
 
       {snapshot && space && (
         <>
-          {!(teamMode && personal) && <section
+          {!section && !(teamMode && personal) && <section
             className={`${panel} flex flex-wrap items-center justify-between gap-4`}
             aria-label={t("选择空间", "Choose space")}
           >
@@ -308,7 +314,7 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
             </button>
           </section>}
 
-          {snapshot.spaces.some(
+          {!section && snapshot.spaces.some(
             (s) => s.membership.status === "invited" && s.id !== space.id,
           ) && (
             <section
@@ -351,7 +357,7 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
                 </div>
                 <h2 className="text-2xl font-semibold sm:text-3xl">{t("开启你的团队空间", "Start your team workspace")}</h2>
                 <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-text-secondary">
-                  {t("还没有加入组织。创建一个新组织，或接受邀请，与团队成员和 Agent 一起协作。", "You haven’t joined an organization yet. Create one or accept an invitation to work with your team and Agents.")}
+                  {t("还没有加入组织。创建一个新组织，或接受邀请，在团队房间里与成员交流。", "You haven’t joined an organization yet. Create one or accept an invitation to talk with teammates in rooms.")}
                 </p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -446,7 +452,7 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
             </form>
           )}
 
-          {!(teamMode && personal) && <section className="flex flex-wrap items-center justify-between gap-3 px-1 text-sm text-text-secondary">
+          {!section && !(teamMode && personal) && <section className="flex flex-wrap items-center justify-between gap-3 px-1 text-sm text-text-secondary">
             <span>
               {snapshot.user.display_name} · {t("你的用户 ID", "Your user ID")}
               ：
@@ -527,22 +533,25 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
           ) : (
             active && (
               <>
-                <div className="rounded-xl border border-neon-cyan/20 bg-neon-cyan/5 px-5 py-4 text-sm leading-6">
+                {!section && <div className="rounded-xl border border-neon-cyan/20 bg-neon-cyan/5 px-5 py-4 text-sm leading-6">
                   <strong>
                     {t(
-                      "组织管理已开放",
-                      "Organization management is available",
+                      "组织工作区",
+                      "Organization workspace",
                     )}
                   </strong>
                   <p className="text-text-secondary">
                     {t(
-                      "可以管理成员和 Agent 入组。组织聊天与任务执行暂未开放。",
-                      "Manage memberships and Agent admission here. Organization chat and task execution are not available yet.",
+                      "在 Team 中查看消息与房间，在这里管理成员、Agent 和组织设置。Agent 任务执行暂未开放。",
+                      "Open Team for messages and rooms. Manage members, Agents and organization settings here. Agent task execution is not available yet.",
                     )}
                   </p>
-                </div>
+                  <Link className="mt-2 inline-flex items-center gap-2 text-neon-cyan" href={`/chats/team?space=${encodeURIComponent(space.id)}`}>
+                    {t("进入团队消息", "Open team messages")} <ArrowRight size={14} />
+                  </Link>
+                </div>}
 
-                <section className={`${panel} space-y-5`}>
+                {(!section || section === "members") && <section className={`${panel} space-y-5`}>
                   <h2 className="flex items-center gap-2 text-lg font-semibold">
                     <Users size={20} />
                     {t("成员", "Members")}
@@ -568,8 +577,8 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
                             setHumanId("");
                           },
                           t(
-                            "邀请已创建；对方可在空间与组织页面接受。",
-                            "Invitation created. They can accept it on the Spaces page.",
+                            "邀请已创建；对方进入 Team 后即可查看并接受。",
+                            "Invitation created. They can review and accept it in Team.",
                           ),
                         );
                       }}
@@ -670,17 +679,17 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
                       </li>
                     ))}
                   </ul>
-                </section>
+                </section>}
 
-                <section className={`${panel} space-y-5`}>
+                {(!section || section === "agents") && <section className={`${panel} space-y-5`}>
                   <h2 className="flex items-center gap-2 text-lg font-semibold">
                     <Bot size={20} />
                     {t("组织 Agent", "Organization Agents")}
                   </h2>
                   <p className="text-sm leading-6 text-text-secondary">
                     {t(
-                      "由 Agent 所有者申请，组织管理员批准。加入后所有权仍属于本人。",
-                      "Agent owners apply and organization managers approve. Ownership remains personal.",
+                      "管理员可直接添加自己拥有的 Agent；其他成员提交申请后由管理员批准。加入后所有权仍属于本人，团队内 Agent 对话与任务执行尚未开放。",
+                      "Managers can add their own Agents; other members apply for approval. Ownership remains personal. Team Agent conversations and task execution are not available yet.",
                     )}
                   </p>
                   <form
@@ -689,13 +698,13 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
                       e.preventDefault();
                       void run(
                         async () => {
-                          await teamSpacesApi.requestAgent(space.id, agentId);
+                          if (directAgentAdmission) await teamSpacesApi.addOwnedAgent(space.id, agentId);
+                          else await teamSpacesApi.requestAgent(space.id, agentId);
                           setAgentId("");
                         },
-                        t(
-                          "申请已提交，等待组织批准。",
-                          "Application submitted for organization approval.",
-                        ),
+                        directAgentAdmission
+                          ? t("Agent 已添加到组织。", "Agent added to the organization.")
+                          : t("申请已提交，等待组织批准。", "Application submitted for organization approval."),
                       );
                     }}
                   >
@@ -726,7 +735,7 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
                       </select>
                     </label>
                     <button className={primary} disabled={busy || !agentId}>
-                      {t("申请加入", "Apply to join")}
+                      {directAgentAdmission ? t("添加 Agent", "Add Agent") : t("申请加入", "Apply to join")}
                     </button>
                   </form>
                   {snapshot.members.agents.length === 0 ? (
@@ -823,9 +832,9 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
                       })}
                     </ul>
                   )}
-                </section>
+                </section>}
 
-                <section className={`${panel} space-y-5`}>
+                {(!section || section === "settings") && <section className={`${panel} space-y-5`}>
                   <h2 className="flex items-center gap-2 text-lg font-semibold">
                     <ShieldCheck size={20} />
                     {t("组织设置", "Organization settings")}
@@ -921,7 +930,7 @@ export default function TeamSpacesPage({ teamMode = false }: { teamMode?: boolea
                       {t("未开放", "Not available")}
                     </span>
                   </div>
-                </section>
+                </section>}
               </>
             )
           )}
