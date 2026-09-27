@@ -1,5 +1,7 @@
 "use client";
 
+import MessageHistoryControl, { canAutoLoadHistory } from "./MessageHistoryControl";
+
 /**
  * [INPUT]: 依赖 chat/ui/session/unread store 的消息状态与增量加载动作，依赖共享时间工具更新已读水位，依赖 MessageBubble 渲染单条消息，依赖滚动位置判定已读水位
  * [OUTPUT]: 对外提供 MessageList 组件，渲染消息流、话题分组、历史加载、初始失败显式重试与滚动追随控制
@@ -504,6 +506,8 @@ export default function MessageList({
     const anchor = historyAnchorRef.current;
     const container = containerRef.current;
     if (!anchor || !container) return;
+    // Restore after the loading indicator is replaced by the history control.
+    if (isRoomMessagesLoadingMore) return;
     if (anchor.roomId !== roomId) {
       historyAnchorRef.current = null;
       return;
@@ -520,7 +524,7 @@ export default function MessageList({
     }
     historyPrependAppliedRef.current = true;
     historyAnchorRef.current = null;
-  }, [messages, roomId]);
+  }, [messages, roomId, isRoomMessagesLoadingMore]);
 
   const topicsMap = useMemo(() => {
     const m = new Map<string, TopicInfo>();
@@ -650,7 +654,7 @@ export default function MessageList({
       historyPrependAppliedRef.current = false;
       isLoadingMoreRef.current = false;
     }
-  }, [messages.length, roomId, commitRoomSeen, scrollToBottomAfterLayout]);
+  }, [messages.length, roomId, commitRoomSeen, scrollToBottomAfterLayout, isRoomMessagesLoadingMore]);
 
   // Keep ref in sync with state for use in scroll handler
   useEffect(() => {
@@ -718,7 +722,7 @@ export default function MessageList({
     }
 
     // Infinite scroll up
-    if (containerRef.current.scrollTop < 100) {
+    if (containerRef.current.scrollTop < 100 && canAutoLoadHistory()) {
       requestMoreMessages();
     }
 
@@ -815,7 +819,7 @@ export default function MessageList({
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="dashboard-message-feed-enter absolute inset-0 overflow-y-auto px-4 py-3"
+        className="dashboard-message-feed-enter absolute inset-0 overflow-y-auto overscroll-y-contain px-4 py-3"
       >
         {isRoomMessagesLoadingMore ? (
           <MessageHistoryLoading label={t.loadingEarlier} />
@@ -831,9 +835,7 @@ export default function MessageList({
             </button>
           </div>
         ) : hasMore ? (
-          <div className="mb-3 text-center text-xs text-text-secondary animate-pulse">
-            {t.scrollUp}
-          </div>
+          <MessageHistoryControl onLoad={requestMoreMessages} loadLabel={t.loadEarlier} scrollLabel={t.scrollUp} />
         ) : null}
         {timelineItems.map((item) => {
           if (item.kind === "message") {

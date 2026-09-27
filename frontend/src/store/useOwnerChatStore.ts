@@ -209,6 +209,7 @@ export interface OwnerChatState {
   hasMore: boolean;
   loading: boolean;
   historyLoaded: boolean;
+  oldestHistoryCursor: string | null;
   loadingMore: boolean;
   moreError: string | null;
   error: string | null;
@@ -274,6 +275,7 @@ const initialState = {
   hasMore: false,
   loading: false,
   historyLoaded: false,
+  oldestHistoryCursor: null,
   loadingMore: false,
   moreError: null as string | null,
   error: null as string | null,
@@ -311,6 +313,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         hasMore: false,
         loading: false,
         historyLoaded: false,
+        oldestHistoryCursor: null,
         loadingMore: false,
         moreError: null,
         error: null,
@@ -422,6 +425,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           messages: merged.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)),
           hasMore: state.historyLoaded && !state.hasMore ? false : hasMore,
           historyLoaded: true,
+          oldestHistoryCursor: state.oldestHistoryCursor ?? messages[0]?.hub_msg_id ?? null,
           loading: false,
           roomId,
         };
@@ -444,14 +448,15 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
     // Find oldest message with a hubMsgId (skip optimistic)
     const oldest = messages.find((m) => m.hubMsgId);
-    if (!oldest?.hubMsgId) return;
+    const cursor = get().oldestHistoryCursor ?? oldest?.hubMsgId;
+    if (!cursor) return;
 
     moreInFlight = true;
     const thisRequestId = ++moreRequestId;
     set({ loadingMore: true, moreError: null });
     try {
       const result = await api.getRoomMessages(roomId, {
-        before: oldest.hubMsgId,
+        before: cursor,
         limit: 50,
       });
       // Switching bots resets the store in an effect. A late response from the
@@ -459,8 +464,9 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       if (thisRequestId !== moreRequestId || get().roomId !== roomId) return;
 
       const agentName = get().agentName;
+      const nextCursor = result.messages.at(-1)?.hub_msg_id ?? cursor;
       const older = result.messages
-        .reverse()
+        .slice().reverse()
         .map((m) => dashboardMsgToOwnerChat(m, agentName))
         .filter(hasVisibleOwnerChatContent);
 
@@ -474,6 +480,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         const dedupedOlder = older.filter((message) => !message.hubMsgId || !currentHubIds.has(message.hubMsgId));
         return {
           messages: [...dedupedOlder, ...state.messages],
+          oldestHistoryCursor: nextCursor,
           hasMore: result.has_more,
         };
       });

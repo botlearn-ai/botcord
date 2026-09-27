@@ -1,0 +1,37 @@
+{
+  "environment": "Desktop Chrome CDP; touch viewport emulation is not real iOS Safari and does not establish Safari pull-to-refresh behavior.",
+  "history_delay_ms": 1200,
+  "checks": [
+    "owner: coarse-touch top scroll+drag issues 0 history requests; double manual click yields 1 pending request; loading removes repeat action; prepend anchor stays within2px; desktop fine-pointer scroll still issues1 request.",
+    "regular: coarse-touch top scroll+drag issues 0 history requests; double manual click yields 1 pending request; loading removes repeat action; prepend anchor stays within2px; desktop fine-pointer scroll still issues1 request."
+  ],
+  "errors": [],
+  "owner": {
+    "mobile_media": {
+      "auto": false,
+      "coarse": true,
+      "touch": 1
+    },
+    "top_scroll_before_requests": 0,
+    "manual_requests": 1,
+    "anchor_before_px": 68,
+    "anchor_after_px": 68,
+    "anchor_delta_px": 0,
+    "overscrollBehaviorY": "contain",
+    "desktop_scroll_requests": 1
+  },
+  "regular": {
+    "mobile_media": {
+      "auto": false,
+      "coarse": true,
+      "touch": 1
+    },
+    "top_scroll_before_requests": 0,
+    "manual_requests": 1,
+    "anchor_before_px": 68,
+    "anchor_after_px": 68,
+    "anchor_delta_px": 0,
+    "overscrollBehaviorY": "contain",
+    "desktop_scroll_requests": 1
+  }
+}

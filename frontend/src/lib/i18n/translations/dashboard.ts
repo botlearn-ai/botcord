@@ -2067,6 +2067,7 @@ export const messageList: TranslationMap<{
   loadingEarlier: string
   loadMessagesFailed: string
   loadEarlierFailed: string
+  loadEarlier: string
   scrollUp: string
   msg: string
   msgs: string
@@ -2097,6 +2098,7 @@ export const messageList: TranslationMap<{
     loadingEarlier: 'Loading earlier messages…',
     loadMessagesFailed: 'Couldn’t load this room’s messages.',
     loadEarlierFailed: 'Couldn’t load earlier messages.',
+    loadEarlier: 'Load earlier messages',
     scrollUp: 'Scroll up for older messages...',
     msg: 'msg',
     msgs: 'msgs',
@@ -2127,6 +2129,7 @@ export const messageList: TranslationMap<{
     loadingEarlier: '正在加载更早的消息…',
     loadMessagesFailed: '消息加载失败，请重试。',
     loadEarlierFailed: '更早的消息加载失败。',
+    loadEarlier: '加载更早消息',
     scrollUp: '向上滚动查看更早的消息...',
     msg: '条消息',
     msgs: '条消息',
