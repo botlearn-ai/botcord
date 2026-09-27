@@ -63,7 +63,7 @@ const showMessageStatus = (() => {
 const COLLAPSE_TEXT_LENGTH = 700;
 const COLLAPSE_LINE_COUNT = 10;
 const ACTION_MENU_WIDTH = 112;
-const ACTION_MENU_ITEM_HEIGHT = 30;
+const ACTION_MENU_ITEM_HEIGHT = 44;
 const ACTION_MENU_VERTICAL_PADDING = 8;
 const ACTION_MENU_GAP = 6;
 const ACTION_MENU_VIEWPORT_PADDING = 8;
@@ -522,7 +522,7 @@ function SenderAvatar({
       tabIndex={0}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       onKeyDown={onKeyDown}
-      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
+      className="max-md:hidden mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
       title={displayName}
       aria-label={`Open ${displayName}`}
     >
@@ -794,17 +794,22 @@ function MessageBubble({
     const menuRect = actionMenuRef.current?.getBoundingClientRect();
     const menuWidth = menuRect?.width ?? ACTION_MENU_WIDTH;
     const menuHeight = menuRect?.height ?? (actionMenuItemCount * ACTION_MENU_ITEM_HEIGHT + ACTION_MENU_VERTICAL_PADDING);
-    const { left, top } = getActionMenuPosition({
-      anchorRect: rect,
+    const viewport = window.visualViewport;
+    const offsetLeft = viewport?.offsetLeft ?? 0;
+    const offsetTop = viewport?.offsetTop ?? 0;
+    const position = getActionMenuPosition({
+      anchorRect: { left: rect.left - offsetLeft, right: rect.right - offsetLeft, top: rect.top - offsetTop, bottom: rect.bottom - offsetTop },
       menuWidth,
       menuHeight,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
+      viewportWidth: viewport?.width ?? window.innerWidth,
+      viewportHeight: viewport?.height ?? window.innerHeight,
       alignRight: isOwn,
       gap: ACTION_MENU_GAP,
       viewportPadding: ACTION_MENU_VIEWPORT_PADDING,
     });
 
+    const left = position.left + offsetLeft;
+    const top = position.top + offsetTop;
     setMenuPosition((prev) => (
       prev && prev.left === left && prev.top === top ? prev : { left, top }
     ));
@@ -817,10 +822,14 @@ function MessageBubble({
     }
 
     updateActionMenuPosition();
+    window.visualViewport?.addEventListener("resize", updateActionMenuPosition);
+    window.visualViewport?.addEventListener("scroll", updateActionMenuPosition);
     window.addEventListener("resize", updateActionMenuPosition);
     window.addEventListener("scroll", updateActionMenuPosition, true);
 
     return () => {
+      window.visualViewport?.removeEventListener("resize", updateActionMenuPosition);
+      window.visualViewport?.removeEventListener("scroll", updateActionMenuPosition);
       window.removeEventListener("resize", updateActionMenuPosition);
       window.removeEventListener("scroll", updateActionMenuPosition, true);
     };
@@ -835,7 +844,7 @@ function MessageBubble({
       setMenuOpen(false);
     };
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key === "Escape") { setMenuOpen(false); moreButtonRef.current?.focus({ preventScroll: true }); }
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
@@ -847,6 +856,11 @@ function MessageBubble({
   }, [menuOpen]);
 
   const menuVisible = menuOpen && Boolean(menuPosition);
+  useEffect(() => {
+    if (!menuVisible) return;
+    const frame = requestAnimationFrame(() => actionMenuRef.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [menuVisible]);
 
   useLayoutEffect(() => {
     if (!menuVisible) {
@@ -941,7 +955,7 @@ function MessageBubble({
           updateActionMenuPosition();
           setMenuOpen(true);
         }}
-        className={`liquid-message-action flex h-8 w-8 items-center justify-center rounded-xl text-text-secondary transition-colors ${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        className={`liquid-message-action flex h-8 w-8 max-md:h-11 max-md:w-11 items-center justify-center rounded-xl text-text-secondary transition-colors ${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none focus:opacity-100 focus:pointer-events-auto"}`}
         aria-label="More actions"
         aria-expanded={menuOpen}
       >
@@ -958,8 +972,8 @@ function MessageBubble({
             <button
               data-message-action-item
               type="button"
-              onMouseDown={(e) => { e.preventDefault(); handleReplyClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+              onClick={() => { handleReplyClick(); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
             >
               <CornerUpLeft className="h-3.5 w-3.5 text-zinc-500" />
               {locale === "zh" ? "回复" : "Reply"}
@@ -969,8 +983,8 @@ function MessageBubble({
             <button
               data-message-action-item
               type="button"
-              onMouseDown={(e) => { e.preventDefault(); handleForwardClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+              onClick={() => { handleForwardClick(); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
             >
               <Forward className="h-3.5 w-3.5 text-zinc-500" />
               转发
@@ -981,8 +995,8 @@ function MessageBubble({
               data-message-action-item
               type="button"
               disabled={recallPending}
-              onMouseDown={(e) => { e.preventDefault(); void handleRecallClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+              onClick={() => { void handleRecallClick(); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
             >
               <RotateCcw className="h-3.5 w-3.5 text-zinc-500" />
               {locale === "zh" ? "撤回" : "Recall"}
@@ -992,8 +1006,8 @@ function MessageBubble({
             <button
               data-message-action-item
               type="button"
-              onMouseDown={(e) => { e.preventDefault(); void handleCopyClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+              onClick={() => { void handleCopyClick(); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
             >
               {copied ? (
                 <Check className="h-3.5 w-3.5 text-emerald-400" />
@@ -1026,7 +1040,7 @@ function MessageBubble({
       {isOwn && !fullWidth && actionButtons}
       {!isOwn && sideAvatar}
       <div
-        className={`${fullWidth ? "w-full" : "max-w-[70%]"} liquid-message rounded-2xl border px-3 py-2 ${
+        className={`${fullWidth ? "w-full" : "max-w-[70%] max-md:max-w-[calc(100%-3.25rem)]"} liquid-message rounded-2xl border px-3 py-2 ${
           isErrorMessage
             ? "liquid-message-error"
             : isOwn

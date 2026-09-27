@@ -297,11 +297,11 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
   const uploadAgentId = activeAgentId ?? ownedAgents[0]?.agent_id ?? null;
   const placeholder = (viewMode === "agent" && activeAgent)
     ? locale === "zh"
-      ? `替我的 Agent · ${activeAgent.display_name} 发言，@ 可引用成员或房间…`
-      : `Speak as Agent · ${activeAgent.display_name}… (@ to mention)`
+      ? "输入消息，@ 提及…"
+      : "Message… (@ to mention)"
     : locale === "zh"
-      ? `作为 ${displayName} 发言，@ 可引用成员或房间…`
-      : `Message as ${displayName}… (@ to mention)`;
+      ? "输入消息，@ 提及…"
+      : "Message… (@ to mention)";
   const senderId = human?.human_id ?? activeAgentId ?? "pending";
   const isObserverMode = viewMode === "agent";
 

@@ -1116,3 +1116,16 @@ html[data-theme="dark"] .liquid-message-error {
     opacity: 0;
   }
 }
+
+/* Chat must stay within its flex slot; only the feed scrolls. */
+.dashboard-main { min-height: 0; min-width: 0; }
+@media (max-width: 767px) {
+  .dashboard-root { height: 100dvh; bottom: auto; padding-top: env(safe-area-inset-top); }
+  .dashboard-root[data-keyboard-open="true"] [data-dashboard-sidebar],
+  .dashboard-root[data-keyboard-open="true"] .dashboard-workspace-switch { display: none; }
+  .liquid-message { overflow-wrap: anywhere; min-width: 0; }
+  .liquid-message-action { opacity: 1; pointer-events: auto; background: transparent; border-color: transparent; box-shadow: none; }
+}
+@media (pointer: coarse) {
+  .liquid-message-action { opacity: 1; pointer-events: auto; background: transparent; border-color: transparent; box-shadow: none; }
+}

@@ -96,6 +96,7 @@ export interface DashboardUIState {
 
   setFocusedRoomId: (roomId: string | null) => void;
   setOpenedRoomId: (roomId: string | null) => void;
+  returnToMessageList: () => void;
   setUserChatRoomId: (roomId: string | null) => void;
   setUserChatAgentId: (agentId: string | null) => void;
   setSidebarTab: (tab: DashboardUIState["sidebarTab"]) => void;
@@ -165,6 +166,21 @@ const initialUIState = {
 export const useDashboardUIStore = create<DashboardUIState>()((set) => ({
   ...initialUIState,
 
+  returnToMessageList: () => set((state) => ({
+    sidebarTab: "messages",
+    messagesPane: "room",
+    openedRoomId: null,
+    focusedRoomId: null,
+    messagesShowRequests: false,
+    mobileSidebarOpen: false,
+    primaryNavigationSequence: state.primaryNavigationSequence + 1,
+    pendingPrimaryNavigation: {
+      id: state.primaryNavigationSequence + 1,
+      tab: "messages",
+      path: "/chats/messages",
+      startedAt: Date.now(),
+    },
+  })),
   setFocusedRoomId: (focusedRoomId) =>
     set((state) => (state.focusedRoomId === focusedRoomId ? state : { focusedRoomId })),
   setOpenedRoomId: (openedRoomId) =>

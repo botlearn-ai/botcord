@@ -81,6 +81,8 @@ dashboard/
 
 ## 变更日志
 
+- 2026-09-27: 移动端聊天统一通过 `returnToMessageList` 退出会话；底部只保留四个主入口和“更多”，后者承载发现、钱包、主题、语言和账户。会话头部不可收缩，加载/失败状态也保留返回。`useChatViewport` 适配软键盘与浏览器工具栏，弹出列表通过 `ComposerPopover` 脱离滚动裁切；触屏 Return 换行，消息操作和附件删除无需 hover。验证与截图见 [移动端交互报告](../../../docs/mobile-chat-interactions.md)。
+
 - 2026-09-27: 其余 tab 性能优化：主导航立即渲染目标内容，取消强制骨架等待与全区淡入，移动端布局同样按目标 tab 更新；根组件缩小 store 订阅。Explore 使用精确查询缓存、并发合并和无延迟列表展示；Contacts/Activity/Wallet 独立显示已就绪数据；Policy/Schedules 减少重复请求并保留有效缓存。测量方法、覆盖范围与限制见 [性能报告](../../../docs/dashboard-loading-performance.md)。
 
 - 2026-08-27: `DashboardTabSkeleton.tsx` 按各面板真实布局重写全部 tab 骨架（Home/My Bots/Wallet 走 `max-w-5xl` 居中页且不再套顶栏，Explore/Activity/Contacts 复刻各自的工具栏与网格），并新增 `ContactSectionsSkeleton`、`RoomRowsSkeleton`、`MessagesEmptyStateSkeleton` 供 Sidebar、ContactsPanel、RoomList 共用；`/settings/policy` 的加载态同步改为 `PolicyFormSkeleton`。骨架与加载完成后的框架保持一致，改布局时需同步改骨架。

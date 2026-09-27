@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 session/ui/chat store 的当前房间选择、成员关系与公开房间缓存，依赖 SubscriptionBadge/CopyableId 展示元信息
- * [OUTPUT]: 对外提供 RoomHeader 组件，渲染会话顶部标题、规则(Info)、分享、Owner 设置、成员入口与加入入口
+ * [OUTPUT]: 对外提供 RoomHeader 组件，渲染会话顶部标题、规则(Info)、分享、Owner 设置、成员入口与加入入口；移动端保持可见返回，加载态同样可退出
  * [POS]: dashboard 消息主视图的头部区域，承接当前房间的关键信息与快捷操作
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -12,7 +12,7 @@ import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { ArrowLeft, Info, Loader2, PanelLeftOpen, Settings, Share2, UserPlus, X } from "lucide-react";
+import { ArrowLeft, Info, Loader2, Settings, Share2, UserPlus, X } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -60,12 +60,6 @@ export default function RoomHeader() {
   const refreshHumanRooms = useDashboardSessionStore((state) => state.refreshHumanRooms);
   const { openedRoomId } = useDashboardUIStore(useShallow((state) => ({
     openedRoomId: state.openedRoomId,
-  })));
-  const { setFocusedRoomId, setOpenedRoomId, setMessagesPane, openMobileSidebar } = useDashboardUIStore(useShallow((state) => ({
-    setFocusedRoomId: state.setFocusedRoomId,
-    setOpenedRoomId: state.setOpenedRoomId,
-    setMessagesPane: state.setMessagesPane,
-    openMobileSidebar: state.openMobileSidebar,
   })));
   const { overview, getRoomSummary, refreshOverview, roomMessagesLoading } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
@@ -289,14 +283,17 @@ export default function RoomHeader() {
   // A deep-linked/public room can render before its summary request resolves.
   // Keep the header slot mounted at its final height so the message viewport
   // and composer do not jump once the metadata arrives.
-  if (!room) return <MessageRoomHeaderSkeleton label={tc.loading} />;
-
   const handleMobileBack = () => {
-    setMessagesPane("room");
-    setFocusedRoomId(null);
-    setOpenedRoomId(null);
+    useDashboardUIStore.getState().returnToMessageList();
     router.push("/chats/messages");
   };
+
+  if (!room) return (
+    <div className="flex shrink-0 items-center border-b border-glass-border">
+      <button type="button" onClick={handleMobileBack} aria-label="Back to messages" className="hidden h-11 w-11 shrink-0 items-center justify-center max-md:flex"><ArrowLeft size={20} /></button>
+      <div className="min-w-0 flex-1"><MessageRoomHeaderSkeleton label={tc.loading} /></div>
+    </div>
+  );
 
   const renderJoinButton = () => {
     if (isJoined || isOwnerChatRoom) return null;
@@ -355,29 +352,20 @@ export default function RoomHeader() {
     );
   };
 
-  const iconBtn = "inline-flex h-8 w-8 items-center justify-center rounded text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary";
+  const iconBtn = "inline-flex h-8 w-8 max-md:h-11 max-md:w-11 items-center justify-center rounded text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary";
   const tooltipCls = "pointer-events-none absolute top-full left-1/2 z-30 mt-1 -translate-x-1/2 whitespace-nowrap rounded border border-glass-border bg-deep-black px-2 py-0.5 text-[10px] text-text-secondary opacity-0 shadow-lg transition-opacity group-hover:opacity-100";
 
   return (
     <>
-      <div className="liquid-toolbar flex min-h-16 items-center justify-between gap-2 border-b border-glass-border px-4 py-3 max-md:min-h-12 max-md:gap-1 max-md:px-2 max-md:py-2">
+      <div className="liquid-toolbar flex shrink-0 min-h-16 items-center justify-between gap-2 border-b border-glass-border px-4 py-3 max-md:min-h-12 max-md:gap-1 max-md:px-2 max-md:py-2">
         <button
           type="button"
           onClick={handleMobileBack}
-          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+          className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
           aria-label="Back to messages"
           title="Back to messages"
         >
           <ArrowLeft className="h-5 w-5" />
-        </button>
-        <button
-          type="button"
-          onClick={openMobileSidebar}
-          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
-          aria-label="Open message list"
-          title="Open message list"
-        >
-          <PanelLeftOpen className="h-5 w-5" />
         </button>
         <div className="min-w-0 flex-1 py-0.5 max-md:py-0">
           <div className="flex items-center gap-2">

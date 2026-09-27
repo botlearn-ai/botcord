@@ -92,7 +92,7 @@ export function MessageHistoryLoading({ label }: { label: string }) {
 
 export function MessageRoomHeaderSkeleton({ label = "Loading room" }: { label?: string }) {
   return (
-    <div className="liquid-toolbar flex min-h-16 items-center justify-between gap-2 border-b border-glass-border px-4 py-3 max-md:min-h-12 max-md:px-2 max-md:py-2" role="status" aria-label={label}>
+    <div className="liquid-toolbar flex shrink-0 min-h-16 items-center justify-between gap-2 border-b border-glass-border px-4 py-3 max-md:min-h-12 max-md:px-2 max-md:py-2" role="status" aria-label={label}>
       <span className="sr-only">{label}</span>
       <div aria-hidden="true" className="min-w-0 flex-1">
         <SkeletonBlock className="h-4 w-36 max-w-[60%]" />

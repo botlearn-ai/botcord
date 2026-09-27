@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: session/ui/chat/unread/wallet/daemon stores + supabase client
- * [OUTPUT]: Sidebar — primary rail + immediately usable secondary panels + global modals
+ * [OUTPUT]: Sidebar — desktop rail / compact mobile navigation + secondary panels + global modals
  * [POS]: dashboard left-side navigation skeleton
  * [PROTOCOL]: update header on changes
  */
@@ -370,7 +370,11 @@ function Sidebar({
       activity: "/chats/activity",
       bots: "/chats/bots",
     };
-    uiStore.startPrimaryNavigation(tab, pathByTab[tab]);
+    if (tab === "messages" && window.matchMedia("(max-width: 767px)").matches) {
+      useDashboardUIStore.getState().returnToMessageList();
+    } else {
+      uiStore.startPrimaryNavigation(tab, pathByTab[tab]);
+    }
     if (tab === "messages" && !uiStore.openedRoomId && uiStore.messagesPane !== "user-chat") {
       uiStore.setMessagesPane("room");
     }
@@ -389,7 +393,7 @@ function Sidebar({
   };
 
   return (
-    <div className={`flex h-full max-md:w-full max-md:flex-col-reverse ${mobileHideSecondary ? "max-md:h-[calc(4rem+env(safe-area-inset-bottom))]" : "max-md:h-full"}`}>
+    <div data-dashboard-sidebar className={`flex h-full shrink-0 max-md:w-full max-md:flex-col-reverse ${mobileHideSecondary ? "max-md:h-[calc(4rem+env(safe-area-inset-bottom))]" : "max-md:h-full"}`}>
       {/* Primary rail */}
       <div className="liquid-rail flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border bg-deep-black py-3 max-md:h-[calc(4rem+env(safe-area-inset-bottom))] max-md:w-full max-md:min-w-0 max-md:shrink-0 max-md:flex-row max-md:border-r-0 max-md:border-t max-md:px-2 max-md:pb-[env(safe-area-inset-bottom)] max-md:pt-2">
         <Link
@@ -427,6 +431,8 @@ function Sidebar({
             return (
               <PrimaryNavButton
                 key={item.key}
+                mobileHidden={item.key === "explore" || item.key === "wallet"}
+                mobileLabel={item.key === "bots" ? "Bots" : undefined}
                 onClick={() => navigatePrimaryTab(item.key)}
                 active={isActive}
                 activeTone="cyan"
@@ -441,6 +447,7 @@ function Sidebar({
         </div>
 
         <div className="flex flex-col items-center gap-2 border-t border-glass-border pt-3 max-md:ml-1 max-md:shrink-0 max-md:gap-1 max-md:border-l max-md:border-t-0 max-md:pl-1 max-md:pt-0">
+          <div className="flex flex-col items-center gap-2 max-md:hidden">
           <ThemeToggle />
           <button
             onClick={() => setLanguage(locale === "zh" ? "en" : "zh")}
@@ -452,24 +459,25 @@ function Sidebar({
             <span className={locale === "zh" ? "text-text-primary" : "text-text-secondary/50"}>中</span>
           </button>
 
+          </div>
           {isGuest ? (
             <button
               onClick={showLoginModal}
-              className="flex h-10 w-12 flex-col items-center justify-center rounded-xl text-neon-cyan transition-all duration-200 hover:bg-neon-cyan/10 max-md:w-10"
+              className="flex h-10 w-12 flex-col items-center justify-center rounded-xl text-neon-cyan transition-all duration-200 hover:bg-neon-cyan/10 max-md:hidden"
               title={tc.login}
             >
               <LogIn className="h-5 w-5" strokeWidth={1.75} />
               <span className="mt-0.5 text-[9px] font-medium leading-none">{tc.login}</span>
             </button>
-          ) : (
-            <>
+          ) : null}
+          <div className={isGuest ? "md:hidden" : ""}>
               <AccountMenu
                 user={sessionStore.user}
                 pendingRequests={pendingContactRequests}
                 onLogout={handleLogout}
+                onLogin={isGuest ? showLoginModal : undefined}
               />
-            </>
-          )}
+          </div>
         </div>
       </div>
 

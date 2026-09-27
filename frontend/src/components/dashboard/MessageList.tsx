@@ -554,7 +554,8 @@ export default function MessageList({
     wasNearBottomRef.current = true;
     showScrollToBottomButtonRef.current = false;
     setShowScrollToBottomButton(false);
-    bottomRef.current?.scrollIntoView({ behavior });
+    const container = containerRef.current;
+    container?.scrollTo({ top: container.scrollHeight, behavior });
     if (roomId) {
       commitRoomSeen(roomId);
     }

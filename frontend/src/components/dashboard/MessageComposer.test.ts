@@ -32,6 +32,8 @@ describe("message composer autofill metadata", () => {
     expect(getAttribute("autoComplete")).toBe("off");
     expect(getAttribute("data-form-type")).toBe("other");
     expect(getAttribute("inputMode")).toBe("text");
+    expect(getAttribute("enterKeyHint")).toBe("enter");
+    expect(getAttribute("aria-label")).toBe("Type a message...");
     expect(getAttribute("autoCapitalize")).toBe("sentences");
     expect(getAttribute("autoCorrect")).toBe("on");
     expect(getAttribute("spellCheck")).toBe("true");
