@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  HUB_CONTROL_PROD_PUBLIC_KEY,
   HUB_CONTROL_PUBLIC_KEY,
   resolveHubControlPublicKey,
   resolveHubControlPublicKeys,
@@ -26,10 +27,10 @@ describe("Hub control public key resolution", () => {
     })).toEqual(["old-key", "new-key"]);
   });
 
-  it("falls back to the embedded key when env configuration is empty", () => {
+  it("falls back to the embedded dev + production ring when env configuration is empty", () => {
     expect(resolveHubControlPublicKeys({
       BOTCORD_HUB_CONTROL_PUBLIC_KEYS: " , \n ",
       BOTCORD_HUB_CONTROL_PUBLIC_KEY: "",
-    })).toEqual([HUB_CONTROL_PUBLIC_KEY]);
+    })).toEqual([HUB_CONTROL_PUBLIC_KEY, HUB_CONTROL_PROD_PUBLIC_KEY]);
   });
 });

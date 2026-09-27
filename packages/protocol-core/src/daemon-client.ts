@@ -287,6 +287,19 @@ export async function pollDeviceToken(
 export const HUB_CONTROL_PUBLIC_KEY = "H8lKtrtJclp+M69dh0n0avdia/kN8fy1tYUSrQFpDxY=";
 
 /**
+ * Production Hub control signing key (active since the 2026-08-31 rotation).
+ * Embedded so daemons installed without any env configuration trust the
+ * production signer out of the box.
+ */
+export const HUB_CONTROL_PROD_PUBLIC_KEY = "rAwrS4u4dsOKJoMCfp31a7wupSfopfCdnHOqntUD890=";
+
+/** Trust ring used when no env override is configured. */
+export const HUB_CONTROL_DEFAULT_PUBLIC_KEYS: readonly string[] = [
+  HUB_CONTROL_PUBLIC_KEY,
+  HUB_CONTROL_PROD_PUBLIC_KEY,
+];
+
+/**
  * Resolve every trusted Hub control-plane public key. The plural env var is
  * a comma/newline-separated key ring used during signing-key rotations. It
  * takes precedence over the legacy singular override, which remains supported
@@ -305,7 +318,7 @@ export function resolveHubControlPublicKeys(
   if (typeof legacy === "string" && legacy.trim().length > 0) {
     return [legacy.trim()];
   }
-  return HUB_CONTROL_PUBLIC_KEY ? [HUB_CONTROL_PUBLIC_KEY] : [];
+  return [...HUB_CONTROL_DEFAULT_PUBLIC_KEYS];
 }
 
 /**
