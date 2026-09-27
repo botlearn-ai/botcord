@@ -146,3 +146,12 @@ dashboard/
 - 2026-03-19: `DashboardApp` 增加鉴权确认闸门，先确认 session 再决定游客公开数据加载；`Sidebar` 的游客/登录消息列表统一复用 `RoomList`，消除左侧会话列表的双实现分叉。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+
+### Messages 列表加载回归（2026-09-27）
+
+- `MessagesPanel` 按当前筛选后的可用数据决定是否显示骨架；Human rooms、overview、owned-agent rooms 任一来源有可用行即可展示，不等待其余请求。首次数据未齐时不提前展示 onboarding；后台刷新保留现有列表。
+- `RoomList` 不再逐行淡入/位移，数据提交后直接可读。原动效为每行延迟 45ms、持续 420ms，列表长度会放大等待。
+- 搜索关闭时不订阅全部消息；搜索开启时仅订阅当前分类的最新可预览消息。保留未读状态更新。
+- 自动回归：`pnpm exec vitest run src/components/dashboard/sidebar/MessagesPanel.test.tsx src/store/useDashboardChatStore.test.ts src/lib/messages-merge.test.ts`。
+- 本地独立 Chrome 组件验证（20 条合成会话，非线上延迟统计）：Human rooms 先返回、overview 暂缓，修改前显示 0 行，修改后显示 20 行；overview 更新后 100ms，原实现前 10 行中 7 行 opacity 为 0，修改后前 10 行均 opacity 为 1 且无 transform。验证了搜索能匹配新到达的缓存消息预览，清空搜索恢复所有行。
+- 继续测量真实环境时，应分别记录点击 Messages → 首屏可读、点击会话 → 最新消息可读，拆分请求等待和渲染耗时；当前结果不能代表线上 P75/P95 或后端接口提速。

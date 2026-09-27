@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 ui/chat/unread/owner-chat store 的会话状态、缓存消息与后端未读标记，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
- * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项与刷新骨架，并提供受 reduced-motion 约束的列表入场/未读/引导动效
+ * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项与刷新骨架，已有数据立即展示，并提供受 reduced-motion 约束的未读/引导动效
  * [POS]: dashboard 左侧消息导航区的会话列表渲染器，被 Sidebar 组合使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -13,7 +13,7 @@ import { roomList, messagesGrouping } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
-import { animateIfMotion, animatePop, animeStagger, cleanupAnime } from "@/lib/anime";
+import { animateIfMotion, animatePop, cleanupAnime } from "@/lib/anime";
 import { ContactInfo, DashboardMessage, DashboardRoom } from "@/lib/types";
 import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import { getIsoTimestampValue, getRoomActivityTimestamp, humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
@@ -118,9 +118,7 @@ export default function RoomList({
   roomMeta,
 }: RoomListProps) {
   const router = useRouter();
-  const roomListRef = useRef<HTMLDivElement | null>(null);
   const userChatEntryRef = useRef<HTMLDivElement | null>(null);
-  const previousDisplayStateRef = useRef({ loading: true, count: 0 });
   const wasOwnerChatEmptyRef = useRef(false);
   const locale = useLanguage();
   const t = roomList[locale];
@@ -224,48 +222,6 @@ export default function RoomList({
       .sort((a, b) => b.activity - a.activity || a.index - b.index)
       .map((entry) => entry.room);
   }, [cachedLatestMessages, ownerChatLatestMessage, ownerChatRoomId, rooms]);
-  const displayRoomKey = useMemo(() => displayRooms.map((room) => room.room_id).join("\n"), [displayRooms]);
-
-  useEffect(() => {
-    if (loading) {
-      previousDisplayStateRef.current = { loading: true, count: 0 };
-      return;
-    }
-
-    const previousDisplayState = previousDisplayStateRef.current;
-    if (
-      displayRooms.length === 0 ||
-      (!previousDisplayState.loading && previousDisplayState.count > 0)
-    ) {
-      previousDisplayStateRef.current = { loading: false, count: displayRooms.length };
-      return;
-    }
-
-    let animation: ReturnType<typeof animateIfMotion> = null;
-    const frameId = window.requestAnimationFrame(() => {
-      previousDisplayStateRef.current = { loading: false, count: displayRooms.length };
-
-      const roomRows = Array.from(
-        roomListRef.current?.querySelectorAll<HTMLElement>("[data-room-list-row]") ?? [],
-      );
-      if (roomRows.length === 0) return;
-
-      animation = animateIfMotion(roomRows, {
-        opacity: [0, 1],
-        translateY: [8, 0],
-        scale: [0.985, 1],
-        delay: animeStagger(45),
-        duration: 420,
-        ease: "out(3)",
-      });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      cleanupAnime(animation);
-    };
-  }, [displayRoomKey, displayRooms.length, loading]);
-
   useEffect(() => {
     const shouldPulseOnboarding = showUserChatEntry && isOwnerChatEmpty;
     if (!shouldPulseOnboarding) {
@@ -369,7 +325,7 @@ export default function RoomList({
   }
 
   return (
-    <div ref={roomListRef} className="py-2">
+    <div className="py-2">
       {showUserChatEntry && (
         <div
           ref={userChatEntryRef}
