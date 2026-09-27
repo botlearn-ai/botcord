@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, memo } from "react";
-import { api } from "@/lib/api";
-import type { ActivityStats, ActivityFeedItem } from "@/lib/types";
+import { useState, useEffect, memo } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { useDashboardActivityStore } from "@/store/useDashboardActivityStore";
+import type { ActivityFeedItem } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar } from "@/lib/i18n/translations/dashboard";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -184,70 +185,25 @@ function ActivityPanel() {
   const showPeriodTabs = viewMode === "agent";
 
   const [period, setPeriod] = useState<Period>("today");
-  const [stats, setStats] = useState<ActivityStats | null>(null);
-  const [feed, setFeed] = useState<ActivityFeedItem[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadAll = useCallback(
-    async (p: Period, withStats: boolean) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [statsRes, feedRes] = await Promise.all([
-          withStats ? api.getActivityStats(p) : Promise.resolve(null),
-          api.getActivityFeed({ limit: 30 }),
-        ]);
-        setStats(statsRes);
-        setFeed(feedRes.items);
-        setHasMore(feedRes.has_more);
-      } catch (err: any) {
-        setError(err?.message ?? "Failed to load");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
+  const identityKey = useDashboardSessionStore((s) => JSON.stringify([s.token, s.activeIdentity, s.activeAgentId]));
+  const { feed, stats, hasMore, loaded, loading, loadingMore, error, loadFeed, loadStats } = useDashboardActivityStore(
+    useShallow((s) => ({
+      feed: s.feed, stats: s.statsByPeriod[period], hasMore: s.hasMore,
+      loaded: s.loaded, loading: s.loading, loadingMore: s.loadingMore,
+      error: s.error, loadFeed: s.loadFeed, loadStats: s.loadStats,
+    })),
   );
+  const loadMore = () => loadFeed(true);
 
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    try {
-      const res = await api.getActivityFeed({ limit: 30, offset: feed.length });
-      setFeed((prev) => [...prev, ...res.items]);
-      setHasMore(res.has_more);
-    } catch {
-      // silently ignore load-more failures
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [loadingMore, hasMore, feed.length]);
-
-  // Initial load (and when viewMode changes). Feed is not period-filtered.
+  // Feed readiness never depends on the statistics endpoint. Cached rows stay
+  // readable during refresh; the store clears them when the identity changes.
   useEffect(() => {
-    void loadAll(period, showPeriodTabs);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showPeriodTabs, loadAll]);
+    void loadFeed();
+  }, [identityKey, showPeriodTabs, loadFeed]);
 
-  // Period changes only re-fetch stats (feed shows all).
   useEffect(() => {
-    if (!showPeriodTabs) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const statsRes = await api.getActivityStats(period);
-        if (!cancelled) setStats(statsRes);
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [period, showPeriodTabs]);
+    if (showPeriodTabs) void loadStats(period);
+  }, [identityKey, period, showPeriodTabs, loadStats]);
 
   const periodLabels: Record<Period, string> = {
     today: zh ? "\u4ECA\u65E5" : "Today",
@@ -283,22 +239,27 @@ function ActivityPanel() {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-        {error ? (
+        {error && feed.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-12">
             <p className="text-sm text-red-400">{error}</p>
             <button
-              onClick={() => loadAll(period, showPeriodTabs)}
+              onClick={() => void loadFeed()}
               className="liquid-action rounded-lg border border-glass-border px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
             >
               {zh ? "\u91CD\u8BD5" : "Retry"}
             </button>
           </div>
-        ) : loading && feed.length === 0 ? (
+        ) : (!loaded || loading) && feed.length === 0 ? (
           <DashboardMainSkeleton variant="activity" />
         ) : (
           <>
-            {/* Stats */}
-            {stats && (
+            {/* Reserve statistics space so a slow summary cannot shift readable rows. */}
+            {showPeriodTabs && !stats && (
+              <div aria-busy="true" className="grid grid-cols-3 gap-3">
+                {[0, 1, 2].map((index) => <div key={index} className="h-24 rounded-xl border border-glass-border bg-glass-bg" />)}
+              </div>
+            )}
+            {showPeriodTabs && stats && (
               <div className="grid grid-cols-3 gap-3">
                 <StatCard
                   label={zh ? "\u5BF9\u8BDD" : "Conversations"}

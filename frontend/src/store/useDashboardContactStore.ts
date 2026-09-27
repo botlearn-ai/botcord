@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 zustand 保存联系人域状态，依赖 @/lib/api 发起联系人请求，依赖 chat store 提供鉴权上下文与概览刷新能力
  * [OUTPUT]: 对外提供 useDashboardContactStore 联系人业务状态仓库与异步动作
- * [POS]: frontend dashboard 的联系人业务模块 store，独立管理联系人请求收发与处理状态
+ * [POS]: frontend dashboard 的联系人业务模块 store，按来源渐进加载联系人请求，复用审批请求并隔离身份切换后的过期结果
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
@@ -39,7 +39,36 @@ const initialContactState = {
   sendingContactRequestAgentId: null,
 };
 
-let contactRequestsInFlight: Promise<void> | null = null;
+let contactRequestsInFlight: { scope: string; promise: Promise<void> } | null = null;
+let contactGeneration = 0;
+let approvalsInFlight: { scope: string; promise: ReturnType<typeof humansApi.listPendingApprovals> } | null = null;
+
+function contactActorScope(state: ReturnType<typeof useDashboardSessionStore.getState>) {
+  const { token, user, activeAgentId, activeIdentity, viewMode, human } = state;
+  const humanSurface = activeIdentity?.type === "human" || viewMode === "human";
+  return JSON.stringify([
+    Boolean(token), user?.id ?? null,
+    humanSurface ? "human" : "agent",
+    humanSurface ? human?.human_id ?? null : activeAgentId,
+    activeIdentity?.type ?? null, activeIdentity?.id ?? null,
+  ]);
+}
+
+export function contactRequestScope() {
+  const state = useDashboardSessionStore.getState();
+  return JSON.stringify([contactGeneration, state.token, contactActorScope(state)]);
+}
+
+// Both the requests inbox and the sidebar count need this same endpoint.
+export function loadPendingContactApprovals() {
+  const scope = contactRequestScope();
+  if (approvalsInFlight?.scope === scope) return approvalsInFlight.promise;
+  const promise = humansApi.listPendingApprovals().finally(() => {
+    if (approvalsInFlight?.promise === promise) approvalsInFlight = null;
+  });
+  approvalsInFlight = { scope, promise };
+  return promise;
+}
 
 function isHumanContactSurface() {
   const { activeIdentity, viewMode } = useDashboardSessionStore.getState();
@@ -81,62 +110,67 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
         : [...state.pendingFriendRequests, agentId],
     })),
 
-  resetContactState: () => set({ ...initialContactState }),
+  resetContactState: () => {
+    contactGeneration += 1;
+    contactRequestsInFlight = null;
+    approvalsInFlight = null;
+    set({ ...initialContactState });
+  },
 
   loadContactRequests: async () => {
-    if (contactRequestsInFlight) {
-      return contactRequestsInFlight;
-    }
+    const scope = contactRequestScope();
+    if (contactRequestsInFlight?.scope === scope) return contactRequestsInFlight.promise;
     if (!hasReadyContactIdentity()) {
       set({
-        contactRequestsReceived: [],
-        contactRequestsSent: [],
-        contactRequestsBotApprovalCount: 0,
-        contactRequestsLoading: false,
+        contactRequestsReceived: [], contactRequestsSent: [],
+        contactRequestsBotApprovalCount: 0, contactRequestsLoading: false,
       });
       return;
     }
-    contactRequestsInFlight = (async () => {
-      set({ contactRequestsLoading: true });
-      try {
-        const [received, sent, botApprovalCount] = isHumanContactSurface()
-          ? await Promise.all([
-              humansApi.listReceivedContactRequests(),
-              humansApi.listSentContactRequests(),
-              humansApi.listPendingApprovals(),
-            ]).then(([receivedRes, sentRes, approvalsRes]) => [
-              { requests: receivedRes.requests.map(normalizeHumanContactRequest) },
-              { requests: sentRes.requests.map(normalizeHumanContactRequest) },
-              approvalsRes.approvals.filter((approval) => (
-                approval.kind === "contact_request" && !approval.id.startsWith("cr_")
-              )).length,
-            ] as const)
-          : await Promise.all([
-              api.getContactRequestsReceived(),
-              api.getContactRequestsSent(),
-            ]).then(([receivedRes, sentRes]) => [receivedRes, sentRes, 0] as const);
-        const pendingSentTargets = sent.requests
-          .filter((item) => item.state === "pending")
-          .map((item) => item.to_agent_id);
-        set({
-          contactRequestsReceived: received.requests,
-          contactRequestsSent: sent.requests,
-          contactRequestsBotApprovalCount: botApprovalCount,
-          pendingFriendRequests: Array.from(new Set([...get().pendingFriendRequests, ...pendingSentTargets])),
-          contactRequestsLoading: false,
-        });
-      } catch {
-        set({ contactRequestsLoading: false });
-      }
-    })().finally(() => {
-      contactRequestsInFlight = null;
+    const isCurrent = () => contactRequestScope() === scope;
+    const humanSurface = isHumanContactSurface();
+    set({ contactRequestsLoading: true });
+    // Publish each independent source as soon as it arrives. A slow Sent or
+    // bot-approval response must not hold up actionable Received requests.
+    const received = (humanSurface
+      ? humansApi.listReceivedContactRequests().then((res) => res.requests.map(normalizeHumanContactRequest))
+      : api.getContactRequestsReceived().then((res) => res.requests)
+    ).then((requests) => {
+      if (isCurrent()) set({ contactRequestsReceived: requests });
     });
-    return contactRequestsInFlight;
+    const sent = (humanSurface
+      ? humansApi.listSentContactRequests().then((res) => res.requests.map(normalizeHumanContactRequest))
+      : api.getContactRequestsSent().then((res) => res.requests)
+    ).then((requests) => {
+      if (!isCurrent()) return;
+      const targets = requests.filter((item) => item.state === "pending").map((item) => item.to_agent_id);
+      set({
+        contactRequestsSent: requests,
+        pendingFriendRequests: Array.from(new Set([...get().pendingFriendRequests, ...targets])),
+      });
+    });
+    const approvals = humanSurface
+      ? loadPendingContactApprovals().then((res) => {
+          if (isCurrent()) set({ contactRequestsBotApprovalCount: res.approvals.filter((approval) => (
+            approval.kind === "contact_request" && !approval.id.startsWith("cr_")
+          )).length });
+        })
+      : Promise.resolve().then(() => {
+          if (isCurrent()) set({ contactRequestsBotApprovalCount: 0 });
+        });
+    const promise = Promise.allSettled([received, sent, approvals]).then(() => {
+      if (isCurrent()) set({ contactRequestsLoading: false });
+    }).finally(() => {
+      if (contactRequestsInFlight?.promise === promise) contactRequestsInFlight = null;
+    });
+    contactRequestsInFlight = { scope, promise };
+    return promise;
   },
 
   sendContactRequest: async (toAgentId: string, message?: string) => {
     const { token } = useDashboardSessionStore.getState();
     if (!token) return;
+    const scope = contactRequestScope();
     set({ sendingContactRequestAgentId: toAgentId });
     try {
       if (isHumanContactSurface()) {
@@ -144,8 +178,10 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
       } else {
         await api.createContactRequest({ to_agent_id: toAgentId, message });
       }
+      if (contactRequestScope() !== scope) return;
       const chatStore = useDashboardChatStore.getState();
       await Promise.all([chatStore.refreshOverview(), get().loadContactRequests()]);
+      if (contactRequestScope() !== scope) return;
       set((state) => ({
         pendingFriendRequests: state.pendingFriendRequests.includes(toAgentId)
           ? state.pendingFriendRequests
@@ -153,6 +189,7 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
         sendingContactRequestAgentId: null,
       }));
     } catch (err) {
+      if (contactRequestScope() !== scope) return;
       set({ sendingContactRequestAgentId: null });
       throw err;
     }
@@ -161,6 +198,7 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
   respondContactRequest: async (requestId: number | string, action: "accept" | "reject") => {
     const { token } = useDashboardSessionStore.getState();
     if (!token) return;
+    const scope = contactRequestScope();
     set({ processingContactRequestId: requestId, processingContactRequestAction: action });
     try {
       if (action === "accept") {
@@ -176,12 +214,36 @@ export const useDashboardContactStore = create<DashboardContactState>()((set, ge
           await api.rejectContactRequest(Number(requestId));
         }
       }
+      if (contactRequestScope() !== scope) return;
       const chatStore = useDashboardChatStore.getState();
       await Promise.all([chatStore.refreshOverview(), get().loadContactRequests()]);
+      if (contactRequestScope() !== scope) return;
       set({ processingContactRequestId: null, processingContactRequestAction: null });
     } catch (err) {
+      if (contactRequestScope() !== scope) return;
       set({ processingContactRequestId: null, processingContactRequestAction: null });
       throw err;
     }
   },
 }));
+
+// Clear private data in the same synchronous session update that changes its
+// owner. Consumers must never wait for a pane effect or a new API response to
+// stop showing the previous identity's requests or action state.
+useDashboardSessionStore.subscribe((state, previous) => {
+  if (contactActorScope(state) !== contactActorScope(previous)) {
+    useDashboardContactStore.getState().resetContactState();
+  } else if (state.token !== previous.token) {
+    // Credential rotation for the same actor retains readable cached data,
+    // but releases flags for the old requests whose responses are discarded.
+    contactGeneration += 1;
+    contactRequestsInFlight = null;
+    approvalsInFlight = null;
+    useDashboardContactStore.setState({
+      contactRequestsLoading: false,
+      processingContactRequestId: null,
+      processingContactRequestAction: null,
+      sendingContactRequestAgentId: null,
+    });
+  }
+});

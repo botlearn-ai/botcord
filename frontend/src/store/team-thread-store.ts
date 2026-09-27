@@ -84,7 +84,9 @@ export function createTeamThreadStore(spaceId: string, conversationId: string) {
               controller.signal
             );
             if (version !== generation) return;
-            set({ messages: merge(get().messages, page.messages) });
+            // Empty polls should not invalidate every rendered message.
+            if (page.messages.length)
+              set({ messages: merge(get().messages, page.messages) });
             more = page.has_more && page.messages.length > 0;
           }
         } catch (error) {

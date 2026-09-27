@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 聚合 dashboard 状态，依赖 pathname 同步首帧 tab，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
- * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期、顶部个人/Team 模式切换与三栏布局编排
+ * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 的精确 selector 聚合 dashboard 状态，依赖 pathname 同步首帧 tab，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
+ * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期、即时 tab 内容切换、顶部个人/Team 模式切换与三栏布局编排
  * [POS]: /chats 页面的顶层容器，连接路由状态、实时事件流与拆分后的 dashboard store
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar as sidebarI18n, chatPane as chatPaneI18n } from "@/lib/i18n/translations/dashboard";
@@ -35,7 +35,6 @@ import PeerBotDetailDrawer from "./PeerBotDetailDrawer";
 import ChatPane from "./ChatPane";
 import ContactRequestsInbox from "./ContactRequestsInbox";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
-import DashboardTabSkeleton from "./DashboardTabSkeleton";
 import HomePanel from "./HomePanel";
 import MyBotsPanel from "./MyBotsPanel";
 import HumanCardModal from "./HumanCardModal";
@@ -46,12 +45,10 @@ import WalletPanel from "./WalletPanel";
 import ActivityPanel from "./ActivityPanel";
 import WorkspaceModeSwitch from "./WorkspaceModeSwitch";
 import TeamWorkspacePage from "@/components/team/TeamWorkspacePage";
-import { animateIfMotion, cleanupAnime, prefersReducedMotion } from "@/lib/anime";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
 type DashboardSidebarTab = "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
 const MESSAGES_DIRECTORY_SYNC_INTERVAL_MS = 30_000;
-const PRIMARY_NAVIGATION_MIN_VISIBLE_MS = 180;
 
 type BotcordDebugRealtimeSnapshot = {
   supabaseUrl: string | undefined;
@@ -100,9 +97,76 @@ function getSidebarTabFromPathParts(parts: string[]): DashboardSidebarTab {
 }
 
 export default function DashboardApp() {
-  const sessionStore = useDashboardSessionStore();
-  const uiStore = useDashboardUIStore();
-  const chatStore = useDashboardChatStore();
+  const sessionStore = useDashboardSessionStore(useShallow((state) => ({
+    activeAgentId: state.activeAgentId,
+    activeIdentity: state.activeIdentity,
+    authBootstrapping: state.authBootstrapping,
+    authResolved: state.authResolved,
+    human: state.human,
+    initAuth: state.initAuth,
+    ownedAgents: state.ownedAgents,
+    refreshHumanRooms: state.refreshHumanRooms,
+    refreshUserProfile: state.refreshUserProfile,
+    sessionMode: state.sessionMode,
+    setToken: state.setToken,
+    token: state.token,
+    viewMode: state.viewMode,
+  })));
+  const uiStore = useDashboardUIStore(useShallow((state) => ({
+    agentCardOpen: state.agentCardOpen,
+    clearPendingHumanOpen: state.clearPendingHumanOpen,
+    clearPrimaryNavigation: state.clearPrimaryNavigation,
+    closeAgentCard: state.closeAgentCard,
+    closeMobileSidebar: state.closeMobileSidebar,
+    contactsView: state.contactsView,
+    exploreView: state.exploreView,
+    focusedRoomId: state.focusedRoomId,
+    messagesPane: state.messagesPane,
+    messagesShowRequests: state.messagesShowRequests,
+    mobileSidebarOpen: state.mobileSidebarOpen,
+    openedRoomId: state.openedRoomId,
+    pendingHumanOpen: state.pendingHumanOpen,
+    pendingPrimaryNavigation: state.pendingPrimaryNavigation,
+    resetUIState: state.resetUIState,
+    rightPanelOpen: state.rightPanelOpen,
+    selectedBotAgentId: state.selectedBotAgentId,
+    selectedContactKey: state.selectedContactKey,
+    setContactsView: state.setContactsView,
+    setExploreView: state.setExploreView,
+    setFocusedRoomId: state.setFocusedRoomId,
+    setMessagesPane: state.setMessagesPane,
+    setOpenedRoomId: state.setOpenedRoomId,
+    setSelectedBotAgentId: state.setSelectedBotAgentId,
+    setSidebarTab: state.setSidebarTab,
+    setUserChatAgentId: state.setUserChatAgentId,
+    setUserChatRoomId: state.setUserChatRoomId,
+    sidebarTab: state.sidebarTab,
+    userChatAgentId: state.userChatAgentId,
+    userChatRoomId: state.userChatRoomId,
+  })));
+  const chatStore = useDashboardChatStore(useShallow((state) => ({
+    applyRealtimeEventHint: state.applyRealtimeEventHint,
+    closeAgentCardState: state.closeAgentCardState,
+    discoverRooms: state.discoverRooms,
+    getRoomSummary: state.getRoomSummary,
+    loadOwnedAgentRooms: state.loadOwnedAgentRooms,
+    loadPublicRoomDetail: state.loadPublicRoomDetail,
+    loadRoomMessages: state.loadRoomMessages,
+    overview: state.overview,
+    overviewErrored: state.overviewErrored,
+    overviewRefreshing: state.overviewRefreshing,
+    ownedAgentRoomsLoaded: state.ownedAgentRoomsLoaded,
+    ownedAgentRoomsLoading: state.ownedAgentRoomsLoading,
+    pollNewMessages: state.pollNewMessages,
+    refreshOverview: state.refreshOverview,
+    resetChatState: state.resetChatState,
+    selectAgent: state.selectAgent,
+    selectedAgentError: state.selectedAgentError,
+    selectedAgentId: state.selectedAgentId,
+    selectedAgentLoading: state.selectedAgentLoading,
+    selectedAgentProfile: state.selectedAgentProfile,
+    upsertOptimisticOwnerChatRoom: state.upsertOptimisticOwnerChatRoom,
+  })));
   // realtime/unread/subscription: the root only ever calls their actions (stable
   // refs), never reads churning data — so select just the actions via useShallow.
   // Subscribing to the whole store here re-rendered DashboardApp (and its entire
@@ -120,8 +184,24 @@ export default function DashboardApp() {
       resetUnreadState: s.resetUnreadState,
     })),
   );
-  const walletStore = useDashboardWalletStore();
-  const contactStore = useDashboardContactStore();
+  const walletStore = useDashboardWalletStore(useShallow((state) => ({
+    loadWallet: state.loadWallet,
+    loadWithdrawalRequests: state.loadWithdrawalRequests,
+    resetWalletState: state.resetWalletState,
+    wallet: state.wallet,
+    walletError: state.walletError,
+    walletLoading: state.walletLoading,
+    withdrawalRequestsError: state.withdrawalRequestsError,
+    withdrawalRequestsLoaded: state.withdrawalRequestsLoaded,
+    withdrawalRequestsLoading: state.withdrawalRequestsLoading,
+  })));
+  const contactStore = useDashboardContactStore(useShallow((state) => ({
+    contactRequestsSent: state.contactRequestsSent,
+    pendingFriendRequests: state.pendingFriendRequests,
+    resetContactState: state.resetContactState,
+    sendContactRequest: state.sendContactRequest,
+    sendingContactRequestAgentId: state.sendingContactRequestAgentId,
+  })));
   const subscriptionStore = useDashboardSubscriptionStore(
     useShallow((s) => ({
       resetSubscriptionState: s.resetSubscriptionState,
@@ -154,9 +234,6 @@ export default function DashboardApp() {
   const initResolvedRef = useRef(false);
   const lastAccessTokenRef = useRef<string | null>(null);
   const lastMessagesDirectorySyncRef = useRef(0);
-  const mainContentRef = useRef<HTMLDivElement | null>(null);
-  const mainContentAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
-  const previousMainContentKeyRef = useRef<string | null>(null);
   const lastSubtabSyncedPathnameRef = useRef<string | null>(null);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
   const routeSidebarTab = useMemo(() => getSidebarTabFromPathParts(pathnameParts), [pathnameParts]);
@@ -166,13 +243,6 @@ export default function DashboardApp() {
   const visibleSidebarTab = primaryNavigationPending
     ? uiStore.pendingPrimaryNavigation?.tab ?? uiStore.sidebarTab
     : routeSidebarTab;
-  // Room changes have their own local loading states in MessageList. Keeping
-  // room/pane ids out of this key prevents the header, composer, and adjacent
-  // panes from fading out together every time a conversation is selected.
-  const mainContentAnimationKey = [
-    primaryNavigationPending ? "pending" : "ready",
-    visibleSidebarTab,
-  ].join(":");
   // Human-first: never force-block on "no agent". Authed users always proceed
   // into /chats as their Human identity; creating an Agent is a later,
   // optional CTA. AgentGateModal is kept for manual entry points (account
@@ -239,36 +309,6 @@ export default function DashboardApp() {
     };
   }, [supabase]);
 
-  // Layout effect + pre-paint hide: starting the fade from a rAF let the new
-  // pane paint fully visible for a frame, snap to opacity 0, then fade back
-  // in — reading as the content rendering twice.
-  useLayoutEffect(() => {
-    if (shouldShowBootstrapSkeleton) return;
-    const content = mainContentRef.current;
-    if (!content || previousMainContentKeyRef.current === mainContentAnimationKey) return;
-
-    previousMainContentKeyRef.current = mainContentAnimationKey;
-    cleanupAnime(mainContentAnimationRef.current);
-    mainContentAnimationRef.current = null;
-    if (prefersReducedMotion()) return;
-
-    content.style.opacity = "0";
-    const animation = animateIfMotion(content, {
-      opacity: [0, 1],
-      translateY: [8, 0],
-      duration: 220,
-      ease: "out(3)",
-    });
-    mainContentAnimationRef.current = animation;
-
-    return () => {
-      cleanupAnime(animation);
-      // revert() restores the pre-animation inline opacity (our "0"), so
-      // clear it explicitly or an interrupted fade leaves the pane invisible.
-      content.style.opacity = "";
-    };
-  }, [mainContentAnimationKey, shouldShowBootstrapSkeleton]);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -320,14 +360,7 @@ export default function DashboardApp() {
     const pendingPrimaryNavigation = uiStore.pendingPrimaryNavigation;
     if (pendingPrimaryNavigation) {
       if (pathname === pendingPrimaryNavigation.path) {
-        const remaining = Math.max(
-          0,
-          PRIMARY_NAVIGATION_MIN_VISIBLE_MS - (Date.now() - pendingPrimaryNavigation.startedAt),
-        );
-        const timer = window.setTimeout(() => {
-          uiStore.clearPrimaryNavigation(pendingPrimaryNavigation.id);
-        }, remaining);
-        return () => window.clearTimeout(timer);
+        uiStore.clearPrimaryNavigation(pendingPrimaryNavigation.id);
       } else {
         return;
       }
@@ -435,10 +468,10 @@ export default function DashboardApp() {
           if (shouldNormalizeMessagesUrl) {
             router.replace("/chats/messages");
           }
-          if (chatStore.messagesLoading[roomIdFromPath]) {
+          if (useDashboardChatStore.getState().messagesLoading[roomIdFromPath]) {
             return;
           }
-          if (!chatStore.messages[roomIdFromPath]) {
+          if (!useDashboardChatStore.getState().messages[roomIdFromPath]) {
             void chatStore.loadRoomMessages(roomIdFromPath);
           } else {
             void chatStore.pollNewMessages(roomIdFromPath);
@@ -1128,32 +1161,32 @@ export default function DashboardApp() {
   };
 
   const mobileMessagesShowsMain =
-    routeSidebarTab === "messages"
+    visibleSidebarTab === "messages"
     && (
       uiStore.messagesShowRequests
       || uiStore.messagesPane === "user-chat"
       || Boolean(uiStore.openedRoomId)
     );
   const mobileContactsShowsMain =
-    routeSidebarTab === "contacts"
+    visibleSidebarTab === "contacts"
     && (
       uiStore.contactsView === "requests"
       || Boolean(uiStore.selectedContactKey)
     );
   const mobileShowsMain =
-    routeSidebarTab === "home"
-    || routeSidebarTab === "explore"
-    || routeSidebarTab === "wallet"
-    || routeSidebarTab === "activity"
-    || routeSidebarTab === "bots"
+    visibleSidebarTab === "home"
+    || visibleSidebarTab === "explore"
+    || visibleSidebarTab === "wallet"
+    || visibleSidebarTab === "activity"
+    || visibleSidebarTab === "bots"
     || mobileMessagesShowsMain
     || mobileContactsShowsMain;
   const mobileHideSecondary =
-    routeSidebarTab === "home"
-    || routeSidebarTab === "wallet"
-    || routeSidebarTab === "activity"
-    || routeSidebarTab === "explore"
-    || routeSidebarTab === "bots"
+    visibleSidebarTab === "home"
+    || visibleSidebarTab === "wallet"
+    || visibleSidebarTab === "activity"
+    || visibleSidebarTab === "explore"
+    || visibleSidebarTab === "bots"
     || mobileMessagesShowsMain
     || mobileContactsShowsMain;
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
@@ -1171,18 +1204,8 @@ export default function DashboardApp() {
           mobileSecondaryOpen={uiStore.mobileSidebarOpen}
           onMobileSecondaryClose={uiStore.closeMobileSidebar}
         />
-        <div ref={mainContentRef} className={mainPaneClass}>
-          {primaryNavigationPending ? (
-            // A pending click on Messages usually lands on the empty
-            // "pick a conversation" pane, so only paint a chat skeleton when a
-            // conversation is actually open.
-            <DashboardTabSkeleton
-              variant={visibleSidebarTab}
-              hasOpenConversation={
-                Boolean(uiStore.focusedRoomId) || uiStore.messagesPane === "user-chat"
-              }
-            />
-          ) : visibleSidebarTab === "home" ? (
+        <div className={mainPaneClass} data-dashboard-main>
+          {visibleSidebarTab === "home" ? (
             <HomePanel />
           ) : visibleSidebarTab === "activity" ? (
             <ActivityPanel />

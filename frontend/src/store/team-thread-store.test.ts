@@ -35,6 +35,21 @@ describe("Organization thread lifecycle", () => {
     await load;
     expect(store.getState().messages).toEqual([]);
   });
+  it("does not notify or rebuild the timeline for an empty incremental poll", async () => {
+    vi.mocked(teamConversationsApi.messages)
+      .mockResolvedValueOnce(page([1, 2]))
+      .mockResolvedValueOnce(page([]));
+    const store = createTeamThreadStore("space", "room");
+    await store.getState().load();
+    const messages = store.getState().messages;
+    const changed = vi.fn();
+    const unsubscribe = store.subscribe(changed);
+    await store.getState().refresh();
+    expect(store.getState().messages).toBe(messages);
+    expect(changed).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
   it("drains incremental pages without skipping messages around our own send", async () => {
     const api = vi.mocked(teamConversationsApi.messages);
     api

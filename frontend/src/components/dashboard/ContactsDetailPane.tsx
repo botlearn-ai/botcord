@@ -13,6 +13,7 @@ import { contactsUi as contactsUiI18n } from "@/lib/i18n/translations/dashboard"
 import type { DashboardRoom, ContactInfo, HumanRoomSummary, UserAgent } from "@/lib/types";
 import { CompositeAvatar } from "./CompositeAvatar";
 import BotAvatar from "./BotAvatar";
+import { mergeDashboardRoomsWithHumanRooms } from "@/store/dashboard-shared";
 
 type ResolvedTarget =
   | { kind: "owned-bot"; agent: UserAgent }
@@ -142,7 +143,7 @@ export default function ContactsDetailPane() {
   );
 
   const contacts = overview?.contacts || [];
-  const rooms: Array<DashboardRoom | HumanRoomSummary> = overview?.rooms ?? humanRooms ?? [];
+  const rooms = mergeDashboardRoomsWithHumanRooms(overview?.rooms || [], humanRooms);
   const target = resolveTarget(selectedContactKey, ownedAgents, contacts, rooms);
 
   if (!target) {

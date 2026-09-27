@@ -124,8 +124,11 @@ function BotsView({
     [ownedAgents],
   );
 
+  // Presence/profile updates must not refetch unchanged activity statistics.
+  const activityAgentIds = JSON.stringify(orderedAgents.map((agent) => agent.agent_id).sort());
+
   useEffect(() => {
-    const agentIds = orderedAgents.map((agent) => agent.agent_id);
+    const agentIds = JSON.parse(activityAgentIds) as string[];
     if (agentIds.length === 0) {
       setStatsById({});
       return;
@@ -141,7 +144,7 @@ function BotsView({
     return () => {
       cancelled = true;
     };
-  }, [orderedAgents]);
+  }, [activityAgentIds]);
 
   return (
     <>

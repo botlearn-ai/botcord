@@ -27,7 +27,6 @@ import BotAvatar from "./BotAvatar";
 import TransferDialog from "./TransferDialog";
 import TopupDialog from "./TopupDialog";
 import WithdrawDialog from "./WithdrawDialog";
-import DashboardTabSkeleton from "./DashboardTabSkeleton";
 
 function formatCoinAmount(minorStr: string | null | undefined): string {
   if (!minorStr) return "0.00";
@@ -67,6 +66,7 @@ function WalletPanel() {
     walletsError,
     mergedLedger,
     mergedLedgerLoading,
+    mergedLedgerLoaded,
     mergedLedgerHasMore,
     withdrawalRequests,
     withdrawalRequestsLoading,
@@ -84,6 +84,7 @@ function WalletPanel() {
       walletsError: s.walletsError,
       mergedLedger: s.mergedLedger,
       mergedLedgerLoading: s.mergedLedgerLoading,
+      mergedLedgerLoaded: s.mergedLedgerLoaded,
       mergedLedgerHasMore: s.mergedLedgerHasMore,
       withdrawalRequests: s.withdrawalRequests,
       withdrawalRequestsLoading: s.withdrawalRequestsLoading,
@@ -116,10 +117,8 @@ function WalletPanel() {
   }, [walletsLoaded, walletsLoading, loadAllWallets]);
 
   useEffect(() => {
-    if (mergedLedger.length === 0 && !mergedLedgerLoading) void loadMergedLedger();
-    // intentionally only on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!mergedLedgerLoaded && !mergedLedgerLoading) void loadMergedLedger();
+  }, [mergedLedgerLoaded, mergedLedgerLoading, loadMergedLedger]);
 
   useEffect(() => {
     if (
@@ -180,24 +179,6 @@ function WalletPanel() {
     [humanIdentity],
   );
 
-  // Initial bootstrap not yet finished — show skeleton.
-  if (!walletsLoaded) {
-    if (!walletsError) {
-      return <DashboardTabSkeleton variant="wallet" />;
-    }
-    return (
-      <div className="dashboard-main flex flex-1 flex-col items-center justify-center gap-3">
-        <div className="text-sm text-red-400">{walletsError}</div>
-        <button
-          onClick={() => void loadAllWallets()}
-          className="liquid-action rounded border border-glass-border px-4 py-2 text-xs text-text-secondary hover:text-text-primary"
-        >
-          {tc.retry}
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="dashboard-main h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-8">
@@ -218,78 +199,91 @@ function WalletPanel() {
         </div>
 
         <div className="space-y-6">
-          {/* Total disposable card */}
-          <div className="liquid-card rounded-2xl border border-glass-border p-6">
-            <div className="mb-1 text-xs font-medium uppercase tracking-wider text-text-secondary">
-              {t.totalDisposable}
+          {/* Keep independent sections usable while all-account totals settle. */}
+          {walletsError && (
+            <div role="alert" className="flex items-center gap-3 text-sm text-red-400">
+              {walletsError}
+              <button onClick={() => void loadAllWallets()} disabled={walletsLoading} className="liquid-action rounded border border-glass-border px-3 py-1">{tc.retry}</button>
             </div>
-            <div className="mb-5 flex items-baseline gap-2">
-              <span className="font-mono text-4xl font-bold text-text-primary">
-                {showAmount(totalMinor, walletAmountsHidden)}
-              </span>
-              <span className="text-sm font-medium text-text-secondary">{assetCode}</span>
+          )}
+          {!walletsLoaded ? (
+            <div className="liquid-card flex min-h-[22rem] items-center justify-center rounded-2xl border border-glass-border p-6">
+              <MobileBotCordLoading label={tc.loading} />
             </div>
+          ) : (
+            <div className="liquid-card rounded-2xl border border-glass-border p-6">
+              <div className="mb-1 text-xs font-medium uppercase tracking-wider text-text-secondary">
+                {t.totalDisposable}
+              </div>
+              <div className="mb-5 flex items-baseline gap-2">
+                <span className="font-mono text-4xl font-bold text-text-primary">
+                  {showAmount(totalMinor, walletAmountsHidden)}
+                </span>
+                <span className="text-sm font-medium text-text-secondary">{assetCode}</span>
+              </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="liquid-tool-surface rounded-xl border border-glass-border p-4">
-                <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">
-                  {t.humanShare}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="liquid-tool-surface rounded-xl border border-glass-border p-4">
+                  <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">
+                    {t.humanShare}
+                  </div>
+                  <div className="font-mono text-xl font-semibold text-neon-green">
+                    {showAmount(humanShareMinor, walletAmountsHidden)}
+                  </div>
                 </div>
-                <div className="font-mono text-xl font-semibold text-neon-green">
-                  {showAmount(humanShareMinor, walletAmountsHidden)}
+                <div className="liquid-tool-surface rounded-xl border border-glass-border p-4">
+                  <div className="mb-1 flex items-baseline justify-between gap-2">
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-text-secondary">
+                      {t.botShare}
+                    </span>
+                    <span className="text-[10px] text-text-secondary/70">
+                      {t.botShareCount.replace("{count}", String(ownedAgents.length))}
+                    </span>
+                  </div>
+                  <div className="font-mono text-xl font-semibold text-neon-cyan">
+                    {showAmount(botShareMinor, walletAmountsHidden)}
+                  </div>
                 </div>
               </div>
-              <div className="liquid-tool-surface rounded-xl border border-glass-border p-4">
-                <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-text-secondary">
-                    {t.botShare}
-                  </span>
-                  <span className="text-[10px] text-text-secondary/70">
-                    {t.botShareCount.replace("{count}", String(ownedAgents.length))}
-                  </span>
-                </div>
-                <div className="font-mono text-xl font-semibold text-neon-cyan">
-                  {showAmount(botShareMinor, walletAmountsHidden)}
-                </div>
+
+              {/* Quick Actions */}
+              <div className="mt-5 grid grid-cols-3 gap-3">
+                <CtaButton
+                  color="green"
+                  label={t.recharge}
+                  onClick={() => handleOpenDialog("topup")}
+                  icon={
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  }
+                />
+                <CtaButton
+                  color="cyan"
+                  label={t.transfer}
+                  onClick={() => handleOpenDialog("transfer")}
+                  icon={
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
+                    />
+                  }
+                />
+                <CtaButton
+                  color="purple"
+                  label={t.withdraw}
+                  onClick={() => handleOpenDialog("withdraw")}
+                  icon={
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                    />
+                  }
+                />
               </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              <CtaButton
-                color="green"
-                label={t.recharge}
-                onClick={() => handleOpenDialog("topup")}
-                icon={
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                }
-              />
-              <CtaButton
-                color="cyan"
-                label={t.transfer}
-                onClick={() => handleOpenDialog("transfer")}
-                icon={
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
-                  />
-                }
-              />
-              <CtaButton
-                color="purple"
-                label={t.withdraw}
-                onClick={() => handleOpenDialog("withdraw")}
-                icon={
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                  />
-                }
-              />
-            </div>
-          </div>
+          )}
 
           {/* Bot balances list */}
           <BotBalancesSection
@@ -305,7 +299,7 @@ function WalletPanel() {
           {/* Merged ledger */}
           <MergedLedgerSection
             entries={mergedLedger}
-            loading={mergedLedgerLoading}
+            loading={mergedLedgerLoading || !mergedLedgerLoaded}
             hasMore={mergedLedgerHasMore}
             onLoadMore={() => loadMergedLedger(true)}
             assetCode={assetCode}
@@ -328,7 +322,7 @@ function WalletPanel() {
           <RecentWithdrawals
             viewer={humanIdentity}
             items={withdrawalRequests}
-            loading={withdrawalRequestsLoading}
+            loading={withdrawalRequestsLoading || !withdrawalRequestsLoaded}
             error={withdrawalRequestsError}
             hidden={walletAmountsHidden}
             onRefresh={loadWithdrawalRequests}
@@ -434,7 +428,7 @@ function BotBalancesSection({
                 </div>
                 <div className="text-right">
                   <div className="font-mono text-base font-semibold text-text-primary">
-                    {showAmount(w?.total_balance_minor, hidden)}
+                    {w ? showAmount(w.total_balance_minor, hidden) : "—"}
                   </div>
                   <div className="text-[10px] text-text-secondary/60">{assetCode}</div>
                 </div>
@@ -492,7 +486,9 @@ function MergedLedgerSection({
         <p className="text-xs text-text-secondary/70">{hint}</p>
       </div>
 
-      {entries.length === 0 && !loading ? (
+      {entries.length === 0 && loading ? (
+        <MobileBotCordLoading label={loadingMoreLabel} />
+      ) : entries.length === 0 ? (
         <div className="liquid-empty-state rounded-xl border border-dashed border-glass-border p-4 text-sm text-text-secondary">
           {emptyLabel}
         </div>

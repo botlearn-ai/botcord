@@ -2,42 +2,36 @@
 
 /**
  * [INPUT]: 依赖 adminBetaApi (getWaitlist/approveWaitlist/rejectWaitlist)
- * [OUTPUT]: Admin 等待列表审批页 — 申请列表 + 通过/拒绝操作
+ * [OUTPUT]: Admin 等待列表审批页 — 申请列表 + 通过/拒绝操作，过滤请求隔离及后台刷新
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { Loader2, CheckCircle, XCircle, Copy } from "lucide-react";
 import { adminBetaApi, type BetaWaitlistEntry } from "@/lib/api";
+import { useStore } from "zustand";
+import { createAdminListStore } from "./admin-list-store";
 import { useConfirm } from "@/store/useConfirmStore";
 
 type StatusFilter = "pending" | "approved" | "rejected";
 
 export default function AdminWaitlistPage() {
   const confirm = useConfirm();
-  const [entries, setEntries] = useState<BetaWaitlistEntry[]>([]);
+  const store = useMemo(() => createAdminListStore<BetaWaitlistEntry>(key => adminBetaApi.getWaitlist(key as StatusFilter).then((data) => data.entries)), []);
+  const { rows, key, loading: fetching, error, setError } = useStore(store);
   const [filter, setFilter] = useState<StatusFilter>("pending");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const entries = key === filter ? rows : [];
+  const loading = fetching || key !== filter;
   const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   // Stores { entryId: { code, emailSent } } for failed email cases
   const [failedEmailCodes, setFailedEmailCodes] = useState<Record<string, string>>({});
   const [recentFailedApprovals, setRecentFailedApprovals] = useState<BetaWaitlistEntry[]>([]);
 
-  const fetchEntries = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await adminBetaApi.getWaitlist(filter);
-      setEntries(data.entries);
-    } catch (err: any) {
-      setError(err?.message ?? "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [filter]);
-
-  useEffect(() => { fetchEntries(); }, [fetchEntries]);
+  const fetchEntries = store.getState().refresh;
+  useEffect(() => {
+    void store.getState().load(filter);
+    return () => store.getState().cancel();
+  }, [store, filter]);
 
   async function handleApprove(id: string) {
     setPendingAction(id);

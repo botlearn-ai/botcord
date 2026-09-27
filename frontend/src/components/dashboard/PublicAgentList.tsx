@@ -25,7 +25,7 @@ export default function PublicAgentList() {
     );
   }, [publicAgents]);
 
-  if (publicAgentsLoading) {
+  if (publicAgentsLoading && publicAgents.length === 0) {
     return (
       <MobileBotCordLoading
         label="Loading agents..."

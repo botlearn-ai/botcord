@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 react 的 useEffect/useRef/useState 维护本地输入与防抖计时器，依赖外部 onSearch 回调与 dashboard 搜索文案
- * [OUTPUT]: 对外提供带 300ms 防抖的 SearchBar 组件，把用户输入稳定地提交给上层查询逻辑
+ * [OUTPUT]: 对外提供带 300ms 防抖的 SearchBar 组件，把用户输入稳定地提交给上层查询逻辑，可即时通知查询展示状态
  * [POS]: dashboard 搜索输入原子组件，被 Explore、联系人、消息侧栏等场景复用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -14,10 +14,11 @@ import { animateIfMotion, cleanupAnime } from "@/lib/anime";
 
 interface SearchBarProps {
   onSearch: (query: string) => void;
+  onInputChange?: (query: string) => void;
   placeholder?: string;
 }
 
-export default function SearchBar({ onSearch, placeholder }: SearchBarProps) {
+export default function SearchBar({ onSearch, onInputChange, placeholder }: SearchBarProps) {
   const locale = useLanguage();
   const t = searchBar[locale];
   const resolvedPlaceholder = placeholder || t.placeholder;
@@ -29,6 +30,7 @@ export default function SearchBar({ onSearch, placeholder }: SearchBarProps) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     setValue(v);
+    onInputChange?.(v);
     clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => onSearch(v), 300);
   };

@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
-import type { TeamSnapshot } from "@/store/team-space-store";
+import { createTeamSpaceStore, type TeamSnapshot, type TeamSpaceStore } from "@/store/team-space-store";
 const route = vi.hoisted(() => ({ query: new URLSearchParams() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -9,8 +9,8 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/lib/i18n", () => ({ useLanguage: () => "zh" }));
 vi.mock("./TeamSpacesPage", () => ({
-  default: ({ section }: { section: string }) => (
-    <div data-management={section}>Management</div>
+  default: ({ section, sharedStore }: { section: string; sharedStore?: TeamSpaceStore }) => (
+    <div data-management={section} data-shared={Boolean(sharedStore)}>Management</div>
   ),
 }));
 import { TeamWorkspace, teamHref, teamView } from "./TeamWorkspacePage";
@@ -58,6 +58,16 @@ it("keeps members, agents and settings in separate navigable views", () => {
     expect(html).toContain(`data-management="${view}"`);
     expect(html).toContain("返回消息");
     expect(html).not.toContain('aria-label="会话列表"');
+  }
+});
+it("passes the page store to every management tab instead of loading a second snapshot", () => {
+  const sharedStore = createTeamSpaceStore(true);
+  for (const view of ["members", "agents", "settings"]) {
+    route.query.set("view", view);
+    const html = renderToStaticMarkup(
+      <TeamWorkspace snapshot={snapshot} sharedStore={sharedStore} onMembershipChanged={() => {}} />
+    );
+    expect(html).toContain('data-shared="true"');
   }
 });
 it("does not enable conversation creation against an older Hub", () => {

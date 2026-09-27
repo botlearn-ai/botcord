@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 contact store 的 received/sent requests、humansApi pending approvals 与 respond/resolve 动作；本地状态控制 received/sent sub-tab 与 Bot 分组折叠
+ * [INPUT]: 依赖 contact store 渐进到达的 received/sent requests、共享去重的 pending approvals 与 respond/resolve 动作；本地状态控制 received/sent sub-tab 与 Bot 分组折叠
  * [OUTPUT]: ContactRequestsInbox — 联系人申请收件箱，Human 请求置顶、Bot 收到的请求按目标 Bot 折叠分组、Sent tab 展示发出请求并显示发起时间
  * [POS]: 联系人申请处理模块的复用组件
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ChevronDown, Loader2, Mail, Send } from "lucide-react";
-import { useDashboardContactStore } from "@/store/useDashboardContactStore";
+import { contactRequestScope, loadPendingContactApprovals, useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useLanguage } from "@/lib/i18n";
 import { chatPane } from "@/lib/i18n/translations/dashboard";
@@ -72,41 +72,48 @@ export default function ContactRequestsInbox({
       loadContactRequests: s.loadContactRequests,
     })),
   );
-  const { isAuthed, ownedAgents } = useDashboardSessionStore(
+  const { isAuthed, ownedAgents, identityScope } = useDashboardSessionStore(
     useShallow((s) => ({
       isAuthed: s.sessionMode === "authed-ready" || s.sessionMode === "authed-no-agent",
       ownedAgents: s.ownedAgents,
+      identityScope: contactRequestScope(),
     })),
   );
 
   const [tab, setTab] = useState<Tab>(initialTab);
-  const [botApprovals, setBotApprovals] = useState<PendingApproval[]>([]);
+  const [botApprovalsData, setBotApprovals] = useState<PendingApproval[]>([]);
+  const [botApprovalsScope, setBotApprovalsScope] = useState(identityScope);
+  const botApprovals = botApprovalsScope === identityScope ? botApprovalsData : [];
   const [botApprovalsLoading, setBotApprovalsLoading] = useState(false);
   const [botApprovalsError, setBotApprovalsError] = useState<string | null>(null);
   const [botApprovalAction, setBotApprovalAction] = useState<BotApprovalAction>(null);
   const [expandedBotGroups, setExpandedBotGroups] = useState<Record<string, boolean>>({});
 
   const refreshBotApprovals = useCallback(async () => {
+    const scope = contactRequestScope();
     setBotApprovalsLoading(true);
     setBotApprovalsError(null);
     try {
-      const res = await humansApi.listPendingApprovals();
+      const res = await loadPendingContactApprovals();
+      if (contactRequestScope() !== scope) return;
+      setBotApprovalsScope(scope);
       setBotApprovals(
         res.approvals.filter((approval) => (
           approval.kind === "contact_request" && !approval.id.startsWith("cr_")
         )),
       );
     } catch (err: any) {
+      if (contactRequestScope() !== scope) return;
       setBotApprovals([]);
       setBotApprovalsError(err?.message || (locale === "zh" ? "加载 Bot 请求失败" : "Failed to load bot requests"));
     } finally {
-      setBotApprovalsLoading(false);
+      if (contactRequestScope() === scope) setBotApprovalsLoading(false);
     }
   }, [locale]);
 
   useEffect(() => {
     if (isAuthed) void Promise.all([loadContactRequests(), refreshBotApprovals()]);
-  }, [isAuthed, loadContactRequests, refreshBotApprovals]);
+  }, [isAuthed, identityScope, loadContactRequests, refreshBotApprovals]);
 
   const pendingReceived = contactRequestsReceived.filter((r) => r.state === "pending");
   const visibleSent = contactRequestsSent;

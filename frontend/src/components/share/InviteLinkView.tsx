@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: 依赖分享/邀请 API 读取邀请预览，依赖 Supabase session 与用户资料判断用户是否可直接兑换
+ * [INPUT]: 依赖分享/邀请 API 读取邀请预览，公开预览独立加载，依赖 Supabase session 与用户资料异步判断用户是否可直接兑换
  * [OUTPUT]: 对外提供 InviteLinkView 组件，负责好友/群邀请页的预览、兑换与续接跳转
  * [POS]: marketing invite 页面主体，统一承接 `/i/[inviteCode]` 的公开入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -9,21 +9,25 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { api, ApiError, userApi } from "@/lib/api";
+import { api } from "@/lib/api";
 import type { InvitePreviewResponse } from "@/lib/types";
-import { createClient } from "@/lib/supabase/client";
+import { loadInviteLanding, type InviteAuthMode } from "./landing-requests";
 import { useLanguage } from "@/lib/i18n";
 import { inviteLanding } from "@/lib/i18n/translations/dashboard";
 import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 
 export default function InviteLinkView({ inviteCode }: { inviteCode: string }) {
+  return <InviteLinkContent key={inviteCode} inviteCode={inviteCode} />;
+}
+
+function InviteLinkContent({ inviteCode }: { inviteCode: string }) {
   const locale = useLanguage();
   const t = inviteLanding[locale];
   const [data, setData] = useState<InvitePreviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [redeeming, setRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [authMode, setAuthMode] = useState<"guest" | "authed-no-agent" | "authed-ready">("guest");
+  const [authMode, setAuthMode] = useState<InviteAuthMode>("pending");
 
   const relativeInvitePath = useMemo(() => `/i/${encodeURIComponent(inviteCode)}`, [inviteCode]);
   const chatsContinueHref = `/chats?next=${encodeURIComponent(relativeInvitePath)}`;
@@ -36,52 +40,25 @@ export default function InviteLinkView({ inviteCode }: { inviteCode: string }) {
       : t.inviteOnlyJoin;
 
   useEffect(() => {
-    const supabase = createClient();
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const [preview, sessionResult] = await Promise.all([
-          api.getInvite(inviteCode),
-          supabase.auth.getSession(),
-        ]);
-        if (cancelled) return;
+    setData(null);
+    setError(null);
+    setLoading(true);
+    setAuthMode("pending");
+    return loadInviteLanding(inviteCode, {
+      preview: (preview) => {
         setData(preview);
-
-        const hasSession = Boolean(sessionResult.data.session?.access_token);
-        if (!hasSession) {
-          setAuthMode("guest");
-          return;
-        }
-
-        try {
-          const me = await userApi.getMe({ force: true });
-          if (cancelled) return;
-          const isReady = me.agents.length > 0;
-          setAuthMode(isReady ? "authed-ready" : "authed-no-agent");
-        } catch {
-          if (!cancelled) setAuthMode("guest");
-        }
-      } catch (err) {
-        if (cancelled) return;
-        if (err instanceof ApiError && (err.status === 404 || err.status === 410)) {
-          setError(err.message);
-        } else {
-          setError(err instanceof Error ? err.message : t.loadFailed);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
+        setLoading(false);
+      },
+      error: (cause) => {
+        setError(cause instanceof Error ? cause.message : t.loadFailed);
+        setLoading(false);
+      },
+      auth: setAuthMode,
+    });
   }, [inviteCode, t.loadFailed]);
 
   async function handleRedeem() {
-    if (!data) return;
+    if (!data || authMode !== "authed-ready" || redeeming) return;
     setRedeeming(true);
     setError(null);
     try {
@@ -152,7 +129,11 @@ export default function InviteLinkView({ inviteCode }: { inviteCode: string }) {
         ) : null}
 
         <div className="mt-6 flex flex-wrap gap-3">
-          {authMode === "authed-ready" ? (
+          {authMode === "pending" ? (
+            <button type="button" disabled aria-busy="true" className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan opacity-50">
+              {locale === "zh" ? "正在确认登录状态…" : "Checking sign-in…"}
+            </button>
+          ) : authMode === "authed-ready" ? (
             <button
               type="button"
               onClick={handleRedeem}

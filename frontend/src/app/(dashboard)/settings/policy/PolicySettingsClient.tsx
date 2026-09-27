@@ -195,9 +195,6 @@ export default function PolicySettingsClient() {
   const policy = usePolicyStore((s) =>
     selectedAgentId ? s.globalByAgent[selectedAgentId] : undefined,
   );
-  const loadingPolicy = usePolicyStore((s) =>
-    selectedAgentId ? Boolean(s.globalLoading[selectedAgentId]) : false,
-  );
   const loadGlobal = usePolicyStore((s) => s.loadGlobal);
   const patchGlobal = usePolicyStore((s) => s.patchGlobal);
 
@@ -206,15 +203,14 @@ export default function PolicySettingsClient() {
     try {
       const res = await userApi.getMyAgents();
       setAgents(res.agents);
-      if (res.agents.length > 0 && !selectedAgentId) {
-        const def =
-          res.agents.find((a) => a.is_default) ?? res.agents[0];
-        setSelectedAgentId(def.agent_id);
-      }
+      setSelectedAgentId((current) => {
+        if (res.agents.some((agent) => agent.agent_id === current)) return current;
+        return (res.agents.find((agent) => agent.is_default) ?? res.agents[0])?.agent_id ?? null;
+      });
     } catch (err) {
       setAgentsError(err instanceof Error ? err.message : String(err));
     }
-  }, [selectedAgentId]);
+  }, []);
 
   useEffect(() => {
     void fetchAgents();
@@ -342,7 +338,7 @@ export default function PolicySettingsClient() {
         </div>
       ) : null}
 
-      {!policy || loadingPolicy ? (
+      {!policy ? (
         <PolicyFormSkeleton />
       ) : (
         <PolicyForm policy={policy} saving={saving} onPatch={apply} />

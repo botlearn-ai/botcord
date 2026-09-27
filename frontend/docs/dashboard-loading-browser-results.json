@@ -1,0 +1,46 @@
+{
+  "baseline": "fd4e63ce",
+  "environment": "isolated Chrome, synthetic data; not production latency",
+  "shell": {
+    "route_delay_ms": 500,
+    "children": "lightweight fixture panels",
+    "results": [
+      {
+        "baseline": true,
+        "tab_ms": [
+          740.1,
+          741.6,
+          725.7,
+          733.4
+        ],
+        "renders_for_20_unrelated_updates": 20
+      },
+      {
+        "baseline": false,
+        "tab_ms": [
+          2.8,
+          1,
+          1.2,
+          1
+        ],
+        "renders_for_20_unrelated_updates": 0
+      }
+    ]
+  },
+  "policy_and_schedules": {
+    "before": {
+      "initialAgentRequests": 2,
+      "afterSelectAgentRequests": 3,
+      "cachedPolicyVisibleDuringRefresh": 0,
+      "visibleHistorySummariesAt600ms": 0,
+      "scheduleRefreshEnabledAt600ms": false
+    },
+    "after": {
+      "initialAgentRequests": 1,
+      "afterSelectAgentRequests": 1,
+      "cachedPolicyVisibleDuringRefresh": 2,
+      "visibleHistorySummariesAt600ms": 3,
+      "scheduleRefreshEnabledAt600ms": true
+    }
+  }
+}

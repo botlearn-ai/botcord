@@ -81,6 +81,8 @@ dashboard/
 
 ## 变更日志
 
+- 2026-09-27: 其余 tab 性能优化：主导航立即渲染目标内容，取消强制骨架等待与全区淡入，移动端布局同样按目标 tab 更新；根组件缩小 store 订阅。Explore 使用精确查询缓存、并发合并和无延迟列表展示；Contacts/Activity/Wallet 独立显示已就绪数据；Policy/Schedules 减少重复请求并保留有效缓存。测量方法、覆盖范围与限制见 [性能报告](../../../docs/dashboard-loading-performance.md)。
+
 - 2026-08-27: `DashboardTabSkeleton.tsx` 按各面板真实布局重写全部 tab 骨架（Home/My Bots/Wallet 走 `max-w-5xl` 居中页且不再套顶栏，Explore/Activity/Contacts 复刻各自的工具栏与网格），并新增 `ContactSectionsSkeleton`、`RoomRowsSkeleton`、`MessagesEmptyStateSkeleton` 供 Sidebar、ContactsPanel、RoomList 共用；`/settings/policy` 的加载态同步改为 `PolicyFormSkeleton`。骨架与加载完成后的框架保持一致，改布局时需同步改骨架。
 - 2026-06-03: `MessageList.tsx` 与 `UserChatPane.tsx` 的消息滚动改为用户上滑后暂停自动追随，并显示紧凑的回到底部图标按钮；点击后恢复追随最新内容。
 - 2026-06-01: `MessageList.tsx` 的消息 React key 改为优先使用跨 fan-out 稳定的 `msg_id`，配合附件图片固定占位，减少后台同步时图片预览闪烁。

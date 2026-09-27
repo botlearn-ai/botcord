@@ -2,19 +2,20 @@
 
 /**
  * [INPUT]: 依赖 adminBetaApi (getCodes/createCode/revokeCode)
- * [OUTPUT]: Admin 邀请码管理页 — 列表 + 创建 + 撤销
+ * [OUTPUT]: Admin 邀请码管理页 — 列表 + 创建 + 撤销，后台刷新保留已加载列表
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { Loader2, Plus, XCircle } from "lucide-react";
 import { adminBetaApi, type BetaInviteCode } from "@/lib/api";
+import { useStore } from "zustand";
+import { createAdminListStore } from "./admin-list-store";
 import { useConfirm } from "@/store/useConfirmStore";
 
 export default function AdminCodesPage() {
   const confirm = useConfirm();
-  const [codes, setCodes] = useState<BetaInviteCode[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const store = useMemo(() => createAdminListStore<BetaInviteCode>(() => adminBetaApi.getCodes().then((data) => data.codes)), []);
+  const { rows: codes, loading, error, setError } = useStore(store);
 
   // Create form
   const [showForm, setShowForm] = useState(false);
@@ -23,20 +24,11 @@ export default function AdminCodesPage() {
   const [prefix, setPrefix] = useState("KOL");
   const [creating, setCreating] = useState(false);
 
-  const fetchCodes = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await adminBetaApi.getCodes();
-      setCodes(data.codes);
-    } catch (err: any) {
-      setError(err?.message ?? "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchCodes(); }, [fetchCodes]);
+  const fetchCodes = store.getState().refresh;
+  useEffect(() => {
+    void store.getState().load("codes");
+    return () => store.getState().cancel();
+  }, [store]);
 
   async function handleCreate() {
     if (!label.trim()) return;

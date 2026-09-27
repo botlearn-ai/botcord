@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 zustand 保存钱包域状态，依赖 @/lib/api 发起 wallet 相关 BFF 请求，依赖主 dashboard store 提供 token/active identity/owned agents
- * [OUTPUT]: 对外提供 useDashboardWalletStore — 跨账户(人 + 每只自有 bot)钱包域状态仓库与合并交易记录分页
+ * [OUTPUT]: 对外提供 useDashboardWalletStore — 跨账户钱包域状态仓库、独立余额就绪与身份隔离的读取
  * [POS]: frontend dashboard 钱包业务模块 store。新结构以「总览」为主：fan-out 拉每个账户余额 + 合并交易记录；旧的 walletViewer 单视角接口保留给 dialog 临时态使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -37,6 +37,7 @@ interface DashboardWalletState {
   // Merged ledger across all owned accounts.
   mergedLedger: MergedLedgerEntry[];
   mergedLedgerLoading: boolean;
+  mergedLedgerLoaded: boolean;
   mergedLedgerError: string | null;
   mergedLedgerHasMore: boolean;
   /** Per-account paging buffers — internal, but stored on the store for HMR safety. */
@@ -76,6 +77,7 @@ const initialMultiState = {
   walletsError: null as string | null,
   mergedLedger: [] as MergedLedgerEntry[],
   mergedLedgerLoading: false,
+  mergedLedgerLoaded: false,
   mergedLedgerError: null as string | null,
   mergedLedgerHasMore: false,
   ledgerBuffers: {} as Record<string, AccountLedgerBuffer>,
@@ -119,6 +121,10 @@ function getOwnedAccounts(): Array<{ identity: ActiveIdentity; display_name: str
   return accounts;
 }
 
+let walletGeneration = 0;
+let viewerGeneration = 0;
+const readSequence = { wallets: 0, merged: 0, wallet: 0, ledger: 0, withdrawals: 0 };
+
 const MERGED_PAGE_SIZE = 20;
 
 /**
@@ -160,6 +166,8 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
   setWalletView: (view) => set({ walletView: view }),
 
   setWalletViewer: (viewer) => {
+    if (get().walletViewer?.type === viewer?.type && get().walletViewer?.id === viewer?.id) return;
+    viewerGeneration += 1;
     // Per-viewer slice resets so the next bootstrap re-fetches; multi-account
     // slice is preserved (it backs the overview).
     set({
@@ -169,15 +177,23 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
     });
   },
 
-  resetWalletState: () => set({ ...initialMultiState, ...initialPerViewerState }),
+  resetWalletState: () => {
+    walletGeneration += 1;
+    viewerGeneration += 1;
+    set({ ...initialMultiState, ...initialPerViewerState });
+  },
 
   // --- Multi-account loaders (overview) ---
 
   loadAllWallets: async () => {
     if (!getToken()) return;
+    const sequence = ++readSequence.wallets;
+    const generation = walletGeneration;
+    const token = getToken();
+    const isCurrent = () => sequence === readSequence.wallets && generation === walletGeneration && token === getToken();
     const accounts = getOwnedAccounts();
     if (accounts.length === 0) {
-      set({ walletsLoaded: true, walletsError: null });
+      set({ humanWallet: null, botWallets: {}, walletsLoaded: true, walletsLoading: false, walletsError: null });
       return;
     }
     set({ walletsLoading: true, walletsError: null });
@@ -185,11 +201,18 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
       const results = await Promise.all(
         accounts.map((a) =>
           api.getWallet(a.identity).then(
-            (w) => ({ ok: true as const, account: a, wallet: w }),
+            (w) => {
+              if (isCurrent() && !get().walletsLoaded) {
+                if (a.identity.type === "human") set({ humanWallet: w });
+                else set((state) => ({ botWallets: { ...state.botWallets, [a.identity.id]: w } }));
+              }
+              return { ok: true as const, account: a, wallet: w };
+            },
             (err) => ({ ok: false as const, account: a, error: err }),
           ),
         ),
       );
+      if (!isCurrent()) return;
       let humanWallet: WalletSummary | null = null;
       const botWallets: Record<string, WalletSummary | null> = {};
       let firstError: string | null = null;
@@ -210,6 +233,7 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
         walletsError: firstError,
       });
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       set({
         walletsLoading: false,
         walletsLoaded: true,
@@ -220,9 +244,14 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
 
   loadMergedLedger: async (loadMore = false) => {
     if (!getToken()) return;
+    if (loadMore && get().mergedLedgerLoading) return;
+    const sequence = ++readSequence.merged;
+    const generation = walletGeneration;
+    const token = getToken();
+    const isCurrent = () => sequence === readSequence.merged && generation === walletGeneration && token === getToken();
     const accounts = getOwnedAccounts();
     if (accounts.length === 0) {
-      set({ mergedLedger: [], mergedLedgerHasMore: false });
+      set({ mergedLedger: [], mergedLedgerHasMore: false, mergedLedgerLoaded: true, mergedLedgerLoading: false });
       return;
     }
     const accountMeta: Record<string, MergedLedgerEntry["_account"]> = {};
@@ -236,7 +265,7 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
     const prevBuffers = loadMore ? get().ledgerBuffers : {};
     const buffers: Record<string, AccountLedgerBuffer> = {};
     for (const a of accounts) {
-      buffers[a.identity.id] = prevBuffers[a.identity.id] ?? {
+      buffers[a.identity.id] = prevBuffers[a.identity.id] ? { ...prevBuffers[a.identity.id] } : {
         entries: [],
         cursor: null,
         hasMore: true,
@@ -265,6 +294,7 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
             );
         }),
       );
+      if (!isCurrent()) return;
       let firstError: string | null = null;
       for (const r of results) {
         const buf = buffers[r.key];
@@ -284,12 +314,15 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
         mergedLedger: merged,
         mergedLedgerHasMore: anyAccountHasMore(buffers),
         mergedLedgerLoading: false,
+        mergedLedgerLoaded: true,
         mergedLedgerError: firstError,
         ledgerBuffers: buffers,
       });
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       set({
         mergedLedgerLoading: false,
+        mergedLedgerLoaded: true,
         mergedLedgerError: err instanceof Error ? err.message : "Failed to load ledger",
       });
     }
@@ -299,19 +332,30 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
 
   loadWallet: async () => {
     if (!getToken()) return;
+    const sequence = ++readSequence.wallet;
+    const generation = viewerGeneration;
+    const token = getToken();
+    const isCurrent = () => sequence === readSequence.wallet && generation === viewerGeneration && token === getToken();
     const viewer = get().walletViewer;
     try {
       const wallet = await api.getWallet(viewer);
+      if (!isCurrent()) return;
       set({ wallet, walletError: null });
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       set({ walletError: err instanceof Error ? err.message : "Failed to load wallet" });
     }
   },
 
   loadWalletLedger: async (loadMore = false) => {
     if (!getToken()) return;
+    if (loadMore && get().walletLoading) return;
+    const sequence = ++readSequence.ledger;
+    const generation = viewerGeneration;
+    const token = getToken();
+    const isCurrent = () => sequence === readSequence.ledger && generation === viewerGeneration && token === getToken();
     const { walletLedgerCursor, walletLedger, walletViewer } = get();
-    set({ walletLoading: true });
+    set({ walletLoading: true, walletLedgerError: null });
     try {
       const cursor = loadMore ? walletLedgerCursor : undefined;
       const result = await api.getWalletLedger({
@@ -319,6 +363,7 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
         limit: 20,
         viewer: walletViewer,
       });
+      if (!isCurrent()) return;
       if (loadMore) {
         set({
           walletLedger: [...walletLedger, ...result.entries],
@@ -335,6 +380,7 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
         });
       }
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       set({
         walletLedgerError: err instanceof Error ? err.message : "Failed to load ledger",
         walletLoading: false,
@@ -344,16 +390,22 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
 
   loadWithdrawalRequests: async () => {
     if (!getToken()) return;
+    const sequence = ++readSequence.withdrawals;
+    const generation = viewerGeneration;
+    const token = getToken();
+    const isCurrent = () => sequence === readSequence.withdrawals && generation === viewerGeneration && token === getToken();
     const viewer = get().walletViewer;
     set({ withdrawalRequestsLoading: true, withdrawalRequestsError: null });
     try {
       const result = await api.getWithdrawals(viewer);
+      if (!isCurrent()) return;
       set({
         withdrawalRequests: result.withdrawals,
         withdrawalRequestsLoaded: true,
         withdrawalRequestsLoading: false,
       });
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       set({
         withdrawalRequestsError: err instanceof Error ? err.message : "Failed to load withdrawals",
         withdrawalRequestsLoaded: true,
@@ -362,3 +414,18 @@ export const useDashboardWalletStore = create<DashboardWalletState>()((set, get)
     }
   },
 }));
+
+// Clear synchronously at the owner/session boundary, before effects can render
+// another account's balances or leave a token-invalidated read stuck loading.
+function walletSessionKey(): string {
+  const session = useDashboardSessionStore.getState();
+  return JSON.stringify([session.token, session.human?.human_id]);
+}
+let lastWalletSessionKey = walletSessionKey();
+useDashboardSessionStore.subscribe(() => {
+  const nextKey = walletSessionKey();
+  if (nextKey !== lastWalletSessionKey) {
+    lastWalletSessionKey = nextKey;
+    useDashboardWalletStore.getState().resetWalletState();
+  }
+});

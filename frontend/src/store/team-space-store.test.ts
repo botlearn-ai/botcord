@@ -19,6 +19,7 @@ import {
   type SpaceMembers,
   type TeamSpace,
 } from "@/lib/team-spaces";
+import { userApi } from "@/lib/api";
 import { createTeamSpaceStore } from "./team-space-store";
 const personal = {
   id: "p",
@@ -80,6 +81,29 @@ describe("Team space loading", () => {
       .mockResolvedValue({ spaces: [personal, org] });
     vi.mocked(teamSpacesApi.members).mockReset().mockResolvedValue(empty);
   });
+  it("starts member loading while the independent user profile is still pending", async () => {
+    let finishProfile!: (value: Awaited<ReturnType<typeof userApi.getMe>>) => void;
+    vi.mocked(userApi.getMe).mockImplementationOnce(() => new Promise((resolve) => { finishProfile = resolve; }));
+    const store = createTeamSpaceStore(true);
+    const loading = store.getState().load();
+    await vi.waitFor(() => expect(teamSpacesApi.members).toHaveBeenCalledWith("a", expect.any(AbortSignal)));
+    // The member request no longer waits for this profile response.
+    expect(store.getState().snapshot).toBeNull();
+    finishProfile({ id: "me", agents: [] } as unknown as Awaited<ReturnType<typeof userApi.getMe>>);
+    await loading;
+    expect(store.getState().snapshot?.selected.id).toBe("a");
+  });
+
+  it("keeps validated content when refreshing after the default URL gains its space ID", async () => {
+    const store = createTeamSpaceStore(true);
+    await store.getState().load();
+    const snapshot = store.getState().snapshot;
+    const refreshing = store.getState().load("a", { background: true });
+    expect(store.getState().snapshot).toBe(snapshot);
+    expect(store.getState().loading).toBe(false);
+    await refreshing;
+  });
+
   it("opens an active organization when entering Team mode", async () => {
     const store = createTeamSpaceStore(true);
     await store.getState().load();
@@ -115,7 +139,7 @@ describe("Team space loading", () => {
     finish({
       users: [],
       agents: [{ display_name: "Company secret" }],
-    } as SpaceMembers);
+    } as unknown as SpaceMembers);
     await old;
     expect(store.getState().snapshot?.selected.id).toBe("p");
     expect(store.getState().snapshot?.members).toEqual(empty);

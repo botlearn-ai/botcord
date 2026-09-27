@@ -9,6 +9,7 @@ dashboard-shared.ts: dashboard 多 store 共享的房间摘要、时间比较与
 useDashboardSessionStore.ts: Session 业务域 store，负责登录态、用户资料、Human 身份与鉴权初始化。
 useDashboardUIStore.ts: 纯界面状态 store，负责 tab、消息特殊入口选择、房间焦点、右侧面板与 Agent 卡片开合。  
 useDashboardChatStore.ts: Chat 数据 store，负责 overview、按稳定 msg_id 合并的消息缓存、房间成员刷新版本、公开目录远端搜索结果与 Agent 卡片数据。
+useDashboardActivityStore.ts: Activity 的会话内只读缓存，feed/stats 独立就绪，合并并发请求，按身份边界同步清空并丢弃旧响应。
 useDashboardRealtimeStore.ts: Realtime 协调 store，负责 Supabase channel 连接状态与“事件 -> 最小同步”决策。  
 useDashboardUnreadStore.ts: 阅读语义 store，负责后端 `last_viewed_at` 的本地乐观覆盖与 room 级未读协调。  
 useDashboardWalletStore.ts: Wallet 业务域 store，负责余额、流水、提现请求与钱包视图状态。  
@@ -33,6 +34,7 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 - 进入房间并真正看到最新位置后，必须通过 BFF 写回 `last_viewed_at`；前端本地未读数量只能做短暂覆盖，不能替代后端状态。
 
 变更日志
+- 2026-09-27: 公开目录记录成功查询归属，合并同查询同身份的并发请求，reset/logout 使旧响应失效；Contact 请求分来源发布并共享审批加载。Contact/Wallet/Activity 对身份边界同步清空私有状态，避免先显示旧账号数据再等待 React effect；Wallet 读取带版本保护，Policy 并发读取合并并防止旧读取覆盖保存。
 - 2026-06-01: `useDashboardChatStore.ts` 的房间消息全量重载改为按稳定 `msg_id` 合并，并在增量轮询中按 `msg_id` 去重，避免 fan-out 代表行切换导致附件预览重挂载。
 - 2026-05-26: `session/chat/contact` store 为鉴权初始化、Human 房间、overview、owned-agent rooms 与联系人请求增加 in-flight 合并，避免首屏多个 effect/StrictMode 同时触发同一接口。
 - 2026-05-14: 移除 dashboard 前端的 Bot 身份切换能力；`userChatAgentId` 只作为 owner-chat 目标，`useDashboardChatStore.ts` 不再按 Bot 边界清空消息列表。
