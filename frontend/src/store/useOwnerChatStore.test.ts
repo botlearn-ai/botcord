@@ -226,6 +226,23 @@ describe("useOwnerChatStore history loading", () => {
     useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
   });
 
+  it("advances history even when a page contains no visible messages", async () => {
+    const hidden = makeDashboardMessage({ hub_msg_id: "hidden-new", text: "", payload: { text: "" } });
+    mocks.getRoomMessages.mockResolvedValueOnce({ messages: [hidden], has_more: true });
+    await useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    expect(useOwnerChatStore.getState().messages).toEqual([]);
+    mocks.getRoomMessages.mockResolvedValueOnce({ messages: [{ ...hidden, hub_msg_id: "hidden-old" }], has_more: true });
+    await useOwnerChatStore.getState().loadMore();
+    expect(mocks.getRoomMessages).toHaveBeenLastCalledWith("rm_oc_real", { before: "hidden-new", limit: 50 });
+    mocks.getRoomMessages.mockResolvedValueOnce({ messages: [makeDashboardMessage({ hub_msg_id: "visible-old" })], has_more: false });
+    await useOwnerChatStore.getState().loadMore();
+    expect(mocks.getRoomMessages).toHaveBeenLastCalledWith("rm_oc_real", { before: "hidden-old", limit: 50 });
+    expect(useOwnerChatStore.getState().messages).toHaveLength(1);
+    expect(useOwnerChatStore.getState().hasMore).toBe(false);
+    useOwnerChatStore.getState().setRoom("rm_oc_other", "Other");
+    expect(useOwnerChatStore.getState().oldestHistoryCursor).toBeNull();
+  });
+
   it("drops an older-page response after the owner-chat room changes", async () => {
     let resolvePage!: (result: { messages: DashboardMessage[]; has_more: boolean }) => void;
     mocks.getRoomMessages.mockReturnValue(new Promise((resolve) => {

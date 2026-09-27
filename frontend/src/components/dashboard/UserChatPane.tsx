@@ -1,5 +1,7 @@
 "use client";
 
+import MessageHistoryControl, { canAutoLoadHistory } from "./MessageHistoryControl";
+
 /**
  * Owner-chat pane — renders a 1:1 conversation between the user and a managed Bot.
  *
@@ -168,7 +170,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const historyPrependAppliedRef = useRef(false);
   const historyAnchorRef = useRef<{
     roomId: string;
-    oldestMessageKey: string;
+    oldestMessageKey: string | null;
     visibleMessage: VisibleMessageScrollAnchor | null;
   } | null>(null);
   const prevLengthRef = useRef(0);
@@ -347,6 +349,8 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     const anchor = historyAnchorRef.current;
     const container = scrollContainerRef.current;
     if (!anchor || !container) return;
+    // Restore after the loading indicator is replaced by the history control.
+    if (loadingMore) return;
     if (anchor.roomId !== roomId) {
       historyAnchorRef.current = null;
       return;
@@ -363,7 +367,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     }
     historyPrependAppliedRef.current = true;
     historyAnchorRef.current = null;
-  }, [messages, roomId]);
+  }, [messages, roomId, loadingMore]);
 
   useEffect(() => {
     const loadingMoreAtChange = isLoadingMore.current;
@@ -383,7 +387,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       historyPrependAppliedRef.current = false;
       isLoadingMore.current = false;
     }
-  }, [messages.length, scrollToBottom]);
+  }, [messages.length, scrollToBottom, loadingMore]);
 
   useLayoutEffect(() => {
     const previousSignature = prevMessageContentSignatureRef.current;
@@ -501,7 +505,6 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     if (
       !container
       || !roomId
-      || !oldestMessage
       || !hasMore
       || loadingMore
       || isLoadingMore.current
@@ -509,7 +512,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       return;
     }
 
-    const oldestMessageKey = oldestMessage.clientId;
+    const oldestMessageKey = oldestMessage?.clientId ?? null;
     const previousLength = messages.length;
     historyAnchorRef.current = {
       roomId,
@@ -544,7 +547,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       showScrollToBottomButtonRef.current = shouldShow;
       setShowScrollToBottomButton(shouldShow);
     }
-    if (el.scrollTop < 100) {
+    if (el.scrollTop < 100 && canAutoLoadHistory()) {
       requestMoreMessages();
     }
   }, [requestMoreMessages]);
@@ -815,7 +818,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       </div>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3 space-y-3">
         {loadingMore ? (
           <MessageHistoryLoading label={tMessages.loadingEarlier} />
         ) : moreError ? (
@@ -830,9 +833,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
             </button>
           </div>
         ) : hasMore ? (
-          <div className="mb-1 text-center text-xs text-zinc-500 animate-pulse">
-            {tMessages.scrollUp}
-          </div>
+          <MessageHistoryControl onLoad={requestMoreMessages} loadLabel={tMessages.loadEarlier} scrollLabel={tMessages.scrollUp} />
         ) : null}
 
         {messages.map((msg) => {
@@ -1076,6 +1077,9 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                     )}
                     {/* Typewriter for new agent messages; skip if already animated or was streamed */}
                     {(() => {
+                      // Prepended history must have its final height before we
+                      // restore the reader's anchor, and never replay afterward.
+                      if (isLoadingMore.current) animatedRef.current.add(msg.clientId);
                       const wasStreamed = msg.traceId && streamedTraceIds.current?.has(msg.traceId);
                       if (wasStreamed) {
                         // Mark as animated and clean up traceId to avoid memory leak

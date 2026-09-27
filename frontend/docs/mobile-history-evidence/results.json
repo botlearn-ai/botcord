@@ -1,0 +1,51 @@
+{
+  "environment": "Desktop Chrome CDP; touch viewport emulation is not real iOS Safari and does not establish Safari pull-to-refresh behavior.",
+  "history_delay_ms": 1200,
+  "checks": [
+    "owner: coarse-touch top scroll+drag issues 0 history requests; double manual click yields 1 pending request; loading removes repeat action; prepend anchor stays within2px; desktop fine-pointer scroll still issues1 request.",
+    "regular: coarse-touch top scroll+drag issues 0 history requests; double manual click yields 1 pending request; loading removes repeat action; prepend anchor stays within2px; desktop fine-pointer scroll still issues1 request.",
+    "Owner empty-visible history: initial hidden page -> hidden older page -> visible older page; consecutive manual clicks advance hub_30 then hub_20; terminal state removes action and top scroll issues no extra request."
+  ],
+  "errors": [],
+  "owner": {
+    "mobile_media": {
+      "auto": false,
+      "coarse": true,
+      "touch": 1
+    },
+    "top_scroll_before_requests": 0,
+    "manual_requests": 1,
+    "anchor_before_px": 68,
+    "anchor_after_px": 68,
+    "anchor_delta_px": 0,
+    "overscrollBehaviorY": "contain",
+    "desktop_scroll_requests": 1
+  },
+  "regular": {
+    "mobile_media": {
+      "auto": false,
+      "coarse": true,
+      "touch": 1
+    },
+    "top_scroll_before_requests": 0,
+    "manual_requests": 1,
+    "anchor_before_px": 68,
+    "anchor_after_px": 68,
+    "anchor_delta_px": 0,
+    "overscrollBehaviorY": "contain",
+    "desktop_scroll_requests": 1
+  },
+  "empty_visible_history": {
+    "initial_visible_rows": 0,
+    "first_older_page_visible_rows": 0,
+    "next_page_visible_rows": 1,
+    "before_cursors": [
+      "hub_30",
+      "hub_20"
+    ],
+    "history_requests": 2,
+    "terminal_load_button_present": false,
+    "double_click_deduplicated": true,
+    "errors": []
+  }
+}

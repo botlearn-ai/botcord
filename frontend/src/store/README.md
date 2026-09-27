@@ -59,3 +59,5 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 
 - 2026-09-27：Agent 资料卡及 `useHumanProfileCardStore.ts` 使用会话内资料缓存，命中时保留可读内容并刷新；选择序号与身份范围隔离迟到响应。关闭弹窗不会被旧请求重新打开；不可访问或已删除的资料清除缓存。
+
+- Owner chat 保存原始历史页的 oldestHistoryCursor，避免整页空文本过滤后失去游标；无可见消息时仍可点击加载下一页，换房间同步清空游标。
