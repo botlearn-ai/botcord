@@ -18,7 +18,7 @@ import math
 import statistics
 from typing import Any
 
-from sqlalchemy import distinct, func, or_, select
+from sqlalchemy import and_, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.enums import ContactPolicy, MessagePolicy, MessageState, RoomInvitePolicy, TopicStatus
@@ -32,7 +32,8 @@ from hub.models import (
     UsageEvent,
 )
 
-WINDOW_DAYS = 30
+# Production traffic is sparse; a 30-day window left most agents without samples.
+WINDOW_DAYS = 90
 # Inbound messages newer than this are still inside the reply window and are
 # not judged yet; the same grace applies to delivery state.
 REPLY_WINDOW = datetime.timedelta(minutes=30)
@@ -44,6 +45,7 @@ MIN_DELIVERY_SAMPLE = 5
 MIN_TOPIC_SAMPLE = 3
 MIN_RUN_SAMPLE = 3
 MIN_OUTBOUND_SAMPLE = 5
+MIN_AUTONOMY_SAMPLE = 10
 
 AXES = ("efficacy", "latency", "reliability", "cost", "autonomy", "assurance")
 
@@ -79,6 +81,33 @@ _HOSTING_LATENCY = {"cloud": 90, "daemon": 70, "openclaw": 70, "cli": 40}
 _DELIVERED_STATES = {MessageState.delivered, MessageState.acked, MessageState.done}
 _TERMINAL_TOPIC_STATES = {TopicStatus.completed, TopicStatus.failed, TopicStatus.expired}
 _SCHEDULE_RUN_OUTCOMES = {"dispatched", "failed", "offline"}
+
+# Hub system notices (e.g. TTL_EXPIRED receipts for the agent's own sends) use
+# this sender id; they are not conversation and must not count as inbound.
+_HUB_SENDER = "hub"
+# Owner-chat human turns are stored with sender_id == receiver_id == agent_id
+# (the human lives in source_user_id), so sender_id alone misattributes them.
+_OWNER_CHAT_HUMAN_SOURCE = "dashboard_user_chat"
+
+
+def _inbound(agent_id: str):
+    """Messages someone else sent to the agent (humans in owner chat included)."""
+    return and_(
+        MessageRecord.receiver_id == agent_id,
+        MessageRecord.sender_id != _HUB_SENDER,
+        or_(
+            MessageRecord.sender_id != agent_id,
+            MessageRecord.source_type == _OWNER_CHAT_HUMAN_SOURCE,
+        ),
+    )
+
+
+def _outbound(agent_id: str):
+    """Messages the agent itself authored."""
+    return and_(
+        MessageRecord.sender_id == agent_id,
+        MessageRecord.source_type != _OWNER_CHAT_HUMAN_SOURCE,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +235,7 @@ async def _topic_outcomes(db: AsyncSession, agent_id: str, start: datetime.datet
             select(Topic.status, func.count(distinct(Topic.topic_id)))
             .join(MessageRecord, MessageRecord.topic_id == Topic.topic_id)
             .where(
-                MessageRecord.sender_id == agent_id,
+                _outbound(agent_id),
                 Topic.updated_at >= start,
                 Topic.status.in_(_TERMINAL_TOPIC_STATES),
             )
@@ -227,8 +256,7 @@ async def _responsiveness(db: AsyncSession, agent_id: str, now: datetime.datetim
         await db.execute(
             select(MessageRecord.room_id, MessageRecord.created_at)
             .where(
-                MessageRecord.receiver_id == agent_id,
-                MessageRecord.sender_id != agent_id,
+                _inbound(agent_id),
                 MessageRecord.created_at >= start,
                 MessageRecord.created_at <= now - REPLY_WINDOW,
                 or_(
@@ -275,7 +303,7 @@ async def _outbound_by_room(
         await db.execute(
             select(MessageRecord.room_id, func.min(MessageRecord.created_at))
             .where(
-                MessageRecord.sender_id == agent_id,
+                _outbound(agent_id),
                 MessageRecord.created_at >= since,
                 or_(MessageRecord.room_id.in_(rooms), MessageRecord.room_id.is_(None)),
             )
@@ -295,7 +323,7 @@ async def _delivery_rate(db: AsyncSession, agent_id: str, now: datetime.datetime
         await db.execute(
             select(MessageRecord.state, func.count())
             .where(
-                MessageRecord.receiver_id == agent_id,
+                _inbound(agent_id),
                 MessageRecord.created_at >= now - datetime.timedelta(days=WINDOW_DAYS),
                 MessageRecord.created_at <= now - DELIVERY_GRACE,
             )
@@ -330,7 +358,7 @@ async def _active_days(db: AsyncSession, agent_id: str, start: datetime.datetime
     return (
         await db.execute(
             select(func.count(distinct(func.date(MessageRecord.created_at)))).where(
-                MessageRecord.sender_id == agent_id,
+                _outbound(agent_id),
                 MessageRecord.created_at >= start,
             )
         )
@@ -342,12 +370,13 @@ async def _reliability(db: AsyncSession, agent_id: str, now: datetime.datetime) 
     delivery = await _delivery_rate(db, agent_id, now)
     schedules = await _schedule_success_rate(db, agent_id, start)
     days = await _active_days(db, agent_id, start)
+    # Active days are shown for context but not scored: an idle agent is not an
+    # unreliable one.
     return _ev(
         _mean(
             [
                 None if delivery is None else delivery * 100,
                 None if schedules is None else schedules * 100,
-                days / WINDOW_DAYS * 100,
             ]
         ),
         {
@@ -385,14 +414,14 @@ async def _autonomy(db: AsyncSession, agent_id: str, now: datetime.datetime) -> 
     out_rows = (
         await db.execute(
             select(MessageRecord.room_id, func.min(MessageRecord.created_at).label("ts"))
-            .where(MessageRecord.sender_id == agent_id, MessageRecord.created_at >= start)
+            .where(_outbound(agent_id), MessageRecord.created_at >= start)
             .group_by(MessageRecord.msg_id, MessageRecord.room_id)
             .order_by(func.min(MessageRecord.created_at).desc())
             .limit(MAX_MESSAGE_SAMPLE)
         )
     ).all()
     outbound = [(r.room_id, _aware(r.ts)) for r in out_rows]
-    if len(outbound) < MIN_OUTBOUND_SAMPLE:
+    if len(outbound) < MIN_AUTONOMY_SAMPLE:
         return _ev(None, sample=len(outbound))
 
     since = min(ts for _, ts in outbound) - REPLY_WINDOW
@@ -400,8 +429,7 @@ async def _autonomy(db: AsyncSession, agent_id: str, now: datetime.datetime) -> 
     in_rows = (
         await db.execute(
             select(MessageRecord.room_id, MessageRecord.created_at).where(
-                MessageRecord.receiver_id == agent_id,
-                MessageRecord.sender_id != agent_id,
+                _inbound(agent_id),
                 MessageRecord.created_at >= since,
                 or_(MessageRecord.room_id.in_(rooms), MessageRecord.room_id.is_(None)),
             )
@@ -420,15 +448,15 @@ async def _autonomy(db: AsyncSession, agent_id: str, now: datetime.datetime) -> 
         if i == 0 or ts - series[i - 1] > REPLY_WINDOW:
             proactive += 1
     share = proactive / len(outbound)
-    # 30%+ self-initiated traffic already means the agent runs on its own.
-    return _ev(share / 0.3 * 100, round(share, 3), len(outbound))
+    # 50%+ self-initiated traffic already means the agent runs on its own.
+    return _ev(share / 0.5 * 100, round(share, 3), len(outbound))
 
 
 async def _assurance(db: AsyncSession, agent_id: str, start: datetime.datetime) -> dict:
     sent = (
         await db.execute(
             select(func.count(distinct(MessageRecord.msg_id))).where(
-                MessageRecord.sender_id == agent_id,
+                _outbound(agent_id),
                 MessageRecord.created_at >= start,
             )
         )
@@ -444,7 +472,7 @@ async def _assurance(db: AsyncSession, agent_id: str, start: datetime.datetime) 
     recalled = (
         await db.execute(
             select(func.count(distinct(MessageRecord.msg_id))).where(
-                MessageRecord.sender_id == agent_id,
+                _outbound(agent_id),
                 MessageRecord.created_at >= start,
                 MessageRecord.recalled_at.isnot(None),
                 MessageRecord.recalled_by_id != agent_id,

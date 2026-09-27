@@ -162,6 +162,27 @@ async def seed(db_session: AsyncSession):
         rows.append(
             _msg(n, "ag_cap001", "ag_peer", "rm_cap_work", now - datetime.timedelta(days=10 + i), topic_id=f"tp_cap_{i}")
         )
+    # Two more self-initiated posts so autonomy reaches its minimum sample.
+    for i in range(2):
+        n += 1
+        rows.append(_msg(n, "ag_cap001", "ag_peer", "rm_cap_work", now - datetime.timedelta(days=13 + i)))
+    # Hub TTL notices about the agent's own sends: not conversation.
+    for i in range(5):
+        n += 1
+        rows.append(_msg(n, "hub", "ag_cap001", None, now - datetime.timedelta(hours=3 + i)))
+    # Owner chat: human turns are stored with sender_id == receiver_id == agent_id.
+    for i, day in enumerate((20, 21)):
+        n += 1
+        rows.append(
+            _msg(
+                n, "ag_cap001", "ag_cap001", "rm_oc_cap", now - datetime.timedelta(days=day),
+                source_type="dashboard_user_chat", mentioned=True,
+            )
+        )
+    n += 1
+    rows.append(
+        _msg(n, "ag_cap001", "hu_owner", "rm_oc_cap", now - datetime.timedelta(days=20) + datetime.timedelta(seconds=30))
+    )
     db_session.add_all(rows)
     for i, tokens in enumerate([10_000, 20_000, 40_000]):
         db_session.add(
@@ -177,6 +198,9 @@ async def seed(db_session: AsyncSession):
         )
     await db_session.commit()
     return {"token": _make_token(str(supabase_uid))}
+
+
+AXES_KEYS = ("efficacy", "latency", "reliability", "cost", "autonomy", "assurance")
 
 
 def _axes(body: dict) -> dict:
@@ -215,15 +239,23 @@ async def test_capability_scores_owned_agent(client: AsyncClient, seed: dict):
     # L1
     assert axes["efficacy"]["l1"]["value"] == pytest.approx(2 / 3, abs=1e-3)
     latency = axes["latency"]["l1"]
-    assert latency["sample"] == 6
-    assert latency["value"] == {"reply_rate": pytest.approx(4 / 6, abs=1e-3), "median_seconds": 60}
-    reliability = axes["reliability"]["l1"]["value"]
-    assert reliability["delivery_rate"] == pytest.approx(11 / 12, abs=1e-3)
-    assert reliability["schedule_success_rate"] is None
-    assert reliability["active_days"] == 7
+    # 6 DMs + 2 owner-chat turns; hub notices and group fan-out excluded.
+    assert latency["sample"] == 8
+    assert latency["value"] == {"reply_rate": pytest.approx(5 / 8, abs=1e-3), "median_seconds": 60}
+    reliability = axes["reliability"]
+    # 12 peer rows + 2 owner-chat turns; hub notices excluded.
+    assert reliability["l1"]["value"]["delivery_rate"] == pytest.approx(13 / 14, abs=1e-3)
+    assert reliability["l1"]["value"]["schedule_success_rate"] is None
+    # Owner-chat human turn on day 21 is not the agent's activity.
+    assert reliability["l1"]["value"]["active_days"] == 10
+    # Activity is informational only; score is the delivery rate alone.
+    assert reliability["l1"]["score"] == round(13 / 14 * 100)
     assert axes["cost"]["l1"]["value"] == 20_000
     assert axes["cost"]["l1"]["score"] == 100
-    assert axes["autonomy"]["l1"]["value"] == pytest.approx(3 / 7, abs=1e-3)
+    # 10 authored messages: 5 replies + 5 self-initiated posts.
+    assert axes["autonomy"]["l1"]["sample"] == 10
+    assert axes["autonomy"]["l1"]["value"] == pytest.approx(0.5, abs=1e-3)
+    assert axes["autonomy"]["l1"]["score"] == 100
     assert axes["assurance"]["l1"]["value"] == {"blocks": 1, "recalled": 0}
     assert axes["assurance"]["l1"]["score"] == 80
     assert body["layer_scores"]["l0"] is not None
@@ -238,9 +270,8 @@ async def test_capability_insufficient_samples_are_null(client: AsyncClient, see
     )
     assert resp.status_code == 200
     axes = _axes(resp.json())
-    for key in ("efficacy", "latency", "cost", "autonomy", "assurance"):
+    for key in AXES_KEYS:
         assert axes[key]["l1"]["score"] is None, key
-    assert axes["reliability"]["l1"]["score"] == 0
     assert axes["efficacy"]["l0"]["score"] is None
 
 

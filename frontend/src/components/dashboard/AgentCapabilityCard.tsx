@@ -188,21 +188,29 @@ function Radar({ axes, copy }: { axes: CapabilityAxis[]; copy: Copy }) {
       })}
       {LAYERS.map((layer) => {
         const { color, dash } = LAYER_STYLE[layer];
-        const points = axes.map((axis, i) => point(i, total, axis.layers[layer].score ?? 0));
+        // Axes without evidence are skipped rather than pulled to the center,
+        // which would draw spikes through the origin.
+        const points = axes.flatMap((axis, i) => {
+          const score = axis.layers[layer].score;
+          return score === null ? [] : [point(i, total, score)];
+        });
+        const shape = {
+          points: points.map((p) => p.join(",")).join(" "),
+          stroke: color,
+          strokeWidth: 1.5,
+          strokeDasharray: dash,
+          strokeLinejoin: "round" as const,
+        };
         return (
           <g key={layer}>
-            <polygon
-              points={points.map((p) => p.join(",")).join(" ")}
-              fill={color}
-              fillOpacity={0.16}
-              stroke={color}
-              strokeWidth={1.5}
-              strokeDasharray={dash}
-              strokeLinejoin="round"
-            />
-            {points.map(([x, y], i) =>
-              axes[i].layers[layer].score === null ? null : <circle key={i} cx={x} cy={y} r={2.2} fill={color} />,
-            )}
+            {points.length >= 3 ? (
+              <polygon {...shape} fill={color} fillOpacity={0.16} />
+            ) : points.length === 2 ? (
+              <polyline {...shape} fill="none" />
+            ) : null}
+            {points.map(([x, y], i) => (
+              <circle key={i} cx={x} cy={y} r={2.2} fill={color} />
+            ))}
           </g>
         );
       })}
