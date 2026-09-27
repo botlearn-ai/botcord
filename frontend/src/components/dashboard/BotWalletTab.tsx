@@ -14,6 +14,7 @@ import { useLanguage } from "@/lib/i18n";
 import { walletPanel } from "@/lib/i18n/translations/dashboard";
 import { common } from "@/lib/i18n/translations/common";
 import { api, ApiError, type ActiveIdentity } from "@/lib/api";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useConfirm } from "@/store/useConfirmStore";
@@ -56,6 +57,7 @@ export default function BotWalletTab({
   const locale = useLanguage();
   const t = walletPanel[locale];
   const tc = common[locale];
+  const sessionKey = useDashboardSessionStore((s) => JSON.stringify([s.token, s.human?.human_id]));
   const viewer: ActiveIdentity = { type: "agent", id: agentId };
   const { walletAmountsHidden, toggleWalletAmountsHidden } = useDashboardUIStore(
     useShallow((s) => ({
@@ -66,6 +68,7 @@ export default function BotWalletTab({
 
   const {
     wallet,
+    walletViewer,
     walletError,
     walletLedger,
     walletLedgerHasMore,
@@ -82,6 +85,7 @@ export default function BotWalletTab({
   } = useDashboardWalletStore(
     useShallow((s) => ({
       wallet: s.wallet,
+      walletViewer: s.walletViewer,
       walletError: s.walletError,
       walletLedger: s.walletLedger,
       walletLedgerHasMore: s.walletLedgerHasMore,
@@ -106,9 +110,9 @@ export default function BotWalletTab({
     void loadWallet();
     void loadWalletLedger();
     void loadWithdrawalRequests();
-    // We intentionally restart the slice each time the agent id changes.
+    // The store preserves the slice for the same viewer while refreshing it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId]);
+  }, [agentId, sessionKey]);
 
   const handleDialogSuccess = useCallback(() => {
     setActiveDialog(null);
@@ -117,10 +121,11 @@ export default function BotWalletTab({
     void loadWithdrawalRequests();
   }, [loadWallet, loadWalletLedger, loadWithdrawalRequests]);
 
-  if (!wallet) {
+  const isCurrentViewer = walletViewer?.type === "agent" && walletViewer.id === agentId;
+  if (!wallet || !isCurrentViewer) {
     return (
       <div className="flex flex-col items-center justify-center py-10 gap-3">
-        {walletError ? (
+        {walletError && isCurrentViewer ? (
           <>
             <div className="text-sm text-red-400">{walletError}</div>
             <button

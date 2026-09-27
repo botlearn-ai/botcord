@@ -2,12 +2,12 @@
 
 /**
  * [INPUT]: 依赖 session/ui/chat/contact store、可选路由 tab 覆盖值与 RoomHeader/MessageList/PaidRoomPreview/DocumentPreviewPane/ExploreEntityCard 等内容组件
- * [OUTPUT]: 对外提供 ChatPane 组件，渲染 explore/contacts/message 三类主内容视图，并把公开目录搜索委托给远端查询
+ * [OUTPUT]: 对外提供 ChatPane 组件，渲染 explore/contacts/message 三类主内容视图，公开目录按查询复用缓存，后台刷新时保留可读结果
  * [POS]: dashboard 第三栏主工作区，承载会话浏览与消息阅读；无 agent 准入由 DashboardApp 顶层统一处理
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { chatPane, exploreUi, messagesGrouping } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
@@ -30,7 +30,6 @@ import SearchBar from "./SearchBar";
 import ExploreEntityCard from "./ExploreEntityCard";
 import type { Attachment, PublicHumanProfile, PublicRoom } from "@/lib/types";
 import { api } from "@/lib/api";
-import { animateIfMotion, animeStagger, cleanupAnime, prefersReducedMotion } from "@/lib/anime";
 import ImagePreviewOverlay from "@/components/ui/ImagePreviewOverlay";
 import {
   attachmentGalleryIndex,
@@ -61,73 +60,14 @@ function GridSkeletonCards() {
   return <DashboardMainSkeleton variant="explore" />;
 }
 
-function MotionGrid({
-  children,
-  className,
-  motionKey,
-}: {
-  children: React.ReactNode;
-  className: string;
-  motionKey: string;
-}) {
-  const gridRef = useRef<HTMLDivElement | null>(null);
-
-  // Layout effect + pre-paint hide: with the rAF approach the items painted
-  // fully visible for one frame, snapped to opacity 0, then faded back in —
-  // reading as the grid rendering twice.
-  useLayoutEffect(() => {
-    if (prefersReducedMotion()) return;
-    const items = Array.from(
-      gridRef.current?.querySelectorAll<HTMLElement>("[data-motion-grid-item]") ?? [],
-    );
-    if (items.length === 0) return;
-
-    for (const item of items) item.style.opacity = "0";
-    const animation = animateIfMotion(items, {
-      opacity: [0, 1],
-      translateY: [10, 0],
-      scale: [0.985, 1],
-      delay: animeStagger(35),
-      duration: 320,
-      ease: "out(3)",
-    });
-
-    return () => {
-      cleanupAnime(animation);
-      // revert() restores the pre-animation inline opacity (our "0"), so
-      // clear it explicitly or a cancelled run leaves the grid invisible.
-      for (const item of items) item.style.opacity = "";
-    };
-  }, [motionKey]);
-
-  return (
-    <div ref={gridRef} className={className}>
-      {children}
-    </div>
-  );
+// Loaded results are readable on the first paint; list length must not add
+// staggered entrance delays when navigating or searching.
+function ResultsGrid({ children, className }: { children: React.ReactNode; className: string }) {
+  return <div className={className}>{children}</div>;
 }
 
-function MotionEmptyText({ children, motionKey }: { children: React.ReactNode; motionKey: string }) {
-  const emptyRef = useRef<HTMLParagraphElement | null>(null);
-
-  useEffect(() => {
-    const animation = emptyRef.current
-      ? animateIfMotion(emptyRef.current, {
-          opacity: [0, 1],
-          translateY: [6, 0],
-          duration: 220,
-          ease: "out(3)",
-        })
-      : null;
-
-    return () => cleanupAnime(animation);
-  }, [motionKey]);
-
-  return (
-    <p ref={emptyRef} className="text-xs text-text-secondary">
-      {children}
-    </p>
-  );
+function EmptyText({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs text-text-secondary">{children}</p>;
 }
 
 function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanProfile) => void }) {
@@ -235,17 +175,6 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
       : isCreatedView
         ? filteredCreatedRooms
         : filteredContacts;
-  const resultsMotionKey = [
-    contactsView,
-    normalized,
-    pageItems.length,
-    isRoomsView
-      ? filteredJoinedRooms.map((room) => room.room_id).join("|")
-      : isCreatedView
-        ? filteredCreatedRooms.map((room) => room.room_id).join("|")
-        : filteredContacts.map((contact) => contact.contact_agent_id).join("|"),
-  ].join(":");
-
   const openJoinedRoom = (roomId: string) => {
     const path = "/chats/messages";
     setMessagesPane("room");
@@ -308,12 +237,12 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
       ) : (
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {isRoomsView ? (
-          !overview ? (
+          !overview && sortedRooms.length === 0 ? (
             <DashboardMainSkeleton variant="contacts" />
           ) : pageItems.length === 0 ? (
-            <MotionEmptyText motionKey={resultsMotionKey}>{t.noJoinedRoomsFound}</MotionEmptyText>
+            <EmptyText>{t.noJoinedRoomsFound}</EmptyText>
           ) : (
-            <MotionGrid className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" motionKey={resultsMotionKey}>
+            <ResultsGrid className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {(pageItems as typeof filteredJoinedRooms).map((room) => (
                 <button
                   key={room.room_id}
@@ -338,15 +267,15 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                   )}
                 </button>
               ))}
-            </MotionGrid>
+            </ResultsGrid>
           )
         ) : isCreatedView ? (
-          !overview ? (
+          !overview && sortedRooms.length === 0 ? (
             <DashboardMainSkeleton variant="contacts" />
           ) : pageItems.length === 0 ? (
-            <MotionEmptyText motionKey={resultsMotionKey}>{t.noCreatedRoomsFound}</MotionEmptyText>
+            <EmptyText>{t.noCreatedRoomsFound}</EmptyText>
           ) : (
-            <MotionGrid className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" motionKey={resultsMotionKey}>
+            <ResultsGrid className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {(pageItems as typeof filteredCreatedRooms).map((room) => (
                 <button
                   key={room.room_id}
@@ -371,14 +300,14 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                   )}
                 </button>
               ))}
-            </MotionGrid>
+            </ResultsGrid>
           )
         ) : !overview ? (
           <DashboardMainSkeleton variant="contacts" />
         ) : pageItems.length === 0 ? (
-          <MotionEmptyText motionKey={resultsMotionKey}>{t.noContactsFound}</MotionEmptyText>
+          <EmptyText>{t.noContactsFound}</EmptyText>
         ) : (
-          <MotionGrid className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" motionKey={resultsMotionKey}>
+          <ResultsGrid className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {(pageItems as typeof filteredContacts).map((contact) => {
               const isHuman = contact.peer_type === "human" || contact.contact_agent_id.startsWith("hu_");
               const primaryName = contact.alias || contact.display_name;
@@ -445,7 +374,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                 </button>
               );
             })}
-          </MotionGrid>
+          </ResultsGrid>
         )}
       </div>
       )}
@@ -486,11 +415,11 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   })));
   const {
     publicRooms,
-    publicRoomsLoading,
+    publicRoomsQuery,
     publicAgents,
-    publicAgentsLoading,
+    publicAgentsQuery,
     publicHumans,
-    publicHumansLoading,
+    publicHumansQuery,
     loadPublicRooms,
     loadPublicAgents,
     loadPublicHumans,
@@ -498,11 +427,11 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
     addRecentPublicRoom,
   } = useDashboardChatStore(useShallow((state) => ({
     publicRooms: state.publicRooms,
-    publicRoomsLoading: state.publicRoomsLoading,
+    publicRoomsQuery: state.publicRoomsQuery,
     publicAgents: state.publicAgents,
-    publicAgentsLoading: state.publicAgentsLoading,
+    publicAgentsQuery: state.publicAgentsQuery,
     publicHumans: state.publicHumans,
-    publicHumansLoading: state.publicHumansLoading,
+    publicHumansQuery: state.publicHumansQuery,
     loadPublicRooms: state.loadPublicRooms,
     loadPublicAgents: state.loadPublicAgents,
     loadPublicHumans: state.loadPublicHumans,
@@ -510,19 +439,18 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
     addRecentPublicRoom: state.addRecentPublicRoom,
   })));
   const [query, setQuery] = useState("");
+  const [inputQuery, setInputQuery] = useState("");
   const isRoomsView = exploreView === "rooms";
   const isAgentsView = exploreView === "agents";
   const isHumansView = exploreView === "humans";
-  // Store lists are shared across visits, so right after a tab/query switch
-  // they still hold the previous results. Track which view+query the lists
-  // are fresh for and show the skeleton until then, instead of flashing the
-  // stale grid (with its entrance animation) before the reload kicks in.
-  const exploreRequestKey = `${exploreView}:${query.trim().toLowerCase()}`;
+  // Query provenance prevents unrelated search results appearing on a new
+  // query, while a matching cached result stays visible during revalidation.
+  const normalizedQuery = query.trim();
+  const exploreRequestKey = `${exploreView}:${normalizedQuery}`;
   const [freshRequestKey, setFreshRequestKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authResolved) return;
-    const normalizedQuery = query.trim();
     let cancelled = false;
     const load = isRoomsView ? loadPublicRooms : isAgentsView ? loadPublicAgents : loadPublicHumans;
     void load(normalizedQuery).then(() => {
@@ -579,12 +507,10 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
   };
 
   const searchPlaceholder = isRoomsView ? t.searchRooms : isAgentsView ? t.searchAgents : t.searchHumans;
-  const loading = (isRoomsView ? publicRoomsLoading : isAgentsView ? publicAgentsLoading : publicHumansLoading)
-    || freshRequestKey !== exploreRequestKey;
+  const cachedQuery = isRoomsView ? publicRoomsQuery : isAgentsView ? publicAgentsQuery : publicHumansQuery;
+  const hasMatchingResults = cachedQuery === inputQuery.trim();
+  const loading = !hasMatchingResults && (inputQuery.trim() !== normalizedQuery || freshRequestKey !== exploreRequestKey);
   const emptyText = isRoomsView ? t.noRoomsFound : isAgentsView ? t.noAgentsFound : t.noHumansFound;
-  // Keyed by view+query only: a silent data refresh must not replay the
-  // entrance animation on a grid the user is already looking at.
-  const exploreMotionKey = exploreRequestKey;
 
   const exploreTabs: Array<{ key: "rooms" | "agents" | "humans"; label: string }> = [
     { key: "rooms", label: locale === "zh" ? "群组" : "Groups" },
@@ -623,7 +549,7 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
           })}
         </div>
         <div className="mt-5 max-w-xl">
-          <SearchBar onSearch={setQuery} placeholder={searchPlaceholder} />
+          <SearchBar onSearch={setQuery} onInputChange={setInputQuery} placeholder={searchPlaceholder} />
         </div>
       </div>
 
@@ -631,10 +557,10 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
         {loading ? (
           <GridSkeletonCards />
         ) : isRoomsView ? (
-          publicRooms.length === 0 ? (
-            <MotionEmptyText motionKey={exploreMotionKey}>{emptyText}</MotionEmptyText>
+          !hasMatchingResults || publicRooms.length === 0 ? (
+            <EmptyText>{emptyText}</EmptyText>
           ) : (
-            <MotionGrid className={EXPLORE_GRID_CLASS} motionKey={exploreMotionKey}>
+            <ResultsGrid className={EXPLORE_GRID_CLASS}>
               {publicRooms.map((room) => (
                 <div key={room.room_id} data-motion-grid-item>
                   <ExploreEntityCard
@@ -645,13 +571,13 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
                   />
                 </div>
               ))}
-            </MotionGrid>
+            </ResultsGrid>
           )
         ) : isAgentsView ? (
-          publicAgents.length === 0 ? (
-            <MotionEmptyText motionKey={exploreMotionKey}>{emptyText}</MotionEmptyText>
+          !hasMatchingResults || publicAgents.length === 0 ? (
+            <EmptyText>{emptyText}</EmptyText>
           ) : (
-            <MotionGrid className={EXPLORE_GRID_CLASS} motionKey={exploreMotionKey}>
+            <ResultsGrid className={EXPLORE_GRID_CLASS}>
               {publicAgents.map((agent) => (
                 <div key={agent.agent_id} data-motion-grid-item>
                   <ExploreEntityCard
@@ -663,12 +589,12 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
                   />
                 </div>
               ))}
-            </MotionGrid>
+            </ResultsGrid>
           )
-        ) : publicHumans.length === 0 ? (
-          <MotionEmptyText motionKey={exploreMotionKey}>{emptyText}</MotionEmptyText>
+        ) : !hasMatchingResults || publicHumans.length === 0 ? (
+          <EmptyText>{emptyText}</EmptyText>
         ) : (
-          <MotionGrid className={EXPLORE_GRID_CLASS} motionKey={exploreMotionKey}>
+          <ResultsGrid className={EXPLORE_GRID_CLASS}>
             {publicHumans.map((human) => (
               <div key={human.human_id} data-motion-grid-item>
                 <ExploreEntityCard
@@ -679,7 +605,7 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
                 />
               </div>
             ))}
-          </MotionGrid>
+          </ResultsGrid>
         )}
       </div>
     </div>

@@ -28,6 +28,7 @@ vi.mock("@/store/team-space-store", async () => {
       })),
   };
 });
+import { createTeamSpaceStore } from "@/store/team-space-store";
 import TeamSpacesPage from "./TeamSpacesPage";
 
 describe("Team governance rendering", () => {
@@ -53,6 +54,19 @@ describe("Team governance rendering", () => {
     } as unknown as TeamSnapshot;
     fixture.snapshot.spaces = [fixture.snapshot.selected];
   });
+  it("renders every management tab immediately from the workspace store", () => {
+    const sharedStore = createTeamSpaceStore(true);
+    // A separately created page store would still be loading.
+    fixture.snapshot = null;
+    fixture.loading = true;
+    for (const section of ["members", "agents", "settings"] as const) {
+      const html = renderToStaticMarkup(<TeamSpacesPage teamMode section={section} sharedStore={sharedStore} />);
+      expect(html).not.toContain("正在加载团队空间");
+      expect(html).not.toContain('aria-busy="true"');
+      expect(html).toContain({ members: "邀请用户", agents: "组织 Agent", settings: "管理员访问组织私聊" }[section]);
+    }
+  });
+
   it("retains the organization while refreshing and disables mutations", () => {
     fixture.refreshing = true;
     const html = renderToStaticMarkup(<TeamSpacesPage teamMode />);

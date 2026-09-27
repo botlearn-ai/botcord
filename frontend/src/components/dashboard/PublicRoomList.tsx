@@ -48,7 +48,7 @@ export default function PublicRoomList() {
     })),
   );
 
-  if (publicRoomsLoading) {
+  if (publicRoomsLoading && publicRooms.length === 0) {
     return (
       <MobileBotCordLoading
         label={t.loadingRooms}

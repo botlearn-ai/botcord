@@ -114,31 +114,44 @@ async function readErr(res: Response): Promise<Error> {
   return err;
 }
 
+const globalRequests = new Map<string, Promise<AgentPolicy>>();
+
 export const usePolicyStore = create<PolicyState>((set, get) => ({
   globalByAgent: {},
   globalLoading: {},
   roomEffectiveByKey: {},
   roomLoading: {},
 
-  async loadGlobal(agentId) {
+  loadGlobal(agentId) {
+    const pending = globalRequests.get(agentId);
+    if (pending) return pending;
+    const previous = get().globalByAgent[agentId];
     set((s) => ({ globalLoading: { ...s.globalLoading, [agentId]: true } }));
-    try {
-      const res = await apiFetch(`/api/agents/${encodeURIComponent(agentId)}/policy`, {
-        cache: "no-store",
-      });
-      if (!res.ok) throw await readErr(res);
-      const policy = (await res.json()) as AgentPolicy;
-      set((s) => ({
-        globalByAgent: { ...s.globalByAgent, [agentId]: policy },
-      }));
-      return policy;
-    } finally {
-      set((s) => {
-        const next = { ...s.globalLoading };
-        delete next[agentId];
-        return { globalLoading: next };
-      });
-    }
+    const request = (async () => {
+      try {
+        const res = await apiFetch(`/api/agents/${encodeURIComponent(agentId)}/policy`, {
+          cache: "no-store",
+        });
+        if (!res.ok) throw await readErr(res);
+        const policy = (await res.json()) as AgentPolicy;
+        // A save may have completed while this background refresh was pending.
+        if (get().globalByAgent[agentId] === previous) {
+          set((s) => ({
+            globalByAgent: { ...s.globalByAgent, [agentId]: policy },
+          }));
+        }
+        return policy;
+      } finally {
+        globalRequests.delete(agentId);
+        set((s) => {
+          const next = { ...s.globalLoading };
+          delete next[agentId];
+          return { globalLoading: next };
+        });
+      }
+    })();
+    globalRequests.set(agentId, request);
+    return request;
   },
 
   async patchGlobal(agentId, patch) {

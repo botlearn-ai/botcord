@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 zustand/persist 保存 dashboard 会话与目录数据，依赖 @/lib/api 发起房间/目录/Agent 查询，依赖 session/ui/unread/contact store 提供鉴权、界面上下文与未读协调
- * [OUTPUT]: 对外提供 useDashboardChatStore，管理 overview、按稳定 msg_id 合并的消息缓存、公开目录远端搜索结果、Agent 卡片数据与 chat 相关异步动作
+ * [OUTPUT]: 对外提供 useDashboardChatStore，管理 overview、按稳定 msg_id 合并的消息缓存、带查询归属和并发去重的公开目录远端搜索结果、Agent 卡片数据与 chat 相关异步动作
  * [POS]: frontend dashboard 的 chat 数据状态源，负责真正的会话数据与目录数据，不负责阅读语义和连接生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -38,6 +38,25 @@ import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 let publicRoomsRequestSeq = 0;
 let publicAgentsRequestSeq = 0;
 let publicHumansRequestSeq = 0;
+type PublicDirectoryRequest = { query: string; scope: string; promise: Promise<void> };
+let publicRoomsInFlight: PublicDirectoryRequest | null = null;
+let publicAgentsInFlight: PublicDirectoryRequest | null = null;
+let publicHumansInFlight: PublicDirectoryRequest | null = null;
+
+function publicDirectoryScope(): string {
+  const { activeIdentity, token } = useDashboardSessionStore.getState();
+  return `${Boolean(token)}:${activeIdentity?.type ?? "guest"}:${activeIdentity?.id ?? ""}`;
+}
+
+function invalidatePublicDirectoryRequests(): void {
+  publicRoomsRequestSeq++;
+  publicAgentsRequestSeq++;
+  publicHumansRequestSeq++;
+  publicRoomsInFlight = null;
+  publicAgentsInFlight = null;
+  publicHumansInFlight = null;
+}
+
 const emptyRoomMessageSnapshot = new Map<string, string | null>();
 const fullyLoadedRoomHistory = new Set<string>();
 let roomMessageRequestSequence = 0;
@@ -420,12 +439,15 @@ interface DashboardChatState {
   publicRoomDetails: Record<string, PublicRoom>;
   publicRoomsLoading: boolean;
   publicRoomsLoaded: boolean;
+  publicRoomsQuery: string | null;
   publicAgents: AgentProfile[];
   publicAgentsLoading: boolean;
   publicAgentsLoaded: boolean;
+  publicAgentsQuery: string | null;
   publicHumans: PublicHumanProfile[];
   publicHumansLoading: boolean;
   publicHumansLoaded: boolean;
+  publicHumansQuery: string | null;
   recentVisitedRooms: PublicRoom[];
   ownedAgentRooms: HumanAgentRoomSummary[];
   optimisticOwnerChatRooms: Record<string, HumanAgentRoomSummary>;
@@ -506,12 +528,15 @@ const initialChatState = {
   publicRoomDetails: {},
   publicRoomsLoading: false,
   publicRoomsLoaded: false,
+  publicRoomsQuery: null as string | null,
   publicAgents: [],
   publicAgentsLoading: false,
   publicAgentsLoaded: false,
+  publicAgentsQuery: null as string | null,
   publicHumans: [],
   publicHumansLoading: false,
   publicHumansLoaded: false,
+  publicHumansQuery: null as string | null,
   recentVisitedRooms: [],
   ownedAgentRooms: [],
   optimisticOwnerChatRooms: {},
@@ -546,6 +571,10 @@ function hasTransientChatState(state: DashboardChatState): boolean {
     || state.joiningRoomId !== null
     || state.leavingRoomId !== null
     || state.publicRoomsLoading
+    || state.publicHumansLoading
+    || state.publicRoomsQuery !== null
+    || state.publicAgentsQuery !== null
+    || state.publicHumansQuery !== null
     || state.publicAgentsLoading
     || Object.keys(state.optimisticOwnerChatRooms).length > 0
     || state.ownedAgentRoomsLoading
@@ -590,6 +619,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
 
       resetChatState: () => {
         invalidateAllRoomMessageRequests();
+        invalidatePublicDirectoryRequests();
         set((state) => {
           if (!hasTransientChatState(state)) {
             return state;
@@ -606,6 +636,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
 
       logout: () => {
         invalidateAllRoomMessageRequests();
+        invalidatePublicDirectoryRequests();
         set({ ...initialChatState });
       },
 
@@ -1317,23 +1348,39 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       loadPublicRooms: async (q = "") => {
+        const query = q.trim();
+        const scope = publicDirectoryScope();
+        if (publicRoomsInFlight?.query === query && publicRoomsInFlight.scope === scope) {
+          return publicRoomsInFlight.promise;
+        }
         const requestId = ++publicRoomsRequestSeq;
+        const isCurrent = () => requestId === publicRoomsRequestSeq && scope === publicDirectoryScope();
         set({ publicRoomsLoading: true });
+        const promise = (async () => {
+          try {
+            const result = await api.getPublicRooms({ q: query || undefined, limit: 50 });
+            if (!isCurrent()) return;
+            set((state) => ({
+                publicRooms: result.rooms,
+                publicRoomDetails: {
+                  ...state.publicRoomDetails,
+                  ...Object.fromEntries(result.rooms.map((room) => [room.room_id, room])),
+                },
+                publicRoomsQuery: query,
+                publicRoomsLoading: false,
+                publicRoomsLoaded: true,
+              }));
+          } catch {
+            if (!isCurrent()) return;
+            // Failed searches must not label previous results as this query.
+            set({ publicRoomsLoading: false, publicRoomsLoaded: true });
+          }
+        })();
+        publicRoomsInFlight = { query, scope, promise };
         try {
-          const result = await api.getPublicRooms({ q: q.trim() || undefined, limit: 50 });
-          if (requestId !== publicRoomsRequestSeq) return;
-          set((state) => ({
-            publicRooms: result.rooms,
-            publicRoomDetails: {
-              ...state.publicRoomDetails,
-              ...Object.fromEntries(result.rooms.map((room) => [room.room_id, room])),
-            },
-            publicRoomsLoading: false,
-            publicRoomsLoaded: true,
-          }));
-        } catch {
-          if (requestId !== publicRoomsRequestSeq) return;
-          set({ publicRoomsLoading: false, publicRoomsLoaded: true });
+          await promise;
+        } finally {
+          if (publicRoomsInFlight?.promise === promise) publicRoomsInFlight = null;
         }
       },
 
@@ -1361,28 +1408,68 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       loadPublicAgents: async (q = "") => {
+        const query = q.trim();
+        const scope = publicDirectoryScope();
+        if (publicAgentsInFlight?.query === query && publicAgentsInFlight.scope === scope) {
+          return publicAgentsInFlight.promise;
+        }
         const requestId = ++publicAgentsRequestSeq;
+        const isCurrent = () => requestId === publicAgentsRequestSeq && scope === publicDirectoryScope();
         set({ publicAgentsLoading: true });
+        const promise = (async () => {
+          try {
+            const result = await api.getPublicAgents({ q: query || undefined, limit: 50 });
+            if (!isCurrent()) return;
+            set({
+                publicAgents: result.agents,
+                publicAgentsQuery: query,
+                publicAgentsLoading: false,
+                publicAgentsLoaded: true,
+              });
+          } catch {
+            if (!isCurrent()) return;
+            // Failed searches must not label previous results as this query.
+            set({ publicAgentsLoading: false, publicAgentsLoaded: true });
+          }
+        })();
+        publicAgentsInFlight = { query, scope, promise };
         try {
-          const result = await api.getPublicAgents({ q: q.trim() || undefined, limit: 50 });
-          if (requestId !== publicAgentsRequestSeq) return;
-          set({ publicAgents: result.agents, publicAgentsLoading: false, publicAgentsLoaded: true });
-        } catch {
-          if (requestId !== publicAgentsRequestSeq) return;
-          set({ publicAgentsLoading: false, publicAgentsLoaded: true });
+          await promise;
+        } finally {
+          if (publicAgentsInFlight?.promise === promise) publicAgentsInFlight = null;
         }
       },
 
       loadPublicHumans: async (q = "") => {
+        const query = q.trim();
+        const scope = publicDirectoryScope();
+        if (publicHumansInFlight?.query === query && publicHumansInFlight.scope === scope) {
+          return publicHumansInFlight.promise;
+        }
         const requestId = ++publicHumansRequestSeq;
+        const isCurrent = () => requestId === publicHumansRequestSeq && scope === publicDirectoryScope();
         set({ publicHumansLoading: true });
+        const promise = (async () => {
+          try {
+            const result = await api.getPublicHumans({ q: query || undefined, limit: 100 });
+            if (!isCurrent()) return;
+            set({
+                publicHumans: result.humans,
+                publicHumansQuery: query,
+                publicHumansLoading: false,
+                publicHumansLoaded: true,
+              });
+          } catch {
+            if (!isCurrent()) return;
+            // Failed searches must not label previous results as this query.
+            set({ publicHumansLoading: false, publicHumansLoaded: true });
+          }
+        })();
+        publicHumansInFlight = { query, scope, promise };
         try {
-          const result = await api.getPublicHumans({ q: q.trim() || undefined, limit: 100 });
-          if (requestId !== publicHumansRequestSeq) return;
-          set({ publicHumans: result.humans, publicHumansLoading: false, publicHumansLoaded: true });
-        } catch {
-          if (requestId !== publicHumansRequestSeq) return;
-          set({ publicHumansLoading: false, publicHumansLoaded: true });
+          await promise;
+        } finally {
+          if (publicHumansInFlight?.promise === promise) publicHumansInFlight = null;
         }
       },
 

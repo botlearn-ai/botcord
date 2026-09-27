@@ -23,6 +23,7 @@ import { useLanguage } from "@/lib/i18n";
 import {
   createTeamSpaceStore,
   type TeamSnapshot,
+  type TeamSpaceStore,
 } from "@/store/team-space-store";
 import { subscribeToPageReturn } from "@/lib/page-return";
 import { canManage, spaceError } from "@/lib/team-spaces";
@@ -64,7 +65,9 @@ export default function TeamWorkspacePage() {
   const { snapshot, loading, error, load, refresh } = useStore(store);
   const zh = useLanguage() === "zh";
   useEffect(() => {
-    void load(requestedId);
+    // Adding the selected space to the URL must not reload the validated snapshot.
+    if (!requestedId || store.getState().snapshot?.selected.id !== requestedId)
+      void load(requestedId);
     return () => store.getState().cancel();
   }, [load, requestedId, store]);
   useEffect(
@@ -116,7 +119,7 @@ export default function TeamWorkspacePage() {
   ) {
     return (
       <div className="h-full overflow-y-auto p-4 sm:p-8">
-        <TeamSpacesPage teamMode onChanged={update} />
+        <TeamSpacesPage teamMode sharedStore={store} onChanged={update} />
       </div>
     );
   }
@@ -124,6 +127,7 @@ export default function TeamWorkspacePage() {
     <TeamWorkspace
       key={current.selected.id}
       snapshot={current}
+      sharedStore={store}
       onMembershipChanged={update}
     />
   );
@@ -132,8 +136,10 @@ export default function TeamWorkspacePage() {
 export function TeamWorkspace({
   snapshot,
   onMembershipChanged,
+  sharedStore,
 }: {
   snapshot: TeamSnapshot;
+  sharedStore?: TeamSpaceStore;
   onMembershipChanged: () => void;
 }) {
   const zh = useLanguage() === "zh";
@@ -596,6 +602,7 @@ export function TeamWorkspace({
             <TeamSpacesPage
               teamMode
               section={view}
+              sharedStore={sharedStore}
               onChanged={onMembershipChanged}
             />
           </div>

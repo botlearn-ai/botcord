@@ -819,9 +819,8 @@ function SettingsTab({
 
 /* --------------------------- Policy --------------------------- */
 
-function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
+export function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
   const policy = usePolicyStore((s) => s.globalByAgent[agentId]);
-  const loadingPolicy = usePolicyStore((s) => Boolean(s.globalLoading[agentId]));
   const loadGlobal = usePolicyStore((s) => s.loadGlobal);
   const patchGlobal = usePolicyStore((s) => s.patchGlobal);
   const [saving, setSaving] = useState(false);
@@ -846,10 +845,15 @@ function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) 
   ];
 
   useEffect(() => {
-    if (!policy && !loadingPolicy) {
-      void loadGlobal(agentId).catch(() => {});
+    let cancelled = false;
+    setError(null);
+    if (!usePolicyStore.getState().globalByAgent[agentId]) {
+      void loadGlobal(agentId).catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      });
     }
-  }, [agentId, loadGlobal, loadingPolicy, policy]);
+    return () => { cancelled = true; };
+  }, [agentId, loadGlobal]);
 
   const applyPolicy = async (patch: AgentPolicyPatch) => {
     setSaving(true);
@@ -863,7 +867,19 @@ function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) 
     }
   };
 
-  if (!policy || loadingPolicy) {
+  if (!policy && error) {
+    return (
+      <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+        {error}
+        <button type="button" className="ml-3 underline" onClick={() => {
+          setError(null);
+          void loadGlobal(agentId).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+        }}>{t.files.refresh}</button>
+      </div>
+    );
+  }
+
+  if (!policy) {
     return (
       <div className="space-y-4">
         {[1, 2].map((i) => (

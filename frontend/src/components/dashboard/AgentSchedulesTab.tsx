@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CirclePlay, Clock, Loader2, Pause, Pencil, Play, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { userApi } from "@/lib/api";
 
@@ -95,10 +95,33 @@ function statusClass(status?: string): string {
   return "border-glass-border bg-glass-bg/60 text-text-secondary";
 }
 
+// Secondary history requests must not hold the schedule list or each other hostage.
+export async function loadScheduleRunSummaries(
+  agentId: string,
+  rows: AgentSchedule[],
+  onRuns: (scheduleId: string, runs: AgentScheduleRun[]) => void,
+  isCurrent: () => boolean,
+) {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(3, rows.length) }, async () => {
+    while (next < rows.length && isCurrent()) {
+      const row = rows[next++];
+      try {
+        const result = await userApi.listAgentScheduleRuns(agentId, row.id);
+        if (isCurrent()) onRuns(row.id, (result.runs || []) as AgentScheduleRun[]);
+      } catch {
+        // Keep any previously visible summary when one history request fails.
+      }
+    }
+  }));
+}
+
 export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
   const [schedules, setSchedules] = useState<AgentSchedule[]>([]);
   const [runsBySchedule, setRunsBySchedule] = useState<Record<string, AgentScheduleRun[]>>({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const loadSequence = useRef(0);
+  const activeAgent = useRef<string | null>(agentId);
   const [saving, setSaving] = useState(false);
   const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -123,33 +146,33 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
   );
 
   async function load() {
+    if (activeAgent.current !== agentId) return;
+    const sequence = ++loadSequence.current;
+    const isCurrent = () => loadSequence.current === sequence;
     setLoading(true);
     setError(null);
     try {
       const data = await userApi.listAgentSchedules(agentId);
+      if (!isCurrent()) return;
       const rows = (data.schedules || []) as AgentSchedule[];
       setSchedules(rows);
-      const runPairs = await Promise.all(
-        rows.map(async (row) => {
-          try {
-            const res = await userApi.listAgentScheduleRuns(agentId, row.id);
-            return [row.id, (res.runs || []) as AgentScheduleRun[]] as const;
-          } catch {
-            return [row.id, []] as const;
-          }
-        }),
-      );
-      setRunsBySchedule(Object.fromEntries(runPairs));
+      void loadScheduleRunSummaries(agentId, rows, (id, runs) => {
+        setRunsBySchedule((previous) => ({ ...previous, [id]: runs }));
+      }, isCurrent);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "读取 schedule 失败");
+      if (isCurrent()) setError(err instanceof Error ? err.message : "读取 schedule 失败");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    activeAgent.current = agentId;
     resetForm();
+    setSchedules([]);
+    setRunsBySchedule({});
     void load();
+    return () => { activeAgent.current = null; loadSequence.current++; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
 

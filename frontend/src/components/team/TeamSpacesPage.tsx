@@ -25,7 +25,7 @@ import {
 } from "@/lib/team-spaces";
 import { subscribeToPageReturn } from "@/lib/page-return";
 import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
-import { createTeamSpaceStore } from "@/store/team-space-store";
+import { createTeamSpaceStore, type TeamSpaceStore } from "@/store/team-space-store";
 import {
   useConfirm,
   useConfirmStore,
@@ -39,8 +39,9 @@ const button =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-neon-cyan/10 focus-visible:outline-2 focus-visible:outline-neon-cyan disabled:cursor-not-allowed disabled:opacity-50";
 const primary = `${button} border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan`;
 
-export default function TeamSpacesPage({ teamMode = false, section, onChanged }: {
+export default function TeamSpacesPage({ teamMode = false, section, onChanged, sharedStore }: {
   teamMode?: boolean;
+  sharedStore?: TeamSpaceStore;
   section?: "members" | "agents" | "settings";
   onChanged?: () => void;
 }) {
@@ -49,7 +50,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged }:
   const router = useRouter();
   const query = useSearchParams();
   const requestedId = query.get("space");
-  const store = useMemo(() => createTeamSpaceStore(teamMode), [teamMode]);
+  const store = useMemo(() => sharedStore ?? createTeamSpaceStore(teamMode), [sharedStore, teamMode]);
   const { snapshot: loadedSnapshot, loading, refreshing, error, load, refresh } = useStore(store);
   const snapshot =
     loadedSnapshot &&
@@ -86,16 +87,16 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged }:
     mounted.current = true;
     return () => {
       mounted.current = false;
-      store.getState().cancel();
+      if (!sharedStore) store.getState().cancel();
     };
-  }, [store]);
+  }, [store, sharedStore]);
   useEffect(() => {
     setNotice(null);
     setHumanId("");
     setAgentId("");
-    void load(requestedId);
+    if (!sharedStore) void load(requestedId);
     return () => {
-      store.getState().cancel();
+      if (!sharedStore) store.getState().cancel();
       if (
         pendingConfirmation.current &&
         useConfirmStore.getState().current === pendingConfirmation.current
@@ -104,12 +105,12 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged }:
       }
       pendingConfirmation.current = null;
     };
-  }, [load, requestedId, store]);
+  }, [load, requestedId, store, sharedStore]);
   // Window focus also fires when returning from DevTools. Only a real page return
   // may refresh; the store coalesces requests and keeps the current page visible.
   useEffect(() => subscribeToPageReturn(() => {
-    if (!locked.current) void refresh(requestedId);
-  }), [refresh, requestedId]);
+    if (!sharedStore && !locked.current) void refresh(requestedId);
+  }), [refresh, requestedId, sharedStore]);
 
   const select = (id: string) =>
     router.push(teamMode && snapshot?.spaces.find((s) => s.id === id)?.kind === "personal"
@@ -152,13 +153,13 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged }:
         setSlug("");
         select(nextId);
       } else {
-        await load(origin);
-        if (mounted.current && currentRoute.current === origin) onChanged?.();
+        await load(origin, { background: Boolean(sharedStore) });
+        if (!sharedStore && mounted.current && currentRoute.current === origin) onChanged?.();
       }
     } catch (cause) {
       if (mounted.current && currentRoute.current === origin) {
         // Reload after a rejected mutation so revoked roles and stale policies disappear.
-        await load(origin);
+        await load(origin, { background: Boolean(sharedStore) });
         if (mounted.current && currentRoute.current === origin)
           setNotice({ error: true, text: spaceError(cause, zh) });
       }

@@ -25,6 +25,8 @@ interface TeamState {
   cancel: () => void;
 }
 
+export type TeamSpaceStore = ReturnType<typeof createTeamSpaceStore>;
+
 export function createTeamSpaceStore(preferOrganization = false) {
   let generation = 0;
   let controller: AbortController | null = null;
@@ -44,7 +46,7 @@ export function createTeamSpaceStore(preferOrganization = false) {
       await get().load(spaceId, { background: true });
     },
     load: async (spaceId, options) => {
-      const keepContent = Boolean(options?.background && get().snapshot && lastSpaceId === (spaceId ?? null));
+      const keepContent = Boolean(options?.background && get().snapshot && (lastSpaceId === (spaceId ?? null) || get().snapshot?.selected.id === spaceId));
       lastStartedAt = Date.now();
       lastSpaceId = spaceId ?? null;
       const current = ++generation;
@@ -58,25 +60,31 @@ export function createTeamSpaceStore(preferOrganization = false) {
         ...(keepContent ? {} : { snapshot: null }),
       });
       try {
-        const [{ spaces }, user, human] = await Promise.all([
-          teamSpacesApi.list(signal),
+        // Members depend on space selection, not on the independent profile calls.
+        const spaceData = teamSpacesApi.list(signal).then(async ({ spaces }) => {
+          if (current !== generation) return null;
+          const selected = spaceId
+            ? spaces.find((space) => space.id === spaceId)
+            : (preferOrganization
+                ? spaces.find((space) => space.kind === "organization" && space.status === "active" && space.membership.status === "active")
+                  ?? spaces.find((space) => space.kind === "organization" && space.status === "active" && space.membership.status === "invited")
+                : undefined)
+              ?? spaces.find((space) => space.kind === "personal");
+          if (!selected) throw new ApiError(404, "space_not_available");
+          const members =
+            selected.membership.status === "active" &&
+            selected.status === "active"
+              ? await teamSpacesApi.members(selected.id, signal)
+              : { users: [], agents: [] };
+          return { spaces, selected, members };
+        });
+        const [space, user, human] = await Promise.all([
+          spaceData,
           userApi.getMe({ force: true }),
           humansApi.getMe(),
         ]);
-        if (current !== generation) return;
-        const selected = spaceId
-          ? spaces.find((space) => space.id === spaceId)
-          : (preferOrganization
-              ? spaces.find((space) => space.kind === "organization" && space.status === "active" && space.membership.status === "active")
-                ?? spaces.find((space) => space.kind === "organization" && space.status === "active" && space.membership.status === "invited")
-              : undefined)
-            ?? spaces.find((space) => space.kind === "personal");
-        if (!selected) throw new ApiError(404, "space_not_available");
-        const members =
-          selected.membership.status === "active" &&
-          selected.status === "active"
-            ? await teamSpacesApi.members(selected.id, signal)
-            : { users: [], agents: [] };
+        if (!space) return;
+        const { spaces, selected, members } = space;
         if (current !== generation) return;
         set({
           snapshot: { spaces, selected, members, user, human },

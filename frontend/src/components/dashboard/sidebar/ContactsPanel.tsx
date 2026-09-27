@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { ChevronDown, UserPlus2, Users } from "lucide-react";
 import { CompositeAvatar } from "../CompositeAvatar";
@@ -13,7 +13,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useLanguage } from "@/lib/i18n";
 import { contactsUi as contactsUiI18n } from "@/lib/i18n/translations/dashboard";
-import { animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
+import { mergeDashboardRoomsWithHumanRooms } from "@/store/dashboard-shared";
 
 function Section({
   title,
@@ -27,35 +27,6 @@ function Section({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    let animation: ReturnType<typeof animateIfMotion> = null;
-    const frameId = window.requestAnimationFrame(() => {
-      const content = contentRef.current;
-      if (!content) return;
-
-      const rows = Array.from(
-        content.querySelectorAll<HTMLElement>("[data-contact-section-item]"),
-      );
-
-      animation = animateIfMotion(rows.length > 0 ? rows : content, {
-        opacity: [0, 1],
-        translateY: [6, 0],
-        delay: rows.length > 0 ? animeStagger(18) : 0,
-        duration: 220,
-        ease: "out(3)",
-      });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      cleanupAnime(animation);
-    };
-  }, [open, count]);
-
   return (
     <div className="border-b border-glass-border/50">
       <button
@@ -70,7 +41,7 @@ function Section({
         </span>
         <span className="text-[10px] font-medium text-text-secondary/50">{count}</span>
       </button>
-      {open ? <div ref={contentRef} className="overflow-hidden pb-2">{children}</div> : null}
+      {open ? <div className="overflow-hidden pb-2">{children}</div> : null}
     </div>
   );
 }
@@ -173,7 +144,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
     (c) => (c.peer_type ?? "agent") === "agent" && !ownedAgentIds.has(c.contact_agent_id),
   );
   const humanContacts = contacts.filter((c) => c.peer_type === "human");
-  const rooms = overview?.rooms || humanRooms || [];
+  const rooms = mergeDashboardRoomsWithHumanRooms(overview?.rooms || [], humanRooms);
   const groups = rooms.filter((r) => (r.member_count ?? 0) > 2);
 
   const openRequests = () => {
@@ -213,7 +184,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
   const isActive = (type: "agent" | "human" | "group", id: string) =>
     selectedContactKey?.type === type && selectedContactKey.id === id;
 
-  if (!overview) {
+  if (!overview && ownedAgents.length === 0 && groups.length === 0) {
     return (
       <div className="flex h-full flex-col">
         <PinnedRequestRowSkeleton />
@@ -244,7 +215,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
           <p className="truncate text-[11px] text-text-secondary/60">
             {totalPendingRequests > 0
               ? t.pendingRequests(totalPendingRequests)
-              : t.noPendingRequests}
+              : overview ? t.noPendingRequests : "…"}
           </p>
         </div>
       </button>
@@ -282,14 +253,16 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
               onClick={() => selectAgent(c.contact_agent_id)}
             />
           ))}
-          {ownedAgents.length === 0 && agentContacts.length === 0 ? (
+          {overview && ownedAgents.length === 0 && agentContacts.length === 0 ? (
             <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary/50">{t.noAgentsYet}</p>
           ) : null}
         </Section>
 
         {/* Humans */}
         <Section title={t.humansGroup} count={humanContacts.length}>
-          {humanContacts.length === 0 ? (
+          {humanContacts.length === 0 && !overview ? (
+            <ContactSectionsSkeleton />
+          ) : humanContacts.length === 0 ? (
             <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary/50">{t.noHumanContactsYet}</p>
           ) : (
             humanContacts.map((c) => (
@@ -308,7 +281,9 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
 
         {/* Groups */}
         <Section title={t.groupsGroup} count={groups.length}>
-          {groups.length === 0 ? (
+          {groups.length === 0 && !overview ? (
+            <ContactSectionsSkeleton />
+          ) : groups.length === 0 ? (
             <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary/50">{t.noGroupsJoined}</p>
           ) : (
             groups.map((room) => (

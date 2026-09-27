@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: session/ui/chat/unread/wallet/daemon stores + supabase client
- * [OUTPUT]: Sidebar — primary rail + resizable secondary panel + global modals
+ * [OUTPUT]: Sidebar — primary rail + immediately usable secondary panels + global modals
  * [POS]: dashboard left-side navigation skeleton
  * [PROTOCOL]: update header on changes
  */
@@ -37,7 +37,6 @@ import ContactsPanel from "./ContactsPanel";
 import MessagesGroupingSidebar from "./MessagesGroupingSidebar";
 import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
-import { ContactSectionsSkeleton, PinnedRequestRowSkeleton, RoomRowsSkeleton, SkeletonBlock } from "../DashboardTabSkeleton";
 
 import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
@@ -284,9 +283,6 @@ function Sidebar({
 
   const pendingContactRequests = (chatStore.overview?.pending_requests || 0) + contactStore.contactRequestsBotApprovalCount;
   const visibleSidebarTab = sidebarTabOverride ?? uiStore.sidebarTab;
-  const secondaryPanelLoading = Boolean(
-    uiStore.pendingPrimaryNavigation && uiStore.pendingPrimaryNavigation.tab === visibleSidebarTab,
-  );
   const showMessagesGrouping = visibleSidebarTab === "messages" && !isGuest && uiStore.messagesGroupingOpen;
 
   useEffect(() => {
@@ -584,42 +580,20 @@ function Sidebar({
 
         {/* Panel content */}
         <div className="flex flex-1 min-h-0" data-mobile-secondary-motion>
-          {!secondaryPanelLoading && showMessagesGrouping && (
+          {showMessagesGrouping && (
             <div className="max-md:hidden">
               <MessagesGroupingSidebar />
             </div>
           )}
           <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-          {secondaryPanelLoading ? (
-            <>
-              {visibleSidebarTab === "messages" ? (
-                <>
-                  {/* Mirrors MessagesPanel's toolbar: title + three icon buttons. */}
-                  <div className="liquid-toolbar flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
-                    <SkeletonBlock className="h-4 w-28" />
-                    <div className="flex gap-1">
-                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
-                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
-                      <SkeletonBlock className="h-8 w-8 rounded-lg" />
-                    </div>
-                  </div>
-                  <RoomRowsSkeleton />
-                </>
-              ) : visibleSidebarTab === "contacts" ? (
-                <>
-                  <PinnedRequestRowSkeleton />
-                  <ContactSectionsSkeleton />
-                </>
-              ) : null}
-            </>
-          ) : visibleSidebarTab === "messages" && (
+          {visibleSidebarTab === "messages" && (
             <MessagesPanel
               isGuest={isGuest}
               onCreateRoom={() => setShowCreateRoom(true)}
               onAddFriend={() => setShowAddFriend(true)}
             />
           )}
-          {!secondaryPanelLoading && visibleSidebarTab === "contacts" && (
+          {visibleSidebarTab === "contacts" && (
             <ContactsPanel onOpenAddFriend={() => setShowAddFriend(true)} />
           )}
           </div>

@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 api/getSharedRoom 拉取共享快照，依赖 next/link 提供站内返回入口，依赖 BotCordLoadingScreen 渲染加载态
- * [OUTPUT]: 对外提供 SharedRoomView 组件，负责共享房间落地页、固定导航避让、紧凑消息预览、品牌加载与错误态展示
+ * [OUTPUT]: 对外提供 SharedRoomView 组件，负责共享房间落地页、固定导航避让、紧凑消息预览、按分享 ID 隔离加载与错误态展示
  * [POS]: share 模块的页面主体，被 /share/[shareId] 路由消费，是外部访问共享快照的转化落地页
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -10,12 +10,14 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUpRight, Clock, LockKeyhole, MessageSquareText, Users } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import type { SharedMessage, SharedRoomResponse } from "@/lib/types";
 import { BotCordLoadingScreen } from "@/components/ui/BotCordLoader";
 import { useLanguage } from "@/lib/i18n";
 import { sharedRoomView } from "@/lib/i18n/translations/dashboard";
 import { formatMessageTimestamp } from "@/lib/message-time";
+
+import { loadSharedPreview } from "./landing-requests";
 
 const SHARED_ROOM_PREVIEW_LIMIT = 3;
 const SHARED_ROOM_TEASER_TEXT_LIMIT = 220;
@@ -45,6 +47,10 @@ export function truncateSharedRoomMessageText(text: string, maxLength = SHARED_R
 }
 
 export default function SharedRoomView({ shareId }: { shareId: string }) {
+  return <SharedRoomContent key={shareId} shareId={shareId} />;
+}
+
+function SharedRoomContent({ shareId }: { shareId: string }) {
   const locale = useLanguage();
   const t = sharedRoomView[locale];
   const [data, setData] = useState<SharedRoomResponse | null>(null);
@@ -57,17 +63,23 @@ export default function SharedRoomView({ shareId }: { shareId: string }) {
       setLoading(false);
       return;
     }
-    api
-      .getSharedRoom(shareId)
-      .then(setData)
-      .catch((err) => {
+    setData(null);
+    setError(null);
+    setLoading(true);
+    return loadSharedPreview(shareId, {
+      preview: (preview) => {
+        setData(preview);
+        setLoading(false);
+      },
+      error: (err) => {
         if (err instanceof ApiError && err.status === 404) {
           setError(t.invalidShare);
         } else {
-          setError(err.message || t.loadFailed);
+          setError(err instanceof Error ? err.message : t.loadFailed);
         }
-      })
-      .finally(() => setLoading(false));
+        setLoading(false);
+      },
+    });
   }, [shareId, t.invalidShare, t.loadFailed, t.missingShareId]);
 
   const previewMessages = useMemo(() => (

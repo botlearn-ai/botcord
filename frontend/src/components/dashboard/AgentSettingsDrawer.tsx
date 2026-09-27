@@ -371,17 +371,21 @@ function AgentSettingsDrawer({
 
   // --- Policy state ---
   const policy = usePolicyStore((s) => s.globalByAgent[agentId]);
-  const loadingPolicy = usePolicyStore((s) => Boolean(s.globalLoading[agentId]));
   const loadGlobal = usePolicyStore((s) => s.loadGlobal);
   const patchGlobal = usePolicyStore((s) => s.patchGlobal);
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [policySaving, setPolicySaving] = useState(false);
 
   useEffect(() => {
-    if (!policy && !loadingPolicy) {
-      void loadGlobal(agentId).catch(() => {});
+    let cancelled = false;
+    setPolicyError(null);
+    if (!usePolicyStore.getState().globalByAgent[agentId]) {
+      void loadGlobal(agentId).catch((err) => {
+        if (!cancelled) setPolicyError(err instanceof Error ? err.message : String(err));
+      });
     }
-  }, [agentId, loadGlobal, loadingPolicy, policy]);
+    return () => { cancelled = true; };
+  }, [agentId, loadGlobal]);
 
   const loadRuntimeFileContent = useCallback(
     async (fileId: string) => {
@@ -677,11 +681,17 @@ function AgentSettingsDrawer({
               {policyError && (
                 <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
                   {policyError}
+                  {!policy && (
+                    <button type="button" className="ml-3 underline" onClick={() => {
+                      setPolicyError(null);
+                      void loadGlobal(agentId).catch((err) => setPolicyError(err instanceof Error ? err.message : String(err)));
+                    }}>{t.files.refresh}</button>
+                  )}
                 </div>
               )}
 
-              {!policy || loadingPolicy ? (
-                <div className="space-y-4">
+              {!policy ? (
+                <div className={policyError ? "hidden" : "space-y-4"}>
                   {[1, 2].map((i) => (
                     <div key={i} className="animate-pulse rounded-2xl border border-glass-border bg-glass-bg/40 p-5">
                       <div className="mb-3 h-4 w-28 rounded bg-glass-bg" />

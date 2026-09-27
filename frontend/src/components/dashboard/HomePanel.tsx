@@ -796,8 +796,9 @@ function HomePanel() {
     [ownedAgents],
   );
 
+  const previewAgentIdsKey = JSON.stringify(previewOwnedAgents.map((agent) => agent.agent_id));
   useEffect(() => {
-    const agentIds = previewOwnedAgents.map((agent) => agent.agent_id);
+    const agentIds = JSON.parse(previewAgentIdsKey) as string[];
     if (agentIds.length === 0) {
       setStatsByAgent({});
       return;
@@ -813,7 +814,7 @@ function HomePanel() {
     return () => {
       cancelled = true;
     };
-  }, [previewOwnedAgents]);
+  }, [previewAgentIdsKey]);
 
   const trendingRooms = useMemo(
     () => [...publicRooms].sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? "")).slice(0, 4),
@@ -883,6 +884,12 @@ function HomePanel() {
                 />
               ))}
             </div>
+          ) : !publicRoomsLoaded ? (
+            <div aria-busy="true" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="h-36 rounded-2xl border border-glass-border bg-glass-bg" />
+              ))}
+            </div>
           ) : (
             <p className="liquid-empty-state rounded-2xl border border-glass-border px-4 py-6 text-sm text-text-secondary/70">
               {t.noPublicRooms}
@@ -913,6 +920,12 @@ function HomePanel() {
                 />
               ))}
             </div>
+          ) : !publicAgentsLoaded ? (
+            <div aria-busy="true" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="h-36 rounded-2xl border border-glass-border bg-glass-bg" />
+              ))}
+            </div>
           ) : (
             <p className="liquid-empty-state rounded-2xl border border-glass-border px-4 py-6 text-sm text-text-secondary/70">
               {t.noPublicBots}
@@ -939,6 +952,12 @@ function HomePanel() {
                   subtitle="HUMAN"
                   onClick={() => requestOpenHuman(human.human_id, human.display_name)}
                 />
+              ))}
+            </div>
+          ) : !publicHumansLoaded ? (
+            <div aria-busy="true" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="h-36 rounded-2xl border border-glass-border bg-glass-bg" />
               ))}
             </div>
           ) : (
