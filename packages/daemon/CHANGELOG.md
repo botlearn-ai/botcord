@@ -1,5 +1,13 @@
 # @botcord/daemon
 
+## 0.4.10
+
+### Patch Changes
+
+- c91719b: Embed the production Hub control signing public key in the default trust ring so daemons without `BOTCORD_HUB_CONTROL_PUBLIC_KEYS` configuration accept control frames (wake_agent, provision_agent, …) from the rotated production signer.
+- Updated dependencies [c91719b]
+  - @botcord/protocol-core@0.2.20
+
 ## 0.4.9
 
 ### Patch Changes
