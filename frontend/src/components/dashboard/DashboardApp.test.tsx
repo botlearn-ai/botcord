@@ -94,3 +94,26 @@ describe("shell subscription boundaries", () => {
     expect(shallow(selections.chat[0], selections.chat[1])).toBe(false);
   });
 });
+
+describe("mobile conversation chrome", () => {
+  it.each(["room", "user-chat"] as const)("focuses %s details and restores navigation on return", (messagesPane) => {
+    ui.setState({ sidebarTab: "messages", messagesPane, openedRoomId: messagesPane === "room" ? "rm_test" : null });
+    expect(render()).toContain('data-mobile-conversation="true"');
+    ui.getState().returnToMessageList();
+    expect(render()).toContain('data-mobile-conversation="false"');
+  });
+  it("keeps navigation on the request page even with a remembered conversation", () => {
+    ui.setState({ sidebarTab: "messages", openedRoomId: "rm_test", messagesShowRequests: true });
+    expect(render()).toContain('data-mobile-conversation="false"');
+  });
+  it("restores navigation immediately when leaving Messages", () => {
+    ui.setState({ sidebarTab: "messages", openedRoomId: "rm_test" });
+    ui.getState().startPrimaryNavigation("home", "/chats/home");
+    expect(render()).toContain('data-mobile-conversation="false"');
+  });
+  it("does not hide Team navigation because a personal conversation is remembered", () => {
+    route.pathname = "/chats/team";
+    ui.setState({ sidebarTab: "messages", openedRoomId: "rm_test" });
+    expect(render()).toContain('data-mobile-conversation="false"');
+  });
+});

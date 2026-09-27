@@ -73,3 +73,10 @@ describe("refresh shell mode layout", () => {
     expect(html).not.toContain("正在加载团队空间");
   });
 });
+
+it("hides mobile global navigation while a conversation deep link loads", () => {
+  route.pathname = "/chats/messages/rm_test";
+  expect(renderToStaticMarkup(React.createElement(DashboardShellSkeleton))).toContain('data-mobile-conversation="true"');
+  route.pathname = "/chats/messages";
+  expect(renderToStaticMarkup(React.createElement(DashboardShellSkeleton))).toContain('data-mobile-conversation="false"');
+});

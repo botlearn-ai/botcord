@@ -1162,6 +1162,10 @@ export default function DashboardApp() {
     }
   };
 
+  const mobileConversationOpen = !teamMode
+    && visibleSidebarTab === "messages"
+    && !uiStore.messagesShowRequests
+    && (uiStore.messagesPane === "user-chat" || Boolean(uiStore.openedRoomId));
   const mobileMessagesShowsMain =
     visibleSidebarTab === "messages"
     && (
@@ -1193,7 +1197,7 @@ export default function DashboardApp() {
     || mobileContactsShowsMain;
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
   return (
-    <div ref={viewportRef} className="dashboard-root fixed inset-0 flex flex-col overflow-hidden bg-deep-black">
+    <div ref={viewportRef} data-mobile-conversation={mobileConversationOpen} className="dashboard-root fixed inset-0 flex flex-col overflow-hidden bg-deep-black">
       <WorkspaceModeSwitch teamMode={teamMode} personalHref={personalHref.current} teamHref={teamMode ? pathname + (searchParams.toString() ? `?${searchParams}` : "") : teamHref.current} />
       {teamMode ? (
         <div className="min-h-0 flex-1 overflow-hidden">

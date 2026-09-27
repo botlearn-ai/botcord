@@ -132,7 +132,7 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
   ] as const;
 
   return (
-    <div className="dashboard-root fixed inset-0 flex flex-col overflow-hidden bg-deep-black">
+    <div data-mobile-conversation={variant === "messages" && hasOpenConversation} className="dashboard-root fixed inset-0 flex flex-col overflow-hidden bg-deep-black">
       <WorkspaceModeSwitch
         teamMode={variant === "team"}
         personalHref={variant === "team" ? "/chats/messages" : pathname || "/chats/messages"}
@@ -144,7 +144,7 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
       ) : (
         <div className="flex min-h-0 flex-1 overflow-hidden max-md:flex-col-reverse">
           <div className="liquid-panel flex h-full max-md:contents">
-            <div className="liquid-rail flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border py-3 max-md:h-[calc(4rem+env(safe-area-inset-bottom))] max-md:w-full max-md:shrink-0 max-md:flex-row max-md:border-r-0 max-md:border-t max-md:px-2 max-md:pt-2 max-md:pb-[env(safe-area-inset-bottom)]">
+            <div data-dashboard-sidebar className="liquid-rail flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border py-3 max-md:h-[calc(4rem+env(safe-area-inset-bottom))] max-md:w-full max-md:shrink-0 max-md:flex-row max-md:border-r-0 max-md:border-t max-md:px-2 max-md:pt-2 max-md:pb-[env(safe-area-inset-bottom)]">
               <div className="mb-3 flex h-11 w-11 items-center justify-center max-md:hidden">
                 <BotCordLoader label="Loading BotCord" size="sm" showLabel={false} />
               </div>

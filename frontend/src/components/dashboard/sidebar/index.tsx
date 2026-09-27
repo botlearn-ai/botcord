@@ -2,12 +2,12 @@
 
 /**
  * [INPUT]: session/ui/chat/unread/wallet/daemon stores + supabase client
- * [OUTPUT]: Sidebar — desktop rail / compact mobile navigation + secondary panels + global modals
+ * [OUTPUT]: Sidebar — desktop rail / compact mobile navigation + secondary panels with preserved list scroll + global modals
  * [POS]: dashboard left-side navigation skeleton
  * [PROTOCOL]: update header on changes
  */
 
-import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "nextjs-toploader/app";
@@ -283,6 +283,13 @@ function Sidebar({
 
   const pendingContactRequests = (chatStore.overview?.pending_requests || 0) + contactStore.contactRequestsBotApprovalCount;
   const visibleSidebarTab = sidebarTabOverride ?? uiStore.sidebarTab;
+  const messageListScrollRef = useRef<HTMLDivElement>(null);
+  const messageListScrollTop = useRef(0);
+  useLayoutEffect(() => {
+    if (visibleSidebarTab === "messages" && !mobileHideSecondary && messageListScrollRef.current) {
+      messageListScrollRef.current.scrollTop = messageListScrollTop.current;
+    }
+  }, [visibleSidebarTab, mobileHideSecondary]);
   const showMessagesGrouping = visibleSidebarTab === "messages" && !isGuest && uiStore.messagesGroupingOpen;
 
   useEffect(() => {
@@ -593,7 +600,17 @@ function Sidebar({
               <MessagesGroupingSidebar />
             </div>
           )}
-          <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div
+            ref={messageListScrollRef}
+            data-message-list-scroll
+            onScroll={(event) => {
+              // Hidden panels may emit a zero-offset scroll event. Keep the last visible position.
+              if (visibleSidebarTab === "messages" && event.currentTarget.clientHeight > 0) {
+                messageListScrollTop.current = event.currentTarget.scrollTop;
+              }
+            }}
+            className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
+          >
           {visibleSidebarTab === "messages" && (
             <MessagesPanel
               isGuest={isGuest}

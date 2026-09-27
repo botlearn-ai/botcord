@@ -1121,6 +1121,12 @@ html[data-theme="dark"] .liquid-message-error {
 .dashboard-main { min-height: 0; min-width: 0; }
 @media (max-width: 767px) {
   .dashboard-root { height: 100dvh; bottom: auto; padding-top: env(safe-area-inset-top); }
+  .dashboard-root[data-mobile-conversation="true"] {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .dashboard-root[data-mobile-conversation="true"][data-keyboard-open="true"] { padding-bottom: 0; }
+  .dashboard-root[data-mobile-conversation="true"] [data-dashboard-sidebar],
+  .dashboard-root[data-mobile-conversation="true"] .dashboard-workspace-switch,
   .dashboard-root[data-keyboard-open="true"] [data-dashboard-sidebar],
   .dashboard-root[data-keyboard-open="true"] .dashboard-workspace-switch { display: none; }
   .liquid-message { overflow-wrap: anywhere; min-width: 0; }
