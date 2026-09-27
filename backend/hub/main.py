@@ -71,6 +71,7 @@ from app.routers.subscriptions import router as app_subscriptions_router
 from app.routers.beta import router as app_beta_router
 from app.routers.admin_beta import router as app_admin_beta_router
 from app.routers.activity import router as app_activity_router
+from app.routers.agent_capability import router as app_agent_capability_router
 from app.routers.cloud_agents import router as app_cloud_agents_router
 from app.routers.botlearn import router as app_botlearn_router
 from app.routers.policy import router as app_policy_router
@@ -337,6 +338,7 @@ app.include_router(app_auth_router)
 _beta_gate = [Depends(require_beta_user)]
 app.include_router(app_humans_router, dependencies=_beta_gate)
 app.include_router(app_activity_router, dependencies=_beta_gate)
+app.include_router(app_agent_capability_router, dependencies=_beta_gate)
 app.include_router(app_dashboard_router, dependencies=_beta_gate)
 app.include_router(app_invites_router)
 app.include_router(app_public_router)

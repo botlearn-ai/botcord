@@ -80,6 +80,7 @@ import type {
 
 import { createClient } from "@/lib/supabase/client";
 import type { AgentSkillsResponse } from "@/lib/agent-skills";
+import type { AgentCapability } from "@/lib/agent-capability";
 import type { AgentPresenceSnapshotPayload } from "@/store/usePresenceStore";
 
 /**
@@ -1168,6 +1169,10 @@ const userApi = {
 
   refreshAgentSkills(agentId: string): Promise<AgentSkillsResponse> {
     return apiPost<AgentSkillsResponse>(`/api/agents/${encodeURIComponent(agentId)}/runtime-skills/refresh`);
+  },
+
+  getAgentCapability(agentId: string): Promise<AgentCapability> {
+    return apiGet<AgentCapability>(`/api/dashboard/agents/${encodeURIComponent(agentId)}/capability`);
   },
 };
 

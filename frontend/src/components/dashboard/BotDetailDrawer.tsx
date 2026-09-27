@@ -38,6 +38,7 @@ import {
   type ContactPolicy,
   type RoomInvitePolicy,
 } from "@/store/usePolicyStore";
+import AgentCapabilityCard from "./AgentCapabilityCard";
 import AgentChannelsTab from "./AgentChannelsTab";
 import AgentSchedulesTab from "./AgentSchedulesTab";
 import BotRuntimeCapabilitiesPanel from "./BotRuntimeCapabilitiesPanel";
@@ -413,6 +414,8 @@ function OverviewTab({
           </div>
         </section>
       ) : null}
+
+      <AgentCapabilityCard agentId={bot.agent_id} />
 
       <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
