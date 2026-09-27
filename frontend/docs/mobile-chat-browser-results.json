@@ -1,0 +1,146 @@
+[
+  {
+    "width": 320,
+    "touch": true,
+    "passed": true,
+    "layout": {
+      "root": {
+        "top": 0,
+        "bottom": 740,
+        "width": 320,
+        "left": 0,
+        "right": 320
+      },
+      "header": {
+        "top": 0,
+        "bottom": 0,
+        "width": 0,
+        "left": 0,
+        "right": 0
+      },
+      "composer": {
+        "top": 610,
+        "bottom": 668,
+        "width": 304,
+        "left": 8,
+        "right": 312
+      },
+      "rail": {
+        "top": 676,
+        "bottom": 740,
+        "width": 320,
+        "left": 0,
+        "right": 320
+      },
+      "overflow": false
+    }
+  },
+  {
+    "width": 390,
+    "touch": true,
+    "passed": true,
+    "layout": {
+      "root": {
+        "top": 0,
+        "bottom": 740,
+        "width": 390,
+        "left": 0,
+        "right": 390
+      },
+      "header": {
+        "top": 0,
+        "bottom": 0,
+        "width": 0,
+        "left": 0,
+        "right": 0
+      },
+      "composer": {
+        "top": 610,
+        "bottom": 668,
+        "width": 374,
+        "left": 8,
+        "right": 382
+      },
+      "rail": {
+        "top": 676,
+        "bottom": 740,
+        "width": 390,
+        "left": 0,
+        "right": 390
+      },
+      "overflow": false
+    }
+  },
+  {
+    "width": 430,
+    "touch": true,
+    "passed": true,
+    "layout": {
+      "root": {
+        "top": 0,
+        "bottom": 740,
+        "width": 430,
+        "left": 0,
+        "right": 430
+      },
+      "header": {
+        "top": 0,
+        "bottom": 0,
+        "width": 0,
+        "left": 0,
+        "right": 0
+      },
+      "composer": {
+        "top": 610,
+        "bottom": 668,
+        "width": 414,
+        "left": 8,
+        "right": 422
+      },
+      "rail": {
+        "top": 676,
+        "bottom": 740,
+        "width": 430,
+        "left": 0,
+        "right": 430
+      },
+      "overflow": false
+    }
+  },
+  {
+    "width": 1280,
+    "touch": false,
+    "passed": true,
+    "layout": {
+      "root": {
+        "top": 0,
+        "bottom": 740,
+        "width": 1280,
+        "left": 0,
+        "right": 1280
+      },
+      "header": {
+        "top": 56,
+        "bottom": 112,
+        "width": 199,
+        "left": 64,
+        "right": 263
+      },
+      "composer": {
+        "top": 674,
+        "bottom": 732,
+        "width": 624,
+        "left": 640,
+        "right": 1264
+      },
+      "rail": {
+        "top": 56,
+        "bottom": 740,
+        "width": 64,
+        "left": 0,
+        "right": 64
+      },
+      "overflow": false
+    }
+  }
+]

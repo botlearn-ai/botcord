@@ -9,8 +9,9 @@
  *   - Rendering: status-driven (optimistic / streaming / delivered / failed)
  */
 
+import ComposerPopover from "./ComposerPopover";
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo, memo } from "react";
-import { ArrowDown, ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, PanelLeftOpen, Settings2, User, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, Settings2, User, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -106,7 +107,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const { activeAgentId } = useDashboardSessionStore();
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const chatAgentId = agentId || activeAgentId || null;
-  const { openMobileSidebar, setMessagesPane, setSelectedBotAgentId, setUserChatRoomId, setBotDetailAgentId } = useDashboardUIStore();
+  const { setSelectedBotAgentId, setUserChatRoomId, setBotDetailAgentId } = useDashboardUIStore();
   const ownedAgent = chatAgentId
     ? ownedAgents.find((a) => a.agent_id === chatAgentId) ?? null
     : null;
@@ -131,6 +132,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const [initError, setInitError] = useState<string | null>(null);
   const [errorDetailsId, setErrorDetailsId] = useState<string | null>(null);
   const [hoveredActionId, setHoveredActionId] = useState<string | null>(null);
+  const actionAnchorRef = useRef<HTMLButtonElement | null>(null);
   const [actionMenuOpenId, setActionMenuOpenId] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
@@ -648,7 +650,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     }
   }, []);
 
-  const renderMessageActions = (msg: OwnerChatMessage, alignRight: boolean) => {
+  const renderMessageActions = (msg: OwnerChatMessage) => {
     if (!canShowOwnerChatMessageActions(msg)) return null;
     const menuOpen = actionMenuOpenId === msg.clientId;
     const visible = hoveredActionId === msg.clientId || menuOpen;
@@ -658,19 +660,20 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       <div className="relative shrink-0 self-start pt-1">
         <button
           type="button"
-          onClick={() => setActionMenuOpenId((current) => current === msg.clientId ? null : msg.clientId)}
-          className={`liquid-message-action flex h-8 w-8 items-center justify-center rounded-xl text-text-secondary transition-colors ${visible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          onClick={(event) => { actionAnchorRef.current = event.currentTarget; setActionMenuOpenId((current) => current === msg.clientId ? null : msg.clientId); }}
+          aria-expanded={menuOpen}
+          className={`liquid-message-action flex h-8 w-8 max-md:h-11 max-md:w-11 items-center justify-center rounded-xl text-text-secondary transition-colors ${visible ? "opacity-100" : "opacity-0 pointer-events-none focus:opacity-100 focus:pointer-events-auto"}`}
           aria-label="More actions"
         >
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
         {menuOpen && (
-          <div className={`liquid-menu absolute top-full z-30 mt-1 min-w-[96px] rounded-xl border border-glass-border bg-deep-black-light py-1 shadow-xl ${alignRight ? "right-0" : "left-0"}`}>
+          <ComposerPopover anchorRef={actionAnchorRef} onClose={() => setActionMenuOpenId(null)} className="py-1">
             {canReply && (
               <button
                 type="button"
-                onMouseDown={(event) => { event.preventDefault(); handleReply(msg); }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+                onClick={() => { handleReply(msg); }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
               >
                 <CornerUpLeft className="h-3.5 w-3.5 text-zinc-500" />
                 {replyLabel}
@@ -678,16 +681,16 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
             )}
             <button
               type="button"
-              onMouseDown={(event) => { event.preventDefault(); handleForward(msg); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+              onClick={() => { handleForward(msg); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
             >
               <Forward className="h-3.5 w-3.5 text-zinc-500" />
               {forwardLabel}
             </button>
             <button
               type="button"
-              onMouseDown={(event) => { event.preventDefault(); void handleCopy(msg); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+              onClick={() => { void handleCopy(msg); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
             >
               {copied ? (
                 <Check className="h-3.5 w-3.5 text-emerald-400" />
@@ -696,75 +699,68 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
               )}
               {copied ? copiedLabel : copyLabel}
             </button>
-          </div>
+          </ComposerPopover>
         )}
       </div>
     );
   };
 
+  const handleMobileBack = () => {
+    if (agentId && useDashboardUIStore.getState().sidebarTab === "bots") {
+      setSelectedBotAgentId(null);
+      router.push("/chats/bots");
+      return;
+    }
+    useDashboardUIStore.getState().returnToMessageList();
+    router.push("/chats/messages");
+  };
+
+  const mobileBack = <button type="button" onClick={handleMobileBack} aria-label="Back to messages" className="hidden h-11 shrink-0 items-center gap-2 border-b border-glass-border px-3 text-sm max-md:flex"><ArrowLeft size={20} />{locale === "zh" ? "返回" : "Back"}</button>;
   // ------ Render guards ------
 
   if (!chatAgentId) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500">
-        <p>Select a Bot to start chatting</p>
+      <div className="flex h-full flex-col text-zinc-500">
+        {mobileBack}<p className="m-auto">Select a Bot to start chatting</p>
       </div>
     );
   }
 
   if (initializingRoom || loading) {
     return (
-      <DashboardMessagePaneSkeleton
+      <div className="flex h-full min-h-0 flex-col">{mobileBack}<DashboardMessagePaneSkeleton
         headerIcon={<MessageSquare className="h-4 w-4" />}
         headerPaddingClassName="px-4 py-3"
         bodyPaddingClassName="px-4 py-4"
         composerPaddingClassName="px-4 py-3"
-        messageMaxWidthClassName="max-w-[75%]"
+        messageMaxWidthClassName="max-w-[75%] max-md:max-w-[calc(100%-3.25rem)]"
         roundedClassName="rounded-lg"
-      />
+      /></div>
     );
   }
 
   if (initError || storeError) {
     return (
-      <div className="flex items-center justify-center h-full text-red-400">
-        <p>{initError || storeError}</p>
+      <div className="flex h-full flex-col text-red-400">
+        {mobileBack}<p className="m-auto">{initError || storeError}</p>
       </div>
     );
   }
 
-  const handleMobileBack = () => {
-    if (agentId) {
-      setSelectedBotAgentId(null);
-      router.push("/chats/bots");
-      return;
-    }
-    setMessagesPane("room");
-    router.push("/chats/messages");
-  };
 
   return (
     <div className="dashboard-main relative flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
       {/* Header */}
-      <div className="liquid-toolbar flex items-center gap-2 border-b border-glass-border px-4 py-3 max-md:px-3">
+      <div className="liquid-toolbar flex shrink-0 items-center gap-2 border-b border-glass-border px-4 py-3 max-md:px-3">
         <button
           type="button"
           onClick={handleMobileBack}
-          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+          className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
           aria-label="Back"
           title="Back"
         >
           <ArrowLeft className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={openMobileSidebar}
-          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
-          aria-label={agentId ? "Open bot list" : "Open message list"}
-          title={agentId ? "Open bot list" : "Open message list"}
-        >
-          <PanelLeftOpen className="h-4 w-4" />
         </button>
         <MessageSquare className="w-4 h-4 text-cyan-400" />
         <h2 className="min-w-0 truncate text-sm font-medium text-text-primary">
@@ -853,7 +849,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 className="space-y-1.5"
               >
                 <div className="flex justify-start">
-                  <div className="liquid-message liquid-message-error max-w-[75%] rounded-2xl border px-3 py-2 text-sm text-text-primary">
+                  <div className="liquid-message liquid-message-error max-w-[75%] max-md:max-w-[calc(100%-3.25rem)] rounded-2xl border px-3 py-2 text-sm text-text-primary">
                     <div className="mb-1 flex items-center gap-1.5">
                       <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-purple-400/30 bg-purple-400/10 text-purple-300">
                         <Bot className="h-2.5 w-2.5" />
@@ -928,10 +924,10 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 data-owner-msg-key={msg.clientId}
                 className="flex items-start justify-end gap-2"
                 onMouseEnter={() => setHoveredActionId(msg.clientId)}
-                onMouseLeave={() => { setHoveredActionId(null); setActionMenuOpenId(null); }}
+                onMouseLeave={() => setHoveredActionId(null)}
               >
-                {renderMessageActions(msg, true)}
-                <div className="liquid-message liquid-message-own max-w-[75%] rounded-2xl border px-3 py-2 text-sm text-text-primary">
+                {renderMessageActions(msg)}
+                <div className="liquid-message liquid-message-own max-w-[75%] max-md:max-w-[calc(100%-3.25rem)] rounded-2xl border px-3 py-2 text-sm text-text-primary">
                   <div className="mb-1 flex items-center justify-end gap-1.5">
                     <span className="text-xs font-medium text-neon-cyan">
                       {msg.senderName}
@@ -1004,11 +1000,11 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 <div
                   className={`flex items-start gap-2 ${isUser ? "justify-end" : "justify-start"}`}
                   onMouseEnter={() => setHoveredActionId(msg.clientId)}
-                  onMouseLeave={() => { setHoveredActionId(null); setActionMenuOpenId(null); }}
+                  onMouseLeave={() => setHoveredActionId(null)}
                 >
-                  {isUser && renderMessageActions(msg, true)}
+                  {isUser && renderMessageActions(msg)}
                   <div
-                    className={`liquid-message max-w-[75%] rounded-2xl border px-3 py-2 text-sm ${
+                    className={`liquid-message max-w-[75%] max-md:max-w-[calc(100%-3.25rem)] rounded-2xl border px-3 py-2 text-sm ${
                       isUser
                         ? "liquid-message-own text-text-primary"
                         : "liquid-message-peer text-text-primary"
@@ -1089,7 +1085,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                       {formatMessageTimestamp(msg.createdAt)}
                     </div>
                   </div>
-                  {!isUser && renderMessageActions(msg, false)}
+                  {!isUser && renderMessageActions(msg)}
                 </div>
               )}
             </div>

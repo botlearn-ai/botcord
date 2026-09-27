@@ -36,3 +36,18 @@ describe("useDashboardUIStore", () => {
     expect(useDashboardUIStore.getState().pendingPrimaryNavigation).toBeNull();
   });
 });
+
+describe("return to the mobile message list", () => {
+  it.each(["room", "user-chat"] as const)("exits %s and closes overlays atomically", (messagesPane) => {
+    useDashboardUIStore.setState({ messagesPane, openedRoomId: "rm_test", focusedRoomId: "rm_test", messagesShowRequests: true, mobileSidebarOpen: true, sidebarTab: "contacts" });
+    useDashboardUIStore.getState().returnToMessageList();
+    expect(useDashboardUIStore.getState()).toMatchObject({ sidebarTab: "messages", messagesPane: "room", openedRoomId: null, focusedRoomId: null, messagesShowRequests: false, mobileSidebarOpen: false, pendingPrimaryNavigation: { tab: "messages", path: "/chats/messages" } });
+  });
+  it("protects the return action from the old route while navigation is pending", () => {
+    useDashboardUIStore.getState().startPrimaryNavigation("messages", "/chats/messages/rm_test");
+    const oldId = useDashboardUIStore.getState().pendingPrimaryNavigation!.id;
+    useDashboardUIStore.getState().returnToMessageList();
+    useDashboardUIStore.getState().clearPrimaryNavigation(oldId);
+    expect(useDashboardUIStore.getState().pendingPrimaryNavigation?.path).toBe("/chats/messages");
+  });
+});

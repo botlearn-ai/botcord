@@ -6,6 +6,8 @@ import { animateIfMotion, cleanupAnime } from "@/lib/anime";
 
 export interface PrimaryNavButtonProps {
   active: boolean;
+  mobileHidden?: boolean;
+  mobileLabel?: string;
   activeTone: "cyan" | "purple";
   badge?: ReactNode;
   disabled?: boolean;
@@ -18,6 +20,8 @@ export interface PrimaryNavButtonProps {
 export function PrimaryNavButton({
   active,
   activeTone,
+  mobileHidden = false,
+  mobileLabel,
   badge,
   disabled = false,
   icon,
@@ -76,7 +80,9 @@ export function PrimaryNavButton({
     <button
       ref={buttonRef}
       onClick={onClick}
-      className={`liquid-nav-button group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 max-md:h-12 max-md:min-w-0 max-md:flex-1 max-md:px-1 ${
+      aria-current={active ? "page" : undefined}
+      aria-label={label}
+      className={`${mobileHidden ? "max-md:hidden" : ""} liquid-nav-button group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 max-md:h-12 max-md:min-w-0 max-md:flex-1 max-md:px-1 ${
         disabled
           ? "text-text-secondary/45 hover:bg-neon-cyan/10 hover:text-neon-cyan"
           : active
@@ -93,7 +99,7 @@ export function PrimaryNavButton({
       />
       {badge}
       {icon}
-      <span className="mt-0.5 max-w-full truncate text-[9px] font-medium leading-none">{label}</span>
+      <span className="mt-0.5 max-w-full truncate text-[9px] max-md:text-[11px] font-medium leading-none">{mobileLabel ? <><span className="max-md:hidden">{label}</span><span className="hidden max-md:inline">{mobileLabel}</span></> : label}</span>
     </button>
   );
 }

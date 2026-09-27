@@ -15,7 +15,7 @@ export default function WorkspaceModeSwitch({
 }) {
   const zh = useLanguage() === "zh";
   return (
-    <header className="flex h-14 shrink-0 items-center justify-center border-b border-glass-border bg-glass-bg px-4">
+    <header className="dashboard-workspace-switch flex h-14 shrink-0 max-md:h-11 items-center justify-center border-b border-glass-border bg-glass-bg px-4">
       <nav aria-label={zh ? "工作模式" : "Workspace mode"} className="inline-flex items-center gap-1 rounded-xl border border-glass-border bg-deep-black p-1">
         {[
           { team: false, href: personalHref, label: zh ? "个人" : "Personal", Icon: UserRound },
@@ -25,7 +25,7 @@ export default function WorkspaceModeSwitch({
             key={label}
             href={href}
             aria-current={teamMode === team ? "page" : undefined}
-            className={`inline-flex min-w-24 items-center justify-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-neon-cyan ${teamMode === team ? "bg-neon-cyan/10 text-neon-cyan shadow-sm" : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"}`}
+            className={`inline-flex min-w-24 items-center justify-center gap-2 rounded-lg px-4 py-1.5 max-md:py-1 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-neon-cyan ${teamMode === team ? "bg-neon-cyan/10 text-neon-cyan shadow-sm" : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"}`}
           >
             <Icon size={15} />{label}
           </Link>

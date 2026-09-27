@@ -7,6 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { useChatViewport } from "@/hooks/useChatViewport";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useLanguage } from "@/lib/i18n";
@@ -97,6 +98,7 @@ function getSidebarTabFromPathParts(parts: string[]): DashboardSidebarTab {
 }
 
 export default function DashboardApp() {
+  const viewportRef = useChatViewport();
   const sessionStore = useDashboardSessionStore(useShallow((state) => ({
     activeAgentId: state.activeAgentId,
     activeIdentity: state.activeIdentity,
@@ -1191,7 +1193,7 @@ export default function DashboardApp() {
     || mobileContactsShowsMain;
   const mainPaneClass = `min-h-0 min-w-0 flex-1 ${mobileShowsMain ? "" : "max-md:hidden"}`;
   return (
-    <div className="dashboard-root fixed inset-0 flex flex-col overflow-hidden bg-deep-black">
+    <div ref={viewportRef} className="dashboard-root fixed inset-0 flex flex-col overflow-hidden bg-deep-black">
       <WorkspaceModeSwitch teamMode={teamMode} personalHref={personalHref.current} teamHref={teamMode ? pathname + (searchParams.toString() ? `?${searchParams}` : "") : teamHref.current} />
       {teamMode ? (
         <div className="min-h-0 flex-1 overflow-hidden">

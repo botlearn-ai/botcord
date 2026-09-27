@@ -769,7 +769,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
             )}
           </div>
           {openedRoomId && !openedRoom ? (
-            <div className="border-t border-glass-border px-4 py-2" aria-busy="true">
+            <div className="shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2" aria-busy="true">
               <MessageComposerSkeleton />
             </div>
           ) : openedRoomId && !isPaidAndNotJoined && (
@@ -781,7 +781,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
                   </p>
                 </div>
               ) : isGuest ? (
-                <div className="border-t border-glass-border px-4 py-2">
+                <div className="shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2">
                   <div className="flex items-center justify-center gap-2">
                     <p className="text-center text-xs text-text-secondary/50">{t.readOnlyGuest}</p>
                     <button
@@ -793,11 +793,11 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
                   </div>
                 </div>
               ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && openedRoomId && humanSendAllowed ? (
-                <div className="border-t border-glass-border px-4 py-2">
+                <div className="shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2">
                   <RoomHumanComposer roomId={openedRoomId} />
                 </div>
               ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && !humanSendAllowed ? (
-                <div className="border-t border-glass-border px-4 py-2">
+                <div className="shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2">
                   <p className="text-center text-xs text-text-secondary/50">{t.humanSendDisabled}</p>
                 </div>
               ) : null}

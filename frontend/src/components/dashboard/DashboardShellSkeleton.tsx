@@ -142,17 +142,17 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
           <TeamWorkspaceSkeleton />
         </main>
       ) : (
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="liquid-panel flex h-full">
-            <div className="liquid-rail flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border py-3">
-              <div className="mb-3 flex h-11 w-11 items-center justify-center">
+        <div className="flex min-h-0 flex-1 overflow-hidden max-md:flex-col-reverse">
+          <div className="liquid-panel flex h-full max-md:contents">
+            <div className="liquid-rail flex h-full w-16 min-w-[64px] flex-col items-center border-r border-glass-border py-3 max-md:h-[calc(4rem+env(safe-area-inset-bottom))] max-md:w-full max-md:shrink-0 max-md:flex-row max-md:border-r-0 max-md:border-t max-md:px-2 max-md:pt-2 max-md:pb-[env(safe-area-inset-bottom)]">
+              <div className="mb-3 flex h-11 w-11 items-center justify-center max-md:hidden">
                 <BotCordLoader label="Loading BotCord" size="sm" showLabel={false} />
               </div>
-              <div className="flex flex-1 flex-col items-center gap-1 pt-1">
+              <div className="flex flex-1 flex-col items-center gap-1 pt-1 max-md:flex-row max-md:justify-around max-md:pt-0">
                 {primaryNav.map((item) => (
                   <div
                     key={item.key}
-                    className={`group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
+                    className={`${["explore", "wallet", "activity"].includes(item.key) ? "max-md:hidden" : ""} group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
                       item.key === variant
                         ? "bg-neon-cyan/15 text-neon-cyan"
                         : "text-text-secondary"
@@ -163,15 +163,15 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
                   </div>
                 ))}
               </div>
-              <div className="mt-3 flex h-10 w-12 items-center justify-center rounded-xl border border-glass-border bg-deep-black/50 text-text-secondary">
+              <div className="mt-3 max-md:mt-0 flex h-10 w-12 items-center justify-center rounded-xl border border-glass-border bg-deep-black/50 text-text-secondary">
                 <LogIn className="h-5 w-5" strokeWidth={1.5} />
               </div>
             </div>
 
-            <SecondaryPanelSkeleton variant={variant} />
+            <div className="max-md:hidden"><SecondaryPanelSkeleton variant={variant} /></div>
 
             {variant === "messages" ? (
-              <div className="flex h-full w-[360px] shrink-0 flex-col border-r border-glass-border">
+              <div className={`flex h-full w-[360px] shrink-0 flex-col border-r border-glass-border max-md:min-h-0 max-md:w-full max-md:flex-1 ${hasOpenConversation ? "max-md:hidden" : ""}`}>
                 <div className="liquid-toolbar flex min-h-14 items-center justify-between border-b border-glass-border px-3 py-2.5">
                   <span className="text-sm font-semibold text-text-primary">Messages</span>
                   <div className="flex items-center gap-1" aria-hidden="true">
@@ -186,7 +186,7 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
           </div>
 
           {variant === "messages" ? (
-            hasOpenConversation ? <DashboardMessagePaneSkeleton /> : <MessagesEmptyStateSkeleton />
+            hasOpenConversation ? <DashboardMessagePaneSkeleton /> : <div className="min-w-0 flex-1 max-md:hidden"><MessagesEmptyStateSkeleton /></div>
           ) : (
             <div className="min-w-0 flex-1">
               <DashboardTabSkeleton variant={variant} />

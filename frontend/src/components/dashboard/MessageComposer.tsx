@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import ComposerPopover from "./ComposerPopover";
+import { shouldSendOnEnter } from "./mobileChat";
 import { AtSign, Bot, Coins, FileText, FileUp, Hash, Plus, Send, User, X } from "lucide-react";
 import { animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
 
@@ -125,6 +127,8 @@ export default function MessageComposer({
   const [pickedMentions, setPickedMentions] = useState<MentionCandidate[]>([]);
   const [showLengthError, setShowLengthError] = useState((initialText?.length ?? 0) > MESSAGE_MAX_LENGTH);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const composerRowRef = useRef<HTMLDivElement>(null);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mentionListRef = useRef<HTMLDivElement>(null);
@@ -165,6 +169,7 @@ export default function MessageComposer({
 
   useEffect(() => {
     return () => {
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
       setFiles((prev) => {
         for (const f of prev) { if (f.preview) URL.revokeObjectURL(f.preview); }
         return [];
@@ -190,7 +195,7 @@ export default function MessageComposer({
 
   useEffect(() => {
     if (!mentionMatch || suggestions.length === 0) return;
-    const list = mentionListRef.current;
+    const list = mentionListRef.current?.parentElement;
     const option = mentionOptionRefs.current[mentionIndex];
     if (!list || !option) return;
 
@@ -418,7 +423,7 @@ export default function MessageComposer({
         return;
       }
     }
-    if (e.key === "Enter" && !e.shiftKey && !composing) {
+    if (shouldSendOnEnter(e.key, e.shiftKey, composing, window.matchMedia("(pointer: coarse)").matches)) {
       e.preventDefault();
       void handleSend();
     }
@@ -533,7 +538,7 @@ export default function MessageComposer({
               <button
                 type="button"
                 onClick={() => removeFile(idx)}
-                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-zinc-600 text-zinc-200 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+                className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-600 text-zinc-200 transition-colors hover:bg-red-500 max-md:h-11 max-md:w-11"
                 aria-label="Remove attachment"
               >
                 <X className="w-3 h-3" />
@@ -542,7 +547,7 @@ export default function MessageComposer({
           ))}
         </div>
       )}
-      <div className="relative flex items-end gap-2">
+      <div ref={composerRowRef} className="relative flex items-end gap-2">
         {showActionMenu && (
           <>
             {allowAttachments && (
@@ -556,7 +561,7 @@ export default function MessageComposer({
             )}
             <div className="relative">
               {actionMenuOpen && (
-                <div className="liquid-menu absolute bottom-full left-0 z-30 mb-2 w-36 rounded-xl border border-glass-border bg-deep-black-light p-1 shadow-xl">
+                <ComposerPopover anchorRef={composerRowRef} onClose={() => setActionMenuOpen(false)} className="w-44 p-1">
                   {allowAttachments && (
                     <button
                       type="button"
@@ -564,7 +569,7 @@ export default function MessageComposer({
                         setActionMenuOpen(false);
                         fileInputRef.current?.click();
                       }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-text-primary hover:bg-glass-bg"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg"
                     >
                       <FileUp className="h-4 w-4 text-zinc-400" />
                       <span>{actionLabels?.file ?? "File"}</span>
@@ -577,18 +582,18 @@ export default function MessageComposer({
                         setActionMenuOpen(false);
                         onTransfer();
                       }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-text-primary hover:bg-glass-bg"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg"
                     >
                       <Coins className="h-4 w-4 text-zinc-400" />
                       <span>{actionLabels?.transfer ?? "Transfer"}</span>
                     </button>
                   )}
-                </div>
+                </ComposerPopover>
               )}
               <button
                 type="button"
                 onClick={() => setActionMenuOpen((open) => !open)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan"
                 title={actionLabels?.add ?? "Add"}
                 aria-label={actionLabels?.add ?? "Open actions"}
                 aria-expanded={actionMenuOpen}
@@ -597,15 +602,6 @@ export default function MessageComposer({
               </button>
             </div>
           </>
-        )}
-        {actionMenuOpen && (
-          <button
-            type="button"
-            aria-label={actionLabels?.close ?? "Close actions"}
-            className="fixed inset-0 z-20 cursor-default bg-transparent"
-            onClick={() => setActionMenuOpen(false)}
-            tabIndex={-1}
-          />
         )}
         <textarea
           ref={inputRef}
@@ -623,13 +619,15 @@ export default function MessageComposer({
           data-protonpass-ignore="true"
           aria-autocomplete={MESSAGE_COMPOSER_TEXTAREA_ARIA_AUTOCOMPLETE}
           aria-invalid={hasLengthError || undefined}
-          className={`liquid-input flex-1 resize-none rounded-xl border px-3 py-2 text-sm text-text-primary placeholder-text-secondary/65 transition-all focus:outline-none ${
+          className={`liquid-input min-w-0 min-h-11 flex-1 resize-none rounded-xl border px-3 py-2 text-sm text-text-primary placeholder-text-secondary/65 transition-all focus:outline-none ${
             hasLengthError
               ? "border-red-500/70 focus:border-red-500/80"
               : emptyState
               ? "border-cyan-500/40 shadow-[0_0_8px_rgba(0,240,255,0.1)] animate-[pulse-border_2s_ease-in-out_infinite]"
               : "border-zinc-700"
           }`}
+          aria-label={placeholder}
+          enterKeyHint="enter"
           placeholder={placeholder}
           value={text}
           maxLength={MESSAGE_MAX_LENGTH}
@@ -653,18 +651,20 @@ export default function MessageComposer({
           }}
           onKeyUp={updateMentionMatch}
           onClick={updateMentionMatch}
+          onFocus={() => { if (blurTimerRef.current) clearTimeout(blurTimerRef.current); }}
           onBlur={() => {
             compositionActiveRef.current = false;
-            setTimeout(() => setMentionMatch(null), 120);
+            blurTimerRef.current = setTimeout(() => setMentionMatch(null), 200);
           }}
           onKeyDown={handleKeyDown}
           rows={1}
           disabled={disabled}
         />
         {mentionMatch && suggestions.length > 0 && (
+          <ComposerPopover anchorRef={composerRowRef} onClose={() => setMentionMatch(null)} matchWidth>
           <div
             ref={mentionListRef}
-            className="liquid-menu absolute bottom-full left-0 right-12 z-20 mb-1 max-h-56 origin-bottom overflow-y-auto rounded-xl border border-glass-border bg-deep-black-light shadow-xl"
+            className="origin-bottom"
             role="listbox"
           >
             {suggestions.map((s, i) => {
@@ -693,12 +693,13 @@ export default function MessageComposer({
                   key={s.agent_id}
                   role="option"
                   aria-selected={i === mentionIndex}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    commitMention(s);
+                  onPointerDown={(event) => {
+                    if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+                    event.preventDefault();
                   }}
+                  onClick={() => commitMention(s)}
                   onMouseEnter={() => setMentionIndex(i)}
-                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs transition-colors ${
                     i === mentionIndex
                       ? "bg-neon-cyan/15 text-neon-cyan"
                       : "text-text-primary hover:bg-glass-bg"
@@ -716,13 +717,14 @@ export default function MessageComposer({
               );
             })}
           </div>
+          </ComposerPopover>
         )}
         <button
           ref={sendButtonRef}
           type="button"
           onClick={handleSendClick}
           disabled={!canSend}
-          className="liquid-send-button flex h-9 w-9 items-center justify-center rounded-xl bg-neon-cyan/15 text-neon-cyan transition-colors hover:bg-neon-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
+          className="liquid-send-button flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-cyan/15 text-neon-cyan transition-colors hover:bg-neon-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="Send message"
         >
           <Send ref={sendIconRef} className="w-4 h-4" />
