@@ -96,6 +96,10 @@ jobs:
           title: "chore(release): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # changesets/action only detects token auth via NPM_TOKEN; without it
+          # the action falls back to OIDC trusted publishing, which is not
+          # configured for @botcord/* and fails with E404 (2026-08-28).
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Prepare notification summary

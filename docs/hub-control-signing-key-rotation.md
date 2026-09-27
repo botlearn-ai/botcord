@@ -113,3 +113,20 @@ releases.
 This key ring adds multi-key verification, not key identifiers or dual
 signatures. Rolling back the Hub signer still requires the corresponding old
 public key to remain in every daemon's trust ring.
+
+## 2026-08-31 incident and embedded production key
+
+The production signer was switched on 2026-08-31 before the fleet gate was
+satisfied: the key-ring daemon release never reached npm (publish failed with
+E404 because `changesets/action` only detects token auth via `NPM_TOKEN` and
+fell back to unconfigured OIDC). Every local daemon kept trusting only the
+embedded dev key, so `wake_agent` and other control frames failed with
+`bad_signature` for four weeks. Detect this class of failure early with
+`agent_schedule_runs.error LIKE 'bad_signature%'`.
+
+Because local daemons are typically installed without env configuration,
+`@botcord/protocol-core` now embeds the production public key
+(`HUB_CONTROL_PROD_PUBLIC_KEY`) next to the dev key in the default trust ring.
+Future rotations must ship the next production public key in that default ring
+(and get it installed fleet-wide) before switching the signer; remove the
+retired key from the default ring only after the switch.
