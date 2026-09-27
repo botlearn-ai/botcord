@@ -11,3 +11,5 @@ Chrome touch emulation does not establish real iOS Safari pull-to-refresh behavi
 ![Mobile explicit history action](mobile-history-evidence/owner-mobile-button.png)
 ![Pending history request](mobile-history-evidence/owner-mobile-loading.png)
 ![Ordinary conversation](mobile-history-evidence/regular-mobile-button.png)
+
+Additional browser check: an owner page with zero visible rows can load another hidden page, then continue to a visible terminal page. The two taps use successive raw cursors; after has_more=false the button disappears and top scrolling sends no further requests.
