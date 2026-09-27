@@ -6,7 +6,7 @@ import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
 import { messagesGrouping, sidebar } from "@/lib/i18n/translations/dashboard";
 import { useShallow } from "zustand/react/shallow";
-import { buildVisibleMessageRooms, isOwnerChatRoom } from "@/store/dashboard-shared";
+import { buildVisibleMessageRooms } from "@/store/dashboard-shared";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -16,6 +16,7 @@ import { Bot, ChevronsRight, ListFilter, MessageSquarePlus, Plus, Search, UserPl
 import MessagesBotScopeDropdown from "./MessagesBotScopeDropdown";
 import MessagesGroupingSidebar from "./MessagesGroupingSidebar";
 import { applyMessagesFilter, mergeOwnerVisibleRooms } from "@/lib/messages-merge";
+import { messagePrefetchCandidates, prefetchMessagePages } from "@/lib/message-prefetch";
 import type { DashboardRoom } from "@/lib/types";
 import RoomList from "../RoomList";
 import RoomZeroState from "../RoomZeroState";
@@ -27,16 +28,6 @@ interface MessagesPanelProps {
   isGuest: boolean;
   onCreateRoom: () => void;
   onAddFriend: () => void;
-}
-
-const PREFETCH_VISIBLE_ROOM_LIMIT = 6;
-
-function rankPrefetchRooms(a: DashboardRoom, b: DashboardRoom): number {
-  const unreadDelta = Number(Boolean(b.has_unread)) - Number(Boolean(a.has_unread));
-  if (unreadDelta !== 0) return unreadDelta;
-  const bTime = b.last_message_at ? Date.parse(b.last_message_at) : 0;
-  const aTime = a.last_message_at ? Date.parse(a.last_message_at) : 0;
-  return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
 }
 
 export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: MessagesPanelProps) {
@@ -149,24 +140,25 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
 
   useEffect(() => {
     if (isGuest || sidebarTab !== "messages" || showRoomListSkeleton) return;
-    if (messagesShowRequests || messagesPane === "user-chat") return;
+    if (messagesShowRequests || messagesPane === "user-chat" || openedRoomId) return;
 
-    const candidateRooms = (normalizedMessageQuery ? filteredMessageRooms : categorizedRooms)
-      .filter((room) => !isOwnerChatRoom(room.room_id) && (room.last_message_at || room.has_unread))
-      .slice()
-      .sort(rankPrefetchRooms)
-      .slice(0, PREFETCH_VISIBLE_ROOM_LIMIT);
-
+    const candidateRooms = messagePrefetchCandidates(
+      normalizedMessageQuery ? filteredMessageRooms : categorizedRooms,
+    );
     if (candidateRooms.length === 0) return;
 
+    let cancelPrefetch: (() => void) | undefined;
     const timer = window.setTimeout(() => {
-      const { prefetchRoomMessages } = useDashboardChatStore.getState();
-      for (const room of candidateRooms) {
-        void prefetchRoomMessages(room.room_id);
-      }
+      cancelPrefetch = prefetchMessagePages(
+        candidateRooms,
+        (roomId) => useDashboardChatStore.getState().prefetchRoomMessages(roomId),
+      );
     }, 250);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      cancelPrefetch?.();
+    };
   }, [
     categorizedRooms,
     filteredMessageRooms,
@@ -174,6 +166,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     messagesPane,
     messagesShowRequests,
     normalizedMessageQuery,
+    openedRoomId,
     showRoomListSkeleton,
     sidebarTab,
   ]);

@@ -1,0 +1,838 @@
+{
+  "method": "Real React components and Zustand stores; synthetic getUserChatRoom=600ms, getRoomMessages=900ms; origin/main cb699ac baseline; mount-to-full cached historical text; not production timing.",
+  "runs": {
+    "before": {
+      "median_ms": 1559.2000000476837,
+      "samples": [
+        {
+          "ms": 1561.7999999523163,
+          "requests": [
+            {
+              "kind": "room",
+              "agent": "ag_alpha",
+              "t": 250.70000004768372
+            },
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 856.6000001430511
+            }
+          ],
+          "frames": [
+            {
+              "t": 1.5,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": null
+            },
+            {
+              "t": 28.299999952316284,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 33.5,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 41,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 57.200000047683716,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 72.90000009536743,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 90.09999990463257,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 106,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            }
+          ]
+        },
+        {
+          "ms": 1559.2000000476837,
+          "requests": [
+            {
+              "kind": "room",
+              "agent": "ag_alpha",
+              "t": 183.70000004768372
+            },
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 790
+            }
+          ],
+          "frames": [
+            {
+              "t": 1.7000000476837158,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": null
+            },
+            {
+              "t": 30.59999990463257,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 33.200000047683716,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 39.5,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 56.90000009536743,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 71.90000009536743,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 88.70000004768372,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 105.79999995231628,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            }
+          ]
+        },
+        {
+          "ms": 1532.5,
+          "requests": [
+            {
+              "kind": "room",
+              "agent": "ag_alpha",
+              "t": 108.90000009536743
+            },
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 714.0999999046326
+            }
+          ],
+          "frames": [
+            {
+              "t": 0.7000000476837158,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": null
+            },
+            {
+              "t": 11.400000095367432,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 28.90000009536743,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 45.299999952316284,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 60.799999952316284,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 78.10000014305115,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 94.20000004768372,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 111.40000009536743,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            }
+          ]
+        },
+        {
+          "ms": 1558.2999999523163,
+          "requests": [
+            {
+              "kind": "room",
+              "agent": "ag_alpha",
+              "t": 157.60000014305115
+            },
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 763.3000001907349
+            }
+          ],
+          "frames": [
+            {
+              "t": 1.5999999046325684,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": null
+            },
+            {
+              "t": 27.799999952316284,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 33.299999952316284,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 40.299999952316284,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 55.299999952316284,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 70.39999985694885,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 86.29999995231628,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 103.20000004768372,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            }
+          ]
+        },
+        {
+          "ms": 1561.2000000476837,
+          "requests": [
+            {
+              "kind": "room",
+              "agent": "ag_alpha",
+              "t": 168
+            },
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 773.6000001430511
+            }
+          ],
+          "frames": [
+            {
+              "t": 1.7000000476837158,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": null
+            },
+            {
+              "t": 28.5,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 34,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 41.299999952316284,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 59.5,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 74.70000004768372,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 90.90000009536743,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 107.90000009536743,
+              "alpha": false,
+              "beta": false,
+              "loading": true,
+              "room": null,
+              "renderedAgent": "ag_alpha"
+            }
+          ]
+        }
+      ]
+    },
+    "after": {
+      "median_ms": 47.40000009536743,
+      "samples": [
+        {
+          "ms": 48.59999990463257,
+          "requests": [
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 177.69999980926514
+            }
+          ],
+          "frames": [
+            {
+              "t": 1.5999999046325684,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": null
+            },
+            {
+              "t": 48.89999985694885,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 54.5,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 58,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 76.59999990463257,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 93.29999995231628,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 109.79999995231628,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 125.79999995231628,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            }
+          ]
+        },
+        {
+          "ms": 46.80000019073486,
+          "requests": [
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 169.90000009536743
+            }
+          ],
+          "frames": [
+            {
+              "t": 1.6000001430511475,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": null
+            },
+            {
+              "t": 47.10000014305115,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 52.700000047683716,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            }
+          ]
+        },
+        {
+          "ms": 46.799999952316284,
+          "requests": [
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 179.5
+            }
+          ],
+          "frames": [
+            {
+              "t": 1.5,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": null
+            },
+            {
+              "t": 47,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 52.59999990463257,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 53.19999980926514,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            }
+          ]
+        },
+        {
+          "ms": 47.89999985694885,
+          "requests": [
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 194.29999995231628
+            }
+          ],
+          "frames": [
+            {
+              "t": 1.5999999046325684,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": null
+            },
+            {
+              "t": 48.19999980926514,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 53.89999985694885,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 59.59999990463257,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            }
+          ]
+        },
+        {
+          "ms": 47.40000009536743,
+          "requests": [
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 182.79999995231628
+            }
+          ],
+          "frames": [
+            {
+              "t": 1.7000000476837158,
+              "alpha": false,
+              "beta": false,
+              "loading": false,
+              "room": null,
+              "renderedAgent": null
+            },
+            {
+              "t": 47.700000047683716,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 53.30000019073486,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            },
+            {
+              "t": 53.90000009536743,
+              "alpha": true,
+              "beta": false,
+              "loading": false,
+              "room": "rm_oc_ag_alpha",
+              "renderedAgent": "ag_alpha"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "checks": [
+    "Cached history readable at 200ms before 900ms background refresh; no skeleton overlay.",
+    "Cold known-room history displays loading until its own response; becomes readable after one 900ms read.",
+    "Unknown room falls back to 600ms lookup + 900ms messages, then renders normally.",
+    "Switch to Beta clears Alpha before first recorded Beta render; late Alpha refresh cannot leak into Beta.",
+    "Synthetic refresh error retains cached readable history.",
+    "Mobile 390px cached back button visible and navigates to /chats/messages",
+    "Mobile 390px cold back button visible and navigates to /chats/messages",
+    "Mobile 390px cold-bots back button visible and navigates to /chats/bots"
+  ],
+  "errors": [],
+  "cold_known_ms": 955.2999999523163,
+  "cold_unknown_ms": 1542.6999998092651,
+  "cold_unknown_requests": [
+    {
+      "kind": "room",
+      "agent": "ag_alpha",
+      "t": 130.79999995231628
+    },
+    {
+      "kind": "messages",
+      "roomId": "rm_oc_ag_alpha",
+      "t": 735.1999998092651
+    }
+  ],
+  "switch_frames_checked": 79,
+  "visual_frame_runs": {
+    "before": {
+      "median_ms": 1560.2000000476837,
+      "samples": [
+        {
+          "ms": 1562.5999999046326,
+          "dom_ms": 1562.3999998569489,
+          "requests": [
+            {
+              "kind": "room",
+              "agent": "ag_alpha",
+              "t": 291.10000014305115
+            },
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 895.2000000476837
+            }
+          ]
+        },
+        {
+          "ms": 1560.2000000476837,
+          "dom_ms": 1560,
+          "requests": [
+            {
+              "kind": "room",
+              "agent": "ag_alpha",
+              "t": 201.09999990463257
+            },
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 805.3999998569489
+            }
+          ]
+        },
+        {
+          "ms": 1561.7000000476837,
+          "dom_ms": 1561.5,
+          "requests": [
+            {
+              "kind": "room",
+              "agent": "ag_alpha",
+              "t": 147.29999995231628
+            },
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 752.2000000476837
+            }
+          ]
+        },
+        {
+          "ms": 1559.6000001430511,
+          "dom_ms": 1559.4000000953674,
+          "requests": [
+            {
+              "kind": "room",
+              "agent": "ag_alpha",
+              "t": 150.79999995231628
+            },
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 757.5
+            }
+          ]
+        },
+        {
+          "ms": 1559.2999999523163,
+          "dom_ms": 1559.1000001430511,
+          "requests": [
+            {
+              "kind": "room",
+              "agent": "ag_alpha",
+              "t": 158.20000004768372
+            },
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 763.4000000953674
+            }
+          ]
+        }
+      ]
+    },
+    "after": {
+      "median_ms": 49.700000047683716,
+      "samples": [
+        {
+          "ms": 49.700000047683716,
+          "dom_ms": 49.09999990463257,
+          "requests": [
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 174.29999995231628
+            }
+          ]
+        },
+        {
+          "ms": 50.89999985694885,
+          "dom_ms": 47.799999952316284,
+          "requests": [
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 204.5
+            }
+          ]
+        },
+        {
+          "ms": 47.200000047683716,
+          "dom_ms": 46.799999952316284,
+          "requests": [
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 200.29999995231628
+            }
+          ]
+        },
+        {
+          "ms": 47.09999990463257,
+          "dom_ms": 46.700000047683716,
+          "requests": [
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 179
+            }
+          ]
+        },
+        {
+          "ms": 50.700000047683716,
+          "dom_ms": 47.299999952316284,
+          "requests": [
+            {
+              "kind": "messages",
+              "roomId": "rm_oc_ag_alpha",
+              "t": 182
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "visual_metric": "First animation frame with complete historical bubble in viewport, positive size, visible display/visibility and opacity>=0.95 on bubble and ancestors, measured from component mount invocation. Local synthetic timings."
+}

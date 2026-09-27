@@ -4,7 +4,8 @@
  * Owner-chat pane — renders a 1:1 conversation between the user and a managed Bot.
  *
  * Architecture (post-refactor):
- *   - Single source of truth: useOwnerChatStore.messages[]
+ *   - Single rendered source: useOwnerChatStore.messages[]; dashboard room
+ *     history cache hydrates immediately and refreshes via a shared request.
  *   - WS lifecycle: useOwnerChatWs hook
  *   - Rendering: status-driven (optimistic / streaming / delivered / failed)
  */
@@ -21,7 +22,7 @@ import type { WsAttachment } from "@/lib/owner-chat-ws";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
-import { useOwnerChatStore } from "@/store/useOwnerChatStore";
+import { findCachedOwnerChatRoom, useOwnerChatStore } from "@/store/useOwnerChatStore";
 import { useOwnerChatWs } from "@/hooks/useOwnerChatWs";
 import { messageList } from "@/lib/i18n/translations/dashboard";
 import DashboardMessagePaneSkeleton, { MessageHistoryLoading } from "./DashboardMessagePaneSkeleton";
@@ -104,10 +105,12 @@ export default memo(UserChatPane);
 function UserChatPane({ agentId }: { agentId?: string | null }) {
   const locale = useLanguage();
   const router = useRouter();
-  const { activeAgentId } = useDashboardSessionStore();
+  const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const chatAgentId = agentId || activeAgentId || null;
-  const { setSelectedBotAgentId, setUserChatRoomId, setBotDetailAgentId } = useDashboardUIStore();
+  const setSelectedBotAgentId = useDashboardUIStore((s) => s.setSelectedBotAgentId);
+  const setUserChatRoomId = useDashboardUIStore((s) => s.setUserChatRoomId);
+  const setBotDetailAgentId = useDashboardUIStore((s) => s.setBotDetailAgentId);
   const ownedAgent = chatAgentId
     ? ownedAgents.find((a) => a.agent_id === chatAgentId) ?? null
     : null;
@@ -118,6 +121,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const messages = useOwnerChatStore((s) => s.messages);
   const hasMore = useOwnerChatStore((s) => s.hasMore);
   const loading = useOwnerChatStore((s) => s.loading);
+  const historyLoaded = useOwnerChatStore((s) => s.historyLoaded);
   const loadingMore = useOwnerChatStore((s) => s.loadingMore);
   const moreError = useOwnerChatStore((s) => s.moreError);
   const storeError = useOwnerChatStore((s) => s.error);
@@ -230,7 +234,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   });
 
   // ------ Initialize chat room and load messages ------
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!chatAgentId) return;
     let cancelled = false;
 
@@ -252,16 +256,27 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     animatedRef.current.clear();
     entranceAnimatedRef.current.clear();
     setAttachmentPreview(null);
-    useOwnerChatStore.getState().reset();
+    const cachedRoom = findCachedOwnerChatRoom(chatAgentId);
+    if (!cachedRoom || useOwnerChatStore.getState().roomId !== cachedRoom.room_id) {
+      useOwnerChatStore.getState().reset();
+    }
 
     (async () => {
       try {
-        const room = await api.getUserChatRoom(chatAgentId);
+        const room = cachedRoom ?? await api.getUserChatRoom(chatAgentId);
         if (cancelled) return;
         setChatRoomName(room.name);
         setUserChatRoomId(room.room_id);
         useOwnerChatStore.getState().setRoom(room.room_id, room.name || chatAgentId);
-        await useOwnerChatStore.getState().loadInitial(room.room_id);
+        const initialRequest = useOwnerChatStore.getState().loadInitial(room.room_id);
+        // loadInitial applies a prefetched (even empty) snapshot synchronously.
+        // Expose it while the shared history request refreshes in the background.
+        setInitializingRoom(false);
+        for (const msg of useOwnerChatStore.getState().messages) {
+          animatedRef.current.add(msg.clientId);
+          entranceAnimatedRef.current.add(msg.clientId);
+        }
+        await initialRequest;
         if (cancelled) return;
         // Historical messages must not replay the typewriter animation. Populate
         // animatedRef synchronously here so the first render that sees them
@@ -275,7 +290,6 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
           useOwnerChatStore.getState().messages.map((msg) => [msg.clientId, msg.status]),
         );
         initialLoadRef.current = false;
-        scrollToBottomAfterLayout();
         // Restore in-flight stream blocks for any user message still awaiting a
         // final reply (refresh/reconnect recovery). Best-effort; never throws.
         void useOwnerChatStore.getState().restoreActiveRuns(chatAgentId);
@@ -382,7 +396,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     if (messages.length === 0) return;
     const seenIds = entranceAnimatedRef.current;
 
-    if (!entrancePrimedRef.current) {
+    if (initialLoadRef.current || !entrancePrimedRef.current) {
       for (const msg of messages) seenIds.add(msg.clientId);
       entrancePrimedRef.current = true;
       return;
@@ -726,7 +740,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     );
   }
 
-  if (initializingRoom || loading) {
+  if (initializingRoom || (loading && !historyLoaded && messages.length === 0)) {
     return (
       <div className="flex h-full min-h-0 flex-col">{mobileBack}<DashboardMessagePaneSkeleton
         headerIcon={<MessageSquare className="h-4 w-4" />}
@@ -739,7 +753,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     );
   }
 
-  if (initError || storeError) {
+  if (initError || (storeError && !historyLoaded && messages.length === 0)) {
     return (
       <div className="flex h-full flex-col text-red-400">
         {mobileBack}<p className="m-auto">{initError || storeError}</p>
@@ -751,6 +765,11 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   return (
     <div className="dashboard-main relative flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
+      {storeError && (
+        <div role="status" className="shrink-0 border-b border-amber-400/20 px-4 py-2 text-xs text-amber-300">
+          {locale === "zh" ? "消息刷新失败，已保留当前内容。" : "Could not refresh messages. Current messages are still available."}
+        </div>
+      )}
       {/* Header */}
       <div className="liquid-toolbar flex shrink-0 items-center gap-2 border-b border-glass-border px-4 py-3 max-md:px-3">
         <button
