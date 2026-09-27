@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 chat/ui/session/unread store 的消息状态与增量加载动作，依赖共享时间工具更新已读水位，依赖 MessageBubble 渲染单条消息，依赖滚动位置判定已读水位
- * [OUTPUT]: 对外提供 MessageList 组件，渲染消息流、话题分组、历史加载与滚动追随控制
+ * [OUTPUT]: 对外提供 MessageList 组件，渲染消息流、话题分组、历史加载、初始失败显式重试与滚动追随控制
  * [POS]: dashboard 聊天正文区的消息阅读器，负责把实时追加消息转成可见阅读状态
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -402,10 +402,12 @@ export default function MessageList({
 
   useEffect(() => {
     if (!roomId) return;
-    if (!hasMessagesCache && !isRoomMessagesLoading) {
+    // A failed initial load waits for the explicit Retry action. Otherwise the
+    // loading -> false transition would immediately restart the failed request.
+    if (!hasMessagesCache && !isRoomMessagesLoading && !roomMessageError) {
       void loadRoomMessages(roomId);
     }
-  }, [roomId, hasMessagesCache, isRoomMessagesLoading, loadRoomMessages]);
+  }, [roomId, hasMessagesCache, isRoomMessagesLoading, roomMessageError, loadRoomMessages]);
 
   // Jump-to-message handler: invoked when the user clicks a quote-reply block.
   // Looks up the target by its envelope msg_id and scrolls + highlights it.

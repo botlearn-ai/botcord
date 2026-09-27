@@ -2,13 +2,14 @@
  * Unified owner-chat message store.
  *
  * Replaces three disjoint data sources:
- *   1. `useDashboardChatStore.messages[roomId]`  (confirmed messages)
+ *   1. `useDashboardChatStore.messages[roomId]`  (shared confirmed history cache)
  *   2. `UserChatPane`'s local `pending[]` state   (optimistic messages)
  *   3. `useOwnerChatStreamStore`                   (stream blocks)
  *
  * Design: single ordered `messages[]` array with a status lifecycle
  * (optimistic → confirmed → delivered, or streaming → delivered).
- * All writes are merge/append — never replace.
+ * Cached history (including empty pages) renders immediately; shared dashboard
+ * requests refresh it without replacing richer live state or other room caches.
  */
 
 import { create } from "zustand";
@@ -19,10 +20,30 @@ import type {
   ReplyPreview,
   StreamBlockEntry,
   DashboardMessage,
+  DashboardRoom,
   RunStreamBlocksResponse,
 } from "@/lib/types";
 import { dashboardMsgToOwnerChat } from "@/lib/types";
-import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { messageCacheOwnerKey, useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { isOwnerChatRoom } from "@/store/dashboard-shared";
+
+/** Reuse only an owner-chat room whose ownership matches the selected Bot. */
+export function findCachedOwnerChatRoom(agentId: string): DashboardRoom | null {
+  const chat = useDashboardChatStore.getState();
+  const ids = new Set([
+    ...(chat.overview?.rooms ?? []).map((room) => room.room_id),
+    ...chat.ownedAgentRooms.map((room) => room.room_id),
+  ]);
+  for (const id of ids) {
+    if (!isOwnerChatRoom(id) || id.startsWith("rm_oc_pending_")) continue;
+    const room = chat.getRoomSummary(id);
+    if (room?.owner_id !== agentId) continue;
+    if (room._originAgent && room._originAgent.agent_id !== agentId) continue;
+    return room;
+  }
+  return null;
+}
 
 const MAX_BLOCKS_PER_TRACE = 200;
 
@@ -169,7 +190,7 @@ function mergeFinalAgentMessage(
 }
 
 /** In-flight guard + request token to prevent stale loadInitial responses. */
-let loadInFlight = false;
+let loadInFlight: Promise<void> | null = null;
 let loadRequestId = 0;
 /** In-flight guard to prevent concurrent loadMore calls. */
 let moreInFlight = false;
@@ -187,6 +208,7 @@ export interface OwnerChatState {
   messages: OwnerChatMessage[];
   hasMore: boolean;
   loading: boolean;
+  historyLoaded: boolean;
   loadingMore: boolean;
   moreError: string | null;
   error: string | null;
@@ -251,6 +273,7 @@ const initialState = {
   messages: [] as OwnerChatMessage[],
   hasMore: false,
   loading: false,
+  historyLoaded: false,
   loadingMore: false,
   moreError: null as string | null,
   error: null as string | null,
@@ -276,7 +299,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
       // requests and clear room-scoped content before the new initial page
       // arrives, otherwise a late page (or prior messages) can bleed into the
       // newly selected Bot conversation.
-      loadInFlight = false;
+      loadInFlight = null;
       loadRequestId++;
       moreInFlight = false;
       moreRequestId++;
@@ -287,6 +310,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         messages: [],
         hasMore: false,
         loading: false,
+        historyLoaded: false,
         loadingMore: false,
         moreError: null,
         error: null,
@@ -301,26 +325,44 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
 
   setReplyingTo: (msg) => set({ replyingTo: msg }),
 
-  loadInitial: async (roomId) => {
-    // Allow re-entry if room changed (e.g. onAuthOk correction) — the stale
-    // response guard (thisRequestId) will discard the earlier request's result.
-    if (loadInFlight && get().roomId === roomId) return;
-    loadInFlight = true;
+  loadInitial: (roomId) => {
+    if (get().roomId !== roomId) return Promise.resolve();
+    if (loadInFlight) return loadInFlight;
     const thisRequestId = ++loadRequestId;
-    set({ loading: true, error: null });
+    const isCurrent = () => thisRequestId === loadRequestId && get().roomId === roomId;
 
-    try {
-      const result = await api.getRoomMessages(roomId, { limit: 50 });
+    // Publish before synchronous cache hydration notifies subscribers. Reopened
+    // panes must await the real refresh before finishing their history setup.
+    const request = Promise.resolve().then(async () => {
+      if (!isCurrent()) return;
+      try {
+        // Share a pending hover/prefetch request rather than issuing a second GET.
+        await useDashboardChatStore.getState().loadRoomMessages(roomId);
+        if (!isCurrent()) return;
+        const refreshed = useDashboardChatStore.getState();
+        const error = refreshed.messagesErrors[roomId];
+        if (error) throw new Error(error);
+        applyHistory(refreshed.messages[roomId] ?? [], refreshed.messagesHasMore[roomId] ?? false);
+        syncOwnerChatRoomSummary(roomId, get().messages);
+      } catch (err: any) {
+        if (isCurrent()) {
+          set({ error: err?.message || "Failed to load messages", loading: false });
+        }
+      } finally {
+        if (thisRequestId === loadRequestId) loadInFlight = null;
+      }
+    });
+    loadInFlight = request;
 
-      // Discard stale response if room changed (agent switch / onAuthOk correction)
-      if (thisRequestId !== loadRequestId || get().roomId !== roomId) return;
-
-      const agentName = get().agentName;
-      const apiMsgs = result.messages
-        .reverse()
-        .map((m) => dashboardMsgToOwnerChat(m, agentName))
+    // Dashboard history is chronological, unlike the newest-first HTTP result.
+    // Merge a copy without modifying another view's cache or richer live state.
+    let messagesAtRequestStart = new Map<string, OwnerChatMessage>();
+    const applyHistory = (messages: DashboardMessage[], hasMore: boolean, fromCache = false) => {
+      if (!isCurrent()) return;
+      const apiMsgs = messages
+        .filter((message) => message.room_id === roomId)
+        .map((message) => dashboardMsgToOwnerChat(message, get().agentName))
         .filter(hasVisibleOwnerChatContent);
-
       set((state) => {
         // Build lookup for existing messages by hubMsgId
         const existingByHubId = new Map<string, OwnerChatMessage>();
@@ -349,7 +391,10 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           } else if (local && local.streamBlocks.length > 0) {
             merged.push(mergeFinalAgentMessage(local, apiMsg) ?? apiMsg);
           } else {
-            merged.push(apiMsg);
+            // Cached snapshots never replace a live row. A fresh response is
+            // authoritative unless that row changed while the request was pending.
+            const changedDuringRequest = local && local !== messagesAtRequestStart.get(local.hubMsgId!);
+            merged.push(local && (fromCache || changedDuringRequest) ? local : apiMsg);
           }
         }
 
@@ -365,6 +410,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
           // Keep WS-delivered messages that arrived after the API snapshot
           if (existing.hubMsgId && !seenHubIds.has(existing.hubMsgId)) {
             merged.push(existing);
+            continue;
           }
           // Keep streaming messages
           if (existing.status === "streaming") {
@@ -373,30 +419,23 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         }
 
         return {
-          messages: merged,
-          hasMore: result.has_more,
+          messages: merged.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)),
+          hasMore: state.historyLoaded && !state.hasMore ? false : hasMore,
+          historyLoaded: true,
           loading: false,
           roomId,
         };
       });
-      if (thisRequestId === loadRequestId && get().roomId === roomId) {
-        syncOwnerChatRoomSummary(roomId, get().messages);
-      }
-    } catch (err: any) {
-      // A request from a previously selected Bot can fail after the reader has
-      // already switched rooms. Keep that failure scoped to its own request so
-      // it never replaces the active conversation with an unrelated error.
-      if (thisRequestId === loadRequestId && get().roomId === roomId) {
-        set({ error: err?.message || "Failed to load messages", loading: false });
-      }
-    } finally {
-      // Do not release the global guard for a newer request. Without this
-      // token check, an old room response could allow duplicate initial loads
-      // while the current room was still fetching.
-      if (thisRequestId === loadRequestId) {
-        loadInFlight = false;
-      }
+    };
+    const chat = useDashboardChatStore.getState();
+    const hasCachedHistory = Object.prototype.hasOwnProperty.call(chat.messages, roomId);
+    if (hasCachedHistory) {
+      applyHistory(chat.messages[roomId], chat.messagesHasMore[roomId] ?? chat.messages[roomId].length >= 50, true);
     }
+    messagesAtRequestStart = new Map(get().messages.filter((message) => message.hubMsgId).map((message) => [message.hubMsgId!, message]));
+    set({ loading: !get().historyLoaded && get().messages.length === 0, error: null });
+
+    return request;
   },
 
   loadMore: async () => {
@@ -1048,7 +1087,7 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
   },
 
   reset: () => {
-    loadInFlight = false;
+    loadInFlight = null;
     moreInFlight = false;
     loadRequestId++;
     moreRequestId++;
@@ -1056,3 +1095,14 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
     set({ ...initialState });
   },
 }));
+
+// Clear synchronously before a different account can render cached live state.
+// Token rotation and switching the selected Bot do not change this owner key.
+let lastOwnerChatOwnerKey = messageCacheOwnerKey();
+useDashboardSessionStore.subscribe(() => {
+  const nextKey = messageCacheOwnerKey();
+  if (nextKey !== lastOwnerChatOwnerKey) {
+    lastOwnerChatOwnerKey = nextKey;
+    useOwnerChatStore.getState().reset();
+  }
+});

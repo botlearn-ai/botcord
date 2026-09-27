@@ -17,6 +17,7 @@ import { animateIfMotion, animatePop, cleanupAnime } from "@/lib/anime";
 import { ContactInfo, DashboardMessage, DashboardRoom } from "@/lib/types";
 import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import { getIsoTimestampValue, getRoomActivityTimestamp, humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
+import { canPrefetchMessagePage } from "@/lib/message-prefetch";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -257,6 +258,9 @@ export default function RoomList({
 
   const handleSelect = async (room: DashboardRoom) => {
     if (isOwnerChatRoom(room.room_id)) {
+      if (canPrefetchMessagePage(room.room_id)) {
+        void useDashboardChatStore.getState().prefetchRoomMessages(room.room_id);
+      }
       const agentId = room._originAgent?.agent_id || room.owner_id;
       setUserChatAgentId(agentId || null);
       setMessagesPane("user-chat");
@@ -284,7 +288,7 @@ export default function RoomList({
   };
 
   const prefetchRoom = (room: DashboardRoom) => {
-    if (isOwnerChatRoom(room.room_id)) return;
+    if (!canPrefetchMessagePage(room.room_id)) return;
     void useDashboardChatStore.getState().prefetchRoomMessages(room.room_id);
   };
 
@@ -442,6 +446,7 @@ export default function RoomList({
             aria-current={isSelected ? "page" : undefined}
             onClick={() => void handleSelect(room)}
             onMouseEnter={() => prefetchRoom(room)}
+            onTouchStart={() => prefetchRoom(room)}
             onFocus={() => prefetchRoom(room)}
             onKeyDown={(event) => handleRoomKeyDown(event, room)}
             className={`liquid-list-row liquid-room-row mx-2 my-1 rounded-2xl px-3 py-3 text-left transition-[transform,background-color,border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${

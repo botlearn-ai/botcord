@@ -26,7 +26,10 @@ vi.mock("@/lib/api", () => ({
 }));
 
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
-import { useOwnerChatStore } from "@/store/useOwnerChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { findCachedOwnerChatRoom, useOwnerChatStore } from "@/store/useOwnerChatStore";
+
+beforeEach(() => useDashboardChatStore.getState().resetChatState());
 
 function makeOwnedAgentRoom(overrides: Partial<HumanAgentRoomSummary> = {}): HumanAgentRoomSummary {
   return {
@@ -751,5 +754,213 @@ describe("useOwnerChatStore reconnect reconciliation", () => {
     const state = useOwnerChatStore.getState();
     expect(state.roomId).toBe("rm_oc_other");
     expect(state.messages.map((message) => message.clientId)).toEqual(["other-room-local"]);
+  });
+});
+
+describe("owner-chat cached initialization", () => {
+  beforeEach(() => {
+    mocks.getRoomMessages.mockReset();
+    useOwnerChatStore.getState().reset();
+    useDashboardChatStore.setState({ ownedAgentRooms: [makeOwnedAgentRoom()] });
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+  });
+
+  function pendingPage() {
+    let resolve!: (page: { messages: DashboardMessage[]; has_more: boolean }) => void;
+    const promise = new Promise<{ messages: DashboardMessage[]; has_more: boolean }>((done) => { resolve = done; });
+    return { promise, resolve };
+  }
+
+  it("finds the selected Bot's real owner room without confusing a group or provisional room", () => {
+    expect(findCachedOwnerChatRoom("ag_bot")?.room_id).toBe("rm_oc_real");
+    expect(findCachedOwnerChatRoom("ag_other")).toBeNull();
+    useDashboardChatStore.setState({ ownedAgentRooms: [
+      makeOwnedAgentRoom({ room_id: "rm_group" }),
+      makeOwnedAgentRoom({ room_id: "rm_oc_pending_ag_bot" }),
+      makeOwnedAgentRoom({ room_id: "rm_oc_wrong_origin", bots: [{ agent_id: "ag_other", display_name: "Other", role: "owner" }] }),
+    ] });
+    expect(findCachedOwnerChatRoom("ag_bot")).toBeNull();
+  });
+
+  it("shows chronological cached history synchronously without mutating or clearing any room cache", async () => {
+    const pending = pendingPage();
+    mocks.getRoomMessages.mockReturnValue(pending.promise);
+    const first = makeDashboardMessage({ hub_msg_id: "first", text: "earlier", created_at: "2026-05-19T07:00:00Z" });
+    const second = makeDashboardMessage({ hub_msg_id: "second", text: "later" });
+    const cached = [first, second];
+    const other = [makeDashboardMessage({ room_id: "rm_oc_other" })];
+    useDashboardChatStore.setState({ messages: { rm_oc_real: cached, rm_oc_other: other }, messagesHasMore: { rm_oc_real: true } });
+    const load = useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    expect(useOwnerChatStore.getState()).toMatchObject({ loading: false, historyLoaded: true, hasMore: true });
+    expect(useOwnerChatStore.getState().messages.map((row) => row.text)).toEqual(["earlier", "later"]);
+    expect(useDashboardChatStore.getState().messages.rm_oc_real).toBe(cached);
+    expect(useDashboardChatStore.getState().messages.rm_oc_other).toBe(other);
+    pending.resolve({ messages: [second, first], has_more: true });
+    await load;
+    expect(cached).toEqual([first, second]);
+  });
+
+  it("treats an empty cached page as ready while still refreshing", async () => {
+    const pending = pendingPage();
+    mocks.getRoomMessages.mockReturnValue(pending.promise);
+    useDashboardChatStore.setState({ messages: { rm_oc_real: [] }, messagesHasMore: { rm_oc_real: false } });
+    const load = useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    expect(useOwnerChatStore.getState()).toMatchObject({ messages: [], historyLoaded: true, loading: false });
+    pending.resolve({ messages: [makeDashboardMessage()], has_more: false });
+    await load;
+    expect(useOwnerChatStore.getState().messages).toHaveLength(1);
+  });
+
+  it("joins an unfinished prefetch and does not issue a duplicate history request", async () => {
+    const pending = pendingPage();
+    mocks.getRoomMessages.mockReturnValue(pending.promise);
+    const prefetch = useDashboardChatStore.getState().prefetchRoomMessages("rm_oc_real");
+    const load = useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    await Promise.resolve();
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(1);
+    expect(useOwnerChatStore.getState().loading).toBe(true);
+    pending.resolve({ messages: [makeDashboardMessage()], has_more: false });
+    await Promise.all([prefetch, load]);
+    expect(useOwnerChatStore.getState().messages).toHaveLength(1);
+  });
+
+  it("keeps cached content on background failure and accepts authoritative corrections on retry", async () => {
+    useDashboardChatStore.setState({ messages: { rm_oc_real: [makeDashboardMessage({ text: "old" })] } });
+    mocks.getRoomMessages.mockRejectedValueOnce(new Error("offline"));
+    await useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    expect(useOwnerChatStore.getState()).toMatchObject({ historyLoaded: true, loading: false, error: "offline" });
+    expect(useOwnerChatStore.getState().messages[0].text).toBe("old");
+    mocks.getRoomMessages.mockResolvedValueOnce({ messages: [makeDashboardMessage({ text: "corrected" })], has_more: false });
+    await useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    expect(useOwnerChatStore.getState().messages[0].text).toBe("corrected");
+  });
+
+  it("preserves live, optimistic and streaming rows arriving during refresh", async () => {
+    const pending = pendingPage();
+    mocks.getRoomMessages.mockReturnValue(pending.promise);
+    useDashboardChatStore.setState({ messages: { rm_oc_real: [makeDashboardMessage()] } });
+    const load = useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    useOwnerChatStore.getState().addOptimistic(makeOwnerChatMessage({ clientId: "optimistic" }));
+    useOwnerChatStore.getState().upsertMessage(makeOwnerChatMessage({ clientId: "live", hubMsgId: "live", sender: "agent", text: "new reply", status: "delivered" }));
+    useOwnerChatStore.getState().appendStreamBlock({ trace_id: "trace", seq: 1, created_at: "2026-05-19T10:00:00Z", block: { kind: "assistant", payload: { text: "partial" } } });
+    pending.resolve({ messages: [makeDashboardMessage()], has_more: false });
+    await load;
+    expect(useOwnerChatStore.getState().messages.map((row) => row.clientId)).toEqual(["msg_1", "optimistic", "live", "stream_trace"]);
+    expect(useOwnerChatStore.getState().messages.at(-1)).toMatchObject({ text: "partial", status: "streaming" });
+  });
+
+  it("does not hydrate another room or apply the previous room's delayed initial page", async () => {
+    const pending = pendingPage();
+    mocks.getRoomMessages.mockReturnValue(pending.promise);
+    useDashboardChatStore.setState({ messages: { rm_oc_other: [makeDashboardMessage({ room_id: "rm_oc_other" })] } });
+    const load = useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    expect(useOwnerChatStore.getState().messages).toEqual([]);
+    useOwnerChatStore.getState().setRoom("rm_oc_other", "Other");
+    pending.resolve({ messages: [makeDashboardMessage()], has_more: false });
+    await load;
+    expect(useOwnerChatStore.getState()).toMatchObject({ roomId: "rm_oc_other", messages: [], historyLoaded: false });
+  });
+});
+
+
+describe("owner-chat account boundaries", () => {
+  function setOwner(humanId: string, token = "session-token") {
+    useDashboardSessionStore.setState({ token, human: { human_id: humanId } as NonNullable<ReturnType<typeof useDashboardSessionStore.getState>["human"]> });
+  }
+  beforeEach(() => {
+    mocks.getRoomMessages.mockReset();
+    setOwner("hu_first");
+    useOwnerChatStore.getState().reset();
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+    useDashboardChatStore.setState({ messages: { rm_oc_real: [makeDashboardMessage()] }, ownedAgentRooms: [makeOwnedAgentRoom()] });
+    useOwnerChatStore.setState({ messages: [makeOwnerChatMessage()], historyLoaded: true });
+  });
+
+  it("clears both live state and shared history synchronously on logout or a different human", () => {
+    setOwner("hu_second");
+    expect(useOwnerChatStore.getState()).toMatchObject({ roomId: null, messages: [], historyLoaded: false });
+    expect(useDashboardChatStore.getState().messages).toEqual({});
+    expect(findCachedOwnerChatRoom("ag_bot")).toBeNull();
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+    useOwnerChatStore.setState({ messages: [makeOwnerChatMessage()] });
+    useDashboardSessionStore.setState({ token: null });
+    expect(useOwnerChatStore.getState().messages).toEqual([]);
+  });
+
+  it("keeps the same human's history during token rotation and selected Bot changes", () => {
+    const ownerMessages = useOwnerChatStore.getState().messages;
+    const cache = useDashboardChatStore.getState().messages;
+    setOwner("hu_first", "rotated-token");
+    useDashboardSessionStore.setState({ activeAgentId: "ag_other" });
+    expect(useOwnerChatStore.getState().messages).toBe(ownerMessages);
+    expect(useDashboardChatStore.getState().messages).toBe(cache);
+  });
+
+  it("discards an in-flight initial response after the human account changes", async () => {
+    let resolve!: (page: { messages: DashboardMessage[]; has_more: boolean }) => void;
+    mocks.getRoomMessages.mockReturnValue(new Promise((done) => { resolve = done; }));
+    const request = useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    await Promise.resolve();
+    setOwner("hu_second");
+    resolve({ messages: [makeDashboardMessage()], has_more: false });
+    await request;
+    expect(useOwnerChatStore.getState()).toMatchObject({ roomId: null, messages: [], historyLoaded: false });
+    expect(useDashboardChatStore.getState().messages).toEqual({});
+  });
+});
+
+it("keeps already loaded older owner history and terminal pagination during newest-page refresh", async () => {
+  useDashboardSessionStore.setState({ token: "session-token" });
+  useOwnerChatStore.getState().reset();
+  useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+  const old = makeOwnerChatMessage({ clientId: "old", hubMsgId: "old", createdAt: "2026-05-18T00:00:00Z", status: "delivered" });
+  useOwnerChatStore.setState({ messages: [old], historyLoaded: true, hasMore: false });
+  useDashboardChatStore.setState({ messages: { rm_oc_real: [makeDashboardMessage()] }, messagesHasMore: { rm_oc_real: true } });
+  mocks.getRoomMessages.mockResolvedValue({ messages: [makeDashboardMessage()], has_more: true });
+  await useOwnerChatStore.getState().loadInitial("rm_oc_real");
+  expect(useOwnerChatStore.getState().messages.map((message) => message.hubMsgId)).toEqual(["old", "msg_1"]);
+  expect(useOwnerChatStore.getState().hasMore).toBe(false);
+});
+
+describe("shared owner initial loads", () => {
+  beforeEach(() => {
+    mocks.getRoomMessages.mockReset();
+    useOwnerChatStore.getState().reset();
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+  });
+
+  it("keeps a reopened pane awaiting the pending refresh while rendering its cached history", async () => {
+    let resolve!: (page: { messages: DashboardMessage[]; has_more: boolean }) => void;
+    mocks.getRoomMessages.mockReturnValue(new Promise((done) => { resolve = done; }));
+    useDashboardChatStore.setState({ messages: { rm_oc_real: [makeDashboardMessage({ text: "cached" })] } });
+    const first = useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    const reopened = useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    expect(reopened).toBe(first);
+    expect(useOwnerChatStore.getState()).toMatchObject({ historyLoaded: true, loading: false });
+    expect(useOwnerChatStore.getState().messages[0].text).toBe("cached");
+    let reopenedFinished = false;
+    void reopened.then(() => { reopenedFinished = true; });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reopenedFinished).toBe(false);
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(1);
+    resolve({ messages: [makeDashboardMessage({ text: "fresh" })], has_more: false });
+    await reopened;
+    expect(reopenedFinished).toBe(true);
+    expect(useOwnerChatStore.getState().messages[0].text).toBe("fresh");
+  });
+
+  it("publishes the shared promise before cache hydration can synchronously reenter", async () => {
+    mocks.getRoomMessages.mockResolvedValue({ messages: [], has_more: false });
+    useDashboardChatStore.setState({ messages: { rm_oc_real: [] } });
+    let joined: Promise<void> | undefined;
+    const unsubscribe = useOwnerChatStore.subscribe((state) => {
+      if (state.historyLoaded && !joined) joined = state.loadInitial("rm_oc_real");
+    });
+    const request = useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    unsubscribe();
+    expect(joined).toBe(request);
+    await request;
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(1);
   });
 });

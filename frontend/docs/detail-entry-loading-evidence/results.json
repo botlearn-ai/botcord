@@ -1,0 +1,213 @@
+{
+  "synthetic_delay_ms": 1200,
+  "checks": [
+    "Owned-Bot drawer/Contacts/owned Agent-card navigate synchronously with no room-lookup barrier.",
+    "agent cached card readable during refresh; slow A cannot replace B; pending close cannot reopen; concurrent same-target opens share one request.",
+    "human cached card readable during refresh; slow A cannot replace B; pending close cannot reopen; concurrent same-target opens share one request.",
+    "Paid preview re-entry renders cached public summaries during refresh; changed product and room begin separately and never show old summaries."
+  ],
+  "errors": [],
+  "navigation": {
+    "before-drawer": {
+      "median_ms": 1205,
+      "runs": [
+        {
+          "ms": 1204.7999999523163,
+          "requests": [
+            {
+              "kind": "ownerRoom",
+              "id": "ag_a",
+              "at": 696.7000000476837,
+              "delay": 1200
+            }
+          ],
+          "ui": {
+            "userChatAgentId": "ag_a",
+            "messagesPane": "user-chat"
+          },
+          "path": "/chats/messages"
+        },
+        {
+          "ms": 1205.5,
+          "requests": [
+            {
+              "kind": "ownerRoom",
+              "id": "ag_a",
+              "at": 472.40000009536743,
+              "delay": 1200
+            }
+          ],
+          "ui": {
+            "userChatAgentId": "ag_a",
+            "messagesPane": "user-chat"
+          },
+          "path": "/chats/messages"
+        },
+        {
+          "ms": 1205,
+          "requests": [
+            {
+              "kind": "ownerRoom",
+              "id": "ag_a",
+              "at": 470.30000019073486,
+              "delay": 1200
+            }
+          ],
+          "ui": {
+            "userChatAgentId": "ag_a",
+            "messagesPane": "user-chat"
+          },
+          "path": "/chats/messages"
+        }
+      ]
+    },
+    "drawer": {
+      "median_ms": 0.6000001430511475,
+      "runs": [
+        {
+          "ms": 0.8999998569488525,
+          "requests": [],
+          "ui": {
+            "userChatAgentId": "ag_a",
+            "messagesPane": "user-chat"
+          },
+          "path": "/chats/messages"
+        },
+        {
+          "ms": 0.6000001430511475,
+          "requests": [],
+          "ui": {
+            "userChatAgentId": "ag_a",
+            "messagesPane": "user-chat"
+          },
+          "path": "/chats/messages"
+        },
+        {
+          "ms": 0.5999999046325684,
+          "requests": [],
+          "ui": {
+            "userChatAgentId": "ag_a",
+            "messagesPane": "user-chat"
+          },
+          "path": "/chats/messages"
+        }
+      ]
+    },
+    "contacts": {
+      "median_ms": 0.7000000476837158,
+      "runs": [
+        {
+          "ms": 0.7000000476837158,
+          "requests": [],
+          "ui": {
+            "userChatAgentId": "ag_a",
+            "messagesPane": "user-chat"
+          },
+          "path": "/chats/messages"
+        }
+      ]
+    },
+    "own-card": {
+      "median_ms": 0.5,
+      "runs": [
+        {
+          "ms": 0.5,
+          "requests": [
+            {
+              "kind": "agent",
+              "id": "ag_a",
+              "at": 181.5,
+              "delay": 20
+            }
+          ],
+          "ui": {
+            "userChatAgentId": "ag_a",
+            "messagesPane": "user-chat"
+          },
+          "path": "/chats/messages"
+        }
+      ]
+    }
+  },
+  "cached_profiles": {
+    "agent": {
+      "visible_ms": 243.20000004768372,
+      "state": {
+        "agent": {
+          "agent_id": "ag_a",
+          "display_name": "ALPHA Agent Profile",
+          "bio": "ALPHA full cached biography",
+          "message_policy": "open",
+          "created_at": "2026-01-01T00:00:00Z",
+          "owner_human_id": null,
+          "online": false
+        },
+        "agentOpen": true,
+        "agentLoading": false,
+        "human": null,
+        "ui": {
+          "userChatAgentId": null,
+          "messagesPane": "room"
+        }
+      },
+      "requests": [
+        {
+          "kind": "agent",
+          "id": "ag_a",
+          "at": 142.5,
+          "delay": 25
+        },
+        {
+          "kind": "agent",
+          "id": "ag_a",
+          "at": 838.5,
+          "delay": 1200
+        }
+      ]
+    },
+    "human": {
+      "visible_ms": 213.40000009536743,
+      "state": {
+        "agent": null,
+        "agentOpen": false,
+        "agentLoading": false,
+        "human": {
+          "human": {
+            "human_id": "hu_a",
+            "display_name": "ALPHA Human Profile",
+            "avatar_url": null,
+            "created_at": "2001-01-01T00:00:00Z",
+            "contact_status": "contact"
+          },
+          "loading": false,
+          "error": null,
+          "sending": false,
+          "status": "exists"
+        },
+        "ui": {
+          "userChatAgentId": null,
+          "messagesPane": "room"
+        }
+      },
+      "requests": [
+        {
+          "kind": "human",
+          "id": "hu_a",
+          "at": 162,
+          "delay": 25
+        },
+        {
+          "kind": "human",
+          "id": "hu_a",
+          "at": 836.1999998092651,
+          "delay": 1200
+        }
+      ]
+    }
+  },
+  "paid": {
+    "warm_visible_ms": 4.5
+  },
+  "mobile": "390x844 Agent/Human/Paid cached content visible; no horizontal overflow; profile Close works",
+  "avatar": "Final profile screenshots use data SVG; image complete/naturalWidth>0 checked"
+}

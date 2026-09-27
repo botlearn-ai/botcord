@@ -5,6 +5,7 @@ import { useRouter } from "nextjs-toploader/app";
 import { ArrowLeft, MessageCircle, SlidersHorizontal, UserCircle, Users } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 import { api } from "@/lib/api";
+import { openOwnerChat } from "@/lib/owner-chat-navigation";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
@@ -108,19 +109,16 @@ export default function ContactsDetailPane() {
   const setSelectedContactKey = useDashboardUIStore((s) => s.setSelectedContactKey);
   const setBotDetailAgentId = useDashboardUIStore((s) => s.setBotDetailAgentId);
   const setPeerBotAgentId = useDashboardUIStore((s) => s.setPeerBotAgentId);
+  const setUserChatAgentId = useDashboardUIStore((s) => s.setUserChatAgentId);
   const {
     setFocusedRoomId,
     setOpenedRoomId,
     setMessagesPane,
-    setUserChatAgentId,
-    setUserChatRoomId,
     startPrimaryNavigation,
   } = useDashboardUIStore(useShallow((s) => ({
     setFocusedRoomId: s.setFocusedRoomId,
     setOpenedRoomId: s.setOpenedRoomId,
     setMessagesPane: s.setMessagesPane,
-    setUserChatAgentId: s.setUserChatAgentId,
-    setUserChatRoomId: s.setUserChatRoomId,
     startPrimaryNavigation: s.startPrimaryNavigation,
   })));
   const { ownedAgents, humanRooms, refreshHumanRooms } = useDashboardSessionStore(
@@ -130,15 +128,13 @@ export default function ContactsDetailPane() {
       refreshHumanRooms: s.refreshHumanRooms,
     })),
   );
-  const { overview, publicAgents, refreshOverview, loadOwnedAgentRooms, loadRoomMessages, setError, upsertOptimisticOwnerChatRoom } = useDashboardChatStore(
+  const { overview, publicAgents, refreshOverview, loadRoomMessages, setError } = useDashboardChatStore(
     useShallow((s) => ({
       overview: s.overview,
       publicAgents: s.publicAgents,
       refreshOverview: s.refreshOverview,
-      loadOwnedAgentRooms: s.loadOwnedAgentRooms,
       loadRoomMessages: s.loadRoomMessages,
       setError: s.setError,
-      upsertOptimisticOwnerChatRoom: s.upsertOptimisticOwnerChatRoom,
     })),
   );
 
@@ -232,19 +228,7 @@ export default function ContactsDetailPane() {
     setMessageBusy(true);
     try {
       if (target.kind === "owned-bot") {
-        const agentId = target.agent.agent_id;
-        upsertOptimisticOwnerChatRoom(target.agent);
-        const room = await api.getUserChatRoom(agentId);
-        upsertOptimisticOwnerChatRoom(target.agent, room.room_id);
-        void loadOwnedAgentRooms();
-        setMessagesPane("user-chat");
-        setUserChatAgentId(agentId);
-        setUserChatRoomId(room.room_id);
-        setFocusedRoomId(null);
-        setOpenedRoomId(null);
-        const path = "/chats/messages";
-        startPrimaryNavigation("messages", path);
-        router.push(path);
+        openOwnerChat(target.agent, (path) => router.push(path));
         return;
       }
 

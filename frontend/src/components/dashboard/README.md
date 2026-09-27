@@ -51,6 +51,8 @@ dashboard/
 
 ## 架构决策
 
+- 会话历史预取覆盖普通房间和自有 Bot 私聊；可见列表最多预取 6 个房间、并发最多 2 个，进入详情后取消排队任务；悬停、聚焦及触摸优先触发当前会话。
+
 - Explore 的卡片渲染收敛到 `ExploreEntityCard.tsx`，避免 `ChatPane.tsx` 重复写两套 UI。
 - 统一卡片组件支持两种入参：`id`（通过映射查数据）或 `data`（直接渲染），便于跨页复用。
 - `roomVisualTheme.ts` 提供房间级纹理与强调色生成算法，公开群卡片与分享预览共用同一视觉来源，避免视觉语义分叉。
@@ -161,3 +163,5 @@ dashboard/
 - 自动回归：`pnpm exec vitest run src/components/dashboard/sidebar/MessagesPanel.test.tsx src/store/useDashboardChatStore.test.ts src/lib/messages-merge.test.ts`。
 - 本地独立 Chrome 组件验证（20 条合成会话，非线上延迟统计）：Human rooms 先返回、overview 暂缓，修改前显示 0 行，修改后显示 20 行；overview 更新后 100ms，原实现前 10 行中 7 行 opacity 为 0，修改后前 10 行均 opacity 为 1 且无 transform。验证了搜索能匹配新到达的缓存消息预览，清空搜索恢复所有行。
 - 继续测量真实环境时，应分别记录点击 Messages → 首屏可读、点击会话 → 最新消息可读，拆分请求等待和渲染耗时；当前结果不能代表线上 P75/P95 或后端接口提速。
+
+- 2026-09-27：Bot 详情、Contacts 自有 Bot、头像卡的聊天按钮共用即时导航；未知房间交由消息面板解析，壳层并发解析共用请求。PaidRoomPreview 仅缓存公开截断摘要，按房间及订阅产品隔离，最多 32 项、每项 3 条，重访时 60 秒内缓存可先展示再刷新；权限或资源失效时清除摘要。

@@ -696,3 +696,73 @@ describe("useDashboardChatStore message polling", () => {
     });
   });
 });
+
+describe("shared room history requests", () => {
+  beforeEach(() => {
+    mocks.getRoomMessages.mockReset();
+    useDashboardChatStore.getState().resetChatState();
+  });
+
+  it("waits for the same pending prefetch when detail loading joins it", async () => {
+    let resolve!: (value: { messages: DashboardMessage[]; has_more: boolean }) => void;
+    mocks.getRoomMessages.mockReturnValue(new Promise((done) => { resolve = done; }));
+    const prefetch = useDashboardChatStore.getState().prefetchRoomMessages("rm_shared");
+    const detail = useDashboardChatStore.getState().loadRoomMessages("rm_shared");
+    let detailFinished = false;
+    void detail.then(() => { detailFinished = true; });
+    await Promise.resolve();
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(1);
+    expect(detailFinished).toBe(false);
+    resolve({ messages: [], has_more: false });
+    await Promise.all([prefetch, detail]);
+    expect(detailFinished).toBe(true);
+    expect(useDashboardChatStore.getState().messages.rm_shared).toEqual([]);
+  });
+
+  it("allows synchronous loading subscribers to join without creating a second request", async () => {
+    mocks.getRoomMessages.mockResolvedValue({ messages: [], has_more: false });
+    let joined: Promise<void> | undefined;
+    const unsubscribe = useDashboardChatStore.subscribe((state) => {
+      if (state.messagesLoading.rm_shared && !joined) joined = state.loadRoomMessages("rm_shared");
+    });
+    const first = useDashboardChatStore.getState().loadRoomMessages("rm_shared");
+    unsubscribe();
+    expect(joined).toBe(first);
+    await first;
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a synchronously thrown API failure so a later retry can run", async () => {
+    mocks.getRoomMessages.mockImplementationOnce(() => { throw new Error("sync failure"); });
+    await useDashboardChatStore.getState().loadRoomMessages("rm_shared");
+    expect(useDashboardChatStore.getState().messagesErrors.rm_shared).toBe("sync failure");
+    mocks.getRoomMessages.mockResolvedValueOnce({ messages: [], has_more: false });
+    await useDashboardChatStore.getState().loadRoomMessages("rm_shared");
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(2);
+    expect(useDashboardChatStore.getState().messagesErrors.rm_shared).toBeUndefined();
+  });
+
+  it("does not start a scheduled request after account state resets", async () => {
+    const request = useDashboardChatStore.getState().loadRoomMessages("rm_shared");
+    useDashboardChatStore.getState().resetChatState();
+    await request;
+    expect(mocks.getRoomMessages).not.toHaveBeenCalled();
+    expect(useDashboardChatStore.getState().messages).toEqual({});
+  });
+
+  it("ignores a late response after reset and lets the new session fetch independently", async () => {
+    let resolve!: (value: { messages: DashboardMessage[]; has_more: boolean }) => void;
+    mocks.getRoomMessages.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    const old = useDashboardChatStore.getState().loadRoomMessages("rm_shared");
+    await Promise.resolve();
+    useDashboardChatStore.getState().resetChatState();
+    mocks.getRoomMessages.mockResolvedValueOnce({ messages: [], has_more: false });
+    const current = useDashboardChatStore.getState().loadRoomMessages("rm_shared");
+    await current;
+    resolve({ messages: [{ hub_msg_id: "previous-account", room_id: "rm_shared" } as DashboardMessage], has_more: true });
+    await old;
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(2);
+    expect(useDashboardChatStore.getState().messages.rm_shared).toEqual([]);
+    expect(useDashboardChatStore.getState().messagesHasMore.rm_shared).toBe(false);
+  });
+});

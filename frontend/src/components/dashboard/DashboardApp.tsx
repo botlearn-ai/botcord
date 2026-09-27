@@ -2,13 +2,14 @@
 
 /**
  * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 的精确 selector 聚合 dashboard 状态，依赖 pathname 同步首帧 tab，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
- * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期、即时 tab 内容切换、顶部个人/Team 模式切换与三栏布局编排
+ * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期、即时 tab 内容切换、统一自有 Bot 聊天入口、缓存资料卡、顶部个人/Team 模式切换与三栏布局编排
  * [POS]: /chats 页面的顶层容器，连接路由状态、实时事件流与拆分后的 dashboard store
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { openOwnerChat } from "@/lib/owner-chat-navigation";
 import { useChatViewport } from "@/hooks/useChatViewport";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar as sidebarI18n, chatPane as chatPaneI18n } from "@/lib/i18n/translations/dashboard";
@@ -16,8 +17,9 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useRouter } from "nextjs-toploader/app";
 import { createClient } from "@/lib/supabase/client";
 import { api, humansApi } from "@/lib/api";
-import type { PublicHumanProfile, RealtimeMetaEvent } from "@/lib/types";
-import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { resolveOwnerChatRoom } from "@/lib/owner-chat-room";
+import type { RealtimeMetaEvent } from "@/lib/types";
+import { dashboardProfileScope, messageCacheOwnerKey, useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardRealtimeStore } from "@/store/useDashboardRealtimeStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -39,6 +41,7 @@ import DashboardShellSkeleton from "./DashboardShellSkeleton";
 import HomePanel from "./HomePanel";
 import MyBotsPanel from "./MyBotsPanel";
 import HumanCardModal from "./HumanCardModal";
+import { useHumanProfileCardStore } from "@/store/useHumanProfileCardStore";
 import Sidebar from "./sidebar";
 import StripeReturnBanner from "./StripeReturnBanner";
 import UserChatPane from "./UserChatPane";
@@ -252,13 +255,12 @@ export default function DashboardApp() {
   const shouldShowAgentGate = false;
   const continueTarget = searchParams.get("next");
   const continueHandledRef = useRef<string | null>(null);
-  const [ownerHumanCard, setOwnerHumanCard] = useState<{
-    human: PublicHumanProfile | null;
-    loading: boolean;
-    error: string | null;
-    sending: boolean;
-    status: "idle" | "sent" | "exists" | "pending";
-  } | null>(null);
+  const { ownerHumanCard, setOwnerHumanCard, openHumanCard } = useHumanProfileCardStore(useShallow((state) => ({
+    ownerHumanCard: state.card,
+    setOwnerHumanCard: state.setCard,
+    openHumanCard: state.open,
+  })));
+  useEffect(() => () => setOwnerHumanCard(null), [setOwnerHumanCard]);
 
   useEffect(() => {
     const debugRealtime = async (): Promise<BotcordDebugRealtimeSnapshot> => {
@@ -625,14 +627,27 @@ export default function DashboardApp() {
     ) return;
 
     let cancelled = false;
-    api.getUserChatRoom(sessionStore.activeAgentId).then((room) => {
-      if (!cancelled) uiStore.setUserChatRoomId(room.room_id);
+    const agentId = sessionStore.activeAgentId;
+    const ownerKey = messageCacheOwnerKey();
+    resolveOwnerChatRoom(agentId).then((room) => {
+      if (cancelled || messageCacheOwnerKey() !== ownerKey) return;
+      const ownedAgent = useDashboardSessionStore.getState().ownedAgents.find((agent) => agent.agent_id === agentId);
+      useDashboardChatStore.getState().upsertOptimisticOwnerChatRoom({
+        agent_id: agentId,
+        display_name: ownedAgent?.display_name || room.name || agentId,
+      }, room.room_id);
+      const selectedAgentId = useDashboardUIStore.getState().userChatAgentId
+        || useDashboardSessionStore.getState().activeAgentId;
+      if (selectedAgentId === agentId) {
+        uiStore.setUserChatRoomId(room.room_id);
+      }
     }).catch(() => { /* ignore — UserChatPane will retry on mount */ });
 
     return () => { cancelled = true; };
   }, [
     sessionStore.sessionMode,
     sessionStore.activeAgentId,
+    sessionStore.human?.human_id,
     uiStore.setUserChatRoomId,
   ]);
 
@@ -925,43 +940,11 @@ export default function DashboardApp() {
     router.replace(continueTarget);
   }, [continueTarget, pathname, router, sessionStore.sessionMode]);
 
-  const handleOpenHumanCard = async (owner: { humanId: string; displayName: string }) => {
-    const placeholder: PublicHumanProfile = {
-      human_id: owner.humanId,
-      display_name: owner.displayName,
-      avatar_url: null,
-      created_at: null,
-    };
-    setOwnerHumanCard({
-      human: placeholder,
-      loading: true,
-      error: null,
-      sending: false,
-      status: "idle",
-    });
-    try {
-      const human = await api.getPublicHuman(owner.humanId);
-      const localContact = (chatStore.overview?.contacts || []).some(
-        (item) => item.contact_agent_id === owner.humanId,
-      );
-      const status =
-        human.contact_status === "contact" || localContact ? "exists"
-        : human.contact_status === "pending" ? "pending"
-        : "idle";
-      setOwnerHumanCard({
-        human,
-        loading: false,
-        error: null,
-        sending: false,
-        status,
-      });
-    } catch (error) {
-      setOwnerHumanCard((prev) => prev && {
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : "Failed to load human profile",
-      });
-    }
+  const handleOpenHumanCard = (owner: { humanId: string; displayName: string }) => {
+    const localContact = (chatStore.overview?.contacts || []).some(
+      (item) => item.contact_agent_id === owner.humanId,
+    );
+    return openHumanCard(owner, localContact);
   };
 
   useEffect(() => {
@@ -1063,31 +1046,12 @@ export default function DashboardApp() {
   const handleSendMessageFromAgentCard = () => {
     if (!selectedAgentForCard) return;
     if (isSelectedAgentOwned) {
-      const agentId = selectedAgentForCard.agent_id;
-      void (async () => {
-        uiStore.closeAgentCard();
-        chatStore.closeAgentCardState();
-        uiStore.setSidebarTab("messages");
-        uiStore.setMessagesPane("user-chat");
-        uiStore.setUserChatAgentId(agentId);
-        uiStore.setFocusedRoomId(null);
-        uiStore.setOpenedRoomId(null);
-        chatStore.upsertOptimisticOwnerChatRoom({
-          agent_id: selectedAgentForCard.agent_id,
-          display_name: selectedAgentForCard.display_name || selectedAgentForCard.agent_id,
-        });
-        api.getUserChatRoom(agentId).then((room) => {
-          chatStore.upsertOptimisticOwnerChatRoom({
-            agent_id: selectedAgentForCard.agent_id,
-            display_name: selectedAgentForCard.display_name || selectedAgentForCard.agent_id,
-          }, room.room_id);
-          uiStore.setUserChatRoomId(room.room_id);
-          void chatStore.loadOwnedAgentRooms();
-        }).catch((error) => {
-          console.error("[DashboardApp] getUserChatRoom failed:", error);
-        });
-        router.push("/chats/messages");
-      })();
+      uiStore.closeAgentCard();
+      chatStore.closeAgentCardState();
+      openOwnerChat({
+        agent_id: selectedAgentForCard.agent_id,
+        display_name: selectedAgentForCard.display_name || selectedAgentForCard.agent_id,
+      }, (path) => router.push(path));
       return;
     }
     void navigateToDmWith(selectedAgentForCard.agent_id, () => {
@@ -1114,6 +1078,11 @@ export default function DashboardApp() {
   const handleSendOwnerHumanFriendRequest = async () => {
     const human = ownerHumanCard?.human;
     if (!human) return;
+    const scope = dashboardProfileScope();
+    const selection = useHumanProfileCardStore.getState().selectionVersion;
+    const currentCard = () => scope === dashboardProfileScope()
+      && selection === useHumanProfileCardStore.getState().selectionVersion
+      && useHumanProfileCardStore.getState().card?.human?.human_id === human.human_id;
     if (sessionStore.sessionMode === "guest") {
       router.push("/login");
       return;
@@ -1124,6 +1093,7 @@ export default function DashboardApp() {
         sessionStore.viewMode === "human"
           ? await humansApi.sendContactRequest({ peer_id: human.human_id })
           : await api.createContactRequest({ to_human_id: human.human_id });
+      if (!currentCard()) return;
       const status =
         response && typeof response === "object" && "status" in response
           ? String((response as { status: string }).status)
@@ -1140,6 +1110,7 @@ export default function DashboardApp() {
       });
       await chatStore.refreshOverview();
     } catch (error) {
+      if (!currentCard()) return;
       const message = error instanceof Error ? error.message : "Request failed";
       const alreadyContact = /already.*contact/i.test(message);
       setOwnerHumanCard((prev) => prev && {
