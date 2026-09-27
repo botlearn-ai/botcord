@@ -9,9 +9,9 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from hub.enums import MessagePolicy, MessageState
-from hub.models import Agent, Base, MessageRecord, User
-from hub.services.agent_capability import score_latency, score_model, score_skills
+from hub.enums import MessagePolicy, MessageState, TopicStatus
+from hub.models import Agent, AgentSchedule, Base, Block, MessageRecord, Room, Topic, UsageEvent, User
+from hub.services.agent_capability import effective_skill_count, model_tier
 
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-unit-tests"
 
@@ -96,8 +96,9 @@ async def seed(db_session: AsyncSession):
                 user_id=user_id,
                 runtime="claude-code",
                 runtime_model="opus",
-                skills_json=[{"name": "botcord"}, {"name": "review"}, {"name": "review"}],
-                created_at=now,
+                hosting_kind="daemon",
+                skills_json=[{"name": "botcord"}, {"name": "review"}, {"name": "review"}, {"name": "pdf"}],
+                created_at=now - datetime.timedelta(days=60),
             ),
             Agent(
                 agent_id="ag_cap_quiet",
@@ -113,8 +114,30 @@ async def seed(db_session: AsyncSession):
                 user_id=other_user_id,
                 created_at=now,
             ),
+            Room(room_id="rm_cap_work", name="Work", description="", owner_id="ag_cap001", created_at=now),
+            AgentSchedule(
+                id="sch_cap1",
+                agent_id="ag_cap001",
+                name="daily",
+                schedule_json={},
+                payload_json={},
+            ),
+            Block(owner_id="ag_peer", blocked_agent_id="ag_cap001", created_at=now),
         ]
     )
+    for i, status in enumerate([TopicStatus.completed, TopicStatus.completed, TopicStatus.failed]):
+        db_session.add(
+            Topic(
+                topic_id=f"tp_cap_{i}",
+                room_id="rm_cap_work",
+                title=f"T{i}",
+                description="",
+                status=status,
+                creator_id="ag_cap001",
+                created_at=now,
+                updated_at=now,
+            )
+        )
 
     rows: list[MessageRecord] = []
     n = 0
@@ -130,28 +153,44 @@ async def seed(db_session: AsyncSession):
     for i in range(5):
         n += 1
         rows.append(_msg(n, "ag_peer", "ag_cap001", "rm_group", now - datetime.timedelta(hours=2 + i)))
-    # One failed delivery out of 11 inbound rows.
+    # One failed delivery out of 12 inbound rows.
     n += 1
     rows.append(_msg(n, "ag_peer", "ag_cap001", "rm_group", now - datetime.timedelta(hours=10), state=MessageState.failed))
+    # Three self-initiated topic posts (no preceding inbound in that room).
+    for i in range(3):
+        n += 1
+        rows.append(
+            _msg(n, "ag_cap001", "ag_peer", "rm_cap_work", now - datetime.timedelta(days=10 + i), topic_id=f"tp_cap_{i}")
+        )
     db_session.add_all(rows)
+    for i, tokens in enumerate([10_000, 20_000, 40_000]):
+        db_session.add(
+            UsageEvent(
+                user_id=user_id,
+                agent_id="ag_cap001",
+                run_id=f"run_{i}",
+                provider="p",
+                model="m",
+                output_tokens=tokens,
+                idempotency_key=f"idem_{i}",
+            )
+        )
     await db_session.commit()
     return {"token": _make_token(str(supabase_uid))}
 
 
-def test_score_model_tiers():
-    assert score_model("claude-code", "opus")["score"] == 95
-    assert score_model("codex", "gpt-5-mini")["score"] == 60
-    assert score_model("codex", "gpt-5.2")["score"] == 90
-    assert score_model("claude-code", None)["score"] == 85
-    assert score_model(None, None)["score"] is None
+def _axes(body: dict) -> dict:
+    return {axis["key"]: axis["layers"] for axis in body["axes"]}
 
 
-def test_score_skills_and_latency():
-    assert score_skills(None)["score"] is None
-    assert score_skills([])["score"] == 0
-    assert score_skills([{"name": "a"}, {"name": "a"}])["value"] == 1
-    assert score_latency(10) == 100
-    assert round(score_latency(30 * 60)) == 0
+def test_model_tier_and_skills():
+    assert model_tier("claude-code", "opus") == (95, 40)
+    assert model_tier("codex", "gpt-5-mini")[0] == 60
+    assert model_tier("codex", "gpt-5.2")[0] == 90
+    assert model_tier("claude-code", None)[0] == 85
+    assert model_tier(None, None) is None
+    assert effective_skill_count(None) is None
+    assert effective_skill_count([{"name": "botcord"}, {"name": "a"}, {"name": "a"}]) == 1
 
 
 @pytest.mark.asyncio
@@ -162,21 +201,33 @@ async def test_capability_scores_owned_agent(client: AsyncClient, seed: dict):
     )
     assert resp.status_code == 200
     body = resp.json()
-    layers = {layer["key"]: layer for layer in body["layers"]}
-    l0 = {d["key"]: d for d in layers["l0"]["dimensions"]}
-    l1 = {d["key"]: d for d in layers["l1"]["dimensions"]}
+    assert [a["key"] for a in body["axes"]] == [
+        "efficacy", "latency", "reliability", "cost", "autonomy", "assurance",
+    ]
+    axes = _axes(body)
 
-    assert l0["model"]["score"] == 95
-    assert l0["skills"]["value"] == 2
-    assert l0["profile"]["score"] == 70  # bio + runtime, no avatar
+    # L0
+    assert axes["efficacy"]["l0"]["value"] == {"model": "opus", "skills": 2}
+    assert axes["latency"]["l0"]["score"] == 70
+    assert axes["cost"]["l0"]["score"] == 40
+    assert axes["autonomy"]["l0"]["value"] == 1
 
-    assert l1["response_rate"]["sample"] == 6
-    assert l1["response_rate"]["value"] == pytest.approx(4 / 6, abs=1e-3)
-    assert l1["latency"]["value"] == 60
-    assert l1["delivery"]["sample"] == 12
-    assert l1["delivery"]["value"] == pytest.approx(11 / 12, abs=1e-3)
-    assert l1["activity"]["value"] == 4
-    assert layers["l1"]["score"] is not None
+    # L1
+    assert axes["efficacy"]["l1"]["value"] == pytest.approx(2 / 3, abs=1e-3)
+    latency = axes["latency"]["l1"]
+    assert latency["sample"] == 6
+    assert latency["value"] == {"reply_rate": pytest.approx(4 / 6, abs=1e-3), "median_seconds": 60}
+    reliability = axes["reliability"]["l1"]["value"]
+    assert reliability["delivery_rate"] == pytest.approx(11 / 12, abs=1e-3)
+    assert reliability["schedule_success_rate"] is None
+    assert reliability["active_days"] == 7
+    assert axes["cost"]["l1"]["value"] == 20_000
+    assert axes["cost"]["l1"]["score"] == 100
+    assert axes["autonomy"]["l1"]["value"] == pytest.approx(3 / 7, abs=1e-3)
+    assert axes["assurance"]["l1"]["value"] == {"blocks": 1, "recalled": 0}
+    assert axes["assurance"]["l1"]["score"] == 80
+    assert body["layer_scores"]["l0"] is not None
+    assert body["layer_scores"]["l1"] is not None
 
 
 @pytest.mark.asyncio
@@ -186,11 +237,11 @@ async def test_capability_insufficient_samples_are_null(client: AsyncClient, see
         headers={"Authorization": f"Bearer {seed['token']}"},
     )
     assert resp.status_code == 200
-    l1 = {d["key"]: d for d in resp.json()["layers"][1]["dimensions"]}
-    assert l1["response_rate"]["score"] is None
-    assert l1["latency"]["score"] is None
-    assert l1["delivery"]["score"] is None
-    assert l1["activity"]["score"] == 0
+    axes = _axes(resp.json())
+    for key in ("efficacy", "latency", "cost", "autonomy", "assurance"):
+        assert axes[key]["l1"]["score"] is None, key
+    assert axes["reliability"]["l1"]["score"] == 0
+    assert axes["efficacy"]["l0"]["score"] is None
 
 
 @pytest.mark.asyncio
