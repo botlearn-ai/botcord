@@ -47,3 +47,18 @@ installed PWAs and the actual network send/upload path still need device testing
 - [390px conversation](screenshots/mobile-chat/chat-390.png)
 - [390px message list after returning](screenshots/mobile-chat/list-390.png)
 - [320px More menu](screenshots/mobile-chat/more-320.png)
+
+## Focused conversation follow-up
+
+On phones, room and Bot conversations now hide both the bottom navigation and
+Personal / Team switch until the user returns to the message list. Requests and
+other modules retain navigation. The sidebar stays mounted and restores its last
+visible scroll offset; the deep-link loading shell also hides global navigation.
+The composer retains bottom safe-area spacing when the keyboard is closed.
+
+Validation: 382 tests passed. Browser checks at 320/390/430px confirmed hidden
+navigation in details and restored navigation and a 450px message-list scroll
+offset after returning. The 1280px desktop retained both navigation areas.
+
+- [Focused conversation](screenshots/mobile-chat/focused-detail-390.png)
+- [Restored message list](screenshots/mobile-chat/restored-list-390.png)
