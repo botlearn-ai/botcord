@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 zustand/persist 保存 dashboard 会话与目录数据，依赖 @/lib/api 发起房间/目录/Agent 查询，依赖 session/ui/unread/contact store 提供鉴权、界面上下文与未读协调
- * [OUTPUT]: 对外提供 useDashboardChatStore，管理 overview、按稳定 msg_id 合并的消息缓存与共享首屏请求 Promise、带查询归属和并发去重的公开目录远端搜索结果、Agent 卡片数据与 chat 相关异步动作
+ * [OUTPUT]: 对外提供 useDashboardChatStore，管理 overview、按稳定 msg_id 合并的消息缓存与共享首屏请求 Promise、带查询归属和并发去重的公开目录远端搜索结果、按身份隔离缓存和并发去重的 Agent 卡片数据与 chat 相关异步动作
  * [POS]: frontend dashboard 的 chat 数据状态源，负责真正的会话数据与目录数据，不负责阅读语义和连接生命周期
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -22,6 +22,7 @@ import type {
   UserAgent,
 } from "@/lib/types";
 import { api, humansApi } from "@/lib/api";
+import { createProfileCache } from "@/lib/profile-cache";
 import {
   buildVisibleMessageRooms,
   compareRoomsByActivityDesc,
@@ -34,6 +35,18 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { ownedAgentRoomToDashboardRoom } from "@/lib/messages-merge";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
+
+export function dashboardProfileScope(): string {
+  const { token, user, human, activeIdentity } = useDashboardSessionStore.getState();
+  return JSON.stringify([Boolean(token), user?.id ?? null, human?.human_id ?? null, activeIdentity?.type ?? null, activeIdentity?.id ?? null]);
+}
+
+const agentProfiles = createProfileCache((agentId: string) => api.getAgentCard(agentId));
+let agentSelectionSequence = 0;
+function invalidateAgentProfiles() {
+  agentSelectionSequence += 1;
+  agentProfiles.clear();
+}
 
 let publicRoomsRequestSeq = 0;
 let publicAgentsRequestSeq = 0;
@@ -622,6 +635,7 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       resetChatState: () => {
         invalidateAllRoomMessageRequests();
         invalidatePublicDirectoryRequests();
+        invalidateAgentProfiles();
         set((state) => {
           if (!hasTransientChatState(state)) {
             return state;
@@ -639,17 +653,14 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       logout: () => {
         invalidateAllRoomMessageRequests();
         invalidatePublicDirectoryRequests();
+        invalidateAgentProfiles();
         set({ ...initialChatState });
       },
 
-      closeAgentCardState: () =>
-        set((state) => ({
-          selectedAgentId: state.selectedAgentId,
-          selectedAgentProfile: state.selectedAgentProfile,
-          selectedAgentConversations: state.selectedAgentConversations,
-          selectedAgentLoading: false,
-          selectedAgentError: null,
-        })),
+      closeAgentCardState: () => {
+        agentSelectionSequence += 1;
+        set({ selectedAgentLoading: false, selectedAgentError: null });
+      },
 
       getRoomSummary: (roomId) => {
         const state = get();
@@ -1167,28 +1178,37 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       selectAgent: async (agentId: string) => {
+        const scope = dashboardProfileScope();
+        const selection = ++agentSelectionSequence;
+        const cached = agentProfiles.get(scope, agentId);
         useDashboardUIStore.getState().openAgentCard();
         set({
           selectedAgentId: agentId,
-          selectedAgentLoading: true,
+          selectedAgentLoading: !cached,
           selectedAgentError: null,
-          selectedAgentProfile: null,
-          selectedAgentConversations: null,
+          selectedAgentProfile: cached?.profile ?? null,
+          selectedAgentConversations: cached?.conversations ?? null,
         });
+        const isCurrent = () => selection === agentSelectionSequence
+          && scope === dashboardProfileScope()
+          && useDashboardUIStore.getState().agentCardOpen;
         try {
-          const result = await api.getAgentCard(agentId);
+          const result = await agentProfiles.load(scope, agentId);
+          if (!isCurrent()) return;
           set({
-            selectedAgentId: agentId,
             selectedAgentLoading: false,
             selectedAgentError: null,
             selectedAgentProfile: result.profile,
             selectedAgentConversations: result.conversations,
           });
-        } catch (error: any) {
-          console.error("[ChatStore] Failed to select agent:", error);
+        } catch (error: unknown) {
+          if (!isCurrent()) return;
+          const retained = agentProfiles.get(scope, agentId);
           set({
+            selectedAgentProfile: retained?.profile ?? null,
+            selectedAgentConversations: retained?.conversations ?? null,
             selectedAgentLoading: false,
-            selectedAgentError: error?.message || "Failed to load agent profile",
+            selectedAgentError: retained ? null : error instanceof Error ? error.message : "Failed to load agent profile",
           });
         }
       },
@@ -1566,4 +1586,17 @@ useDashboardSessionStore.subscribe(() => {
     lastMessageCacheOwnerKey = nextKey;
     useDashboardChatStore.getState().resetChatState();
   }
+});
+
+let lastAgentProfileScope = dashboardProfileScope();
+useDashboardSessionStore.subscribe(() => {
+  const scope = dashboardProfileScope();
+  if (scope === lastAgentProfileScope) return;
+  lastAgentProfileScope = scope;
+  invalidateAgentProfiles();
+  useDashboardUIStore.getState().closeAgentCard();
+  useDashboardChatStore.setState({
+    selectedAgentId: null, selectedAgentProfile: null, selectedAgentConversations: null,
+    selectedAgentLoading: false, selectedAgentError: null,
+  });
 });

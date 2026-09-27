@@ -23,3 +23,7 @@
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 
 - `message-prefetch.ts`：会话历史预取候选排序与有并发上限、可取消排队的调度；owner chat 与普通会话共用策略。
+
+- `owner-chat-navigation.ts`：自有 Bot 的统一同步聊天导航，复用已知真实房间并预取历史；入口不等待房间 API。
+- `owner-chat-room.ts`：壳层和私聊面板共享正在进行的房间解析，账号变化时解除旧请求共享。
+- `profile-cache.ts`：有容量上限、按查看者身份隔离的资料缓存与并发请求去重，失效响应驱逐缓存。

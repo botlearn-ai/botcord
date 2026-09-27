@@ -57,3 +57,5 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 - 2026-03-20: 新增 `useDashboardSessionStore.ts`，并将 dashboard 状态按 `session/channel/wallet/contact` 四个业务域拆分；`useDashboardStore.ts` 收敛为兼容导出层。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+
+- 2026-09-27：Agent 资料卡及 `useHumanProfileCardStore.ts` 使用会话内资料缓存，命中时保留可读内容并刷新；选择序号与身份范围隔离迟到响应。关闭弹窗不会被旧请求重新打开；不可访问或已删除的资料清除缓存。

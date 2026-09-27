@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
+import { openOwnerChat } from "@/lib/owner-chat-navigation";
 import {
   Bot,
   Eye,
@@ -102,11 +103,8 @@ function BotDetailDrawer() {
     botDetailInitialTab,
     setBotDetailAgentId,
     setSelectedDeviceId,
-    setSidebarTab,
     setFocusedRoomId,
     setOpenedRoomId,
-    setUserChatAgentId,
-    setUserChatRoomId,
     setMessagesPane,
     setMessagesFilter,
     setMessagesBotScope,
@@ -117,11 +115,8 @@ function BotDetailDrawer() {
       botDetailInitialTab: s.botDetailInitialTab,
       setBotDetailAgentId: s.setBotDetailAgentId,
       setSelectedDeviceId: s.setSelectedDeviceId,
-      setSidebarTab: s.setSidebarTab,
       setFocusedRoomId: s.setFocusedRoomId,
       setOpenedRoomId: s.setOpenedRoomId,
-      setUserChatAgentId: s.setUserChatAgentId,
-      setUserChatRoomId: s.setUserChatRoomId,
       setMessagesPane: s.setMessagesPane,
       setMessagesFilter: s.setMessagesFilter,
       setMessagesBotScope: s.setMessagesBotScope,
@@ -131,13 +126,7 @@ function BotDetailDrawer() {
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const refreshUserProfile = useDashboardSessionStore((s) => s.refreshUserProfile);
   const daemons = useDaemonStore((s) => s.daemons);
-  const { loadOwnedAgentRooms, ownedAgentRooms, upsertOptimisticOwnerChatRoom } = useDashboardChatStore(
-    useShallow((s) => ({
-      loadOwnedAgentRooms: s.loadOwnedAgentRooms,
-      ownedAgentRooms: s.ownedAgentRooms,
-      upsertOptimisticOwnerChatRoom: s.upsertOptimisticOwnerChatRoom,
-    })),
-  );
+  const ownedAgentRooms = useDashboardChatStore((s) => s.ownedAgentRooms);
 
   const open = botDetailAgentId !== null;
   const bot = botDetailAgentId ? ownedAgents.find((a) => a.agent_id === botDetailAgentId) ?? null : null;
@@ -223,25 +212,9 @@ function BotDetailDrawer() {
   const friends = deriveBotFriends(bot.agent_id, botRooms);
   const groups = botRooms.filter((room) => !isOwnerChatRoom(room.room_id) && !dmPeerId(room.room_id, bot.agent_id));
 
-  const openOwnerChat = async () => {
-    const agentId = bot.agent_id;
+  const handleOpenOwnerChat = () => {
     setBotDetailAgentId(null);
-    setSidebarTab("messages");
-    setMessagesPane("user-chat");
-    setUserChatAgentId(agentId);
-    setUserChatRoomId(null);
-    setFocusedRoomId(null);
-    setOpenedRoomId(null);
-    upsertOptimisticOwnerChatRoom(bot);
-    try {
-      const room = await api.getUserChatRoom(agentId);
-      upsertOptimisticOwnerChatRoom(bot, room.room_id);
-      setUserChatRoomId(room.room_id);
-      void loadOwnedAgentRooms();
-    } catch (error) {
-      console.error("[BotDetailDrawer] getUserChatRoom failed:", error);
-    }
-    router.push("/chats/messages");
+    openOwnerChat(bot, (path) => router.push(path));
   };
 
   // Jump to a conversation visible from THIS bot's perspective. Sets BOT 监控
@@ -340,7 +313,7 @@ function BotDetailDrawer() {
               }}
               onJumpToFriend={(friend) => jumpToBotConversation(friend.room.room_id)}
               onJumpToGroup={(group) => jumpToBotConversation(group.room_id)}
-              onOpenChat={() => void openOwnerChat()}
+              onOpenChat={handleOpenOwnerChat}
             />
           )}
           {tab === "settings" && (

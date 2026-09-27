@@ -6,6 +6,7 @@
  * Architecture (post-refactor):
  *   - Single rendered source: useOwnerChatStore.messages[]; dashboard room
  *     history cache hydrates immediately and refreshes via a shared request.
+ *   - Room discovery: shared with the shell; late account/target results are ignored.
  *   - WS lifecycle: useOwnerChatWs hook
  *   - Rendering: status-driven (optimistic / streaming / delivered / failed)
  */
@@ -23,6 +24,8 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { findCachedOwnerChatRoom, useOwnerChatStore } from "@/store/useOwnerChatStore";
+import { messageCacheOwnerKey, useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { resolveOwnerChatRoom } from "@/lib/owner-chat-room";
 import { useOwnerChatWs } from "@/hooks/useOwnerChatWs";
 import { messageList } from "@/lib/i18n/translations/dashboard";
 import DashboardMessagePaneSkeleton, { MessageHistoryLoading } from "./DashboardMessagePaneSkeleton";
@@ -106,6 +109,8 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const locale = useLanguage();
   const router = useRouter();
   const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
+  const ownerHumanId = useDashboardSessionStore((s) => s.human?.human_id ?? null);
+  const hasSession = useDashboardSessionStore((s) => Boolean(s.token));
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const chatAgentId = agentId || activeAgentId || null;
   const setSelectedBotAgentId = useDashboardUIStore((s) => s.setSelectedBotAgentId);
@@ -235,8 +240,9 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
 
   // ------ Initialize chat room and load messages ------
   useLayoutEffect(() => {
-    if (!chatAgentId) return;
+    if (!chatAgentId || !hasSession) return;
     let cancelled = false;
+    const ownerKey = messageCacheOwnerKey();
 
     // Reset store for fresh agent
     setInitError(null);
@@ -263,8 +269,12 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
 
     (async () => {
       try {
-        const room = cachedRoom ?? await api.getUserChatRoom(chatAgentId);
-        if (cancelled) return;
+        const room = cachedRoom ?? await resolveOwnerChatRoom(chatAgentId);
+        if (cancelled || messageCacheOwnerKey() !== ownerKey) return;
+        useDashboardChatStore.getState().upsertOptimisticOwnerChatRoom({
+          agent_id: chatAgentId,
+          display_name: ownedAgent?.display_name || room.name || chatAgentId,
+        }, room.room_id);
         setChatRoomName(room.name);
         setUserChatRoomId(room.room_id);
         useOwnerChatStore.getState().setRoom(room.room_id, room.name || chatAgentId);
@@ -277,7 +287,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
           entranceAnimatedRef.current.add(msg.clientId);
         }
         await initialRequest;
-        if (cancelled) return;
+        if (cancelled || messageCacheOwnerKey() !== ownerKey) return;
         // Historical messages must not replay the typewriter animation. Populate
         // animatedRef synchronously here so the first render that sees them
         // already considers them animated.
@@ -294,16 +304,16 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
         // final reply (refresh/reconnect recovery). Best-effort; never throws.
         void useOwnerChatStore.getState().restoreActiveRuns(chatAgentId);
       } catch (err: any) {
-        if (cancelled) return;
+        if (cancelled || messageCacheOwnerKey() !== ownerKey) return;
         setInitError(err?.message || "Failed to initialize chat");
       } finally {
-        if (!cancelled) setInitializingRoom(false);
+        if (!cancelled && messageCacheOwnerKey() === ownerKey) setInitializingRoom(false);
       }
     })();
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatAgentId]);
+  }, [chatAgentId, ownerHumanId, hasSession]);
 
   // ------ Scroll to bottom once initial messages render ------
   useEffect(() => {

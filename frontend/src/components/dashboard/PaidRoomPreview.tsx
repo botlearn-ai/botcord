@@ -1,22 +1,22 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 api.getPublicRoomMessagePreviews 拉取订阅房间公开摘要，依赖 SubscriptionBadge 完成登录/订阅入口
+ * [INPUT]: 依赖有界页面缓存及公开摘要 API，保留已加载摘要并后台复核，依赖 SubscriptionBadge 完成登录/订阅入口
  * [OUTPUT]: 对外提供 PaidRoomPreview 组件，向未订阅用户展示固定 3 条消息摘要与订阅动作
  * [POS]: dashboard 付费房间门前橱窗，被 ChatPane 的付费未加入分支消费，避免权限空态变成黑洞
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Lock } from "lucide-react";
-import { api } from "@/lib/api";
+import { useStore } from "zustand";
+import { getPaidRoomPreviewStore } from "./paid-room-preview-cache";
 import type { PublicRoomMessagePreview } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
 import { chatPane } from "@/lib/i18n/translations/dashboard";
 import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import SubscriptionBadge from "./SubscriptionBadge";
 
-const PREVIEW_LIMIT = 3;
 
 function senderName(message: PublicRoomMessagePreview): string {
   return message.sender_name || message.sender_id;
@@ -47,36 +47,15 @@ export default function PaidRoomPreview({
 }) {
   const locale = useLanguage();
   const t = chatPane[locale];
-  const [messages, setMessages] = useState<PublicRoomMessagePreview[]>([]);
-  const [loading, setLoading] = useState(false);
+  const store = useMemo(() => getPaidRoomPreviewStore(roomId, productId), [roomId, productId]);
+  const { messages, loading, error, load } = useStore(store);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setMessages([]);
-
-    api.getPublicRoomMessagePreviews(roomId)
-      .then((result) => {
-        if (cancelled) return;
-        setMessages(result.messages.slice(0, PREVIEW_LIMIT));
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.error("[PaidRoomPreview] Failed to load preview messages:", error);
-          setMessages([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [roomId]);
+    void load();
+  }, [load, roomId, productId]);
 
   const previewMessages = useMemo(
-    () => messages
+    () => (messages ?? [])
       .map((message) => ({ message, text: message.preview }))
       .filter((item) => item.text.length > 0),
     [messages],
@@ -107,6 +86,13 @@ export default function PaidRoomPreview({
                 textClassName="text-xs text-text-secondary"
               />
             </div>
+          ) : error && messages === null ? (
+            <div role="alert" className="rounded-lg border border-glass-border px-3 py-5 text-center text-xs text-text-secondary">
+              <p>{locale === "zh" ? "预览加载失败" : "Unable to load previews"}</p>
+              <button type="button" onClick={() => void load()} className="mt-2 text-neon-cyan hover:underline">
+                {locale === "zh" ? "重试" : "Retry"}
+              </button>
+            </div>
           ) : previewMessages.length > 0 ? (
             <div className="space-y-2">
               {previewMessages.map(({ message, text }) => (
@@ -129,6 +115,15 @@ export default function PaidRoomPreview({
             </div>
           )}
         </div>
+
+        {error && messages !== null ? (
+          <p role="status" className="mt-3 text-xs text-text-secondary">
+            {locale === "zh" ? "暂时无法更新预览。" : "Unable to refresh previews. "}
+            <button type="button" onClick={() => void load()} className="ml-1 text-neon-cyan hover:underline">
+              {locale === "zh" ? "重试" : "Retry"}
+            </button>
+          </p>
+        ) : null}
 
         <div className="mt-6 flex justify-center">
           <SubscriptionBadge
