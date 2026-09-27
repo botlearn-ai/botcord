@@ -19,6 +19,8 @@ export interface CapabilityEvidence {
   score: number | null;
   value: unknown;
   sample: number | null;
+  /** Share of a smoothed score that comes from observation (0–1); null when not smoothed. */
+  confidence: number | null;
 }
 
 export interface CapabilityAxis {

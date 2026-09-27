@@ -10,8 +10,13 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from hub.enums import MessagePolicy, MessageState, TopicStatus
-from hub.models import Agent, AgentSchedule, Base, Block, MessageRecord, Room, Topic, UsageEvent, User
-from hub.services.agent_capability import effective_skill_count, model_tier
+from hub.models import Agent, AgentSchedule, Base, Block, MessageRecord, Room, Topic, User
+from hub.services.agent_capability import (
+    effective_skill_count,
+    model_capability_score,
+    model_cost_score,
+    resolve_model,
+)
 
 TEST_SUPABASE_SECRET = "test-supabase-jwt-secret-for-unit-tests"
 
@@ -71,7 +76,7 @@ def _msg(n: int, sender: str, receiver: str, room: str, at: datetime.datetime, *
         receiver_id=receiver,
         room_id=room,
         state=kw.pop("state", MessageState.done),
-        envelope_json=json.dumps({"payload": {"text": "x"}}),
+        envelope_json=json.dumps({"type": kw.pop("env_type", "message"), "payload": {"text": "x"}}),
         ttl_sec=3600,
         created_at=at,
         **kw,
@@ -183,36 +188,34 @@ async def seed(db_session: AsyncSession):
     rows.append(
         _msg(n, "ag_cap001", "hu_owner", "rm_oc_cap", now - datetime.timedelta(days=20) + datetime.timedelta(seconds=30))
     )
-    db_session.add_all(rows)
-    for i, tokens in enumerate([10_000, 20_000, 40_000]):
-        db_session.add(
-            UsageEvent(
-                user_id=user_id,
-                agent_id="ag_cap001",
-                run_id=f"run_{i}",
-                provider="p",
-                model="m",
-                output_tokens=tokens,
-                idempotency_key=f"idem_{i}",
-            )
+    # The day-21 owner-chat turn ends in a runtime error reply.
+    n += 1
+    rows.append(
+        _msg(
+            n, "ag_cap001", "hu_owner", "rm_oc_cap", now - datetime.timedelta(days=21) + datetime.timedelta(seconds=10),
+            env_type="error",
         )
+    )
+    db_session.add_all(rows)
     await db_session.commit()
     return {"token": _make_token(str(supabase_uid))}
-
-
-AXES_KEYS = ("efficacy", "latency", "reliability", "cost", "autonomy", "assurance")
 
 
 def _axes(body: dict) -> dict:
     return {axis["key"]: axis["layers"] for axis in body["axes"]}
 
 
-def test_model_tier_and_skills():
-    assert model_tier("claude-code", "opus") == (95, 40)
-    assert model_tier("codex", "gpt-5-mini")[0] == 60
-    assert model_tier("codex", "gpt-5.2")[0] == 90
-    assert model_tier("claude-code", None)[0] == 85
-    assert model_tier(None, None) is None
+def test_model_resolution_and_scores():
+    assert resolve_model("claude-code", "opus").name == "claude-opus-5.5"
+    assert resolve_model("codex", "gpt-5.6-sol").name == "gpt-5.6-sol"
+    assert resolve_model("codex", "gpt-5.6-luna").name == "gpt-5.6-luna"
+    assert resolve_model("codex", "gpt-5-mini").name == "gpt-5.6-luna"
+    assert resolve_model("claude-code", None).name == "claude-sonnet-5"
+    assert resolve_model("claude-code", "some-unknown-model") is None
+    assert resolve_model(None, None) is None
+    opus, flash = resolve_model(None, "opus"), resolve_model(None, "deepseek-v4-flash")
+    assert model_capability_score(opus) > model_capability_score(flash)
+    assert model_cost_score(opus) < model_cost_score(flash)
     assert effective_skill_count(None) is None
     assert effective_skill_count([{"name": "botcord"}, {"name": "a"}, {"name": "a"}]) == 1
 
@@ -231,31 +234,41 @@ async def test_capability_scores_owned_agent(client: AsyncClient, seed: dict):
     axes = _axes(body)
 
     # L0
-    assert axes["efficacy"]["l0"]["value"] == {"model": "opus", "skills": 2}
+    assert axes["efficacy"]["l0"]["value"] == {"model": "claude-opus-5.5", "index": 58, "skills": 2}
+    assert axes["efficacy"]["l0"]["score"] == 81  # 0.8 × index score 93 + 0.2 × skills 33
     assert axes["latency"]["l0"]["score"] == 70
-    assert axes["cost"]["l0"]["score"] == 40
+    assert axes["cost"]["l0"]["score"] == 29  # $8/M blended on a $0.3–$30 log scale
+    assert axes["cost"]["l0"]["value"] == {"model": "claude-opus-5.5", "blended_price": 8.0}
     assert axes["autonomy"]["l0"]["value"] == 1
 
     # L1
-    assert axes["efficacy"]["l1"]["value"] == pytest.approx(2 / 3, abs=1e-3)
+    efficacy = axes["efficacy"]["l1"]
+    # 6 answered turns (1 error) + 3 topics (2 completed) → 7/9, smoothed toward L0 81.
+    assert efficacy["value"] == {
+        "turns": 6, "turn_errors": 1, "topics": 3, "topics_completed": 2,
+        "observed_rate": pytest.approx(7 / 9, abs=1e-3),
+    }
+    assert efficacy["sample"] == 9
+    assert efficacy["score"] == 79
+    assert efficacy["confidence"] == pytest.approx(9 / 14, abs=0.01)
     latency = axes["latency"]["l1"]
     # 6 DMs + 2 owner-chat turns; hub notices and group fan-out excluded.
     assert latency["sample"] == 8
-    assert latency["value"] == {"reply_rate": pytest.approx(5 / 8, abs=1e-3), "median_seconds": 60}
+    assert latency["value"] == {"reply_rate": pytest.approx(6 / 8, abs=1e-3), "median_seconds": 60}
     reliability = axes["reliability"]
     # 12 peer rows + 2 owner-chat turns; hub notices excluded.
     assert reliability["l1"]["value"]["delivery_rate"] == pytest.approx(13 / 14, abs=1e-3)
     assert reliability["l1"]["value"]["schedule_success_rate"] is None
-    # Owner-chat human turn on day 21 is not the agent's activity.
-    assert reliability["l1"]["value"]["active_days"] == 10
+    # Owner-chat human turns never count as the agent's activity; day 21 counts
+    # only through the agent's own error reply.
+    assert reliability["l1"]["value"]["active_days"] == 11
     # Activity is informational only; score is the delivery rate alone.
     assert reliability["l1"]["score"] == round(13 / 14 * 100)
-    assert axes["cost"]["l1"]["value"] == 20_000
-    assert axes["cost"]["l1"]["score"] == 100
-    # 10 authored messages: 5 replies + 5 self-initiated posts.
-    assert axes["autonomy"]["l1"]["sample"] == 10
-    assert axes["autonomy"]["l1"]["value"] == pytest.approx(0.5, abs=1e-3)
-    assert axes["autonomy"]["l1"]["score"] == 100
+    assert axes["cost"]["l1"]["score"] == axes["cost"]["l0"]["score"]
+    assert axes["cost"]["l1"]["value"]["basis"] == "model_price"
+    # 11 authored messages: 6 replies + 5 self-initiated posts.
+    assert axes["autonomy"]["l1"]["sample"] == 11
+    assert axes["autonomy"]["l1"]["value"] == pytest.approx(5 / 11, abs=1e-3)
     assert axes["assurance"]["l1"]["value"] == {"blocks": 1, "recalled": 0}
     assert axes["assurance"]["l1"]["score"] == 80
     assert body["layer_scores"]["l0"] is not None
@@ -270,9 +283,12 @@ async def test_capability_insufficient_samples_are_null(client: AsyncClient, see
     )
     assert resp.status_code == 200
     axes = _axes(resp.json())
-    for key in AXES_KEYS:
+    for key in ("latency", "reliability", "autonomy", "assurance"):
         assert axes[key]["l1"]["score"] is None, key
+    # Unknown model and no turns: nothing to smooth toward, so no efficacy score.
     assert axes["efficacy"]["l0"]["score"] is None
+    assert axes["efficacy"]["l1"]["score"] is None
+    assert axes["cost"]["l1"]["score"] is None
 
 
 @pytest.mark.asyncio

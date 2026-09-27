@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: agentId + capability rating API
- * [OUTPUT]: AgentCapabilityCard — six general axes with one radar polygon per evidence layer (L0 declared, L1 observed)
+ * [OUTPUT]: AgentCapabilityCard — six general axes with one radar polygon per evidence layer (L0 declared, L1 observed); low-confidence points drawn hollow
  * [POS]: Bot detail drawer Overview tab
  * [PROTOCOL]: update header on changes
  */
@@ -36,14 +36,18 @@ const COPY = {
     window: (n: number) => `Last ${n} days`,
     loadFailed: "Failed to load rating",
     skills: (n: number) => `${n} skills`,
-    completion: "done",
+    index: (n: number) => `index ${n}`,
+    turnsOk: (ok: number, n: number) => `${ok}/${n} turns ok`,
+    topicsOk: (ok: number, n: number) => `${ok}/${n} topics done`,
+    confidence: (p: number) => `confidence ${p}%`,
+    pricePerM: (p: number) => `$${p}/M tokens`,
+    byModelPrice: "by model list price",
     reply: "reply",
     profile: "profile",
     ageDays: (n: number) => `${n}d old`,
     delivery: "delivery",
     schedules: "schedules",
     activeDays: (n: number, total: number) => `active ${n}/${total}d`,
-    perRun: "tokens/run",
     scheduleCount: (n: number) => `${n} schedules`,
     proactive: "self-initiated",
     guarded: "guarded",
@@ -65,14 +69,18 @@ const COPY = {
     window: (n: number) => `近 ${n} 天`,
     loadFailed: "评级加载失败",
     skills: (n: number) => `${n} 个技能`,
-    completion: "完成率",
+    index: (n: number) => `指数 ${n}`,
+    turnsOk: (ok: number, n: number) => `成功 ${ok}/${n} 轮`,
+    topicsOk: (ok: number, n: number) => `topic 完成 ${ok}/${n}`,
+    confidence: (p: number) => `置信 ${p}%`,
+    pricePerM: (p: number) => `$${p}/百万 token`,
+    byModelPrice: "按模型单价",
     reply: "回复率",
     profile: "资料",
     ageDays: (n: number) => `注册 ${n} 天`,
     delivery: "投递",
     schedules: "定时成功",
     activeDays: (n: number, total: number) => `活跃 ${n}/${total} 天`,
-    perRun: "tokens/次",
     scheduleCount: (n: number) => `${n} 个定时任务`,
     proactive: "主动发起",
     guarded: "防护",
@@ -105,10 +113,6 @@ function formatDuration(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)}h`;
 }
 
-function formatTokens(n: number): string {
-  return n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`;
-}
-
 function join(parts: (string | null | false | undefined)[]): string {
   return parts.filter(Boolean).join(" · ");
 }
@@ -127,10 +131,15 @@ function describe(
   if (layer === "l0") {
     switch (axis) {
       case "efficacy":
-        return join([o.model as string, typeof o.skills === "number" && copy.skills(o.skills)]);
+        return join([
+          o.model as string,
+          typeof o.index === "number" && copy.index(o.index),
+          typeof o.skills === "number" && copy.skills(o.skills),
+        ]);
       case "latency":
-      case "cost":
         return typeof v === "string" ? v : "";
+      case "cost":
+        return join([o.model as string, typeof o.blended_price === "number" && copy.pricePerM(o.blended_price)]);
       case "reliability":
         return join([`${copy.profile} ${o.profile}/${o.profile_total}`, copy.ageDays(o.age_days as number)]);
       case "autonomy":
@@ -141,7 +150,12 @@ function describe(
   }
   switch (axis) {
     case "efficacy":
-      return join([`${copy.completion} ${pct(v)}`, n]);
+      return join([
+        (o.turns as number) > 0 &&
+          copy.turnsOk((o.turns as number) - (o.turn_errors as number), o.turns as number),
+        (o.topics as number) > 0 && copy.topicsOk(o.topics_completed as number, o.topics as number),
+        ev.confidence != null && copy.confidence(Math.round(ev.confidence * 100)),
+      ]);
     case "latency":
       return join([
         `${copy.reply} ${pct(o.reply_rate)}`,
@@ -154,7 +168,7 @@ function describe(
         copy.activeDays(o.active_days as number, windowDays),
       ]);
     case "cost":
-      return join([`p50 ${formatTokens(v as number)} ${copy.perRun}`, n]);
+      return join([copy.byModelPrice, typeof o.blended_price === "number" && copy.pricePerM(o.blended_price)]);
     case "autonomy":
       return join([`${copy.proactive} ${pct(v)}`, n]);
     case "assurance":
@@ -190,10 +204,13 @@ function Radar({ axes, copy }: { axes: CapabilityAxis[]; copy: Copy }) {
         const { color, dash } = LAYER_STYLE[layer];
         // Axes without evidence are skipped rather than pulled to the center,
         // which would draw spikes through the origin.
-        const points = axes.flatMap((axis, i) => {
-          const score = axis.layers[layer].score;
-          return score === null ? [] : [point(i, total, score)];
+        const cells = axes.flatMap((axis, i) => {
+          const { score, confidence } = axis.layers[layer];
+          if (score === null) return [];
+          // Mostly-prior (smoothed, little observation) points are drawn hollow.
+          return [{ at: point(i, total, score), weak: confidence !== null && confidence < 0.5 }];
         });
+        const points = cells.map((c) => c.at);
         const shape = {
           points: points.map((p) => p.join(",")).join(" "),
           stroke: color,
@@ -208,9 +225,13 @@ function Radar({ axes, copy }: { axes: CapabilityAxis[]; copy: Copy }) {
             ) : points.length === 2 ? (
               <polyline {...shape} fill="none" />
             ) : null}
-            {points.map(([x, y], i) => (
-              <circle key={i} cx={x} cy={y} r={2.2} fill={color} />
-            ))}
+            {cells.map(({ at: [x, y], weak }, i) =>
+              weak ? (
+                <circle key={i} cx={x} cy={y} r={2.6} fill="var(--color-deep-black)" stroke={color} strokeWidth={1.2} />
+              ) : (
+                <circle key={i} cx={x} cy={y} r={2.2} fill={color} />
+              ),
+            )}
           </g>
         );
       })}
