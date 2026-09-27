@@ -3,6 +3,7 @@
 > L2 | 父级: /Users/chenxuejia/ws/2026/botcord/backend/hub/README.md
 
 成员清单
+agent_capability.py: Agent 能力评级，基于声明信息（L0）与消息元数据（L1）计算分层分数，不读消息内容。
 spaces.py: Team 身份基础，负责个人空间、组织邀请、Agent 双方确认入组与版本化撤权。
 __init__.py: 服务层包导出入口，保持 `hub.services` 可导入。  
 stripe_topup.py: Stripe Checkout 充值编排，负责 session 创建与 webhook 履约。  
