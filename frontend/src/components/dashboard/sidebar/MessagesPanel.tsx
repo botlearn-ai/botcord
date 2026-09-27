@@ -10,8 +10,8 @@ import { buildVisibleMessageRooms, isOwnerChatRoom } from "@/store/dashboard-sha
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
-import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
+import { useDashboardContactStore } from "@/store/useDashboardContactStore";
 import { Bot, ChevronsRight, ListFilter, MessageSquarePlus, Plus, Search, UserPlus, UserPlus2 } from "lucide-react";
 import MessagesBotScopeDropdown from "./MessagesBotScopeDropdown";
 import MessagesGroupingSidebar from "./MessagesGroupingSidebar";
@@ -45,8 +45,9 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
   const t = sidebar[locale];
   const tGrouping = messagesGrouping[locale];
 
-  const { sessionMode, token, humanRooms, ownedAgents } = useDashboardSessionStore(useShallow((s) => ({
+  const { sessionMode, activeIdentity, token, humanRooms, ownedAgents } = useDashboardSessionStore(useShallow((s) => ({
     sessionMode: s.sessionMode,
+    activeIdentity: s.activeIdentity,
     token: s.token,
     humanRooms: s.humanRooms,
     ownedAgents: s.ownedAgents,
@@ -74,16 +75,15 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     [contactRequestsReceived],
   );
   const pendingRequestCount = pendingRequests.length;
-  const { overview, messages, recentVisitedRooms, ownedAgentRooms } = useDashboardChatStore(useShallow((s) => ({
+  const { overview, overviewErrored, recentVisitedRooms, ownedAgentRooms, ownedAgentRoomsLoaded } = useDashboardChatStore(useShallow((s) => ({
     overview: s.overview,
-    messages: s.messages,
+    overviewErrored: s.overviewErrored,
     recentVisitedRooms: s.recentVisitedRooms,
     ownedAgentRooms: s.ownedAgentRooms,
+    ownedAgentRoomsLoaded: s.ownedAgentRoomsLoaded,
   })));
-  const { optimisticUnreadRoomIds, isRoomUnread } = useDashboardUnreadStore(useShallow((s) => ({
-    optimisticUnreadRoomIds: s.optimisticUnreadRoomIds,
-    isRoomUnread: s.isRoomUnread,
-  })));
+  // Keep unread changes propagating to the room rows.
+  useDashboardUnreadStore((state) => state.optimisticUnreadRoomIds);
 
   const [messageQuery, setMessageQuery] = useState("");
   const [mobileGroupingOpen, setMobileGroupingOpen] = useState(false);
@@ -117,12 +117,19 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
   }, [typeFilteredRooms, isBotsScope, messagesBotScope]);
 
   const normalizedMessageQuery = messageQuery.trim().toLowerCase();
+  // Only subscribe to cached previews while searching, and only in this scope.
+  // History loads and messages in other rooms must not rebuild the whole panel.
+  const searchPreviews = useDashboardChatStore(useShallow((state) =>
+    normalizedMessageQuery
+      ? categorizedRooms.map((room) => state.messages[room.room_id]?.findLast(
+          (message) => message.type !== "ack" && message.type !== "result" && message.type !== "error",
+        ))
+      : [],
+  ));
   const filteredMessageRooms = useMemo(() => {
     if (!normalizedMessageQuery) return categorizedRooms;
-    return categorizedRooms.filter((room) => {
-      const cachedLatestMessage = messages[room.room_id]?.findLast(
-        (m) => m.type !== "ack" && m.type !== "result" && m.type !== "error",
-      );
+    return categorizedRooms.filter((room, index) => {
+      const cachedLatestMessage = searchPreviews[index];
       const searchHaystack = [
         room.name, room.room_id, room.description,
         room.last_message_preview, room.last_sender_name,
@@ -130,13 +137,18 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
       ].filter(Boolean).join("\n").toLowerCase();
       return searchHaystack.includes(normalizedMessageQuery);
     });
-  }, [messages, normalizedMessageQuery, categorizedRooms]);
+  }, [searchPreviews, normalizedMessageQuery, categorizedRooms]);
 
-  const showOverviewSkeleton = sessionMode === "authed-ready" && !overview && sidebarTab === "messages";
-  const showRoomListSkeleton = showOverviewSkeleton;
+  // Independent sources may resolve in any order. Never hide usable rows while
+  // waiting for another source, or show onboarding before initial loads finish.
+  const awaitingInitialRooms = sessionMode !== "guest" && (
+    (!overview && !overviewErrored)
+    || (activeIdentity?.type === "human" && !ownedAgentRoomsLoaded)
+  );
+  const showRoomListSkeleton = awaitingInitialRooms && filteredMessageRooms.length === 0;
 
   useEffect(() => {
-    if (isGuest || sidebarTab !== "messages" || showOverviewSkeleton) return;
+    if (isGuest || sidebarTab !== "messages" || showRoomListSkeleton) return;
     if (messagesShowRequests || messagesPane === "user-chat") return;
 
     const candidateRooms = (normalizedMessageQuery ? filteredMessageRooms : categorizedRooms)
@@ -162,7 +174,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
     messagesPane,
     messagesShowRequests,
     normalizedMessageQuery,
-    showOverviewSkeleton,
+    showRoomListSkeleton,
     sidebarTab,
   ]);
 
@@ -248,13 +260,13 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
   useEffect(() => () => cleanupAnime(mobileGroupingAnimationRef.current), []);
 
   useEffect(() => {
-    if (showOverviewSkeleton) return;
+    if (showRoomListSkeleton) return;
     const emptyState = emptyStateRef.current;
     if (!emptyState) return;
 
     const animation = animateFadeUp(emptyState);
     return () => cleanupAnime(animation);
-  }, [filteredMessageRooms.length, isBotsScope, ownedAgents.length, showOverviewSkeleton, visibleMessageRooms.length]);
+  }, [filteredMessageRooms.length, isBotsScope, ownedAgents.length, showRoomListSkeleton, visibleMessageRooms.length]);
 
   // (filter chips moved into MessagesGroupingSidebar as expandable children)
 
@@ -395,7 +407,9 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           <MessagesBotScopeDropdown rooms={typeFilteredRooms} />
         </div>
       ) : null}
-      {isBotsScope && ownedAgents.length === 0 ? (
+      {showRoomListSkeleton ? (
+        <RoomList rooms={[]} loading />
+      ) : isBotsScope && ownedAgents.length === 0 ? (
         <div ref={emptyStateRef} className="liquid-empty-state m-3 flex flex-1 flex-col items-center justify-center rounded-2xl border border-glass-border px-6 py-12 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40">
             <Bot className="h-7 w-7 text-text-secondary/70" />
@@ -416,7 +430,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
         <div ref={emptyStateRef}>
           <RoomZeroState compact />
         </div>
-      ) : !showOverviewSkeleton && filteredMessageRooms.length === 0 ? (
+      ) : filteredMessageRooms.length === 0 ? (
         <div ref={emptyStateRef} className="liquid-empty-state m-3 rounded-2xl border border-glass-border px-4 py-6 text-center text-xs text-text-secondary">
           {t.noMessages}
         </div>
@@ -424,10 +438,9 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
         <>
           <RoomList
             rooms={filteredMessageRooms}
-            loading={showRoomListSkeleton}
             searchQuery={messageQuery}
           />
-          {!showOverviewSkeleton && !normalizedMessageQuery && filteredMessageRooms.length < 5 && (
+          {!normalizedMessageQuery && filteredMessageRooms.length < 5 && (
             <div className="liquid-card mx-3 mb-3 mt-auto rounded-2xl border border-dashed border-glass-border/60 p-4">
               <p className="text-[11px] font-semibold text-text-secondary/80">
                 {locale === "zh" ? "发现更多社区" : "Discover communities"}
