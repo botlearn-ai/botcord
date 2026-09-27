@@ -243,14 +243,13 @@ async def test_capability_scores_owned_agent(client: AsyncClient, seed: dict):
 
     # L1
     efficacy = axes["efficacy"]["l1"]
-    # 6 answered turns (1 error) + 3 topics (2 completed) → 7/9, smoothed toward L0 81.
+    # Topics only (2/3 completed), smoothed toward L0 81; runtime errors live in reliability.
     assert efficacy["value"] == {
-        "turns": 6, "turn_errors": 1, "topics": 3, "topics_completed": 2,
-        "observed_rate": pytest.approx(7 / 9, abs=1e-3),
+        "topics": 3, "topics_completed": 2, "observed_rate": pytest.approx(2 / 3, abs=1e-3),
     }
-    assert efficacy["sample"] == 9
-    assert efficacy["score"] == 79
-    assert efficacy["confidence"] == pytest.approx(9 / 14, abs=0.01)
+    assert efficacy["sample"] == 3
+    assert efficacy["score"] == 76
+    assert efficacy["confidence"] == pytest.approx(3 / 8, abs=0.01)
     latency = axes["latency"]["l1"]
     # 6 DMs + 2 owner-chat turns; hub notices and group fan-out excluded.
     assert latency["sample"] == 8
@@ -262,8 +261,11 @@ async def test_capability_scores_owned_agent(client: AsyncClient, seed: dict):
     # Owner-chat human turns never count as the agent's activity; day 21 counts
     # only through the agent's own error reply.
     assert reliability["l1"]["value"]["active_days"] == 11
-    # Activity is informational only; score is the delivery rate alone.
-    assert reliability["l1"]["score"] == round(13 / 14 * 100)
+    # 6 answered turns, 1 runtime error reply.
+    assert reliability["l1"]["value"]["runtime_success_rate"] == pytest.approx(5 / 6, abs=1e-3)
+    assert reliability["l1"]["value"]["runtime_turns"] == 6
+    # Activity is informational only; score = mean(delivery, runtime success).
+    assert reliability["l1"]["score"] == round((13 / 14 + 5 / 6) / 2 * 100)
     assert axes["cost"]["l1"]["score"] == axes["cost"]["l0"]["score"]
     assert axes["cost"]["l1"]["value"]["basis"] == "model_price"
     # 11 authored messages: 6 replies + 5 self-initiated posts.

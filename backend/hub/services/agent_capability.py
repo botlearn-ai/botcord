@@ -389,29 +389,36 @@ def _latency(turns: list[_Turn]) -> dict:
     )
 
 
-def _efficacy(turns: list[_Turn], topics: tuple[int, int], prior: float | None) -> dict:
-    """Share of answered turns that did not end in a runtime error, plus topic
-    outcomes, smoothed toward the L0 prior. Unanswered turns belong to latency."""
-    answered = [t for t in turns if t.reply_type is not None]
-    ok_turns = sum(1 for t in answered if t.reply_type != "error")
+def _efficacy(topics: tuple[int, int], prior: float | None) -> dict:
+    """Topic outcomes smoothed toward the L0 prior.
+
+    Runtime error replies are an execution-health signal and live in
+    reliability; until counterparty ratings (L2) exist this is mostly prior.
+    """
     topics_ok, topics_total = topics
-    successes = ok_turns + topics_ok
-    trials = len(answered) + topics_total
-    if trials == 0 and prior is None:
+    if topics_total == 0 and prior is None:
         return _ev(None, sample=0)
-    score, confidence = _smoothed(successes, trials, prior)
+    score, confidence = _smoothed(topics_ok, topics_total, prior)
     return _ev(
         score,
         {
-            "turns": len(answered),
-            "turn_errors": len(answered) - ok_turns,
             "topics": topics_total,
             "topics_completed": topics_ok,
-            "observed_rate": round(successes / trials, 3) if trials else None,
+            "observed_rate": round(topics_ok / topics_total, 3) if topics_total else None,
         },
-        trials,
+        topics_total,
         confidence,
     )
+
+
+def _runtime_success_rate(turns: list[_Turn]) -> tuple[float | None, int]:
+    """Share of answered turns whose reply is not a daemon runtime error
+    (timeout, runtime exception, usage/budget limit)."""
+    answered = [t for t in turns if t.reply_type is not None]
+    if len(answered) < MIN_REPLY_SAMPLE:
+        return None, len(answered)
+    ok = sum(1 for t in answered if t.reply_type != "error")
+    return ok / len(answered), len(answered)
 
 
 async def _outbound_by_room(
@@ -496,10 +503,13 @@ async def _active_days(db: AsyncSession, agent_id: str, start: datetime.datetime
     ).scalar_one()
 
 
-async def _reliability(db: AsyncSession, agent_id: str, now: datetime.datetime) -> dict:
+async def _reliability(
+    db: AsyncSession, agent_id: str, turns: list[_Turn], now: datetime.datetime
+) -> dict:
     start = now - datetime.timedelta(days=WINDOW_DAYS)
     delivery = await _delivery_rate(db, agent_id, now)
     schedules = await _schedule_success_rate(db, agent_id, start)
+    runtime, runtime_turns = _runtime_success_rate(turns)
     days = await _active_days(db, agent_id, start)
     # Active days are shown for context but not scored: an idle agent is not an
     # unreliable one.
@@ -508,11 +518,14 @@ async def _reliability(db: AsyncSession, agent_id: str, now: datetime.datetime) 
             [
                 None if delivery is None else delivery * 100,
                 None if schedules is None else schedules * 100,
+                None if runtime is None else runtime * 100,
             ]
         ),
         {
             "delivery_rate": None if delivery is None else round(delivery, 3),
             "schedule_success_rate": None if schedules is None else round(schedules, 3),
+            "runtime_success_rate": None if runtime is None else round(runtime, 3),
+            "runtime_turns": runtime_turns,
             "active_days": days,
         },
     )
@@ -602,9 +615,9 @@ async def _l1(db: AsyncSession, agent: Agent, l0: dict[str, dict], now: datetime
     # list price itself — the same fact as L0, labelled as such.
     cost = {**l0["cost"], "value": {**(l0["cost"]["value"] or {}), "basis": "model_price"}}
     return {
-        "efficacy": _efficacy(turns, topics, l0["efficacy"]["score"]),
+        "efficacy": _efficacy(topics, l0["efficacy"]["score"]),
         "latency": _latency(turns),
-        "reliability": await _reliability(db, aid, now),
+        "reliability": await _reliability(db, aid, turns, now),
         "cost": cost,
         "autonomy": await _autonomy(db, aid, now),
         "assurance": await _assurance(db, aid, start),

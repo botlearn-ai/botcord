@@ -37,7 +37,8 @@ const COPY = {
     loadFailed: "Failed to load rating",
     skills: (n: number) => `${n} skills`,
     index: (n: number) => `index ${n}`,
-    turnsOk: (ok: number, n: number) => `${ok}/${n} turns ok`,
+    runtime: "runtime ok",
+    noTopics: "no topics yet",
     topicsOk: (ok: number, n: number) => `${ok}/${n} topics done`,
     confidence: (p: number) => `confidence ${p}%`,
     pricePerM: (p: number) => `$${p}/M tokens`,
@@ -70,7 +71,8 @@ const COPY = {
     loadFailed: "评级加载失败",
     skills: (n: number) => `${n} 个技能`,
     index: (n: number) => `指数 ${n}`,
-    turnsOk: (ok: number, n: number) => `成功 ${ok}/${n} 轮`,
+    runtime: "运行成功",
+    noTopics: "暂无 topic",
     topicsOk: (ok: number, n: number) => `topic 完成 ${ok}/${n}`,
     confidence: (p: number) => `置信 ${p}%`,
     pricePerM: (p: number) => `$${p}/百万 token`,
@@ -151,9 +153,9 @@ function describe(
   switch (axis) {
     case "efficacy":
       return join([
-        (o.turns as number) > 0 &&
-          copy.turnsOk((o.turns as number) - (o.turn_errors as number), o.turns as number),
-        (o.topics as number) > 0 && copy.topicsOk(o.topics_completed as number, o.topics as number),
+        (o.topics as number) > 0
+          ? copy.topicsOk(o.topics_completed as number, o.topics as number)
+          : copy.noTopics,
         ev.confidence != null && copy.confidence(Math.round(ev.confidence * 100)),
       ]);
     case "latency":
@@ -165,6 +167,7 @@ function describe(
       return join([
         o.delivery_rate != null && `${copy.delivery} ${pct(o.delivery_rate)}`,
         o.schedule_success_rate != null && `${copy.schedules} ${pct(o.schedule_success_rate)}`,
+        o.runtime_success_rate != null && `${copy.runtime} ${pct(o.runtime_success_rate)}`,
         copy.activeDays(o.active_days as number, windowDays),
       ]);
     case "cost":
