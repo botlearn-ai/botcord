@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Plus,
   ArrowRight,
+  KeyRound,
 } from "lucide-react";
 import { useStore } from "zustand";
 import { useLanguage } from "@/lib/i18n";
@@ -25,6 +26,7 @@ import {
 } from "@/lib/team-spaces";
 import { subscribeToPageReturn } from "@/lib/page-return";
 import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
+import AgentAccessGrants from "./AgentAccessGrants";
 import { createTeamSpaceStore, type TeamSpaceStore } from "@/store/team-space-store";
 import {
   useConfirm,
@@ -77,6 +79,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
   const [agentId, setAgentId] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  const [sharingAgentId, setSharingAgentId] = useState<string | null>(null);
   const createNameRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (showCreate) createNameRef.current?.focus();
@@ -689,8 +692,8 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                   </h2>
                   <p className="text-sm leading-6 text-text-secondary">
                     {t(
-                      "管理员可直接添加自己拥有的 Agent；其他成员提交申请后由管理员批准。加入后所有权仍属于本人，团队内 Agent 对话与任务执行尚未开放。",
-                      "Managers can add their own Agents; other members apply for approval. Ownership remains personal. Team Agent conversations and task execution are not available yet.",
+                      "管理员可直接添加自己拥有的 Agent；其他成员提交申请后由管理员批准。加入后所有权仍属于本人，所有者可授权组织成员通过私信使用自己的 Agent。",
+                      "Managers can add their own Agents; other members apply for approval. Ownership remains personal. Owners can grant teammates access to their Agents through direct messages.",
                     )}
                   </p>
                   <form
@@ -768,6 +771,22 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                               </p>
                             </div>
                             <div className="flex flex-wrap gap-2">
+                              {agent.status === "active" &&
+                                sponsor?.user_id === snapshot.user.id && (
+                                  <button
+                                    className={button}
+                                    disabled={busy}
+                                    aria-expanded={sharingAgentId === agent.agent_id}
+                                    onClick={() =>
+                                      setSharingAgentId(
+                                        sharingAgentId === agent.agent_id ? null : agent.agent_id,
+                                      )
+                                    }
+                                  >
+                                    <KeyRound size={16} />
+                                    {t("授权成员使用", "Share with members")}
+                                  </button>
+                                )}
                               {manager && agent.status === "invited" && (
                                 <button
                                   className={primary}
@@ -828,6 +847,17 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                                   </button>
                                 )}
                             </div>
+                            {sharingAgentId === agent.agent_id &&
+                              agent.status === "active" &&
+                              sponsor?.user_id === snapshot.user.id && (
+                                <AgentAccessGrants
+                                  spaceId={space.id}
+                                  agentId={agent.agent_id}
+                                  agentName={agent.display_name}
+                                  users={snapshot.members.users}
+                                  userId={snapshot.user.id}
+                                />
+                              )}
                           </li>
                         );
                       })}

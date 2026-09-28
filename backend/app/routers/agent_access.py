@@ -43,6 +43,7 @@ class GrantIn(BaseModel):
 
 async def _grant_out(db: AsyncSession, grant: AgentAccessGrant) -> dict:
     grantee = await db.get(User, grant.grantee_user_id)
+    grantor = await db.get(User, grant.created_by_user_id)
     agent = await db.scalar(select(Agent).where(Agent.agent_id == grant.agent_id))
     return {
         "id": grant.id,
@@ -52,6 +53,8 @@ async def _grant_out(db: AsyncSession, grant: AgentAccessGrant) -> dict:
         "grantee_user_id": grant.grantee_user_id,
         "grantee_human_id": grantee.human_id if grantee else None,
         "grantee_name": grantee.display_name if grantee else None,
+        "granted_by_user_id": grant.created_by_user_id,
+        "granted_by_name": grantor.display_name if grantor else None,
         "role": grant.role,
         "workspace_path": grant.workspace_path,
         "allowed_commands": list(grant.allowed_commands or []),

@@ -13,6 +13,9 @@ vi.mock("./TeamSpacesPage", () => ({
     <div data-management={section} data-shared={Boolean(sharedStore)}>Management</div>
   ),
 }));
+vi.mock("./SharedAgentsPanel", () => ({
+  default: ({ spaceId }: { spaceId: string }) => <div data-shared-agents={spaceId}>Shared</div>,
+}));
 import { TeamWorkspace, teamHref, teamView } from "./TeamWorkspacePage";
 const snapshot = {
   selected: {
@@ -87,6 +90,19 @@ it("does not enable conversation creation against an older Hub", () => {
   expect(html.match(/<button[^>]*aria-label="发起私聊"[^>]*>/)?.[0]).toContain(
     'disabled=""'
   );
+});
+it("lists Agents shared with the member in their own view", () => {
+  const html = renderToStaticMarkup(
+    <TeamWorkspace snapshot={snapshot} onMembershipChanged={() => {}} />
+  );
+  expect(html).toContain('href="/chats/team?space=org-a&amp;view=shared"');
+  route.query.set("view", "shared");
+  const shared = renderToStaticMarkup(
+    <TeamWorkspace snapshot={snapshot} onMembershipChanged={() => {}} />
+  );
+  expect(shared).toContain('data-shared-agents="org-a"');
+  expect(shared).not.toContain("data-management");
+  expect(teamView("shared")).toBe("shared");
 });
 it("keeps the organization in every destination and normalizes unknown views", () => {
   expect(teamView("bad")).toBe("messages");

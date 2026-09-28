@@ -120,6 +120,26 @@
 - **未覆盖**：Kimi 和 OpenClaw ACP 在 daemon 侧无法约束，这两个 runtime 的非 owner 回合维持原行为，并记 warn 日志 `runtime cannot enforce restricted execution`。
 - **已知弱点**：Codex 只读 sandbox 不限制读路径，模型仍可能读到 home 下的文件并写进回复。M1 会通过专属工作目录和剥离环境变量来缓解。
 
+### 5.4 P1 已实现：组织内授权调用（2026-09-28）
+
+验收标准：**在一个组织内，经 owner 授权，可以把一个新建的 agent 开放给另一个成员调用，包括协作者改代码。** 已在本地完整链路（Postgres Hub、新编译的 daemon、真实 Claude Code）上验收，10 项全部通过，另做了越权测试。
+
+| 层 | 实现 |
+|---|---|
+| 数据 | `agent_access_grants`（迁移 `004`）。字段包括组织、agent 及其组织成员身份的版本、被授权人及其成员身份的版本、角色（`consultant` / `collaborator`）、`workspace_path`、`allowed_commands`、有效期、撤销时间、签发人。同一组织、agent、被授权人三者组合只有一条有效授权，新授权会替换旧授权 |
+| 授权规则 | 只有 agent 的 owner 可以授权，被授权人必须是同组织的有效成员，agent 必须已加入该组织。以下任一情况发生，授权立即失效：成员退出或被移除、agent 被移出组织后重新入组、agent 的 owner 变化、授权过期、授权被撤销（`hub/services/agent_access.py`） |
+| API | `POST/GET /api/spaces/{space}/agents/{agent}/access-grants`、`DELETE /api/spaces/{space}/access-grants/{grant}`、`GET /api/spaces/{space}/shared-agents` |
+| 通信 | 复用现有的人与 agent 私信（`/api/dashboard/dms/open` 加 `rooms/{room}/send`）。有有效授权时，建私信房间不再要求是联系人；每次发送都会重新校验，授权失效后返回 403 `agent_access_revoked`，除非对方本来就能正常联系这个 agent |
+| 协议扩展 | Hub 在 `/hub/inbox` 下发 `access_context`：`grant_id`、`role`、`active`、`requester_id`、`workspace_path`、`allowed_commands`。它由 Hub 计算，发送者无法伪造。这里没有像 §4 设计的那样再用控制面密钥签名：inbox 走的是 agent 自己鉴权过的连接，与 `source_type` 的信任级别相同 |
+| daemon | `resolveTurnExecution`：授权优先于路由配置。`active=false` 或 runtime 无法强制约束时，**不启动 CLI**，直接回复提示。协作者目前只支持 CC 和 Codex，其他 runtime 降为只读（咨询者） |
+| 协作者执行 | 每个授权一个 git worktree，分支 `guest/<grant>`；没有仓库时用临时目录。CC 使用 `acceptEdits`，cwd 外的读写、`git push`、`curl` 等都被拒绝，Bash 只允许 git 查看类命令加授权里的 `allowed_commands`。Codex 使用 `workspace-write`，排除 `/tmp` 和 `$TMPDIR`，不开网络。每轮结束由 daemon 以 `BotCord guest <requester>` 的身份提交，并把分支和改动统计附在回复里。宿主机凭据类环境变量会被剥离；会话按授权隔离（`#grant:<id>`） |
+| 前端 | owner 侧：组织 Agent 列表里的"授权成员使用"（`/settings/spaces`、`/chats/team?view=agents`）。被授权人侧：Team 工作区的"可用 Agent"（`/chats/team?view=shared`），点击后进入私信。授权撤销后，输入框给出可读提示 |
+
+**已知限制**：
+- owner 需要在授权里填写自己机器上的仓库路径；审核通过后由 owner 自己合并 `guest/*` 分支，P1 不自动开 PR。
+- Codex 协作者仍然可以读 cwd 外的文件。
+- 授权撤销后，如果被授权人本来也是 agent 的联系人，他在已有私信里的消息也会被 daemon 拒绝执行（因为 inbox 带着 `active=false`）。
+
 ## 6. 快速审核：静态规则 → 审核员（jev / LLM）→ owner
 
 目标是让 owner 不必逐条点确认，同时审核员永远不能把权限放大到角色上限以外。
@@ -189,6 +209,7 @@
 | 阶段 | 内容 |
 |---|---|
 | **M0 受限机制（已实现，只在 team 模式启用）** | 非 owner 请求走受限配置，由 daemon 代为投递回复，受限回合的会话单独隔离；默认关闭，由 team 模式或 owner 按 agent 开启。详见第 5.3 节 |
+| **P1（已实现，覆盖 M1、M2 主体）** | 组织内授权调用：咨询者和协作者，详见 §5.4 |
 | **M1 共享 + 咨询者** | `agent_access_grants`、邀请与撤销、Hub 签发访问上下文、会话与记忆隔离、审计；CC 和 Codex 都支持 |
 | **M2 协作者** | 专属 worktree、环境变量剥离、PreToolUse guard 加静态规则、daemon 负责交付 PR |
 | **M3 快速审核** | `JudgeProvider`（jev 为主，LLM 为备选）、`tool_action` 审批与回传控制帧、operator 角色 |

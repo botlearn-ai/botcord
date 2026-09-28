@@ -94,6 +94,7 @@ async def test_owner_grants_member_and_member_sees_shared_agent(client, db_sessi
     body = resp.json()
     assert body["role"] == "collaborator"
     assert body["grantee_name"] == "Alice"
+    assert body["granted_by_name"] == "Danny"
     assert body["allowed_commands"] == ["npm test"]
 
     listed = await client.get(f"/api/spaces/{org['space']}/agents/ag_barry/access-grants",

@@ -1,5 +1,7 @@
 # Team 实施进度
 
+2026-09-28：P1 Agent 共享已实现。组织内 owner 可以授权成员以咨询者或协作者身份调用自己的 agent，通信复用人与 agent 私信，daemon 在执行层强制约束。详见 [Agent 共享设计 §5.4](agent-sharing-design.md)。需要先应用迁移 `004_agent_access_grants.sql`，再部署 Hub，最后发布 daemon。
+
 2026-09-09：已实现消息式组织工作区、组织房间和成员私聊，详见 [工作区实现与部署说明](team-workspace-messaging.md)。当前改动未部署；Agent 执行授权与私聊审计入口仍未开放。下方 2026-09-08 内容保留为上一批历史记录。
 
 ## 前端组织治理（2026-09-08）

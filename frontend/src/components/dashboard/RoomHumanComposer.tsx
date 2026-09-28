@@ -436,9 +436,13 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
         }
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to send");
+      setError(
+        err instanceof ApiError && err.message === "agent_access_revoked"
+          ? chatPane[locale].agentAccessRevoked
+          : err instanceof Error ? err.message : "Failed to send",
+      );
     }
-  }, [uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchMessageIdentity, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms, replyingTo, setReplyingTo, human?.avatar_url, user?.avatar_url]);
+  }, [locale, uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchMessageIdentity, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms, replyingTo, setReplyingTo, human?.avatar_url, user?.avatar_url]);
 
   if (sendDenied) {
     return (

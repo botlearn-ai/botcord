@@ -39,6 +39,31 @@ export interface SpaceMembers {
   users: SpaceUser[];
   agents: SpaceAgent[];
 }
+export type AgentAccessRole = "consultant" | "collaborator";
+export interface AgentAccessGrant {
+  id: string;
+  space_id: string;
+  agent_id: string;
+  agent_name: string | null;
+  grantee_user_id: string;
+  grantee_human_id: string | null;
+  grantee_name: string | null;
+  granted_by_user_id: string;
+  granted_by_name: string | null;
+  role: AgentAccessRole;
+  workspace_path: string | null;
+  allowed_commands: string[];
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+export interface AgentAccessGrantInput {
+  user_id: string;
+  role: AgentAccessRole;
+  expires_at: string | null;
+  workspace_path?: string | null;
+  allowed_commands?: string[];
+}
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await apiFetch(path, { ...init, cache: "no-store" }, null);
@@ -95,6 +120,24 @@ export const teamSpacesApi = {
   removeAgent: (id: string, agentId: string) =>
     request<void>(`${spacePath(id)}/agents/${part(agentId)}`, {
       method: "DELETE",
+    }),
+  accessGrants: (id: string, agentId: string, signal?: AbortSignal) =>
+    request<{ grants: AgentAccessGrant[] }>(
+      `${spacePath(id)}/agents/${part(agentId)}/access-grants`,
+      { signal },
+    ),
+  grantAccess: (id: string, agentId: string, body: AgentAccessGrantInput) =>
+    request<AgentAccessGrant>(
+      `${spacePath(id)}/agents/${part(agentId)}/access-grants`,
+      post(body),
+    ),
+  revokeAccess: (id: string, grantId: string) =>
+    request<AgentAccessGrant>(`${spacePath(id)}/access-grants/${part(grantId)}`, {
+      method: "DELETE",
+    }),
+  sharedAgents: (id: string, signal?: AbortSignal) =>
+    request<{ agents: AgentAccessGrant[] }>(`${spacePath(id)}/shared-agents`, {
+      signal,
     }),
   policy: (id: string, version: number, enabled: boolean) =>
     request<{ policy_version: number }>(
@@ -172,6 +215,30 @@ export function spaceError(error: unknown, zh: boolean): string {
     space_not_available: [
       "空间不可用，或你的成员权限已发生变化。请刷新。",
       "This space is unavailable or your membership changed. Refresh to continue.",
+    ],
+    agent_owner_required: [
+      "只有 Agent 的所有者可以管理使用授权。",
+      "Only the Agent owner can manage access.",
+    ],
+    grantee_not_member: [
+      "被授权人不是该组织的有效成员。",
+      "The selected person is not an active member of this organization.",
+    ],
+    cannot_grant_self: [
+      "不能授权给自己。",
+      "You cannot grant access to yourself.",
+    ],
+    expires_in_past: [
+      "有效期必须晚于当前时间。",
+      "The expiry must be in the future.",
+    ],
+    agent_membership_required: [
+      "该 Agent 需要先加入本组织。",
+      "This Agent must join the organization first.",
+    ],
+    agent_access_revoked: [
+      "你对该 Agent 的使用授权已被撤销或过期。",
+      "Your access to this Agent has been revoked or has expired.",
     ],
     organization_role_required: [
       "当前成员角色不允许执行此操作。",
