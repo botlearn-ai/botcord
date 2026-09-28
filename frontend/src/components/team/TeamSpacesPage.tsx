@@ -18,6 +18,7 @@ import {
 import { useStore } from "zustand";
 import { useLanguage } from "@/lib/i18n";
 import {
+  admitNewAgent,
   canManage,
   canRemoveUser,
   spaceError,
@@ -27,6 +28,9 @@ import {
 import { subscribeToPageReturn } from "@/lib/page-return";
 import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
 import AgentAccessGrants from "./AgentAccessGrants";
+import OrgInviteLinks from "./OrgInviteLinks";
+import CreateAgentDialog from "@/components/dashboard/CreateAgentDialog";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { createTeamSpaceStore, type TeamSpaceStore } from "@/store/team-space-store";
 import {
   useConfirm,
@@ -80,6 +84,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [sharingAgentId, setSharingAgentId] = useState<string | null>(null);
+  const [showCreateAgent, setShowCreateAgent] = useState(false);
   const createNameRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (showCreate) createNameRef.current?.focus();
@@ -374,14 +379,14 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                 <button className={`${panel} group text-left transition-colors hover:border-neon-cyan/40 focus-visible:outline-2 focus-visible:outline-neon-cyan`} disabled={busy} aria-expanded={showJoin} onClick={() => { setShowJoin(true); setShowCreate(false); }}>
                   <Users size={24} className="mb-5 text-neon-cyan" />
                   <h3 className="text-lg font-semibold">{t("加入组织", "Join organization")}</h3>
-                  <p className="mt-2 text-sm leading-6 text-text-secondary">{t("已经有团队？让管理员邀请你加入现有组织。", "Already have a team? Ask an administrator to invite you.")}</p>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">{t("已经有团队？向管理员索取邀请链接，或让管理员邀请你加入。", "Already have a team? Ask an administrator for an invite link or an invitation.")}</p>
                   <span className="mt-5 inline-flex items-center gap-2 text-sm text-neon-cyan">{t("查看加入方式", "How to join")} <ArrowRight size={16} /></span>
                 </button>
               </div>
               {showJoin && (
                 <div className={`${panel} mt-4 space-y-4`}>
                   <h3 className="font-semibold">{t("通过邀请加入组织", "Join by invitation")}</h3>
-                  <p className="text-sm leading-6 text-text-secondary">{t("将下方用户 ID 发给组织管理员。收到邀请后，刷新此页即可查看并接受邀请。", "Share your user ID with an organization administrator. Once invited, refresh this page to review and accept the invitation.")}</p>
+                  <p className="text-sm leading-6 text-text-secondary">{t("最简单的方式是打开管理员发来的邀请链接。也可以将下方用户 ID 发给组织管理员，收到邀请后刷新此页即可查看并接受。", "The easiest way is to open an invite link from an administrator. Or share your user ID below; once invited, refresh this page to review and accept.")}</p>
                   <code className="block select-all break-all rounded-xl bg-deep-black p-3 text-sm">{snapshot.human.human_id}</code>
                   <button className={primary} disabled={busy || loading} onClick={() => void load(requestedId)}><RefreshCw size={16} />{t("刷新邀请", "Refresh invitations")}</button>
                 </div>
@@ -567,56 +572,70 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                       }
                     </span>
                   </h2>
-                  {manager && (
-                    <form
-                      className="flex flex-wrap items-end gap-3"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        void run(
-                          async () => {
-                            await teamSpacesApi.invite(
-                              space.id,
-                              humanId.trim(),
-                            );
-                            setHumanId("");
-                          },
-                          t(
-                            "邀请已创建；对方进入 Team 后即可查看并接受。",
-                            "Invitation created. They can review and accept it in Team.",
-                          ),
-                        );
-                      }}
-                    >
-                      <label className="min-w-0 flex-1 space-y-2 text-sm">
-                        <span>{t("邀请用户", "Invite a person")}</span>
-                        <input
-                          className={input}
-                          aria-describedby="invite-help"
-                          value={humanId}
-                          onChange={(e) => setHumanId(e.target.value)}
-                          required
-                          pattern="hu_[a-zA-Z0-9]+"
-                          maxLength={32}
-                          placeholder="hu_…"
-                          disabled={busy}
-                        />
-                        <span
-                          id="invite-help"
-                          className="block text-xs text-text-secondary"
-                        >
-                          {t(
-                            "请对方提供账户菜单中的用户 ID。",
-                            "Ask for the user ID shown in their account menu.",
-                          )}
-                        </span>
-                      </label>
-                      <button
-                        className={primary}
-                        disabled={busy || !humanId.trim()}
-                      >
-                        {t("发送邀请", "Invite")}
-                      </button>
-                    </form>
+                  {manager ? (
+                    <>
+                      <OrgInviteLinks spaceId={space.id} spaceName={space.name} />
+                      <details className="rounded-xl border border-glass-border px-4 py-3">
+                        <summary className="cursor-pointer select-none text-sm text-text-secondary">
+                          {t("已注册用户：按用户 ID 邀请", "Registered users: invite by user ID")}
+                        </summary>
+                        <div className="pt-3">
+                          <form
+                            className="flex flex-wrap items-end gap-3"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void run(
+                                async () => {
+                                  await teamSpacesApi.invite(
+                                    space.id,
+                                    humanId.trim(),
+                                  );
+                                  setHumanId("");
+                                },
+                                t(
+                                  "邀请已创建；对方进入 Team 后即可查看并接受。",
+                                  "Invitation created. They can review and accept it in Team.",
+                                ),
+                              );
+                            }}
+                          >
+                            <label className="min-w-0 flex-1 space-y-2 text-sm">
+                              <span>{t("邀请用户", "Invite a person")}</span>
+                              <input
+                                className={input}
+                                aria-describedby="invite-help"
+                                value={humanId}
+                                onChange={(e) => setHumanId(e.target.value)}
+                                required
+                                pattern="hu_[a-zA-Z0-9]+"
+                                maxLength={32}
+                                placeholder="hu_…"
+                                disabled={busy}
+                              />
+                              <span
+                                id="invite-help"
+                                className="block text-xs text-text-secondary"
+                              >
+                                {t(
+                                  "请对方提供账户菜单中的用户 ID。",
+                                  "Ask for the user ID shown in their account menu.",
+                                )}
+                              </span>
+                            </label>
+                            <button
+                              className={primary}
+                              disabled={busy || !humanId.trim()}
+                            >
+                              {t("发送邀请", "Invite")}
+                            </button>
+                          </form>
+                        </div>
+                      </details>
+                    </>
+                  ) : (
+                    <p className="rounded-xl border border-dashed border-glass-border p-4 text-sm text-text-secondary">
+                      {t("请联系管理员获取邀请链接。", "Ask an administrator for an invite link.")}
+                    </p>
                   )}
                   <ul className="divide-y divide-glass-border">
                     {snapshot.members.users.map((member) => (
@@ -738,10 +757,40 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                         ))}
                       </select>
                     </label>
-                    <button className={primary} disabled={busy || !agentId}>
-                      {directAgentAdmission ? t("添加 Agent", "Add Agent") : t("申请加入", "Apply to join")}
-                    </button>
+                    <div className="flex w-full flex-wrap gap-3 sm:w-auto">
+                      <button className={`${primary} flex-1 sm:flex-none`} disabled={busy || !agentId}>
+                        {directAgentAdmission ? t("添加 Agent", "Add Agent") : t("申请加入", "Apply to join")}
+                      </button>
+                      <button
+                        type="button"
+                        className={`${button} flex-1 sm:flex-none`}
+                        disabled={busy}
+                        onClick={() => setShowCreateAgent(true)}
+                      >
+                        <Plus size={16} />
+                        {t("新建 Agent", "New Agent")}
+                      </button>
+                    </div>
                   </form>
+                  {showCreateAgent && (
+                    <CreateAgentDialog
+                      onClose={() => setShowCreateAgent(false)}
+                      onSuccess={async (newAgentId) => {
+                        setShowCreateAgent(false);
+                        // Keep the global owned-Agent list in sync, as the sidebar entry does.
+                        await useDashboardSessionStore.getState().refreshUserProfile().catch(() => undefined);
+                        // Admission runs after the dialog closes so failures surface on this page.
+                        void run(
+                          async () => {
+                            await admitNewAgent(space.id, newAgentId, directAgentAdmission);
+                          },
+                          directAgentAdmission
+                            ? t("Agent 已创建并加入组织。", "Agent created and added to the organization.")
+                            : t("Agent 已创建，加入申请已提交，等待管理员批准。", "Agent created. Application submitted; waiting for administrator approval."),
+                        );
+                      }}
+                    />
+                  )}
                   {snapshot.members.agents.length === 0 ? (
                     <p className="rounded-xl border border-dashed border-glass-border p-6 text-center text-sm text-text-secondary">
                       {t(

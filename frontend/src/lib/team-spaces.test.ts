@@ -10,6 +10,7 @@ vi.mock("@/lib/supabase/client", () => ({
 }));
 import { ApiError } from "./api";
 import {
+  admitNewAgent,
   canManage,
   canRemoveUser,
   spaceError,
@@ -97,6 +98,52 @@ describe("Team governance API", () => {
     expect(spaceError(new ApiError(403, "agent_access_revoked"), true)).toBe(
       "你对该 Agent 的使用授权已被撤销或过期。",
     );
+  });
+  it("creates, lists and revokes invite links for the selected space", async () => {
+    fetchMock.mockImplementation(async () => new Response("{}"));
+    await teamSpacesApi.createInviteLink("org-a", { expires_in_days: 7, max_uses: null });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain("/api/spaces/org-a/invite-links");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ expires_in_days: 7, max_uses: null });
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer user-token");
+    await teamSpacesApi.inviteLinks("org-a");
+    expect(fetchMock.mock.calls[1][0]).toContain("/api/spaces/org-a/invite-links");
+    expect(fetchMock.mock.calls[1][1].method).toBeUndefined();
+    await teamSpacesApi.revokeInviteLink("org-a", "ln/1");
+    expect(fetchMock.mock.calls[2][0]).toContain("/api/spaces/org-a/invite-links/ln%2F1");
+    expect(fetchMock.mock.calls[2][1].method).toBe("DELETE");
+  });
+  it("previews org invites without credentials and accepts with user auth", async () => {
+    fetchMock.mockImplementation(async () => new Response("{}"));
+    await teamSpacesApi.orgInvite("abc");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain("/api/org-invites/abc");
+    expect(new Headers(init.headers).has("Authorization")).toBe(false);
+    await teamSpacesApi.acceptOrgInvite("abc");
+    const [acceptUrl, acceptInit] = fetchMock.mock.calls[1];
+    expect(acceptUrl).toContain("/api/org-invites/abc/accept");
+    expect(acceptInit.method).toBe("POST");
+    expect(new Headers(acceptInit.headers).get("Authorization")).toBe("Bearer user-token");
+  });
+  it("maps invite link errors to readable text", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "invite_link_expired" }), { status: 410 }),
+    );
+    const error = await teamSpacesApi.acceptOrgInvite("abc").catch((cause) => cause);
+    expect(spaceError(error, true)).toContain("邀请链接已过期");
+    expect(spaceError(new ApiError(403, "membership_requires_direct_invite"), false)).toContain(
+      "cannot rejoin by link",
+    );
+    expect(spaceError(new ApiError(404, "invite_link_not_found"), true)).toContain("邀请链接不存在");
+  });
+  it("adds a new Agent directly for managers and applies for members", async () => {
+    fetchMock.mockImplementation(async () => new Response("{}"));
+    await expect(admitNewAgent("org-a", "ag_new", true)).resolves.toBe("added");
+    expect(fetchMock.mock.calls[0][0]).toContain("/api/spaces/org-a/agents/ag_new/admission/add");
+    await expect(admitNewAgent("org-a", "ag_new", false)).resolves.toBe("requested");
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/api\/spaces\/org-a\/agents\/ag_new\/admission$/);
+    expect(fetchMock.mock.calls[1][1].method).toBe("POST");
   });
   it("handles empty deletion responses", async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));

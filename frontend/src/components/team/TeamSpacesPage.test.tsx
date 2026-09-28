@@ -150,6 +150,31 @@ describe("Team governance rendering", () => {
     expect(legacy).toContain("申请加入");
     expect(legacy).not.toContain(">添加 Agent<");
   });
+  it("leads managers with invite links and keeps user-ID invites as a fallback", () => {
+    const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="members" />);
+    expect(html).toContain("生成邀请链接");
+    for (const label of ["1 天", "7 天", "30 天", "永久", "不限次数", "1 次", "5 次", "20 次"])
+      expect(html).toContain(label);
+    expect(html).toContain('<option value="7" selected="">');
+    expect(html).toContain('<option value="unlimited" selected="">');
+    expect(html).toContain("<details");
+    expect(html).toContain("已注册用户：按用户 ID 邀请");
+    expect(html).not.toContain("请联系管理员获取邀请链接");
+  });
+  it("tells ordinary members to ask an administrator for a link", () => {
+    fixture.snapshot!.selected.roles = ["member"];
+    const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="members" />);
+    expect(html).toContain("请联系管理员获取邀请链接");
+    expect(html).not.toContain("生成邀请链接");
+  });
+  it("offers creating a new Agent next to adding an existing one", () => {
+    fixture.snapshot!.selected.agent_direct_admission_available = true;
+    const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />);
+    expect(html).toContain("添加 Agent");
+    expect(html).toContain("新建 Agent");
+    fixture.snapshot!.selected.roles = ["member"];
+    expect(renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />)).toContain("新建 Agent");
+  });
   it("offers access sharing only for the caller's own active organization Agents", () => {
     fixture.snapshot!.members = {
       users: [
