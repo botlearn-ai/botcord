@@ -89,20 +89,24 @@ jobs:
     name: Rollout Production
     needs: [deploy]
     if: inputs.env_name == 'prod'
-    runs-on: self-hosted
+    runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
     timeout-minutes: 15
     env:
       PROJECT: botcord-gateway-ingress
+      # The runner's shared kubeconfig current-context may point at the CN cluster;
+      # always name the prod context. Manifests come from the host's aibrary-devops checkout.
+      KUBE_CONTEXT: arn:aws:eks:us-east-1:928112001319:cluster/aibrary
+      K8S_MANIFEST: /www/devops/eks/us-aibrary/prod/botcord-gateway-ingress/k8s.yaml
     steps:
       - name: Apply k8s config
-        run: kubectl apply -f ${{ secrets.K8S_PROD_INGRESS_CONFIG }}
+        run: kubectl --context "$KUBE_CONTEXT" apply -f "$K8S_MANIFEST"
 
       - name: Rollout restart
-        run: kubectl rollout restart deployment/$PROJECT -n prod
+        run: kubectl --context "$KUBE_CONTEXT" rollout restart deployment/$PROJECT -n prod
 
       - name: Wait for rollout
         run: |
-          if ! kubectl rollout status deployment/$PROJECT -n prod --timeout=300s; then
+          if ! kubectl --context "$KUBE_CONTEXT" rollout status deployment/$PROJECT -n prod --timeout=300s; then
             echo "❌ Rollout timed out"
             exit 1
           fi
@@ -110,5 +114,5 @@ jobs:
 
       - name: Check pod status
         run: |
-          kubectl get pods -n prod -l app=$PROJECT
-          kubectl logs -n prod -l app=$PROJECT --tail=20 || true
+          kubectl --context "$KUBE_CONTEXT" get pods -n prod -l app=$PROJECT
+          kubectl --context "$KUBE_CONTEXT" logs -n prod -l app=$PROJECT --tail=20 || true
