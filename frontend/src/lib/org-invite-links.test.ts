@@ -3,6 +3,7 @@ import {
   buildInviteLinkInput,
   copyText,
   inviteLinkUrl,
+  inviteRowStatus,
   inviteUnavailableReason,
   inviteUsageLabel,
 } from "./org-invite-links";
@@ -11,9 +12,10 @@ describe("org invite link helpers", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("maps the expiry and usage choices to the API body", () => {
-    expect(buildInviteLinkInput("7", "unlimited")).toEqual({ expires_in_days: 7, max_uses: null });
-    expect(buildInviteLinkInput("never", "5")).toEqual({ expires_in_days: null, max_uses: 5 });
-    expect(buildInviteLinkInput("1", "1")).toEqual({ expires_in_days: 1, max_uses: 1 });
+    // Personal by default: one person, the chosen expiry, optional label.
+    expect(buildInviteLinkInput("7", false)).toEqual({ expires_in_days: 7, max_uses: 1 });
+    expect(buildInviteLinkInput("7", false, "  Alice ")).toEqual({ expires_in_days: 7, max_uses: 1, label: "Alice" });
+    expect(buildInviteLinkInput("never", true)).toEqual({ expires_in_days: null, max_uses: null });
   });
   it("builds the full link from the current origin and server path", () => {
     expect(inviteLinkUrl("https://botcord.chat/", { path: "/join/abc", code: "abc" })).toBe(
@@ -37,6 +39,15 @@ describe("org invite link helpers", () => {
     expect(inviteUsageLabel({ use_count: 2, max_uses: 5 }, true)).toBe("已使用 2/5");
     expect(inviteUsageLabel({ use_count: 3, max_uses: null }, false)).toBe("3 used · unlimited");
     expect(inviteUnavailableReason("exhausted", true)).toContain("使用次数上限");
+    expect(inviteUnavailableReason("exhausted", true, true)).toContain("专属邀请，已经被使用过了");
     expect(inviteUnavailableReason("unavailable", false)).toContain("organization is currently unavailable");
+  });
+});
+
+describe("inviteRowStatus", () => {
+  it("shows who joined through a used personal invite", () => {
+    expect(inviteRowStatus({ status: "exhausted", max_uses: 1, redeemed_by_name: "nina" }, true)).toBe("已加入：nina");
+    expect(inviteRowStatus({ status: "active", max_uses: 1, redeemed_by_name: null }, true)).toBe("待接受");
+    expect(inviteRowStatus({ status: "active", max_uses: null, redeemed_by_name: null }, false)).toBe("Active");
   });
 });

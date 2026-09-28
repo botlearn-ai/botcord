@@ -6,17 +6,14 @@ import { useLanguage } from "@/lib/i18n";
 import { spaceError, teamSpacesApi, type InviteLink } from "@/lib/team-spaces";
 import {
   INVITE_EXPIRY_OPTIONS,
-  INVITE_USES_OPTIONS,
   buildInviteLinkInput,
   canShare,
   copyText,
   inviteExpiryLabel,
   inviteLinkUrl,
-  inviteStatusLabel,
+  inviteRowStatus,
   inviteUsageLabel,
-  inviteUsesLabel,
   type InviteExpiry,
-  type InviteUses,
 } from "@/lib/org-invite-links";
 import { useConfirm } from "@/store/useConfirmStore";
 
@@ -26,7 +23,11 @@ const button =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-neon-cyan/10 focus-visible:outline-2 focus-visible:outline-neon-cyan disabled:cursor-not-allowed disabled:opacity-50";
 const primary = `${button} border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan`;
 
-/** Manager-side invite links: generate, copy/share, list and revoke. */
+/**
+ * Manager-side invites. Each invite is a personal link for one person (single
+ * use, 7 days) — no settings needed up front; expiry and multi-use links live
+ * under "More options".
+ */
 export default function OrgInviteLinks({
   spaceId,
   spaceName,
@@ -45,7 +46,8 @@ export default function OrgInviteLinks({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(null);
   const [expiry, setExpiry] = useState<InviteExpiry>("7");
-  const [uses, setUses] = useState<InviteUses>("unlimited");
+  const [multiUse, setMultiUse] = useState(false);
+  const [label, setLabel] = useState("");
   const [created, setCreated] = useState<InviteLink | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
@@ -161,68 +163,92 @@ export default function OrgInviteLinks({
         <div>
           <h3 className="flex items-center gap-2 font-medium">
             <Link2 size={16} />
-            {t("邀请链接", "Invite link")}
+            {t("邀请成员", "Invite a member")}
           </h3>
           <p className="mt-1 text-xs leading-5 text-text-secondary">
-            {t(
-              "把链接发给同事，对方登录或注册 BotCord 后即可加入组织。",
-              "Send the link to teammates. They join after signing in or signing up for BotCord.",
-            )}
+            {multiUse
+              ? t(
+                  "生成一个多人可用的链接，有效期内任何拿到链接的人都能加入。",
+                  "Creates a shareable link anyone can use to join until it expires.",
+                )
+              : t(
+                  "为每位成员生成一个专属链接：仅限 1 人使用，对方登录或注册 BotCord 后即可加入。",
+                  "Each teammate gets their own link: it works once, after they sign in or sign up for BotCord.",
+                )}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="space-y-1 text-xs text-text-secondary">
-            <span>{t("有效期", "Expires after")}</span>
-            <select
-              className={input}
-              value={expiry}
-              disabled={busy}
-              onChange={(e) => setExpiry(e.target.value as InviteExpiry)}
-            >
-              {INVITE_EXPIRY_OPTIONS.map((value) => (
-                <option key={value} value={value}>
-                  {inviteExpiryLabel(value, zh)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-xs text-text-secondary">
-            <span>{t("可用次数", "Max uses")}</span>
-            <select
-              className={input}
-              value={uses}
-              disabled={busy}
-              onChange={(e) => setUses(e.target.value as InviteUses)}
-            >
-              {INVITE_USES_OPTIONS.map((value) => (
-                <option key={value} value={value}>
-                  {inviteUsesLabel(value, zh)}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            className={input}
+            value={label}
+            maxLength={64}
+            disabled={busy}
+            placeholder={t("对方称呼（可选），如：Alice", "Who is it for? (optional), e.g. Alice")}
+            aria-label={t("对方称呼", "Invitee name")}
+            onChange={(e) => setLabel(e.target.value)}
+          />
+          <button
+            type="button"
+            className={`${primary} w-full shrink-0 sm:w-auto`}
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const link = await teamSpacesApi.createInviteLink(
+                  spaceId,
+                  buildInviteLinkInput(expiry, multiUse, label),
+                );
+                if (!mounted.current) return;
+                setCreated(link);
+                setLabel("");
+              }, null)
+            }
+          >
+            {busy ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={16} />}
+            {multiUse ? t("生成邀请链接", "Create invite link") : t("生成专属邀请链接", "Create personal invite link")}
+          </button>
         </div>
-        <button
-          type="button"
-          className={`${primary} w-full sm:w-auto`}
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              const link = await teamSpacesApi.createInviteLink(
-                spaceId,
-                buildInviteLinkInput(expiry, uses),
-              );
-              if (mounted.current) setCreated(link);
-            }, null)
-          }
-        >
-          {busy ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={16} />}
-          {t("生成邀请链接", "Generate invite link")}
-        </button>
+        <details className="text-xs text-text-secondary">
+          <summary className="cursor-pointer select-none">
+            {t("更多选项", "More options")} ·{" "}
+            {inviteExpiryLabel(expiry, zh)} · {multiUse ? t("多人可用", "Multi-use") : t("仅限 1 人", "One person")}
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span>{t("有效期", "Expires after")}</span>
+              <select
+                className={input}
+                value={expiry}
+                disabled={busy}
+                onChange={(e) => setExpiry(e.target.value as InviteExpiry)}
+              >
+                {INVITE_EXPIRY_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {inviteExpiryLabel(value, zh)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 self-end pb-2.5">
+              <input
+                type="checkbox"
+                checked={multiUse}
+                disabled={busy}
+                onChange={(e) => setMultiUse(e.target.checked)}
+              />
+              <span>{t("多人可用（不限次数）", "Anyone with the link (unlimited uses)")}</span>
+            </label>
+          </div>
+        </details>
         {created && (
           <div className="space-y-2 rounded-xl border border-neon-cyan/30 bg-neon-cyan/5 p-3" role="status">
             <p className="text-xs text-neon-cyan">
-              {t("邀请链接已生成", "Invite link created")} · {expiresText(created)} · {inviteUsageLabel(created, zh)}
+              {created.max_uses === 1
+                ? t(
+                    `专属邀请链接已生成${created.label ? `（给 ${created.label}）` : ""} · 仅限 1 人`,
+                    `Personal invite link created${created.label ? ` for ${created.label}` : ""} · one person`,
+                  )
+                : `${t("邀请链接已生成", "Invite link created")} · ${inviteUsageLabel(created, zh)}`}{" "}
+              · {expiresText(created)}
             </p>
             {linkField(created)}
             <div className="grid grid-cols-2 gap-2 sm:flex">
@@ -248,26 +274,30 @@ export default function OrgInviteLinks({
       )}
 
       <div className="space-y-2">
-        <h4 className="text-sm font-medium">{t("现有邀请链接", "Existing invite links")}</h4>
+        <h4 className="text-sm font-medium">{t("已发出的邀请", "Sent invites")}</h4>
         {loading ? (
           <p className="flex items-center gap-2 text-sm text-text-secondary">
             <Loader2 size={14} className="animate-spin" />
             {t("正在加载邀请链接…", "Loading invite links…")}
           </p>
         ) : links.length === 0 ? (
-          <p className="text-sm text-text-secondary">{t("暂无邀请链接。", "No invite links yet.")}</p>
+          <p className="text-sm text-text-secondary">{t("还没有发出邀请。", "No invites sent yet.")}</p>
         ) : (
           <ul className="divide-y divide-glass-border">
             {links.map((link) => (
               <li key={link.id} className="space-y-2 py-3">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+                  <span className="text-sm font-medium text-text-primary">
+                    {link.label ||
+                      (link.max_uses === 1 ? t("专属邀请", "Personal invite") : t("多人邀请链接", "Shared invite link"))}
+                  </span>
                   <span
                     className={`rounded-full border px-2 py-0.5 ${link.status === "active" ? "border-neon-cyan/40 text-neon-cyan" : "border-glass-border"}`}
                   >
-                    {inviteStatusLabel(link.status, zh)}
+                    {inviteRowStatus(link, zh)}
                   </span>
-                  <span>{inviteUsageLabel(link, zh)}</span>
-                  <span>{expiresText(link)}</span>
+                  {link.max_uses !== 1 && <span>{inviteUsageLabel(link, zh)}</span>}
+                  {link.status === "active" && <span>{expiresText(link)}</span>}
                 </div>
                 {link.status === "active" && linkField(link)}
                 <div className="flex flex-wrap gap-2">
@@ -280,23 +310,26 @@ export default function OrgInviteLinks({
                       void run(async () => {
                         if (
                           !(await confirm({
-                            title: t("撤销邀请链接？", "Revoke invite link?"),
+                            title:
+                              link.status === "active"
+                                ? t("撤销这个邀请？", "Revoke this invite?")
+                                : t("移除这条记录？", "Remove this record?"),
                             message: t(
                               "撤销后该链接立即失效，已加入的成员不受影响。",
                               "The link stops working immediately. Members who already joined are unaffected.",
                             ),
                             tone: "danger",
-                            confirmLabel: t("撤销", "Revoke"),
+                            confirmLabel: link.status === "active" ? t("撤销", "Revoke") : t("移除", "Remove"),
                           })) ||
                           !mounted.current
                         )
                           return false;
                         await teamSpacesApi.revokeInviteLink(spaceId, link.id);
                         if (mounted.current) setCreated((c) => (c?.id === link.id ? null : c));
-                      }, t("邀请链接已撤销。", "Invite link revoked."))
+                      }, link.status === "active" ? t("邀请已撤销。", "Invite revoked.") : null)
                     }
                   >
-                    {t("撤销", "Revoke")}
+                    {link.status === "active" ? t("撤销", "Revoke") : t("移除", "Remove")}
                   </button>
                 </div>
               </li>

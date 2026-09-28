@@ -75,11 +75,17 @@ export interface InviteLink {
   use_count: number;
   expires_at: string | null;
   status: InviteLinkStatus;
+  /** Who the (personal) link is meant for, e.g. "Alice". */
+  label: string | null;
+  /** Latest member who joined through the link (the only one for single-use links). */
+  redeemed_by_name: string | null;
+  redeemed_at: string | null;
   created_at: string;
 }
 export interface InviteLinkInput {
   expires_in_days: number | null;
   max_uses: number | null;
+  label?: string | null;
 }
 export interface OrgInvitePreview {
   space_id: string;
@@ -88,6 +94,8 @@ export interface OrgInvitePreview {
   member_count: number;
   status: InviteLinkStatus | "unavailable";
   expires_at: string | null;
+  /** Personal link meant for one person. */
+  single_use?: boolean;
 }
 
 async function request<T>(

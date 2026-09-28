@@ -1,6 +1,8 @@
-"""Shareable organization invite links.
+"""Organization invite links — personal (single-use, 7 days) by default.
 
-A manager creates a link; anyone holding it can preview the organization
+A manager creates one link per invitee (optionally labelled with who it is
+for); multi-use links remain available as an advanced option. Anyone holding
+a link can preview the organization
 without an account, sign up / log in, and accept to become an active member.
 Links can expire, cap their uses and be revoked. Callers commit once after a
 successful mutation (same convention as ``hub.services.spaces``).
@@ -47,7 +49,7 @@ def link_status(link: SpaceInviteLink) -> str:
 
 async def create_link(
     db: AsyncSession, space_id: UUID, actor_id: UUID, *,
-    expires_in_days: int | None = 7, max_uses: int | None = None,
+    expires_in_days: int | None = 7, max_uses: int | None = 1, label: str | None = None,
 ) -> SpaceInviteLink:
     await spaces.organization_space(db, space_id)
     await spaces.require_manager(db, space_id, actor_id)
@@ -60,6 +62,7 @@ async def create_link(
         code="oi_" + secrets.token_urlsafe(18),
         created_by_user_id=actor_id,
         max_uses=max_uses,
+        label=(label or "").strip() or None,
         expires_at=_now() + datetime.timedelta(days=expires_in_days) if expires_in_days else None,
     )
     db.add(link)
@@ -121,6 +124,7 @@ async def preview(db: AsyncSession, code: str) -> dict:
         "member_count": member_count or 0,
         "status": status,
         "expires_at": link.expires_at,
+        "single_use": link.max_uses == 1,
     }
 
 
@@ -152,6 +156,8 @@ async def accept(db: AsyncSession, code: str, user_id: UUID) -> SpaceUserMembers
         await db.execute(delete(SpaceRoleBinding).where(SpaceRoleBinding.user_membership_id == membership.id))
     db.add(SpaceRoleBinding(space_id=link.space_id, user_membership_id=membership.id, role_key="member"))
     link.use_count += 1
+    link.redeemed_by_user_id = user_id
+    link.redeemed_at = _now()
     # Invite links are an onboarding path: never strand an invitee behind the beta gate.
     user.beta_access = True
     spaces.audit(db, link.space_id, user_id, "membership.joined_via_link", membership.id,
