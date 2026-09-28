@@ -482,6 +482,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
         initialText={prefillText}
         autoFocus={prefillNonce > 0}
         actionLabels={{
+          mention: locale === "zh" ? "提及成员" : "Mention someone",
           add: locale === "zh" ? "添加" : "Add",
           file: locale === "zh" ? "文件" : "File",
           transfer: locale === "zh" ? "转账" : "Transfer",

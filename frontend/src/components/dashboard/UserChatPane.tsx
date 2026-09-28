@@ -13,9 +13,11 @@ import MessageHistoryControl, { canAutoLoadHistory } from "./MessageHistoryContr
  *   - Rendering: status-driven (optimistic / streaming / delivered / failed)
  */
 
+import ChatMarkdown from "./ChatMarkdown";
+import ParticipantAvatar from "./ParticipantAvatar";
 import ComposerPopover from "./ComposerPopover";
 import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo, memo } from "react";
-import { ArrowDown, ArrowLeft, Bot, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, Settings2, User, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, Check, Copy, CornerUpLeft, Forward, Loader2, MessageSquare, MoreHorizontal, AlertCircle, AlertTriangle, RotateCcw, Bell, Settings2, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -31,7 +33,7 @@ import { resolveOwnerChatRoom } from "@/lib/owner-chat-room";
 import { useOwnerChatWs } from "@/hooks/useOwnerChatWs";
 import { messageList } from "@/lib/i18n/translations/dashboard";
 import DashboardMessagePaneSkeleton, { MessageHistoryLoading } from "./DashboardMessagePaneSkeleton";
-import MarkdownContent, { normalizeMessageContent } from "@/components/ui/MarkdownContent";
+import { normalizeMessageContent, type MentionTextCandidate } from "@/components/ui/MarkdownContent";
 import AttachmentItem, {
   attachmentGalleryIndex,
   getPreviewableImageAttachments,
@@ -77,10 +79,12 @@ function TypewriterText({
   text,
   onComplete,
   onTick,
+  mentionCandidates,
 }: {
   text: string;
   onComplete?: () => void;
   onTick?: () => void;
+  mentionCandidates?: MentionTextCandidate[];
 }) {
   const normalizedText = normalizeMessageContent(text);
   const tokens = normalizedText.split(/(\s+)/);
@@ -98,7 +102,7 @@ function TypewriterText({
     return () => clearTimeout(timer);
   }, [count, tokens.length, onComplete, onTick]);
 
-  return <span className="whitespace-pre-wrap">{tokens.slice(0, count).join("")}</span>;
+  return <ChatMarkdown content={tokens.slice(0, count).join("")} mentionCandidates={mentionCandidates} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +116,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
   const router = useRouter();
   const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
   const ownerHumanId = useDashboardSessionStore((s) => s.human?.human_id ?? null);
+  const humanAvatarUrl = useDashboardSessionStore((s) => s.human?.avatar_url || s.user?.avatar_url || null);
   const hasSession = useDashboardSessionStore((s) => Boolean(s.token));
   const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
   const chatAgentId = agentId || activeAgentId || null;
@@ -123,6 +128,8 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     : null;
 
   const mentionCandidates = useMentionCandidates({ selfId: chatAgentId });
+
+  const messageMentionCandidates = useMemo(() => mentionCandidates.map((candidate) => ({ id: candidate.agent_id, label: candidate.display_name })), [mentionCandidates]);
 
   // Owner-chat store
   const messages = useOwnerChatStore((s) => s.messages);
@@ -861,7 +868,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs bg-amber-500/10 text-amber-300 border border-amber-500/20 flex items-start gap-2">
                   <Bell className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <div>
-                    <MarkdownContent content={msg.text || ""} />
+                    <ChatMarkdown content={msg.text || ""} mentionCandidates={messageMentionCandidates} />
                     <div className="text-amber-500/60 mt-1 text-right">
                       {formatMessageTimestamp(msg.createdAt)}
                     </div>
@@ -881,9 +888,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 <div className="flex justify-start">
                   <div className="liquid-message liquid-message-error max-w-[75%] max-md:max-w-[calc(100%-3.25rem)] rounded-2xl border px-3 py-2 text-sm text-text-primary">
                     <div className="mb-1 flex items-center gap-1.5">
-                      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-purple-400/30 bg-purple-400/10 text-purple-300">
-                        <Bot className="h-2.5 w-2.5" />
-                      </span>
+                      <ParticipantAvatar id={chatAgentId || "bot"} avatarUrl={ownedAgent?.avatar_url} isHuman={false} name={msg.senderName || "Bot"} />
                       <span className="text-xs font-medium text-zinc-300">{msg.senderName}</span>
                       {chatAgentId && (
                         <CopyableId value={chatAgentId} className="text-zinc-500 hover:text-zinc-300" />
@@ -936,6 +941,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 className="space-y-1.5"
               >
                 <StreamBlocksView
+                  mentionCandidates={messageMentionCandidates}
                   key={`${msg.clientId}-streaming`}
                   blocks={msg.streamBlocks}
                   defaultExpanded
@@ -962,15 +968,9 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                     <span className="text-xs font-medium text-neon-cyan">
                       {msg.senderName}
                     </span>
-                    <span
-                      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-cyan-200"
-                      title="Human"
-                      aria-label="Human sender"
-                    >
-                      <User className="h-2.5 w-2.5" />
-                    </span>
+                    <ParticipantAvatar id={ownerHumanId || "human"} avatarUrl={humanAvatarUrl} isHuman name={msg.senderName || "User"} />
                   </div>
-                  <MarkdownContent content={msg.text} />
+                  <ChatMarkdown content={msg.text} mentionCandidates={messageMentionCandidates} />
                   <div className="flex items-center justify-end gap-1.5 mt-1">
                     {msg.status === "optimistic" && (
                       <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
@@ -1020,6 +1020,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
               {/* Finalized execution blocks above agent message */}
               {!isUser && msg.streamBlocks.length > 0 && (
                 <StreamBlocksView
+                  mentionCandidates={messageMentionCandidates}
                   key={`${msg.clientId}-delivered`}
                   blocks={msg.streamBlocks}
                   showComposing
@@ -1046,23 +1047,11 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                           <span className="text-xs font-medium text-neon-cyan">
                             {msg.senderName}
                           </span>
-                          <span
-                            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-cyan-200"
-                            title="Human"
-                            aria-label="Human sender"
-                          >
-                            <User className="h-2.5 w-2.5" />
-                          </span>
+                          <ParticipantAvatar id={ownerHumanId || "human"} avatarUrl={humanAvatarUrl} isHuman name={msg.senderName || "User"} />
                         </>
                       ) : (
                         <>
-                          <span
-                            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-purple-400/30 bg-purple-400/10 text-purple-300"
-                            title="Bot"
-                            aria-label="Bot sender"
-                          >
-                            <Bot className="h-2.5 w-2.5" />
-                          </span>
+                          <ParticipantAvatar id={chatAgentId || "bot"} avatarUrl={ownedAgent?.avatar_url} isHuman={false} name={msg.senderName || "Bot"} />
                           <span className="text-xs font-medium text-text-primary">
                             {msg.senderName}
                           </span>
@@ -1088,10 +1077,11 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                       }
                       const skipTypewriter = isUser || initialLoadRef.current || animatedRef.current.has(msg.clientId);
                       if (skipTypewriter) {
-                        return <MarkdownContent content={msg.text || ""} />;
+                        return <ChatMarkdown content={msg.text || ""} mentionCandidates={messageMentionCandidates} />;
                       }
                       return (
                         <TypewriterText
+                          mentionCandidates={messageMentionCandidates}
                           text={msg.text || ""}
                           onTick={scrollToBottomIfFollowing}
                           onComplete={() => {
@@ -1155,6 +1145,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
             allowAttachments
             placeholder="输入消息，@ 可引用联系人或房间..."
             mentionCandidates={mentionCandidates}
+            actionLabels={{ mention: locale === "zh" ? "提及联系人或房间" : "Mention a contact or room" }}
           />
         </div>
       </div>

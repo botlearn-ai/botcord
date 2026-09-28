@@ -38,3 +38,7 @@ describe("resolveMessageMentionTargets", () => {
     expect(resolveMessageMentionTargets(["@all"], candidates, "@all 大家看一下")).toEqual([]);
   });
 });
+
+it("does not duplicate a visible mention next to Chinese punctuation", () => {
+  expect(resolveMessageMentionTargets(["hu_alice"], [{ id: "hu_alice", label: "Alice" }], "你好，@Alice。请看")).toEqual([]);
+});

@@ -13,7 +13,7 @@ function escapeRegExp(value: string): string {
 }
 
 function isMentionBoundaryPattern(label: string): RegExp {
-  return new RegExp(`(^|[\\s([{'"“‘])@${escapeRegExp(label)}(?=$|[\\s.,!?;:()[\\]{}'"“”‘’])`, "i");
+  return new RegExp(`(^|[\\s，。！？、；：（）([{'"“‘])@${escapeRegExp(label)}(?=$|[\\s，。！？、；：（）.,!?;:()[\\]{}'"“”‘’])`, "i");
 }
 
 export function normalizeMessageMentions(mentions: unknown): string[] {

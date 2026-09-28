@@ -59,3 +59,11 @@ describe("buildMentionCandidates", () => {
     expect(candidates.find((c) => c.agent_id === "hu_contact")?.display_name).toBe("Friend");
   });
 });
+
+it("keeps direct-message mentions scoped to the peer without @all", () => {
+  expect(buildMentionCandidates({
+    currentRoomId: "rm_dm_pair", selfId: "hu_me", includeAll: false, sources: ["roomMembers"],
+    roomMembers: [{ agent_id: "hu_me", display_name: "Me" }, { agent_id: "hu_peer", display_name: "Peer" }],
+    contacts: [{ contact_agent_id: "hu_other", display_name: "Other", alias: null }],
+  }).map((candidate) => candidate.agent_id)).toEqual(["hu_peer"]);
+});

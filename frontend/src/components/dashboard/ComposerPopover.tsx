@@ -28,19 +28,29 @@ export default function ComposerPopover({ anchorRef, onClose, matchWidth = false
         width: viewport?.width ?? window.innerWidth, height: viewport?.height ?? window.innerHeight,
       }, matchWidth ? rect.width : 176));
     };
+    let frame = 0;
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
     update();
     const observer = new ResizeObserver(update);
-    if (anchorRef.current) observer.observe(anchorRef.current);
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
-    window.visualViewport?.addEventListener("resize", update);
-    window.visualViewport?.addEventListener("scroll", update);
+    // Keyboard handling resizes the chat root in a later animation frame.
+    // The anchor can move without changing size, so watch its layout ancestors too.
+    for (let node: HTMLElement | null = anchorRef.current; node && node !== document.body; node = node.parentElement) {
+      observer.observe(node);
+    }
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("scroll", scheduleUpdate, true);
+    window.visualViewport?.addEventListener("resize", scheduleUpdate);
+    window.visualViewport?.addEventListener("scroll", scheduleUpdate);
     return () => {
+      cancelAnimationFrame(frame);
       observer.disconnect();
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
-      window.visualViewport?.removeEventListener("resize", update);
-      window.visualViewport?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("scroll", scheduleUpdate, true);
+      window.visualViewport?.removeEventListener("resize", scheduleUpdate);
+      window.visualViewport?.removeEventListener("scroll", scheduleUpdate);
     };
   }, [anchorRef, matchWidth]);
   useEffect(() => {

@@ -40,7 +40,7 @@ interface HastRootNode {
 
 type HastNode = HastTextNode | HastElementNode | HastRootNode | { type?: string; [key: string]: unknown };
 
-const MENTION_WITH_ID_RE = /@([^\n@]*?)\(((?:ag|hu)_[^)]+)\)/g;
+const MENTION_WITH_ID_RE = /@([^\n@]*?)\(((?:ag|hu|rm)_[^)]+)\)/g;
 // Bare agent/human id mention, e.g. "@ag_17b5d5e1b071" — the form agents/bots
 // emit when addressing by id instead of the composer's "@Name(ag_id)". Anchored
 // (non-global) so exec() always matches at the start of the slice. Ids are a
@@ -85,12 +85,12 @@ export function hasFailedMarkdownImageSrc(src: string): boolean {
 
 function isMentionStartBoundary(value: string, index: number): boolean {
   if (index === 0) return true;
-  return /[\s([{'"“‘]/.test(value[index - 1]);
+  return /[\s，。！？、；：（）([{'"“‘]/.test(value[index - 1]);
 }
 
 function isMentionEndBoundary(value: string, index: number): boolean {
   const after = value[index];
-  return after === undefined || /[\s.,!?;:()[\]{}'"“”‘’]/.test(after);
+  return after === undefined || /[\s，。！？、；：（）.,!?;:()[\]{}'"“”‘’]/.test(after);
 }
 
 export function splitPlainMentionText(value: string, candidates: MentionTextCandidate[] = []): HastNode[] {
