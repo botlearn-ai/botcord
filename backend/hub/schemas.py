@@ -362,6 +362,11 @@ class InboxMessage(BaseModel):
     # the receiving agent. Daemons use it to keep owner-internal collaboration
     # on full execution while restricting other requesters.
     sender_same_owner: bool = False
+    # Agent sharing: Hub-computed grant under which a non-owner human calls
+    # this agent (``grant_id``, ``role``, ``active``, ``workspace_path``, …).
+    # Daemons enforce the grant's execution profile; ``active: false`` means
+    # the grant was revoked or expired and the turn must not run.
+    access_context: dict | None = None
 
 
 class InboxPollResponse(BaseModel):

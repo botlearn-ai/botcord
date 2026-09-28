@@ -58,7 +58,12 @@ import type {
   UserTurnBuilder,
   UserTurnContext,
 } from "./types.js";
-import { isRestrictedTurn, restrictionUnsupported } from "./execution-policy.js";
+import {
+  isRestrictedTurn,
+  resolveTurnExecution,
+  restrictionUnsupported,
+} from "./execution-policy.js";
+import { commitGuestChanges, ensureGuestWorkspace, type GuestWorkspace } from "./guest-workspace.js";
 
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
 /** Backoff before a single transient-failure retry (see {@link looksLikeTransientRuntimeError}). */
@@ -1851,7 +1856,47 @@ export class Dispatcher {
     // Non-owner requesters run with the restricted execution profile and in a
     // separate session so they never resume (or read) a full-trust session.
     const policyOpts = { botcordChannel: isBotCordChannel(channel) };
-    const restricted = isRestrictedTurn(msg, route, policyOpts);
+    const execution = resolveTurnExecution(msg, route, policyOpts);
+    // Every non-default profile is a non-owner turn: public trust, separate
+    // session, daemon-delivered reply.
+    const restricted = execution.profile !== "default";
+    const grant = execution.profile === "default" ? undefined : execution.grant;
+    let turnCwd = route.cwd;
+    let guestWorkspace: GuestWorkspace | null = null;
+    let executionProfile: "restricted" | "collaborator" | undefined =
+      execution.profile === "collaborator"
+        ? "collaborator"
+        : execution.profile === "restricted"
+          ? "restricted"
+          : undefined;
+    if (execution.profile === "collaborator") {
+      try {
+        guestWorkspace = await ensureGuestWorkspace({
+          agentId: msg.accountId,
+          grantId: execution.grant.grantId,
+          workspacePath: execution.grant.workspacePath,
+        });
+        turnCwd = guestWorkspace.dir;
+      } catch (err) {
+        // Without an isolated workspace the collaborator gets read-only access.
+        executionProfile = "restricted";
+        this.log.warn("dispatcher: guest workspace unavailable — running restricted", {
+          agentId: msg.accountId,
+          grantId: execution.grant.grantId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    if (execution.profile === "refused") {
+      this.log.warn("dispatcher: refusing agent-sharing turn", {
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        runtime: route.runtime,
+        grantId: execution.grant.grantId,
+        reason: execution.reason,
+        turnId,
+      });
+    }
     if (restrictionUnsupported(msg, route, policyOpts)) {
       this.log.warn("dispatcher: runtime cannot enforce restricted execution for non-owner turn", {
         agentId: msg.accountId,
@@ -1867,7 +1912,7 @@ export class Dispatcher {
       conversationKind: msg.conversation.kind,
       conversationId: msg.conversation.id,
       threadId: msg.conversation.threadId ?? null,
-      executionScope: restricted ? "restricted" : null,
+      executionScope: grant ? `grant:${grant.grantId}` : restricted ? "restricted" : null,
     });
     const entry = this.sessionStore.get(key);
     const sessionId = entry?.runtimeSessionId ?? null;
@@ -2246,7 +2291,10 @@ export class Dispatcher {
       }
     }
 
-    const runtime = this.runtimeFactory(route.runtime, route.extraArgs);
+    const runtime =
+      execution.profile === "refused"
+        ? refusalRuntime(route.runtime, execution.reason)
+        : this.runtimeFactory(route.runtime, route.extraArgs);
     let result: RuntimeRunResult | undefined;
     let threw: unknown;
     let activeSessionId: string | null = sessionId;
@@ -2261,13 +2309,17 @@ export class Dispatcher {
           runtime.run({
             text: textForRun,
             sessionId: sessionIdForRun,
-            cwd: route.cwd,
+            cwd: turnCwd,
             accountId: msg.accountId,
             hubUrl,
             ...(waitMarkerFile ? { waitMarkerFile } : {}),
             extraArgs: route.extraArgs,
             signal: controller.signal,
             trustLevel,
+            ...(executionProfile ? { executionProfile } : {}),
+            ...(executionProfile === "collaborator" && grant
+              ? { allowedCommands: grant.allowedCommands }
+              : {}),
             systemContext,
             ...(systemRules.length > 0 ? { systemRules } : {}),
             onBlock,
@@ -2602,9 +2654,27 @@ export class Dispatcher {
       const rawReplyText = (result.text || "").trim();
       const replyLooksLikeAuthFailure =
         looksLikeRuntimeAuthFailure(rawReplyText);
-      const replyText = replyLooksLikeAuthFailure ? "" : rawReplyText;
+      let replyText = replyLooksLikeAuthFailure ? "" : rawReplyText;
       const effectiveError =
         result.error ?? (replyLooksLikeAuthFailure ? rawReplyText : undefined);
+      if (guestWorkspace && grant && !effectiveError && !controller.signal.aborted) {
+        try {
+          const committed = await commitGuestChanges(guestWorkspace, {
+            requesterId: grant.requesterId,
+            request: typeof msg.text === "string" ? msg.text : "",
+          });
+          if (committed) {
+            replyText =
+              replyText && replyText !== "NO_REPLY" ? `${replyText}\n\n${committed}` : committed;
+          }
+        } catch (err) {
+          this.log.warn("dispatcher: committing guest changes failed", {
+            agentId: msg.accountId,
+            grantId: grant.grantId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
       const authFailureError =
         effectiveError && looksLikeRuntimeAuthFailure(effectiveError)
           ? effectiveError
@@ -3486,10 +3556,34 @@ function userTurnContext(
   route: GatewayRoute,
   channel: ChannelAdapter
 ): UserTurnContext {
+  const execution = resolveTurnExecution(msg, route, {
+    botcordChannel: isBotCordChannel(channel),
+  });
+  if (execution.profile === "collaborator") {
+    return {
+      restricted: true,
+      collaborator: { allowedCommands: execution.grant.allowedCommands },
+    };
+  }
+  return { restricted: execution.profile !== "default" };
+}
+
+const REFUSAL_TEXT: Record<"grant_inactive" | "runtime_unsupported", string> = {
+  grant_inactive: "你对这个 Agent 的使用授权已被撤销或已过期，请联系它的 owner 重新授权。",
+  runtime_unsupported:
+    "这个 Agent 当前使用的 runtime 不支持共享调用的权限约束，暂时无法为你执行任务。请联系它的 owner。",
+};
+
+/** Stand-in runtime for refused agent-sharing turns: never spawns a CLI. */
+function refusalRuntime(
+  id: string,
+  reason: "grant_inactive" | "runtime_unsupported"
+): RuntimeAdapter {
   return {
-    restricted: isRestrictedTurn(msg, route, {
-      botcordChannel: isBotCordChannel(channel),
-    }),
+    id,
+    async run() {
+      return { text: REFUSAL_TEXT[reason], newSessionId: "" };
+    },
   };
 }
 

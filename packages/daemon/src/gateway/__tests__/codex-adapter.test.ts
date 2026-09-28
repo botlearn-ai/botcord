@@ -430,6 +430,26 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
       expect(argv).not.toContain("--dangerously-bypass-approvals-and-sandbox");
     });
 
+    it("collaborator → workspace-write confined to cwd, no network, no tmp", async () => {
+      const adapter = new CodexAdapter({ binary: echoScript() });
+      const res = await adapter.run({
+        text: "x",
+        sessionId: null,
+        accountId: "ag_test",
+        cwd: tmpRoot,
+        signal: new AbortController().signal,
+        trustLevel: "public",
+        executionProfile: "collaborator",
+        extraArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+      });
+      const argv = JSON.parse(res.text) as string[];
+      expect(argv.filter((a) => a.startsWith("sandbox_mode="))).toEqual(['sandbox_mode="workspace-write"']);
+      expect(argv).toContain("sandbox_workspace_write.network_access=false");
+      expect(argv).toContain("sandbox_workspace_write.exclude_slash_tmp=true");
+      expect(argv).toContain("sandbox_workspace_write.exclude_tmpdir_env_var=true");
+      expect(argv).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+    });
+
     it("public ignores operator overrides that would widen the sandbox but keeps the model", async () => {
       const adapter = new CodexAdapter({ binary: echoScript() });
       const ctrl = new AbortController();

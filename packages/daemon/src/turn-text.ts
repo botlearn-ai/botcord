@@ -109,8 +109,25 @@ function isThirdPartyConversation(conversationId: string): boolean {
   );
 }
 
+function collaboratorReplyHint(allowedCommands: string[]): string {
+  const commands = ["git status", "git diff", "git log", "ls", ...allowedCommands]
+    .map((c) => `\`${c}\``)
+    .join(", ");
+  return (
+    "[This request is from someone your owner has shared you with as a collaborator. " +
+    "You are working in a private copy of the project (the current directory): you may " +
+    "read and edit files here, and run only these commands: " +
+    commands +
+    ". You cannot access files outside this directory, push, or use the network. " +
+    "Your changes are committed to a review branch for your owner after this turn. " +
+    "Reply in your final assistant message; BotCord daemon will deliver it. " +
+    'If no reply is needed, reply exactly "NO_REPLY".]'
+  );
+}
+
 function replyDeliveryHint(msg: GatewayInboundMessage, ctx?: UserTurnContext): string {
   if (isThirdPartyConversation(msg.conversation.id)) return THIRD_PARTY_REPLY_HINT;
+  if (ctx?.collaborator) return collaboratorReplyHint(ctx.collaborator.allowedCommands);
   return ctx?.restricted ? RESTRICTED_REPLY_HINT : NON_OWNER_REPLY_HINT;
 }
 

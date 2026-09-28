@@ -150,4 +150,19 @@ describe("Team governance rendering", () => {
     expect(legacy).toContain("申请加入");
     expect(legacy).not.toContain(">添加 Agent<");
   });
+  it("offers access sharing only for the caller's own active organization Agents", () => {
+    fixture.snapshot!.members = {
+      users: [
+        { id: "m", user_id: "me", display_name: "Danny", roles: ["owner"], status: "active" },
+        { id: "m2", user_id: "bob", display_name: "Bob", roles: ["member"], status: "active" },
+      ],
+      agents: [
+        { id: "a1", agent_id: "ag_mine", display_name: "Mine", status: "active", sponsor_user_membership_id: "m" },
+        { id: "a2", agent_id: "ag_bob", display_name: "Bobs", status: "active", sponsor_user_membership_id: "m2" },
+        { id: "a3", agent_id: "ag_new", display_name: "Pending", status: "invited", sponsor_user_membership_id: "m" },
+      ],
+    } as unknown as TeamSnapshot["members"];
+    const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />);
+    expect(html.match(/授权成员使用/g)).toHaveLength(1);
+  });
 });

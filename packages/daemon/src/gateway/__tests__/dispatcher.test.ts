@@ -10,6 +10,16 @@ import {
   type RuntimeFactory,
 } from "../dispatcher.js";
 import { SessionStore } from "../session-store.js";
+
+const guestWorkspaceMock = vi.hoisted(() => ({
+  ensureGuestWorkspace: vi.fn(async (opts: { grantId: string }) => ({
+    dir: `/tmp/guest-${opts.grantId}`,
+    kind: "worktree" as const,
+    branch: `guest/${opts.grantId}`,
+  })),
+  commitGuestChanges: vi.fn(async () => "已提交到分支 `guest/g1`（abc123）：1 file changed"),
+}));
+vi.mock("../guest-workspace.js", () => guestWorkspaceMock);
 import { applyLocalMention } from "../../mention-scan.js";
 import type {
   ChannelAdapter,
@@ -333,6 +343,13 @@ function cloudRunRaw(budget: {
       },
     },
   };
+}
+
+/** Route that explicitly keeps full permissions; grants must still win over it. */
+function legacyFullConfigForSharing(): GatewayConfig {
+  return baseConfig({
+    defaultRoute: { runtime: "claude-code", cwd: "/tmp/default", nonOwnerExecution: "full" },
+  });
 }
 
 /** Route opted into restricted execution for non-owner requesters (team mode). */
@@ -3503,6 +3520,81 @@ describe("Dispatcher", () => {
         kind: "file",
       },
     ]);
+  });
+
+  describe("agent sharing grants (Hub access_context)", () => {
+    const grantRaw = (over: Record<string, unknown> = {}) => ({
+      source_type: "dashboard_human_room",
+      access_context: {
+        grant_id: "g1", space_id: "sp1", role: "collaborator", active: true,
+        requester_id: "hu_alice", workspace_path: "~/code/app", allowed_commands: ["npm test"],
+        ...over,
+      },
+    });
+
+    it("runs collaborators in the grant workspace, in a grant-scoped session, and reports the commit", async () => {
+      const runtime = new FakeRuntime({ reply: "改好了", newSessionId: "sid-g" });
+      const { dispatcher, channel, store } = await scaffold({ runtimeFactory: () => runtime });
+
+      await dispatcher.handle(
+        makeEnvelope({
+          id: "m_share",
+          conversation: { id: "rm_dm_ag_me_hu_alice", kind: "direct" },
+          raw: grantRaw(),
+        })
+      );
+
+      const call = runtime.calls[0]!;
+      expect(call.trustLevel).toBe("public");
+      expect(call.executionProfile).toBe("collaborator");
+      expect(call.allowedCommands).toEqual(["npm test"]);
+      expect(call.cwd).toBe("/tmp/guest-g1");
+      expect(store.all()[0]!.key.endsWith("#grant:g1")).toBe(true);
+      expect(channel.sends.map((m) => m.message.text)).toEqual([
+        "改好了\n\n已提交到分支 `guest/g1`（abc123）：1 file changed",
+      ]);
+    });
+
+    it("never reaches the runtime for an inactive grant and tells the requester", async () => {
+      let spawned = 0;
+      const { dispatcher, channel } = await scaffold({
+        runtimeFactory: () => {
+          spawned += 1;
+          return new FakeRuntime({ reply: "should not run" });
+        },
+        config: legacyFullConfigForSharing(),
+      });
+
+      await dispatcher.handle(
+        makeEnvelope({
+          id: "m_revoked",
+          conversation: { id: "rm_dm_ag_me_hu_alice", kind: "direct" },
+          raw: grantRaw({ active: false }),
+        })
+      );
+
+      expect(spawned).toBe(0);
+      expect(channel.sends[0]!.message.text).toContain("授权已被撤销或已过期");
+    });
+
+    it("refuses grantees on runtimes that cannot enforce the grant", async () => {
+      const runtime = new FakeRuntime({ reply: "should not run" });
+      const { dispatcher, channel } = await scaffold({
+        runtimeFactory: () => runtime,
+        config: baseConfig({ defaultRoute: { runtime: "openclaw-acp", cwd: "/tmp/default" } }),
+      });
+
+      await dispatcher.handle(
+        makeEnvelope({
+          id: "m_unsupported",
+          conversation: { id: "rm_dm_ag_me_hu_alice", kind: "direct" },
+          raw: grantRaw(),
+        })
+      );
+
+      expect(runtime.calls.length).toBe(0);
+      expect(channel.sends[0]!.message.text).toContain("不支持共享调用");
+    });
   });
 
   describe("restricted execution for non-owner requesters (opt-in)", () => {

@@ -426,6 +426,7 @@ export const chatPane: TranslationMap<{
   inviteFriend: string
   humanSendDisabled: string
   memberSendDenied: string
+  agentAccessRevoked: string
   contactKindHuman: string
   contactKindAgent: string
   unnamedHuman: string
@@ -485,6 +486,7 @@ export const chatPane: TranslationMap<{
     inviteFriend: 'Invite friend',
     humanSendDisabled: 'Human messages are disabled for this room',
     memberSendDenied: "You don't have permission to send messages in this room",
+    agentAccessRevoked: 'Your access to this Agent has been revoked or has expired',
     contactKindHuman: 'Human',
     contactKindAgent: 'Agent',
     unnamedHuman: 'Unnamed Human',
@@ -544,6 +546,7 @@ export const chatPane: TranslationMap<{
     inviteFriend: '邀请好友',
     humanSendDisabled: '该房间已禁用真人发言',
     memberSendDenied: '你在该房间没有发言权限',
+    agentAccessRevoked: '你对该 Agent 的使用授权已被撤销或过期',
     contactKindHuman: '真人',
     contactKindAgent: 'Agent',
     unnamedHuman: '未命名真人',

@@ -2688,6 +2688,47 @@ async def recall_room_message(
 _DM_ROOM_RE = _re.compile(r"^rm_dm_((?:ag|hu)_[A-Za-z0-9]+)_((?:ag|hu)_[A-Za-z0-9]+)$")
 
 
+async def _enforce_agent_access_on_dm_send(
+    db: AsyncSession, room_id: str, sender_id: str, user_id
+) -> None:
+    """Re-check agent-sharing access on every human→agent DM send.
+
+    DM admission only runs when the room is created, so a revoked or expired
+    grant must be caught here. Pairs that were never granted are untouched;
+    once a grant existed, the sender needs either a live grant or ordinary
+    direct admission (e.g. they are also a contact).
+    """
+    if not sender_id.startswith("hu_"):
+        return
+    match = _DM_ROOM_RE.match(room_id)
+    if match is None:
+        return
+    a, b = match.group(1), match.group(2)
+    peer_id = b if sender_id == a else a
+    if not peer_id.startswith("ag_"):
+        return
+    peer_agent = (
+        await db.execute(select(Agent).where(Agent.agent_id == peer_id))
+    ).scalar_one_or_none()
+    if peer_agent is None or (peer_agent.user_id is not None and str(peer_agent.user_id) == str(user_id)):
+        return
+    from hub.policy import Principal, check_direct_admission
+    from hub.services import agent_access
+
+    grant = await agent_access.latest_grant_for_pair(db, peer_id, user_id)
+    if grant is None or await agent_access.grant_is_valid(db, grant):
+        return
+    try:
+        await check_direct_admission(
+            db,
+            sender=Principal(id=sender_id, type=ParticipantType.human),
+            receiver=peer_agent,
+            allow_same_room_bypass=False,
+        )
+    except HTTPException:
+        raise HTTPException(status_code=403, detail="agent_access_revoked")
+
+
 async def _ensure_dashboard_dm_room(
     room_id: str, sender_id: str, db: AsyncSession
 ) -> Room | None:
@@ -2771,7 +2812,20 @@ async def _ensure_dashboard_dm_room(
         # agent; requiring a contact request to one's own bot is impossible by
         # design and is rejected in the human contact-request flow.
         # Allow same-room bypass off since this call IS the room creation.
-        if not sender_owns_peer:
+        # Agent sharing: an org member holding a live access grant from the
+        # agent's owner may open the DM without being a contact.
+        granted = False
+        if sender_is_human and not sender_owns_peer:
+            from hub.services import agent_access
+
+            grantee_user_id = (
+                await db.execute(select(User.id).where(User.human_id == sender_id))
+            ).scalar_one_or_none()
+            if grantee_user_id is not None:
+                granted = (
+                    await agent_access.active_grant_for_pair(db, peer_id, grantee_user_id)
+                ) is not None
+        if not sender_owns_peer and not granted:
             await check_direct_admission(
                 db,
                 sender=Principal(id=sender_id, type=sender_type),
@@ -2958,6 +3012,8 @@ async def human_room_send(
     # Room-level human send gate (step 5.5)
     if not room.allow_human_send:
         raise HTTPException(status_code=403, detail="Human send disabled for this room")
+
+    await _enforce_agent_access_on_dm_send(db, room_id, sender_id, ctx.user_id)
 
     effective_member = await effective_human_send_member(
         db,

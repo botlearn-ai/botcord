@@ -2037,6 +2037,26 @@ async def notify_owner_chat_delivery_state(
 
 
 
+async def _load_access_contexts(
+    db: AsyncSession, receiver_agent_id: str, sender_ids: set[str]
+) -> dict[str, dict]:
+    """Agent-sharing access context per human sender that ever held a grant."""
+    from hub.services import agent_access
+
+    human_ids = {sid for sid in sender_ids if sid.startswith("hu_")}
+    if not human_ids:
+        return {}
+    rows = await db.execute(select(User.human_id, User.id).where(User.human_id.in_(human_ids)))
+    out: dict[str, dict] = {}
+    for human_id, user_id in rows.all():
+        grant = await agent_access.latest_grant_for_pair(db, receiver_agent_id, user_id)
+        if grant is None:
+            continue
+        active = await agent_access.grant_is_valid(db, grant)
+        out[human_id] = agent_access.access_context(grant, active=active, requester_id=human_id)
+    return out
+
+
 async def _load_same_owner_senders(
     db: AsyncSession, receiver_agent_id: str, sender_ids: set[str]
 ) -> set[str]:
@@ -2151,6 +2171,11 @@ async def poll_inbox(
     same_owner_senders = await _load_same_owner_senders(
         db, current_agent, {rec.sender_id for rec in rows}
     )
+    access_contexts = await _load_access_contexts(
+        db,
+        current_agent,
+        {rec.sender_id for rec in rows if rec.sender_id not in same_owner_senders},
+    )
 
     # Build response
     messages: list[InboxMessage] = []
@@ -2188,6 +2213,7 @@ async def poll_inbox(
                 source_user_name=user_name_map.get(rec.source_user_id) if rec.source_user_id else None,
                 source_session_kind=rec.source_session_kind,
                 sender_same_owner=rec.sender_id in same_owner_senders,
+                access_context=access_contexts.get(rec.sender_id),
                 reply_preview=(
                     reply_preview_map.get(rec.reply_to_msg_id)
                     if rec.reply_to_msg_id

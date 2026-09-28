@@ -8,9 +8,11 @@ vi.mock("@/lib/supabase/client", () => ({
     },
   }),
 }));
+import { ApiError } from "./api";
 import {
   canManage,
   canRemoveUser,
+  spaceError,
   teamSpacesApi,
   type SpaceUser,
   type TeamSpace,
@@ -51,6 +53,50 @@ describe("Team governance API", () => {
       admin_dm_content_access_enabled: true,
       external_communication_enabled: false,
     });
+  });
+  it("scopes agent access grants to the space and agent", async () => {
+    fetchMock.mockImplementation(async () => new Response("{}"));
+    await teamSpacesApi.grantAccess("org-a", "ag_x", {
+      user_id: "u-bob",
+      role: "consultant",
+      expires_at: null,
+    });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain("/api/spaces/org-a/agents/ag_x/access-grants");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({
+      user_id: "u-bob",
+      role: "consultant",
+      expires_at: null,
+    });
+    expect(new Headers(init.headers).has("X-Active-Agent")).toBe(false);
+    await teamSpacesApi.accessGrants("org-a", "ag_x");
+    expect(fetchMock.mock.calls[1][0]).toContain(
+      "/api/spaces/org-a/agents/ag_x/access-grants",
+    );
+    await teamSpacesApi.revokeAccess("org-a", "g-1");
+    expect(fetchMock.mock.calls[2][0]).toContain(
+      "/api/spaces/org-a/access-grants/g-1",
+    );
+    expect(fetchMock.mock.calls[2][1].method).toBe("DELETE");
+    await teamSpacesApi.sharedAgents("org-a");
+    expect(fetchMock.mock.calls[3][0]).toContain(
+      "/api/spaces/org-a/shared-agents",
+    );
+  });
+  it("maps agent sharing errors to readable text", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "cannot_grant_self" }), {
+        status: 422,
+      }),
+    );
+    const error = await teamSpacesApi
+      .grantAccess("a", "ag_x", { user_id: "me", role: "consultant", expires_at: null })
+      .catch((cause) => cause);
+    expect(spaceError(error, true)).toBe("不能授权给自己。");
+    expect(spaceError(new ApiError(403, "agent_access_revoked"), true)).toBe(
+      "你对该 Agent 的使用授权已被撤销或过期。",
+    );
   });
   it("handles empty deletion responses", async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));

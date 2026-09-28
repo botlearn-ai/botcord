@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Share2,
   Users,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -36,12 +37,20 @@ import TeamSpacesPage from "./TeamSpacesPage";
 import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
 import TeamConversationDialog, { teamButton } from "./TeamConversationDialog";
 import TeamThread from "./TeamThread";
+import SharedAgentsPanel from "./SharedAgentsPanel";
 
-export type TeamView = "messages" | "rooms" | "members" | "agents" | "settings";
+export type TeamView =
+  | "messages"
+  | "rooms"
+  | "members"
+  | "agents"
+  | "shared"
+  | "settings";
 export function teamView(value: string | null): TeamView {
   return value === "rooms" ||
     value === "members" ||
     value === "agents" ||
+    value === "shared" ||
     value === "settings"
     ? value
     : "messages";
@@ -247,6 +256,12 @@ export function TeamWorkspace({
       count: activeUsers,
     },
     { id: "agents" as const, label: "Agent", Icon: Bot, count: activeAgents },
+    {
+      id: "shared" as const,
+      label: t("可用 Agent", "Shared Agents"),
+      Icon: Share2,
+      count: null,
+    },
   ];
   return (
     <div
@@ -592,6 +607,8 @@ export function TeamWorkspace({
                 ? t("组织成员", "Organization members")
                 : view === "agents"
                 ? t("组织 Agent", "Organization Agents")
+                : view === "shared"
+                ? t("可用 Agent", "Shared Agents")
                 : t("组织设置", "Organization settings")}
             </h1>
             <Link className="text-sm text-neon-cyan" href={teamHref(space.id)}>
@@ -599,12 +616,16 @@ export function TeamWorkspace({
             </Link>
           </header>
           <div className="p-4 sm:p-6">
-            <TeamSpacesPage
-              teamMode
-              section={view}
-              sharedStore={sharedStore}
-              onChanged={onMembershipChanged}
-            />
+            {view === "shared" ? (
+              <SharedAgentsPanel spaceId={space.id} />
+            ) : (
+              <TeamSpacesPage
+                teamMode
+                section={view}
+                sharedStore={sharedStore}
+                onChanged={onMembershipChanged}
+              />
+            )}
           </div>
         </main>
       )}

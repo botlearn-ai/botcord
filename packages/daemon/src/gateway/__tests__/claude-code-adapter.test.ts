@@ -384,6 +384,31 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       expect(argv).toContain("--strict-mcp-config");
     });
 
+    it("collaborator → acceptEdits with scoped bash allowlist", async () => {
+      const adapter = new ClaudeCodeAdapter({ binary: echoScript() });
+      const res = await adapter.run({
+        text: "x",
+        sessionId: null,
+        accountId: "ag_test",
+        cwd: tmpRoot,
+        signal: new AbortController().signal,
+        trustLevel: "public",
+        executionProfile: "collaborator",
+        allowedCommands: ["npm test"],
+        extraArgs: ["--permission-mode", "bypassPermissions", "--model", "claude-sonnet-5"],
+      });
+      const argv = JSON.parse(res.text) as string[];
+      expect(argv.filter((a) => a === "--permission-mode")).toHaveLength(1);
+      expect(argv[argv.indexOf("--permission-mode") + 1]).toBe("acceptEdits");
+      const allowed = argv[argv.indexOf("--allowedTools") + 1]!.split(",");
+      expect(allowed).toEqual(expect.arrayContaining(["Bash(git status:*)", "Bash(npm test:*)"]));
+      expect(allowed).not.toContain("Bash");
+      const denied = argv[argv.indexOf("--disallowedTools") + 1]!.split(",");
+      expect(denied).toEqual(expect.arrayContaining(["Bash(git push:*)", "Bash(curl:*)", "WebFetch"]));
+      expect(argv).toContain("--strict-mcp-config");
+      expect(argv[argv.indexOf("--model") + 1]).toBe("claude-sonnet-5");
+    });
+
     it("public ignores operator permission overrides but keeps the model", async () => {
       const adapter = new ClaudeCodeAdapter({ binary: echoScript() });
       const ctrl = new AbortController();

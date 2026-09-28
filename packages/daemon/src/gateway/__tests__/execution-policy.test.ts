@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   isOwnerTrustedInbound,
   isRestrictedTurn,
+  resolveTurnExecution,
   restrictionUnsupported,
+  scrubGuestEnv,
 } from "../execution-policy.js";
 import type { GatewayInboundMessage } from "../types.js";
 
@@ -65,5 +67,59 @@ describe("isRestrictedTurn", () => {
     expect(isRestrictedTurn(msg(), { runtime: "openclaw-acp", ...restricted }, botcord)).toBe(false);
     expect(restrictionUnsupported(msg(), { runtime: "openclaw-acp", ...restricted }, botcord)).toBe(true);
     expect(restrictionUnsupported(msg(), { runtime: "kimi-cli" }, botcord)).toBe(false);
+  });
+});
+
+describe("resolveTurnExecution", () => {
+  const ctx = (over: Record<string, unknown> = {}) => ({
+    access_context: {
+      grant_id: "g1", space_id: "sp1", role: "collaborator", active: true,
+      requester_id: "hu_alice", workspace_path: "~/code/app", allowed_commands: ["npm test"],
+      ...over,
+    },
+  });
+
+  it("runs grantees as collaborator on capable runtimes, restricted elsewhere", () => {
+    const cc = resolveTurnExecution(msg({ raw: ctx() }), { runtime: "claude-code" }, botcord);
+    expect(cc).toEqual({
+      profile: "collaborator",
+      grant: {
+        grantId: "g1", spaceId: "sp1", role: "collaborator", requesterId: "hu_alice",
+        workspacePath: "~/code/app", allowedCommands: ["npm test"],
+      },
+    });
+    expect(resolveTurnExecution(msg({ raw: ctx() }), { runtime: "gemini" }, botcord).profile).toBe("restricted");
+    expect(resolveTurnExecution(msg({ raw: ctx({ role: "consultant" }) }), { runtime: "codex" }, botcord).profile)
+      .toBe("restricted");
+  });
+
+  it("refuses inactive grants and runtimes that cannot enforce them, regardless of route config", () => {
+    const inactive = resolveTurnExecution(msg({ raw: ctx({ active: false }) }),
+      { runtime: "claude-code", nonOwnerExecution: "full" }, botcord);
+    expect(inactive).toMatchObject({ profile: "refused", reason: "grant_inactive" });
+    expect(resolveTurnExecution(msg({ raw: ctx() }), { runtime: "openclaw-acp" }, botcord))
+      .toMatchObject({ profile: "refused", reason: "runtime_unsupported" });
+  });
+
+  it("downgrades mixed batches to read-only and keeps owner turns on default", () => {
+    const mixed = msg({ raw: { batch: [ctx(), { source_type: "agent" }] } });
+    expect(resolveTurnExecution(mixed, { runtime: "claude-code" }, botcord).profile).toBe("restricted");
+    const owner = msg({ conversation: { id: "rm_oc_1", kind: "direct" }, raw: ctx() });
+    expect(resolveTurnExecution(owner, { runtime: "claude-code" }, botcord)).toEqual({ profile: "default" });
+    expect(resolveTurnExecution(msg(), { runtime: "claude-code" }, botcord)).toEqual({ profile: "default" });
+  });
+});
+
+describe("scrubGuestEnv", () => {
+  it("drops host credentials but keeps runtime auth and ordinary variables", () => {
+    const out = scrubGuestEnv({
+      PATH: "/usr/bin", HOME: "/home/u", GH_TOKEN: "x", SSH_AUTH_SOCK: "/s", AWS_ACCESS_KEY_ID: "a",
+      MY_SERVICE_TOKEN: "t", DB_PASSWORD: "p", ANTHROPIC_API_KEY: "k", CODEX_HOME: "/c",
+      CLAUDE_CODE_OAUTH_TOKEN: "o",
+    });
+    expect(out).toEqual({
+      PATH: "/usr/bin", HOME: "/home/u", ANTHROPIC_API_KEY: "k", CODEX_HOME: "/c",
+      CLAUDE_CODE_OAUTH_TOKEN: "o",
+    });
   });
 });

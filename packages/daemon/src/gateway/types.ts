@@ -158,6 +158,8 @@ export type InboundObserver = (
 export interface UserTurnContext {
   /** Turn runs with the restricted execution profile (see execution-policy.ts). */
   restricted?: boolean;
+  /** Agent-sharing collaborator turn: may edit its workspace and run these commands. */
+  collaborator?: { allowedCommands: string[] };
 }
 
 export type UserTurnBuilder = (message: GatewayInboundMessage, ctx?: UserTurnContext) => string;
@@ -439,6 +441,14 @@ export interface RuntimeRunOptions {
   signal: AbortSignal;
   extraArgs?: string[];
   trustLevel: TrustLevel;
+  /**
+   * Execution profile resolved by the dispatcher (gateway/execution-policy.ts).
+   * `restricted` and `collaborator` always come with `trustLevel: "public"`;
+   * `collaborator` runs in a per-grant workspace with edits allowed there.
+   */
+  executionProfile?: "default" | "restricted" | "collaborator";
+  /** Collaborator only: extra shell command prefixes the requester may run. */
+  allowedCommands?: string[];
   /** System-level context injected alongside the user turn (memory, digest, room info). */
   systemContext?: string;
   /**
@@ -535,8 +545,11 @@ export interface SessionKeyInput {
   conversationKind: "direct" | "group";
   conversationId: string;
   threadId?: string | null;
-  /** Execution scope suffix; restricted turns never resume full-trust sessions. */
-  executionScope?: "restricted" | null;
+  /**
+   * Execution scope suffix: `restricted`, or `grant:<id>` for agent-sharing
+   * turns, so non-owner turns never resume a full-trust session.
+   */
+  executionScope?: string | null;
 }
 
 /** Persisted runtime-session record keyed by the derived session key. */

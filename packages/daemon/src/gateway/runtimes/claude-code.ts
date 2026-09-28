@@ -146,6 +146,32 @@ export const CLAUDE_RESTRICTED_DISALLOWED_TOOLS = [
   "Read(**/.env*)",
 ];
 
+/**
+ * Collaborator profile (agent-sharing grantee with edit rights). Runs in the
+ * grant's own workspace with `acceptEdits`: edits and reads inside the cwd are
+ * auto-approved, anything outside it is denied in headless mode. Shell access
+ * is limited to read-only git inspection plus the grant's allowed commands.
+ */
+export const CLAUDE_COLLABORATOR_BASE_BASH = [
+  "Bash(git status:*)",
+  "Bash(git diff:*)",
+  "Bash(git log:*)",
+  "Bash(ls:*)",
+];
+export const CLAUDE_COLLABORATOR_DISALLOWED_TOOLS = [
+  "Bash(git push:*)",
+  "Bash(git remote:*)",
+  "Bash(git config:*)",
+  "Bash(curl:*)",
+  "Bash(wget:*)",
+  "Bash(ssh:*)",
+  "Bash(scp:*)",
+  "Bash(rsync:*)",
+  "Bash(nc:*)",
+  "WebFetch",
+  "Read(**/.env*)",
+];
+
 /** Operator extra args that stay in effect on restricted turns (model choice only). */
 const CLAUDE_RESTRICTED_KEEP_FLAGS_WITH_VALUE = new Set(["--model", "--effort", "--fallback-model"]);
 
@@ -287,9 +313,11 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
   }
 
   protected buildArgs(opts: RuntimeRunOptions): string[] {
-    const restricted = opts.trustLevel === "public";
+    const guest = opts.trustLevel === "public";
+    const collaborator = guest && opts.executionProfile === "collaborator";
+    const restricted = guest && !collaborator;
     const sanitized = sanitizeClaudeExtraArgs(opts.extraArgs);
-    const extraArgs = restricted ? restrictedClaudeExtraArgs(sanitized) : sanitized;
+    const extraArgs = guest ? restrictedClaudeExtraArgs(sanitized) : sanitized;
     const args = ["-p", opts.text, "--output-format", "stream-json", "--verbose"];
     // Headless `-p` mode does not load project `.claude/` by default, so
     // per-agent skills seeded at `<workspace>/.claude/skills/` are invisible
@@ -311,7 +339,23 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
     // Restricted turns (non-owner requester) instead run in `default` mode
     // with an explicit read-only allowlist: headless `-p` auto-denies every
     // tool that is not allowed, so nothing blocks on a prompt.
-    if (restricted) {
+    if (collaborator) {
+      const allowed = [
+        ...CLAUDE_COLLABORATOR_BASE_BASH,
+        ...(opts.allowedCommands ?? []).map((cmd) => `Bash(${cmd}:*)`),
+      ];
+      args.push(
+        "--permission-mode",
+        "acceptEdits",
+        "--allowedTools",
+        allowed.join(","),
+        "--disallowedTools",
+        CLAUDE_COLLABORATOR_DISALLOWED_TOOLS.join(","),
+        "--settings",
+        JSON.stringify({ disableAllHooks: true }),
+        "--strict-mcp-config",
+      );
+    } else if (restricted) {
       args.push(
         "--permission-mode",
         "default",
