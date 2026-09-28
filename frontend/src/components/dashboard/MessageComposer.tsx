@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import ComposerPopover from "./ComposerPopover";
+import { detectMention, insertMentionTrigger, hydrateMentionDraft, reconcileDraftMentions, serializeDraftMentions, type DraftMention, type MentionMatch } from "./composer-mentions";
 import { shouldSendOnEnter } from "./mobileChat";
 import { AtSign, Bot, Coins, FileText, FileUp, Hash, Plus, Send, User, X } from "lucide-react";
 import { animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
@@ -15,13 +16,8 @@ interface PendingFile {
 export interface MentionCandidate {
   agent_id: string;
   display_name: string;
-  /** When set, inserted as @display_name(id) so the AI can resolve the exact target. */
+  /** Serialized as @display_name(id) on send; the editor shows only the name. */
   id?: string;
-}
-
-interface MentionMatch {
-  start: number;
-  query: string;
 }
 
 interface MessageComposerProps {
@@ -32,6 +28,7 @@ interface MessageComposerProps {
     file?: string;
     transfer?: string;
     close?: string;
+    mention?: string;
   };
   disabled?: boolean;
   placeholder?: string;
@@ -51,21 +48,6 @@ export const MESSAGE_COMPOSER_TEXTAREA_NAME = "botcord_conversation_body";
 export const MESSAGE_COMPOSER_TEXTAREA_AUTOCOMPLETE = "off";
 export const MESSAGE_COMPOSER_TEXTAREA_ARIA_AUTOCOMPLETE = "none";
 
-function detectMention(text: string, cursor: number): MentionMatch | null {
-  for (let i = cursor - 1; i >= 0; i--) {
-    const c = text[i];
-    if (c === "@") {
-      const prev = i > 0 ? text[i - 1] : " ";
-      if (i === 0 || prev === " " || prev === "\n" || prev === "\t") {
-        return { start: i, query: text.slice(i + 1, cursor) };
-      }
-      return null;
-    }
-    if (c === " " || c === "\n" || c === "\t") return null;
-  }
-  return null;
-}
-
 // Boundary-aware check: returns true only when "@<displayName>" appears in text
 // followed by a word boundary (whitespace, punctuation, or end-of-string).
 // Without this, "@Alice" would be incorrectly detected inside "@AliceX".
@@ -75,8 +57,10 @@ export function textHasMention(text: string, displayName: string): boolean {
   while (true) {
     const found = text.indexOf(needle, idx);
     if (found === -1) return false;
+    const before = text[found - 1];
     const after = text[found + needle.length];
-    if (after === undefined || /[\s.,!?;:()\]}'"]/.test(after)) return true;
+    if (before && !/[\s，。！？、；：（）([{'"“‘]/.test(before)) { idx = found + needle.length; continue; }
+    if (after === undefined || /[\s，。！？、；：（）.,!?;:()\]}'"]/.test(after)) return true;
     idx = found + needle.length;
   }
 }
@@ -120,16 +104,19 @@ export default function MessageComposer({
   mentionCandidates,
   initialText,
 }: MessageComposerProps) {
-  const [text, setText] = useState(initialText ?? "");
+  const initialDraft = useMemo(() => hydrateMentionDraft(initialText ?? ""), [initialText]);
+  const [text, setText] = useState(initialDraft.text);
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [mentionMatch, setMentionMatch] = useState<MentionMatch | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
-  const [pickedMentions, setPickedMentions] = useState<MentionCandidate[]>([]);
+  const [pickedMentions, setPickedMentions] = useState<DraftMention[]>(initialDraft.mentions);
   const [showLengthError, setShowLengthError] = useState((initialText?.length ?? 0) > MESSAGE_MAX_LENGTH);
+  const [inputScrollTop, setInputScrollTop] = useState(0);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const composerRowRef = useRef<HTMLDivElement>(null);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const nativeEditRef = useRef<{ before: string; start: number; end: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mentionListRef = useRef<HTMLDivElement>(null);
   const mentionOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -146,7 +133,19 @@ export default function MessageComposer({
   const sendIconAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
   const inputId = `${MESSAGE_COMPOSER_TEXTAREA_ID_PREFIX}-${useId().replace(/:/g, "")}`;
 
+  const mentionListId = `${inputId}-mentions`;
   const mentionEnabled = !!mentionCandidates && mentionCandidates.length > 0;
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    // Native beforeinput includes deletions/replacements; preserve which identical name was edited.
+    const captureEdit = () => {
+      nativeEditRef.current = { before: input.value, start: input.selectionStart, end: input.selectionEnd };
+    };
+    input.addEventListener("beforeinput", captureEdit);
+    return () => input.removeEventListener("beforeinput", captureEdit);
+  }, []);
 
   useEffect(() => {
     if (!autoFocus && !initialText) return;
@@ -156,7 +155,9 @@ export default function MessageComposer({
 
   useEffect(() => {
     if (!initialText) return;
-    setText(initialText);
+    setText(initialDraft.text);
+    setPickedMentions(initialDraft.mentions);
+    setInputScrollTop(0);
     setShowLengthError(initialText.length > MESSAGE_MAX_LENGTH);
     requestAnimationFrame(() => {
       const el = inputRef.current;
@@ -165,7 +166,7 @@ export default function MessageComposer({
       el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
       el.setSelectionRange(el.value.length, el.value.length);
     });
-  }, [initialText]);
+  }, [initialText, initialDraft]);
 
   useEffect(() => {
     return () => {
@@ -297,7 +298,9 @@ export default function MessageComposer({
     const el = inputRef.current;
     if (!mentionEnabled || !el) { setMentionMatch(null); return; }
     const cursor = el.selectionStart ?? el.value.length;
-    setMentionMatch(detectMention(el.value, cursor));
+    const next = detectMention(el.value, cursor);
+    setMentionMatch(next);
+    setMentionIndex(0);
   }, [mentionEnabled]);
 
   const addFiles = useCallback((list: FileList | File[] | null) => {
@@ -328,33 +331,30 @@ export default function MessageComposer({
     const cursor = el.selectionStart ?? el.value.length;
     const before = text.slice(0, mentionMatch.start);
     const after = text.slice(cursor);
-    const insert = candidate.id
-      ? `@${candidate.display_name}(${candidate.id}) `
-      : `@${candidate.display_name} `;
+    const insert = `@${candidate.display_name} `;
     const next = `${before}${insert}${after}`;
+    const nextMentions = [
+      ...reconcileDraftMentions(text, next, pickedMentions),
+      { ...candidate, start: before.length, end: before.length + insert.length - 1 },
+    ].sort((a, b) => a.start - b.start);
+    if (serializeDraftMentions(next, nextMentions).length > MESSAGE_MAX_LENGTH) return;
     setText(next);
     setMentionMatch(null);
-    setPickedMentions((prev) => {
-      if (prev.some((m) => m.agent_id === candidate.agent_id)) return prev;
-      return [...prev, candidate];
-    });
-    requestAnimationFrame(() => {
-      const node = inputRef.current;
-      if (!node) return;
-      const pos = before.length + insert.length;
-      node.focus();
-      node.setSelectionRange(pos, pos);
-      node.style.height = "auto";
-      node.style.height = `${Math.min(node.scrollHeight, 120)}px`;
-    });
-  }, [mentionMatch, text]);
+    setPickedMentions(nextMentions);
+    // Keep focus/caret in the selection gesture, including native mobile keyboards.
+    el.value = next;
+    el.focus({ preventScroll: true });
+    const pos = before.length + insert.length;
+    el.setSelectionRange(pos, pos);
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [mentionMatch, text, pickedMentions]);
 
   const activeMentions = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const m of pickedMentions) {
       if (seen.has(m.agent_id)) continue;
-      if (!textHasMention(text, m.display_name)) continue;
       seen.add(m.agent_id);
       out.push(m.agent_id);
     }
@@ -365,10 +365,12 @@ export default function MessageComposer({
     return out;
   }, [pickedMentions, text, mentionCandidates]);
 
+  const serializedText = useMemo(() => serializeDraftMentions(text, pickedMentions), [text, pickedMentions]);
+
   const handleSend = useCallback(async () => {
     const hasFiles = files.length > 0;
-    const hasLengthError = text.length > MESSAGE_MAX_LENGTH || showLengthError;
-    const sendText = getSendableMessageText(text, hasFiles);
+    const hasLengthError = serializedText.length > MESSAGE_MAX_LENGTH || showLengthError;
+    const sendText = getSendableMessageText(serializedText, hasFiles);
     if (sendText === null || disabled || hasLengthError) return;
 
     const raw = files.map((pf) => pf.file);
@@ -377,6 +379,7 @@ export default function MessageComposer({
     setText("");
     setFiles([]);
     setPickedMentions([]);
+    setInputScrollTop(0);
     setMentionMatch(null);
     if (inputRef.current) {
       inputRef.current.value = "";
@@ -384,10 +387,14 @@ export default function MessageComposer({
     }
 
     await onSend(sendText, raw, mentions.length > 0 ? mentions : undefined);
-  }, [text, files, disabled, showLengthError, activeMentions, onSend]);
+  }, [serializedText, files, disabled, showLengthError, activeMentions, onSend]);
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     const composing = isImeComposing(e.nativeEvent, compositionActiveRef.current);
+    if (composing) {
+      e.stopPropagation();
+      return;
+    }
     if (mentionMatch && suggestions.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -469,7 +476,7 @@ export default function MessageComposer({
     }
   }, [addFiles, wouldExceedMaxLength]);
 
-  const hasLengthError = text.length > MESSAGE_MAX_LENGTH || showLengthError;
+  const hasLengthError = serializedText.length > MESSAGE_MAX_LENGTH || showLengthError;
   const canSend = !disabled && !hasLengthError && (text.trim().length > 0 || files.length > 0);
   const showActionMenu = allowAttachments || !!onTransfer;
 
@@ -489,6 +496,7 @@ export default function MessageComposer({
   }, [hasLengthError]);
 
   const handleSendClick = useCallback(() => {
+    inputRef.current?.focus({ preventScroll: true });
     if (canSend) {
       const button = sendButtonRef.current;
       if (button) {
@@ -603,6 +611,48 @@ export default function MessageComposer({
             </div>
           </>
         )}
+        {mentionEnabled && (
+          <button
+            type="button"
+            disabled={disabled}
+            aria-label={actionLabels?.mention ?? "Mention someone"}
+            aria-haspopup="listbox"
+            aria-expanded={!!mentionMatch && suggestions.length > 0}
+            aria-controls={mentionMatch && suggestions.length > 0 ? mentionListId : undefined}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              const el = inputRef.current;
+              if (!el) return;
+              const next = insertMentionTrigger(text, el.selectionStart, el.selectionEnd);
+              if (next.text.length > MESSAGE_MAX_LENGTH) return;
+              setActionMenuOpen(false);
+              setPickedMentions(reconcileDraftMentions(text, next.text, pickedMentions));
+              setText(next.text);
+              el.value = next.text;
+              el.focus({ preventScroll: true });
+              el.setSelectionRange(next.cursor, next.cursor);
+              updateMentionMatch();
+              autoResize();
+            }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-glass-bg hover:text-neon-cyan disabled:opacity-50"
+          >
+            <AtSign className="h-4 w-4" />
+          </button>
+        )}
+        <div className="relative min-w-0 flex-1">
+          {pickedMentions.length > 0 && (
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
+              <div className="whitespace-pre-wrap break-words border border-transparent px-3 py-2 text-base md:text-sm [@media(pointer:coarse)]:text-base text-text-primary" style={{ transform: `translateY(-${inputScrollTop}px)`, overflowWrap: "break-word" }}>
+                {pickedMentions.map((mention, index) => (
+                  <span key={`${mention.start}:${mention.agent_id}`}>
+                    {text.slice(index === 0 ? 0 : pickedMentions[index - 1].end, mention.start)}
+                    <span className="rounded bg-neon-cyan/10 text-neon-cyan">{text.slice(mention.start, mention.end)}</span>
+                  </span>
+                ))}
+                {text.slice(pickedMentions[pickedMentions.length - 1].end)}{"\n"}
+              </div>
+            </div>
+          )}
         <textarea
           ref={inputRef}
           id={inputId}
@@ -617,9 +667,14 @@ export default function MessageComposer({
           data-1p-ignore="true"
           data-bwignore="true"
           data-protonpass-ignore="true"
-          aria-autocomplete={MESSAGE_COMPOSER_TEXTAREA_ARIA_AUTOCOMPLETE}
+          aria-autocomplete={mentionEnabled ? "list" : MESSAGE_COMPOSER_TEXTAREA_ARIA_AUTOCOMPLETE}
+          aria-haspopup={mentionEnabled ? "listbox" : undefined}
+          aria-controls={mentionMatch && suggestions.length > 0 ? mentionListId : undefined}
+          aria-activedescendant={mentionMatch && suggestions.length > 0 ? `${mentionListId}-${mentionIndex}` : undefined}
           aria-invalid={hasLengthError || undefined}
-          className={`liquid-input min-w-0 min-h-11 flex-1 resize-none rounded-xl border px-3 py-2 text-sm text-text-primary placeholder-text-secondary/65 transition-all focus:outline-none ${
+          style={pickedMentions.length > 0 ? { color: "transparent", caretColor: "var(--color-text-primary)", background: "transparent" } : undefined}
+          onScroll={(event) => setInputScrollTop(event.currentTarget.scrollTop)}
+          className={`liquid-input relative block w-full min-w-0 min-h-11 resize-none rounded-xl border px-3 py-2 text-base md:text-sm [@media(pointer:coarse)]:text-base text-text-primary placeholder-text-secondary/65 focus:outline-none ${
             hasLengthError
               ? "border-red-500/70 focus:border-red-500/80"
               : emptyState
@@ -633,6 +688,9 @@ export default function MessageComposer({
           maxLength={MESSAGE_MAX_LENGTH}
           onChange={(e) => {
             const nextText = e.target.value;
+            const edit = nativeEditRef.current;
+            setPickedMentions(reconcileDraftMentions(text, nextText, pickedMentions, edit?.before === text ? edit : undefined));
+            nativeEditRef.current = null;
             setText(nextText);
             if (nextText.length < MESSAGE_MAX_LENGTH) setShowLengthError(false);
             if (nextText.length > MESSAGE_MAX_LENGTH) setShowLengthError(true);
@@ -649,8 +707,7 @@ export default function MessageComposer({
               compositionActiveRef.current = false;
             }, 0);
           }}
-          onKeyUp={updateMentionMatch}
-          onClick={updateMentionMatch}
+          onSelect={updateMentionMatch}
           onFocus={() => { if (blurTimerRef.current) clearTimeout(blurTimerRef.current); }}
           onBlur={() => {
             compositionActiveRef.current = false;
@@ -660,11 +717,14 @@ export default function MessageComposer({
           rows={1}
           disabled={disabled}
         />
+        </div>
         {mentionMatch && suggestions.length > 0 && (
           <ComposerPopover anchorRef={composerRowRef} onClose={() => setMentionMatch(null)} matchWidth>
           <div
             ref={mentionListRef}
             className="origin-bottom"
+            id={mentionListId}
+            aria-label={actionLabels?.mention ?? "Mention someone"}
             role="listbox"
           >
             {suggestions.map((s, i) => {
@@ -691,6 +751,8 @@ export default function MessageComposer({
                   ref={(node) => { mentionOptionRefs.current[i] = node; }}
                   type="button"
                   key={s.agent_id}
+                  id={`${mentionListId}-${i}`}
+                  tabIndex={-1}
                   role="option"
                   aria-selected={i === mentionIndex}
                   onPointerDown={(event) => {
@@ -712,7 +774,7 @@ export default function MessageComposer({
                       {kindLabel}
                     </span>
                   )}
-                  <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-500">{s.id ?? s.agent_id}</span>
+                  <span className="ml-auto max-w-[35%] truncate font-mono text-[10px] text-zinc-500">{s.id ?? s.agent_id}</span>
                 </button>
               );
             })}
@@ -722,6 +784,7 @@ export default function MessageComposer({
         <button
           ref={sendButtonRef}
           type="button"
+          onMouseDown={(event) => event.preventDefault()}
           onClick={handleSendClick}
           disabled={!canSend}
           className="liquid-send-button flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-cyan/15 text-neon-cyan transition-colors hover:bg-neon-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"

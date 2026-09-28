@@ -4,7 +4,8 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Forward, MoreHorizontal, RotateCcw, User } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Forward, MoreHorizontal, RotateCcw } from "lucide-react";
+import MentionChip from "./MentionChip";
 import ForwardModal from "./ForwardModal";
 import ReplyQuoteBlock from "./ReplyQuoteBlock";
 import { emitJumpToMessage } from "./messageNavigation";
@@ -19,7 +20,7 @@ import { resolveMessageMentionTargets } from "@/lib/message-mentions";
 import { canRecallDashboardMessage, isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import AttachmentItem, { getPreviewableImageAttachments } from "@/components/ui/AttachmentItem";
 import CopyableId from "@/components/ui/CopyableId";
-import MarkdownContent from "@/components/ui/MarkdownContent";
+import ChatMarkdown from "./ChatMarkdown";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
 import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
 import TransferCard, { parseTransferText, parseTransferNotice } from "@/components/dashboard/TransferCard";
@@ -29,6 +30,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useConfirm } from "@/store/useConfirmStore";
 import BotAvatar from "./BotAvatar";
+import ParticipantAvatar from "./ParticipantAvatar";
 import { PresenceDot } from "./PresenceDot";
 
 interface MessageBubbleProps {
@@ -264,6 +266,8 @@ function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
 const MAX_REPLYING_AVATARS = 3;
 
 function ReplyingAvatarStack({ reactions }: { reactions: MessageStatusReaction[] }) {
+  const locale = useLanguage();
+  const replyingLabel = locale === "zh" ? "正在回复" : "replying";
   const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
   // Narrow subscription: resolve only these actors' avatars and return a plain
   // id → url map, so the stack re-renders only when one of *its* actors'
@@ -287,7 +291,7 @@ function ReplyingAvatarStack({ reactions }: { reactions: MessageStatusReaction[]
   const extra = reactions.length - shown.length;
   const names = reactions.map((reaction) => reaction.actor_name || reaction.actor_id).join("、");
   return (
-    <span className="inline-flex items-center gap-1" title={`${names} replying`}>
+    <span role="status" aria-label={`${names} ${replyingLabel}`} className="inline-flex items-center gap-1" title={`${names} ${replyingLabel}`}>
       <span className="inline-flex items-center">
         {shown.map((reaction, index) => {
           const ownedAvatar = ownedAgents.find((item) => item.agent_id === reaction.actor_id)?.avatar_url;
@@ -322,178 +326,6 @@ function ReplyingAvatarStack({ reactions }: { reactions: MessageStatusReaction[]
   );
 }
 
-function MentionChip({
-  id,
-  label,
-  prefix = "@",
-  onSelectAgent,
-  onSelectHuman,
-}: {
-  id: string;
-  label: string;
-  prefix?: string;
-  onSelectAgent: (agentId: string) => void;
-  onSelectHuman: (humanId: string, displayName: string) => void;
-}) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const tooltipRef = useRef<HTMLSpanElement>(null);
-  const tooltipAnimationRef = useRef<MotionAnimation>(null);
-  const tooltipOpenedRef = useRef(false);
-  const [tooltipPosition, setTooltipPosition] = useState<{ left: number; top: number } | null>(null);
-  const tooltipOpen = Boolean(tooltipPosition);
-  const isHuman = id.startsWith("hu_");
-  const isAgent = id.startsWith("ag_");
-  const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
-  // Narrow subscription: derive only the primitive name/bio fields for this id,
-  // so the chip re-renders only when *those* change — not on every overview /
-  // publicAgents churn (which fires on every inbound message).
-  const { contactAlias, contactDisplayName, publicAgentDisplayName, publicAgentBio } =
-    useDashboardChatStore(
-      useShallow((state) => {
-        const contact = state.overview?.contacts.find((item) => item.contact_agent_id === id);
-        const publicAgent = state.publicAgents.find((agent) => agent.agent_id === id);
-        return {
-          contactAlias: contact?.alias ?? null,
-          contactDisplayName: contact?.display_name ?? null,
-          publicAgentDisplayName: publicAgent?.display_name ?? null,
-          publicAgentBio: publicAgent?.bio ?? null,
-        };
-      }),
-    );
-
-  const ownAgent = ownedAgents.find((agent) => agent.agent_id === id);
-  const displayName = contactAlias || ownAgent?.display_name || contactDisplayName || publicAgentDisplayName || label;
-  const bio = ownAgent?.bio ?? publicAgentBio ?? null;
-  const role = isHuman ? "Human" : isAgent ? "Agent" : "Mention";
-  const canOpen = isHuman || isAgent;
-
-  const updateTooltipPosition = useCallback(() => {
-    const trigger = triggerRef.current;
-    if (!trigger) return;
-
-    const rect = trigger.getBoundingClientRect();
-    const tooltipWidth = 256;
-    const estimatedTooltipHeight = bio ? 128 : 92;
-    const gap = 6;
-    const viewportPadding = 8;
-    const maxLeft = Math.max(viewportPadding, window.innerWidth - tooltipWidth - viewportPadding);
-    const left = Math.min(Math.max(rect.left, viewportPadding), maxLeft);
-    const spaceAbove = rect.top - viewportPadding;
-    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
-    const shouldPlaceBelow = spaceAbove < estimatedTooltipHeight && spaceBelow >= spaceAbove;
-    const top = shouldPlaceBelow
-      ? Math.min(rect.bottom + gap, window.innerHeight - estimatedTooltipHeight - viewportPadding)
-      : Math.max(viewportPadding, rect.top - estimatedTooltipHeight - gap);
-
-    setTooltipPosition((prev) => (
-      prev && prev.left === left && prev.top === top ? prev : { left, top }
-    ));
-  }, [bio]);
-
-  useLayoutEffect(() => {
-    if (!tooltipPosition) return;
-
-    updateTooltipPosition();
-    window.addEventListener("resize", updateTooltipPosition);
-    window.addEventListener("scroll", updateTooltipPosition, true);
-
-    return () => {
-      window.removeEventListener("resize", updateTooltipPosition);
-      window.removeEventListener("scroll", updateTooltipPosition, true);
-    };
-  }, [tooltipPosition, updateTooltipPosition]);
-
-  useLayoutEffect(() => {
-    if (!tooltipOpen) {
-      tooltipOpenedRef.current = false;
-      cleanupAnime(tooltipAnimationRef.current);
-      tooltipAnimationRef.current = null;
-      return;
-    }
-
-    if (tooltipOpenedRef.current) return;
-    const tooltip = tooltipRef.current;
-    if (!tooltip) return;
-
-    tooltipOpenedRef.current = true;
-    cleanupAnime(tooltipAnimationRef.current);
-    tooltip.style.opacity = "0";
-    tooltip.style.transform = "translateY(4px) scale(0.98)";
-    tooltip.style.transformOrigin = "top left";
-
-    const animation = animateIfMotion(tooltip, {
-      opacity: [0, 1],
-      translateY: [4, 0],
-      scale: [0.98, 1],
-      duration: 170,
-      ease: "out(3)",
-    });
-    tooltipAnimationRef.current = animation;
-
-    if (!animation) {
-      tooltip.style.opacity = "1";
-      tooltip.style.transform = "translateY(0px) scale(1)";
-      return;
-    }
-
-    return () => {
-      tooltipOpenedRef.current = false;
-      cleanupAnime(tooltipAnimationRef.current);
-      tooltipAnimationRef.current = null;
-    };
-  }, [tooltipOpen]);
-
-  const handleClick = () => {
-    if (isHuman) {
-      onSelectHuman(id, displayName);
-      return;
-    }
-    if (isAgent) {
-      onSelectAgent(id);
-    }
-  };
-
-  return (
-    <span className="inline align-baseline">
-      <button
-        ref={triggerRef}
-        type="button"
-        onMouseEnter={updateTooltipPosition}
-        onMouseLeave={() => setTooltipPosition(null)}
-        onFocus={updateTooltipPosition}
-        onBlur={() => setTooltipPosition(null)}
-        onClick={(e) => {
-          e.stopPropagation();
-          handleClick();
-        }}
-        disabled={!canOpen}
-        className="inline max-w-full rounded-none border-0 bg-transparent p-0 align-baseline font-medium leading-[inherit] text-neon-cyan underline decoration-neon-cyan/45 underline-offset-2 transition-colors hover:text-neon-cyan/80 hover:decoration-neon-cyan disabled:cursor-default"
-      >
-        {prefix}{displayName}
-      </button>
-      {tooltipPosition && typeof document !== "undefined" && createPortal(
-        <span
-          ref={tooltipRef}
-          className="liquid-menu pointer-events-none fixed z-[900] w-64 rounded-xl border border-glass-border bg-deep-black-light p-3 text-left shadow-xl shadow-black/30"
-          style={{ left: tooltipPosition.left, top: tooltipPosition.top }}
-        >
-          <span className="mb-1 flex items-center gap-2">
-            {isAgent && <PresenceDot agentId={id} size="sm" />}
-            <span className={`truncate text-xs font-semibold ${isHuman ? "text-neon-green" : "text-neon-purple"}`}>
-              {displayName}
-            </span>
-            <span className="ml-auto rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">
-              {role}
-            </span>
-          </span>
-          <span className="block truncate font-mono text-[10px] text-text-secondary/70">{id}</span>
-          {bio && <span className="mt-1.5 line-clamp-3 block text-xs leading-relaxed text-text-secondary">{bio}</span>}
-        </span>,
-        document.body,
-      )}
-    </span>
-  );
-}
 
 function getSystemJoinParticipant(payload: Record<string, unknown>): { id: string; name: string } | null {
   if (payload.subtype !== "room_member_joined") return null;
@@ -526,30 +358,7 @@ function SenderAvatar({
       title={displayName}
       aria-label={`Open ${displayName}`}
     >
-      {isHuman ? (
-        avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={avatarUrl}
-            alt={displayName}
-            width={32}
-            height={32}
-            className="h-8 w-8 rounded-full object-cover ring-1 ring-neon-green/30"
-          />
-        ) : (
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-neon-green/30 bg-neon-green/10 text-neon-green">
-            <User className="h-4 w-4" />
-          </span>
-        )
-      ) : (
-        <BotAvatar
-          agentId={senderId}
-          avatarUrl={avatarUrl}
-          alt={displayName}
-          size={32}
-          className="ring-neon-purple/30"
-        />
-      )}
+      <ParticipantAvatar id={senderId} name={displayName} avatarUrl={avatarUrl} isHuman={isHuman} size={32} />
     </div>
   );
 }
@@ -699,7 +508,7 @@ function MessageBubble({
       forceStatusReactionRender((value) => value + 1);
     }, Math.max(0, nextExpiry - Date.now() + 50));
     return () => window.clearTimeout(timer);
-  }, [message.status_reactions]);
+  }, [message.status_reactions, nowMs]);
   const handleSelectSender = () => {
     if (isHuman) {
       requestOpenHuman(message.sender_id, senderDisplayName);
@@ -1055,16 +864,8 @@ function MessageBubble({
           onKeyDown={handleSelectSenderByKey}
           className={`mb-0.5 flex items-center gap-1.5 rounded px-1 transition-colors hover:bg-glass-bg ${isOwn ? "justify-end" : "-ml-1"}`}
         >
-          <span
-            className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-              isHuman
-                ? "border-neon-green/30 bg-neon-green/10 text-neon-green"
-                : "border-neon-purple/30 bg-neon-purple/10 text-neon-purple"
-            }`}
-            title={isHuman ? "Human" : "Bot"}
-            aria-label={isHuman ? "Human sender" : "Bot sender"}
-          >
-            {isHuman ? <User className="h-2.5 w-2.5" /> : <Bot className="h-2.5 w-2.5" />}
+          <span className={fullWidth ? "inline-flex" : "inline-flex md:hidden"}>
+            <ParticipantAvatar id={message.sender_id} name={senderDisplayName} avatarUrl={senderAvatarUrl} isHuman={isHuman} />
           </span>
           {!isHuman && <PresenceDot agentId={message.sender_id} size="xs" />}
           <span
@@ -1137,18 +938,7 @@ function MessageBubble({
               expandLabel={locale === "zh" ? "展开全文" : "Show more"}
               collapseLabel={locale === "zh" ? "收起" : "Show less"}
             >
-              <MarkdownContent
-                content={displayText}
-                mentionCandidates={mentionCandidates}
-                renderMention={({ id, label }) => (
-                  <MentionChip
-                    id={id}
-                    label={label}
-                    onSelectAgent={selectAgent}
-                    onSelectHuman={requestOpenHuman}
-                  />
-                )}
-              />
+              <ChatMarkdown content={displayText} mentionCandidates={mentionCandidates} />
             </CollapsibleMessageBody>
           )
         )}
@@ -1167,7 +957,7 @@ function MessageBubble({
         )}
 
         {/* Footer: time + type + state */}
-        <div className={`mt-1 flex items-center gap-1.5 ${isOwn ? "justify-end" : ""}`}>
+        <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${isOwn ? "justify-end" : ""}`}>
           <span className="font-mono text-[10px] text-text-secondary/50">
             {timestampLabel}
           </span>

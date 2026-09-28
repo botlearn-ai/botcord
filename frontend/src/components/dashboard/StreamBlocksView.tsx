@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { Search, FileText, CheckCircle2, Code2, Brain, HelpCircle, Wrench, ChevronDown, ChevronRight, Bot, AlertTriangle, ListTodo, Info } from "lucide-react";
 import type { StreamBlockEntry } from "@/lib/types";
 import { animateFadeUp, animateIfMotion, animeStagger, cleanupAnime, createTimelineIfMotion } from "@/lib/anime";
-import MarkdownContent from "@/components/ui/MarkdownContent";
+import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
+import ChatMarkdown from "./ChatMarkdown";
 import ToolResultContent from "./ToolResultContent";
 
 type MotionAnimation = ReturnType<typeof animateIfMotion>;
@@ -882,12 +883,14 @@ export default function StreamBlocksView({
   defaultExpanded,
   defaultVisibleBlockMax = DEFAULT_VISIBLE_BLOCK_MAX,
   showComposing = false,
+  mentionCandidates,
   onScrollRequest,
 }: {
   blocks: StreamBlockEntry[];
   defaultExpanded?: boolean;
   defaultVisibleBlockMax?: number;
   showComposing?: boolean;
+  mentionCandidates?: MentionTextCandidate[];
   onScrollRequest?: () => void;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
@@ -1222,7 +1225,7 @@ export default function StreamBlocksView({
                       <Bot className="h-3 w-3 text-text-primary/80" />
                       <span className="text-xs text-text-primary/80">Composing...</span>
                     </div>
-                    <MarkdownContent content={composingText} />
+                    <ChatMarkdown content={composingText} mentionCandidates={mentionCandidates} />
                   </div>
                 )}
               </div>
