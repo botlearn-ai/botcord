@@ -2036,6 +2036,38 @@ async def notify_owner_chat_delivery_state(
             )
 
 
+
+async def _load_same_owner_senders(
+    db: AsyncSession, receiver_agent_id: str, sender_ids: set[str]
+) -> set[str]:
+    """Return the subset of ``sender_ids`` owned by the receiver's owner.
+
+    Agent senders match on ``Agent.user_id``; human senders (``hu_*``) match
+    when they are the owner themselves. Unclaimed receivers match nothing.
+    """
+    owner_id = (
+        await db.execute(select(Agent.user_id).where(Agent.agent_id == receiver_agent_id))
+    ).scalar_one_or_none()
+    if owner_id is None or not sender_ids:
+        return set()
+    agent_ids = {sid for sid in sender_ids if sid.startswith("ag_")}
+    human_ids = {sid for sid in sender_ids if sid.startswith("hu_")}
+    same: set[str] = set()
+    if agent_ids:
+        rows = await db.execute(
+            select(Agent.agent_id).where(
+                Agent.agent_id.in_(agent_ids), Agent.user_id == owner_id
+            )
+        )
+        same.update(rows.scalars().all())
+    if human_ids:
+        rows = await db.execute(
+            select(User.human_id).where(User.human_id.in_(human_ids), User.id == owner_id)
+        )
+        same.update(rows.scalars().all())
+    return same
+
+
 @router.get("/inbox", response_model=InboxPollResponse)
 async def poll_inbox(
     db: AsyncSession = Depends(get_db),
@@ -2116,6 +2148,9 @@ async def poll_inbox(
     reply_preview_map = await _load_reply_previews(
         db, {rec.reply_to_msg_id for rec in rows if rec.reply_to_msg_id}
     )
+    same_owner_senders = await _load_same_owner_senders(
+        db, current_agent, {rec.sender_id for rec in rows}
+    )
 
     # Build response
     messages: list[InboxMessage] = []
@@ -2152,6 +2187,7 @@ async def poll_inbox(
                 source_user_id=rec.source_user_id,
                 source_user_name=user_name_map.get(rec.source_user_id) if rec.source_user_id else None,
                 source_session_kind=rec.source_session_kind,
+                sender_same_owner=rec.sender_id in same_owner_senders,
                 reply_preview=(
                     reply_preview_map.get(rec.reply_to_msg_id)
                     if rec.reply_to_msg_id

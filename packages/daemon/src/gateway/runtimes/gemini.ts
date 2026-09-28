@@ -80,6 +80,23 @@ function sanitizeGeminiExtraArgs(extraArgs: string[] | undefined): string[] {
   return out;
 }
 
+function keepGeminiModelArgs(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--model" || arg === "-m") {
+      const value = args[i + 1];
+      if (typeof value === "string" && !value.startsWith("-")) {
+        out.push(arg, value);
+        i += 1;
+      }
+    } else if (arg.startsWith("--model=")) {
+      out.push(arg);
+    }
+  }
+  return out;
+}
+
 function hasFlag(args: string[], name: string): boolean {
   for (const arg of args) {
     if (arg === name) return true;
@@ -181,7 +198,12 @@ export class GeminiAdapter extends NdjsonStreamAdapter {
   }
 
   protected buildArgs(opts: RuntimeRunOptions): string[] {
-    const extraArgs = sanitizeGeminiExtraArgs(opts.extraArgs);
+    const restricted = opts.trustLevel === "public";
+    // Restricted turns (non-owner requester) keep only the model choice from
+    // operator extra args and always run in read-only `plan` approval mode.
+    const extraArgs = restricted
+      ? keepGeminiModelArgs(sanitizeGeminiExtraArgs(opts.extraArgs))
+      : sanitizeGeminiExtraArgs(opts.extraArgs);
 
     const args: string[] = [
       "-p",
@@ -193,7 +215,9 @@ export class GeminiAdapter extends NdjsonStreamAdapter {
     // Daemon-driven gemini turns are non-interactive. Auto-approve all tool
     // use to avoid deadlocks; operators with stricter requirements can
     // override via extraArgs `--approval-mode plan` etc.
-    if (
+    if (restricted) {
+      args.push("--approval-mode", "plan");
+    } else if (
       !hasFlag(extraArgs, "--approval-mode") &&
       !hasFlag(extraArgs, "-y") &&
       !hasFlag(extraArgs, "--yolo")

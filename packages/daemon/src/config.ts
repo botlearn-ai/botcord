@@ -52,6 +52,13 @@ export interface RouteRuleMatch {
   mentioned?: boolean;
 }
 
+export type NonOwnerExecution = "restricted" | "full";
+
+export interface NonOwnerExecutionConfig {
+  default?: NonOwnerExecution;
+  agents?: Record<string, NonOwnerExecution>;
+}
+
 export interface RouteRule {
   match: RouteRuleMatch;
   adapter: AdapterName;
@@ -65,6 +72,8 @@ export interface RouteRule {
   gateway?: string;
   /** Overrides `OpenclawGatewayProfile.defaultAgent` when set. */
   openclawAgent?: string;
+  /** Execution policy for non-owner requesters on this route (default "full"). */
+  nonOwnerExecution?: NonOwnerExecution;
 }
 
 export interface DaemonRouteDefault {
@@ -155,6 +164,14 @@ export interface DaemonConfig {
   /** Default adapter + cwd used when no route matches. */
   defaultRoute: DaemonRouteDefault;
   routes: RouteRule[];
+  /**
+   * Execution policy for turns whose requester is not the agent owner.
+   * `default` applies to every managed agent route and `defaultRoute`
+   * (fallback "full", the legacy behavior); `agents` overrides it per agent
+   * id — e.g. `{ "agents": { "ag_x": "restricted" } }` for an agent shared
+   * with or serving other people in team mode.
+   */
+  nonOwnerExecution?: NonOwnerExecutionConfig;
   /** If true, stream blocks (only meaningful for rm_oc_* rooms). */
   streamBlocks: boolean;
   /**

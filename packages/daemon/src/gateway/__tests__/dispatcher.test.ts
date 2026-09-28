@@ -335,6 +335,17 @@ function cloudRunRaw(budget: {
   };
 }
 
+/** Route opted into restricted execution for non-owner requesters (team mode). */
+function restrictedConfig(
+  runtime = "claude-code",
+  overrides: Partial<GatewayConfig> = {}
+): GatewayConfig {
+  return baseConfig({
+    defaultRoute: { runtime, cwd: "/tmp/default", nonOwnerExecution: "restricted" },
+    ...overrides,
+  });
+}
+
 function baseConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
   return {
     channels: [{ id: "botcord", type: "botcord", accountId: "ag_me" }],
@@ -3492,6 +3503,102 @@ describe("Dispatcher", () => {
         kind: "file",
       },
     ]);
+  });
+
+  describe("restricted execution for non-owner requesters (opt-in)", () => {
+    it("runs non-owner turns as public trust in a separate session and delivers the reply", async () => {
+      const runtime = new FakeRuntime({ reply: "hi there", newSessionId: "sid-r" });
+      const { dispatcher, channel, store } = await scaffold({
+        runtimeFactory: () => runtime,
+        config: restrictedConfig(),
+      });
+
+      await dispatcher.handle(
+        makeEnvelope({ id: "m1", conversation: { id: "rm_g_other", kind: "group" } })
+      );
+
+      expect(runtime.calls[0]!.trustLevel).toBe("public");
+      expect(store.all()[0]!.key.endsWith("#restricted")).toBe(true);
+      expect(channel.sends.map((m) => m.message.text)).toEqual(["hi there"]);
+    });
+
+    it("keeps owner-issued inbound on the route's normal trust", async () => {
+      const runtime = new FakeRuntime({ reply: "done", newSessionId: "sid-o" });
+      const { dispatcher, store } = await scaffold({
+        runtimeFactory: () => runtime,
+        config: restrictedConfig(),
+      });
+
+      await dispatcher.handle(
+        makeEnvelope({
+          id: "m_sched",
+          conversation: { id: "rm_schedule_ag_me", kind: "direct" },
+          raw: { source_type: "botcord_schedule" },
+        })
+      );
+
+      expect(runtime.calls[0]!.trustLevel).toBe("trusted");
+      expect(store.all()[0]!.key.includes("#restricted")).toBe(false);
+    });
+
+    it("does not deliver NO_REPLY on restricted turns", async () => {
+      const runtime = new FakeRuntime({ reply: "NO_REPLY" });
+      const { dispatcher, channel } = await scaffold({
+        runtimeFactory: () => runtime,
+        config: restrictedConfig(),
+      });
+
+      await dispatcher.handle(
+        makeEnvelope({ id: "m2", conversation: { id: "rm_g_other", kind: "group" } })
+      );
+
+      expect(channel.sends.length).toBe(0);
+    });
+
+    it("keeps contact requests gated (the Hub queues an owner approval)", async () => {
+      const runtime = new FakeRuntime({ reply: "please add me" });
+      const { dispatcher, channel } = await scaffold({
+        runtimeFactory: () => runtime,
+        config: restrictedConfig(),
+      });
+
+      await dispatcher.handle(
+        makeEnvelope({
+          id: "m3",
+          conversation: { id: "rm_dm_x", kind: "direct" },
+          raw: { envelope: { type: "contact_request" } },
+        })
+      );
+
+      expect(runtime.calls[0]!.trustLevel).toBe("public");
+      expect(channel.sends.length).toBe(0);
+    });
+
+    it("leaves runtimes that cannot enforce restriction on legacy behavior", async () => {
+      const runtime = new FakeRuntime({ reply: "would-be-reply" });
+      const { dispatcher, channel } = await scaffold({
+        runtimeFactory: () => runtime,
+        config: restrictedConfig("openclaw-acp"),
+      });
+
+      await dispatcher.handle(
+        makeEnvelope({ id: "m4", conversation: { id: "rm_g_other", kind: "group" } })
+      );
+
+      expect(runtime.calls[0]!.trustLevel).toBe("trusted");
+      expect(channel.sends.length).toBe(0);
+    });
+
+    it("keeps legacy full execution when the route does not opt in", async () => {
+      const runtime = new FakeRuntime({ reply: "x" });
+      const { dispatcher } = await scaffold({ runtimeFactory: () => runtime });
+
+      await dispatcher.handle(
+        makeEnvelope({ id: "m5", conversation: { id: "rm_g_other", kind: "group" } })
+      );
+
+      expect(runtime.calls[0]!.trustLevel).toBe("trusted");
+    });
   });
 
   it("non-owner-chat room: discards result.text, agent must use botcord_send", async () => {

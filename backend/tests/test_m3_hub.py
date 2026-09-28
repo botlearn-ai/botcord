@@ -819,6 +819,37 @@ async def test_inbox_poll_returns_queued(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("same_owner", [True, False])
+async def test_inbox_poll_flags_same_owner_sender(
+    client: AsyncClient, db_session: AsyncSession, same_owner: bool
+):
+    """Inbox marks senders owned by the receiver's owner (Hub-computed)."""
+    from hub.models import Agent
+
+    (sk_a, alice_id, alice_key, alice_token), (
+        _sk_b,
+        bob_id,
+        _bob_key,
+        bob_token,
+    ) = await _setup_two_agents_no_endpoint(client)
+    owner = uuid.uuid4()
+    for agent_id, user_id in ((alice_id, owner if same_owner else uuid.uuid4()), (bob_id, owner)):
+        agent = (
+            await db_session.execute(select(Agent).where(Agent.agent_id == agent_id))
+        ).scalar_one()
+        agent.user_id = user_id
+    await db_session.commit()
+
+    await _send_queued_message(client, sk_a, alice_key, alice_id, bob_id, alice_token)
+
+    resp = await client.get(
+        "/hub/inbox", headers=_auth_header(bob_token), params={"timeout": 0}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["messages"][0]["sender_same_owner"] is same_owner
+
+
+@pytest.mark.asyncio
 async def test_inbox_poll_marks_delivered(client: AsyncClient, db_session: AsyncSession):
     """ack=true marks messages as delivered after polling."""
     (sk_a, alice_id, alice_key, alice_token), (

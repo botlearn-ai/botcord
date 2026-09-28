@@ -365,6 +365,18 @@ describe("buildManagedRoutes", () => {
     cwd: "/home/default",
   };
 
+  it("applies nonOwnerExecution default with per-agent overrides", () => {
+    const map = buildManagedRoutes(
+      ["ag_one", "ag_two"],
+      {},
+      defaultRoute,
+      undefined,
+      { default: "restricted", agents: { ag_two: "full" } },
+    );
+    expect(map.get("ag_one")?.nonOwnerExecution).toBe("restricted");
+    expect(map.get("ag_two")?.nonOwnerExecution).toBe("full");
+  });
+
   it("uses agentRuntimes[id].cwd when set", () => {
     const map = buildManagedRoutes(
       ["ag_one"],

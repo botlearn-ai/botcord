@@ -412,7 +412,7 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
       expect(argv).not.toContain("-s");
     });
 
-    it("public → sandbox_mode=\"danger-full-access\" + approval_policy=\"never\"", async () => {
+    it("public → restricted read-only sandbox", async () => {
       const adapter = new CodexAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
@@ -424,9 +424,40 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
         trustLevel: "public",
       });
       const argv = JSON.parse(res.text) as string[];
-      expect(argv).toContain('sandbox_mode="danger-full-access"');
+      expect(argv).toContain('sandbox_mode="read-only"');
       expect(argv).toContain('approval_policy="never"');
+      expect(argv).not.toContain('sandbox_mode="danger-full-access"');
       expect(argv).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+    });
+
+    it("public ignores operator overrides that would widen the sandbox but keeps the model", async () => {
+      const adapter = new CodexAdapter({ binary: echoScript() });
+      const ctrl = new AbortController();
+      const res = await adapter.run({
+        text: "x",
+        sessionId: null,
+        accountId: "ag_test",
+        cwd: tmpRoot,
+        signal: ctrl.signal,
+        trustLevel: "public",
+        extraArgs: [
+          "--full-auto",
+          "--sandbox=danger-full-access",
+          "-c",
+          'approval_policy="on-request"',
+          "--model",
+          "gpt-5.2",
+          "-c",
+          'model_reasoning_effort="high"',
+        ],
+      });
+      const argv = JSON.parse(res.text) as string[];
+      expect(argv).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+      expect(argv).not.toContain('sandbox_mode="danger-full-access"');
+      expect(argv).not.toContain('approval_policy="on-request"');
+      expect(argv.filter((a) => a.startsWith("sandbox_mode="))).toEqual(['sandbox_mode="read-only"']);
+      expect(argv[argv.indexOf("--model") + 1]).toBe("gpt-5.2");
+      expect(argv).toContain('model_reasoning_effort="high"');
     });
 
     it("trusted → sandbox_mode=\"danger-full-access\" + approval_policy=\"never\"", async () => {
@@ -454,7 +485,7 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
         accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
-        trustLevel: "public",
+        trustLevel: "trusted",
         extraArgs: ["-s", "read-only"],
       });
       const argv = JSON.parse(res.text) as string[];
@@ -473,7 +504,7 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
         accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
-        trustLevel: "public",
+        trustLevel: "trusted",
         extraArgs: ["--sandbox=workspace-write"],
       });
       const argv = JSON.parse(res.text) as string[];
@@ -493,7 +524,7 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
         accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
-        trustLevel: "public",
+        trustLevel: "trusted",
         extraArgs: ["--full-auto"],
       });
       const argv = JSON.parse(res.text) as string[];
@@ -511,7 +542,7 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
         accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
-        trustLevel: "public",
+        trustLevel: "trusted",
         extraArgs: ["--permission-mode", "bypassPermissions", "--model", "gpt-5.2"],
       });
       const argv = JSON.parse(res.text) as string[];
@@ -532,7 +563,7 @@ process.stdout.write(JSON.stringify({type:"item.completed", item:{id:"i0", type:
         accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
-        trustLevel: "public",
+        trustLevel: "trusted",
         extraArgs: ["--permission-mode=bypassPermissions"],
       });
       const argv = JSON.parse(res.text) as string[];

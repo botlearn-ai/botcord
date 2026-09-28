@@ -38,6 +38,9 @@ export type QueueMode = "serial" | "cancel-previous";
 /** Source-based trust tier used by runtimes to pick default permission flags. */
 export type TrustLevel = "owner" | "trusted" | "public";
 
+/** Per-route policy for turns whose requester is not the agent owner. */
+export type NonOwnerExecution = "restricted" | "full";
+
 /**
  * Resolved OpenClaw gateway endpoint for a route. Built eagerly in
  * `toGatewayConfig` from the `DaemonConfig.openclawGateways` registry plus the
@@ -60,6 +63,13 @@ export interface GatewayRoute {
   extraArgs?: string[];
   queueMode?: QueueMode;
   trustLevel?: TrustLevel;
+  /**
+   * Execution policy for turns whose requester is not the agent owner.
+   * Defaults to `"full"` (legacy: normal permissions for everyone);
+   * `"restricted"` runs non-owner turns with read-only tools, no shell and a
+   * daemon-delivered reply. Team mode / agent sharing opts routes in.
+   */
+  nonOwnerExecution?: NonOwnerExecution;
   /** Required when `runtime === "openclaw-acp"`. Resolved at config-load time. */
   gateway?: ResolvedOpenclawGateway;
   /**
@@ -144,7 +154,13 @@ export type InboundObserver = (
  * caught by the dispatcher and the raw trimmed text is used as a fallback so
  * a buggy composer never drops turns.
  */
-export type UserTurnBuilder = (message: GatewayInboundMessage) => string;
+/** Per-turn facts the dispatcher resolves before composing the user turn. */
+export interface UserTurnContext {
+  /** Turn runs with the restricted execution profile (see execution-policy.ts). */
+  restricted?: boolean;
+}
+
+export type UserTurnBuilder = (message: GatewayInboundMessage, ctx?: UserTurnContext) => string;
 
 export interface MemoryContextSnapshot {
   version: string;
@@ -519,6 +535,8 @@ export interface SessionKeyInput {
   conversationKind: "direct" | "group";
   conversationId: string;
   threadId?: string | null;
+  /** Execution scope suffix; restricted turns never resume full-trust sessions. */
+  executionScope?: "restricted" | null;
 }
 
 /** Persisted runtime-session record keyed by the derived session key. */

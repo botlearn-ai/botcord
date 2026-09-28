@@ -23,6 +23,13 @@ function makeMessage(
 }
 
 describe("composeBotCordUserTurn", () => {
+  it("tells restricted turns that the daemon delivers the final reply", () => {
+    const restricted = composeBotCordUserTurn(makeMessage(), { restricted: true });
+    expect(restricted).toContain("restricted mode");
+    expect(restricted).not.toContain("botcord send --room");
+    expect(composeBotCordUserTurn(makeMessage())).toContain("botcord send --room");
+  });
+
   it("wraps a group agent message with header + tagged body + group NO_REPLY hint", () => {
     const out = composeBotCordUserTurn(
       makeMessage({

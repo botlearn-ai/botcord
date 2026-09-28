@@ -3078,7 +3078,13 @@ export async function reloadConfig(ctx: { gateway: Gateway }): Promise<ReloadRes
       runtime: freshCfg.defaultRoute.adapter,
       cwd: freshCfg.defaultRoute.cwd,
     };
-    const managed = buildManagedRoutes(freshAgents, agentRuntimes, freshDefault);
+    const managed = buildManagedRoutes(
+      freshAgents,
+      agentRuntimes,
+      freshDefault,
+      undefined,
+      freshCfg.nonOwnerExecution,
+    );
     ctx.gateway.replaceManagedRoutes(managed);
   } catch (err) {
     daemonLog.warn("reload_config.replaceManagedRoutes failed", {

@@ -53,9 +53,12 @@ import type {
   RuntimeStatusEvent,
   StreamBlock,
   SystemContextBuilder,
+  TrustLevel,
   TurnStatusSnapshot,
   UserTurnBuilder,
+  UserTurnContext,
 } from "./types.js";
+import { isRestrictedTurn, restrictionUnsupported } from "./execution-policy.js";
 
 const DEFAULT_TURN_TIMEOUT_MS = 30 * 60 * 1000;
 /** Backoff before a single transient-failure retry (see {@link looksLikeTransientRuntimeError}). */
@@ -975,7 +978,10 @@ export class Dispatcher {
     const mentionedAtCompose = dispatchMsg.mentioned === true;
     if (mode === "cancel-previous" && this.composeUserTurn) {
       try {
-        const composed = this.composeUserTurn(dispatchMsg);
+        const composed = this.composeUserTurn(
+          dispatchMsg,
+          userTurnContext(dispatchMsg, dispatchRoute, dispatchChannel)
+        );
         if (typeof composed === "string" && composed.length > 0) {
           text = composed;
         }
@@ -1060,7 +1066,10 @@ export class Dispatcher {
       !mentionedAtCompose
     ) {
       try {
-        const composed = this.composeUserTurn(dispatchMsg);
+        const composed = this.composeUserTurn(
+          dispatchMsg,
+          userTurnContext(dispatchMsg, dispatchRoute, dispatchChannel)
+        );
         if (typeof composed === "string" && composed.length > 0) {
           text = composed;
           composeFailedError = undefined;
@@ -1626,7 +1635,7 @@ export class Dispatcher {
       const only = entries[0]!;
       return {
         route: only.route,
-        text: this.recomposeUserTurn(only.msg),
+        text: this.recomposeUserTurn(only.msg, only.route, only.channel),
         msg: only.msg,
         channel: only.channel,
         turnId: only.turnId,
@@ -1696,7 +1705,7 @@ export class Dispatcher {
     };
     return {
       route: latest.route,
-      text: this.recomposeUserTurn(mergedMsg),
+      text: this.recomposeUserTurn(mergedMsg, latest.route, latest.channel),
       msg: mergedMsg,
       channel: latest.channel,
       turnId: latest.turnId,
@@ -1709,11 +1718,15 @@ export class Dispatcher {
    * raw trimmed text on composer failure so a buggy composer never drops a
    * turn.
    */
-  private recomposeUserTurn(msg: GatewayInboundEnvelope["message"]): string {
+  private recomposeUserTurn(
+    msg: GatewayInboundEnvelope["message"],
+    route: GatewayRoute,
+    channel: ChannelAdapter
+  ): string {
     const rawText = typeof msg.text === "string" ? msg.text.trim() : "";
     if (!this.composeUserTurn) return rawText;
     try {
-      const composed = this.composeUserTurn(msg);
+      const composed = this.composeUserTurn(msg, userTurnContext(msg, route, channel));
       if (typeof composed === "string" && composed.length > 0) return composed;
     } catch (err) {
       this.log.warn(
@@ -1835,6 +1848,18 @@ export class Dispatcher {
     }, effectiveTurnTimeoutMs);
     if (typeof timer.unref === "function") timer.unref();
 
+    // Non-owner requesters run with the restricted execution profile and in a
+    // separate session so they never resume (or read) a full-trust session.
+    const policyOpts = { botcordChannel: isBotCordChannel(channel) };
+    const restricted = isRestrictedTurn(msg, route, policyOpts);
+    if (restrictionUnsupported(msg, route, policyOpts)) {
+      this.log.warn("dispatcher: runtime cannot enforce restricted execution for non-owner turn", {
+        agentId: msg.accountId,
+        roomId: msg.conversation.id,
+        runtime: route.runtime,
+        turnId,
+      });
+    }
     const key = sessionKey({
       runtime: route.runtime,
       channel: msg.channel,
@@ -1842,12 +1867,13 @@ export class Dispatcher {
       conversationKind: msg.conversation.kind,
       conversationId: msg.conversation.id,
       threadId: msg.conversation.threadId ?? null,
+      executionScope: restricted ? "restricted" : null,
     });
     const entry = this.sessionStore.get(key);
     const sessionId = entry?.runtimeSessionId ?? null;
     let currentMemoryVersion: string | undefined;
     let runtimeText = text;
-    const trustLevel = route.trustLevel ?? "trusted";
+    const trustLevel: TrustLevel = restricted ? "public" : route.trustLevel ?? "trusted";
 
     const streamable = msg.trace?.streamable === true;
     const traceId = msg.trace?.id;
@@ -2464,7 +2490,13 @@ export class Dispatcher {
       // expectation is that the agent's `botcord_send` tool calls do their
       // own loop-risk accounting downstream.
       const isOwnerChat = isOwnerChatRoom(msg);
-      const canDeliverRuntimeText = isOwnerChat || !isBotCordChannel(channel);
+      // Restricted turns have no shell to run `botcord send`, so the daemon
+      // delivers their final text itself. Contact requests stay gated: the
+      // Hub already queues an owner approval for them.
+      const restrictedDelivery =
+        restricted && isBotCordChannel(channel) && !isContactRequest(msg);
+      const canDeliverRuntimeText =
+        isOwnerChat || !isBotCordChannel(channel) || restrictedDelivery;
       const canDeliverRuntimeDiagnostics =
         canDeliverRuntimeText || isBotCordChannel(channel);
 
@@ -2779,6 +2811,22 @@ export class Dispatcher {
         return;
       }
 
+      if (restrictedDelivery && !isOwnerChat && replyText === "NO_REPLY") {
+        this.emitOutbound({
+          turnId,
+          msg,
+          runtime: route.runtime,
+          runtimeSessionId: result.newSessionId || null,
+          startedAt: slot.dispatchedAt,
+          costUsd: result.costUsd,
+          finalText: finalTextField,
+          deliveryStatus: "empty_text",
+          deliveryReason: "no_reply",
+          blocks: slot.blocks,
+        });
+        return;
+      }
+
       // One last abort check immediately before the send. Narrows the window
       // in which a cancel-previous arriving during session-store.set could
       // still slip a stale reply past us.
@@ -2970,7 +3018,7 @@ export class Dispatcher {
       void this.runSerial(
         queueKey,
         route,
-        this.recomposeUserTurn(msg),
+        this.recomposeUserTurn(msg, route, channel),
         msg,
         channel,
         randomUUID()
@@ -3426,6 +3474,23 @@ function isOwnerChatRoom(msg: GatewayInboundEnvelope["message"]): boolean {
 
 function isBotCordChannel(channel: ChannelAdapter): boolean {
   return channel.type === "botcord" || channel.id === "botcord";
+}
+
+function isContactRequest(msg: GatewayInboundEnvelope["message"]): boolean {
+  const raw = msg.raw as { envelope?: { type?: unknown } } | null | undefined;
+  return raw?.envelope?.type === "contact_request";
+}
+
+function userTurnContext(
+  msg: GatewayInboundEnvelope["message"],
+  route: GatewayRoute,
+  channel: ChannelAdapter
+): UserTurnContext {
+  return {
+    restricted: isRestrictedTurn(msg, route, {
+      botcordChannel: isBotCordChannel(channel),
+    }),
+  };
 }
 
 function isMultimodalOnlyMessage(

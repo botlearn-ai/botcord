@@ -69,6 +69,38 @@ function sanitizeCodexExtraArgs(extraArgs: string[] | undefined): string[] {
   return out;
 }
 
+/**
+ * Operator extra args that stay in effect on restricted turns: model choice
+ * only. Everything else (sandbox, approval, profiles, arbitrary `-c`) is
+ * dropped so it cannot widen the read-only sandbox.
+ */
+function restrictedCodexExtraArgs(extraArgs: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < extraArgs.length; i += 1) {
+    const arg = extraArgs[i];
+    const name = extraFlagName(arg);
+    if (name === "--model" || name === "-m") {
+      if (arg.includes("=")) {
+        out.push(arg);
+        continue;
+      }
+      const value = nextExtraValue(extraArgs, i);
+      if (value === undefined) continue;
+      out.push(arg, value);
+      i += 1;
+      continue;
+    }
+    if (arg === "-c" || arg === "--config") {
+      const value = extraArgs[i + 1];
+      if (typeof value === "string") {
+        i += 1;
+        if (/^model(_reasoning_effort)?=/.test(value)) out.push("-c", value);
+      }
+    }
+  }
+  return out;
+}
+
 function hasCodexSandboxOverride(args: string[]): boolean {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -238,7 +270,9 @@ export class CodexAdapter extends NdjsonStreamAdapter {
    */
   protected buildArgs(opts: RuntimeRunOptions): string[] {
     const tail: string[] = [];
-    const extraArgs = sanitizeCodexExtraArgs(opts.extraArgs);
+    const restricted = opts.trustLevel === "public";
+    const sanitized = sanitizeCodexExtraArgs(opts.extraArgs);
+    const extraArgs = restricted ? restrictedCodexExtraArgs(sanitized) : sanitized;
 
     // Sandbox / approval policy. Expressed as `-c` overrides because
     // `codex exec resume` rejects `-s` / `--full-auto`. `-c` works on both
@@ -249,8 +283,13 @@ export class CodexAdapter extends NdjsonStreamAdapter {
     // relay back to the user yet. Default to bypassing both approvals and the
     // sandbox for every trust tier; operators who need a stricter posture can
     // still override with route/defaultRoute extraArgs.
+    //
+    // Restricted turns (non-owner requester) always run read-only: no file
+    // writes and no network, regardless of operator overrides.
     const hasSandboxOverride = hasCodexSandboxOverride(extraArgs);
-    if (!hasSandboxOverride) {
+    if (restricted) {
+      tail.push("-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"');
+    } else if (!hasSandboxOverride) {
       tail.push(
         "-c",
         'sandbox_mode="danger-full-access"',
