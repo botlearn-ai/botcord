@@ -186,6 +186,39 @@ class SpaceAuditEvent(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AgentAccessGrant(Base):
+    """Agent owner lets one organization member call the agent (agent sharing P1).
+
+    A grant is valid only while the space, the grantee's membership and the
+    agent's membership keep the ids/versions recorded here; any lifecycle
+    change (member removed, agent removed and re-admitted) silently expires it.
+    """
+    __tablename__ = "agent_access_grants"
+    __table_args__ = (
+        CheckConstraint("role IN ('consultant', 'collaborator')", name="ck_agent_access_grant_role"),
+        Index("ix_agent_access_grants_agent_grantee", "agent_id", "grantee_user_id"),
+        Index("ix_agent_access_grants_space_grantee", "space_id", "grantee_user_id"),
+    )
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"))
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.agent_id"))
+    agent_membership_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("space_agent_memberships.id"))
+    agent_membership_version: Mapped[int] = mapped_column(Integer)
+    grantee_user_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("public.users.id"))
+    grantee_membership_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("space_user_memberships.id"))
+    grantee_membership_version: Mapped[int] = mapped_column(Integer)
+    role: Mapped[str] = mapped_column(String(16))
+    # Owner-side git repository the collaborator works in (a per-grant
+    # worktree is created from it); null means a private scratch directory.
+    workspace_path: Mapped[str | None] = mapped_column(Text)
+    # Extra shell command prefixes a collaborator may run (e.g. "npm test").
+    allowed_commands: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("public.users.id"))
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class TeamConversation(Base):
     """Organization-only conversations; never exposed through legacy Room APIs."""
     __tablename__ = "team_conversations"

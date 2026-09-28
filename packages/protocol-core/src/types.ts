@@ -110,6 +110,22 @@ export type InboxMessage = {
   reply_preview?: ReplyPreview | null;
   /** Hub-computed: sender belongs to the same owner as the receiving agent. */
   sender_same_owner?: boolean;
+  /** Hub-computed agent-sharing grant under which a non-owner human calls this agent. */
+  access_context?: AccessContext | null;
+};
+
+/** Agent-sharing grant attached by the Hub to inbox messages from a grantee. */
+export type AccessContext = {
+  grant_id: string;
+  space_id: string;
+  role: "consultant" | "collaborator";
+  /** False once the grant is revoked or expired: the turn must not run. */
+  active: boolean;
+  requester_id: string;
+  /** Owner-side git repository the collaborator works in (worktree source). */
+  workspace_path?: string | null;
+  /** Extra shell command prefixes a collaborator may run. */
+  allowed_commands?: string[];
 };
 
 export type InboxPollResponse = {

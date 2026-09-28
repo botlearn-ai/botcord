@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { scrubGuestEnv } from "../execution-policy.js";
 import { buildCliEnv } from "../cli-resolver.js";
 import { consoleLogger } from "../log.js";
 import { safeCommand, sanitizeRuntimeFailureText, tailText } from "../runtime-failure.js";
@@ -134,7 +135,8 @@ export abstract class NdjsonStreamAdapter implements RuntimeAdapter {
     const startedAt = Date.now();
     const child = spawn(binary, args, {
       cwd: opts.cwd,
-      env: this.spawnEnv(opts),
+      // Non-owner turns (restricted / collaborator) never see host credentials.
+      env: opts.trustLevel === "public" ? scrubGuestEnv(this.spawnEnv(opts)) : this.spawnEnv(opts),
       stdio: ["ignore", "pipe", "pipe"],
     });
 

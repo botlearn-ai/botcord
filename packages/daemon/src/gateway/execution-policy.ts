@@ -101,3 +101,123 @@ export function restrictionUnsupported(
 ): boolean {
   return wantsRestriction(msg, route, opts) && !RESTRICTION_CAPABLE_RUNTIMES.has(route.runtime);
 }
+
+/** Runtimes that can run the collaborator profile (edits confined to a worktree). */
+export const COLLABORATOR_CAPABLE_RUNTIMES: ReadonlySet<string> = new Set(["claude-code", "codex"]);
+
+/** Agent-sharing grant as attached by the Hub (`InboxMessage.access_context`). */
+export interface TurnAccessGrant {
+  grantId: string;
+  spaceId: string;
+  role: "consultant" | "collaborator";
+  requesterId: string;
+  workspacePath: string | null;
+  allowedCommands: string[];
+}
+
+/**
+ * Execution profile for one turn:
+ *  - `default`: route's normal permissions (owner or legacy non-owner)
+ *  - `restricted`: read-only tools / sandbox, daemon-delivered reply
+ *  - `collaborator`: edits confined to a per-grant workspace, daemon-delivered reply
+ *  - `refused`: must not reach the runtime (grant inactive, or the runtime
+ *    cannot enforce the grant); the daemon replies with `reason`
+ */
+export type TurnExecution =
+  | { profile: "default" }
+  | { profile: "restricted"; grant?: TurnAccessGrant }
+  | { profile: "collaborator"; grant: TurnAccessGrant }
+  | { profile: "refused"; reason: "grant_inactive" | "runtime_unsupported"; grant: TurnAccessGrant };
+
+function readAccessContext(entry: unknown): { grant: TurnAccessGrant; active: boolean } | null {
+  if (!entry || typeof entry !== "object") return null;
+  const ctx = (entry as { access_context?: unknown }).access_context;
+  if (!ctx || typeof ctx !== "object") return null;
+  const c = ctx as Record<string, unknown>;
+  if (typeof c.grant_id !== "string" || typeof c.requester_id !== "string") return null;
+  const role = c.role === "collaborator" ? "collaborator" : "consultant";
+  return {
+    active: c.active === true,
+    grant: {
+      grantId: c.grant_id,
+      spaceId: typeof c.space_id === "string" ? c.space_id : "",
+      role,
+      requesterId: c.requester_id,
+      workspacePath: typeof c.workspace_path === "string" && c.workspace_path ? c.workspace_path : null,
+      allowedCommands: Array.isArray(c.allowed_commands)
+        ? c.allowed_commands.filter((x): x is string => typeof x === "string")
+        : [],
+    },
+  };
+}
+
+/**
+ * Resolve the execution profile for a turn. Grant-bearing inbound (Hub
+ * `access_context`) always wins over route config: a shared agent is never
+ * run with full permissions for a grantee, and an inactive grant never runs.
+ */
+export function resolveTurnExecution(
+  msg: GatewayInboundMessage,
+  route: Pick<GatewayRoute, "nonOwnerExecution" | "runtime">,
+  opts: { botcordChannel: boolean },
+): TurnExecution {
+  if (isOwnerTrustedInbound(msg, opts)) return { profile: "default" };
+  const batch = (msg.raw as { batch?: unknown } | null | undefined)?.batch;
+  const entries = Array.isArray(batch) && batch.length > 0 ? batch : [msg.raw];
+  const contexts = entries.map(readAccessContext);
+  const withGrant = contexts.filter((c): c is NonNullable<typeof c> => c !== null);
+  if (withGrant.length > 0) {
+    const latest = withGrant[withGrant.length - 1]!;
+    if (withGrant.some((c) => !c.active)) {
+      return { profile: "refused", reason: "grant_inactive", grant: latest.grant };
+    }
+    // Mixed batches (grantee + non-grant senders) fall back to read-only.
+    const collaborator =
+      latest.grant.role === "collaborator" &&
+      withGrant.length === entries.length &&
+      withGrant.every((c) => c.grant.grantId === latest.grant.grantId);
+    if (collaborator && COLLABORATOR_CAPABLE_RUNTIMES.has(route.runtime)) {
+      return { profile: "collaborator", grant: latest.grant };
+    }
+    if (RESTRICTION_CAPABLE_RUNTIMES.has(route.runtime)) {
+      return { profile: "restricted", grant: latest.grant };
+    }
+    return { profile: "refused", reason: "runtime_unsupported", grant: latest.grant };
+  }
+  return isRestrictedTurn(msg, route, opts) ? { profile: "restricted" } : { profile: "default" };
+}
+
+const GUEST_ENV_DROP_EXACT = new Set([
+  "SSH_AUTH_SOCK",
+  "GH_TOKEN",
+  "GITHUB_TOKEN",
+  "GITLAB_TOKEN",
+  "NPM_TOKEN",
+  "NODE_AUTH_TOKEN",
+  "DATABASE_URL",
+  "GOOGLE_APPLICATION_CREDENTIALS",
+]);
+const GUEST_ENV_DROP_PREFIX = /^(AWS|AZURE|GCP|GCLOUD|CLOUDSDK)_/;
+const GUEST_ENV_SECRETISH = /TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_KEY/i;
+/** Runtime auth the CLI itself needs; never handed to guest-requested tools beyond the CLI. */
+const GUEST_ENV_KEEP_PREFIX = /^(ANTHROPIC|CLAUDE|OPENAI|CODEX|GEMINI|GOOGLE_GENAI|DEEPSEEK|KIMI|MOONSHOT)_/;
+
+/**
+ * Remove host credentials from the environment of a restricted/collaborator
+ * turn so commands a non-owner triggers cannot reach the owner's git, cloud
+ * or package-registry identities. Runtime CLI auth variables are kept.
+ */
+export function scrubGuestEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(env)) {
+    if (GUEST_ENV_KEEP_PREFIX.test(name)) {
+      out[name] = value;
+      continue;
+    }
+    if (GUEST_ENV_DROP_EXACT.has(name) || GUEST_ENV_DROP_PREFIX.test(name) || GUEST_ENV_SECRETISH.test(name)) {
+      continue;
+    }
+    out[name] = value;
+  }
+  return out;
+}

@@ -270,9 +270,10 @@ export class CodexAdapter extends NdjsonStreamAdapter {
    */
   protected buildArgs(opts: RuntimeRunOptions): string[] {
     const tail: string[] = [];
-    const restricted = opts.trustLevel === "public";
+    const guest = opts.trustLevel === "public";
+    const collaborator = guest && opts.executionProfile === "collaborator";
     const sanitized = sanitizeCodexExtraArgs(opts.extraArgs);
-    const extraArgs = restricted ? restrictedCodexExtraArgs(sanitized) : sanitized;
+    const extraArgs = guest ? restrictedCodexExtraArgs(sanitized) : sanitized;
 
     // Sandbox / approval policy. Expressed as `-c` overrides because
     // `codex exec resume` rejects `-s` / `--full-auto`. `-c` works on both
@@ -287,7 +288,24 @@ export class CodexAdapter extends NdjsonStreamAdapter {
     // Restricted turns (non-owner requester) always run read-only: no file
     // writes and no network, regardless of operator overrides.
     const hasSandboxOverride = hasCodexSandboxOverride(extraArgs);
-    if (restricted) {
+    //
+    // Collaborator turns (agent-sharing grantee with edit rights) may write
+    // only inside their per-grant workspace (cwd): /tmp and $TMPDIR are
+    // excluded from the writable roots and the network stays off.
+    if (collaborator) {
+      tail.push(
+        "-c",
+        'sandbox_mode="workspace-write"',
+        "-c",
+        'approval_policy="never"',
+        "-c",
+        "sandbox_workspace_write.network_access=false",
+        "-c",
+        "sandbox_workspace_write.exclude_tmpdir_env_var=true",
+        "-c",
+        "sandbox_workspace_write.exclude_slash_tmp=true",
+      );
+    } else if (guest) {
       tail.push("-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"');
     } else if (!hasSandboxOverride) {
       tail.push(
