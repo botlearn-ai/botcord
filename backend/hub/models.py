@@ -186,6 +186,28 @@ class SpaceAuditEvent(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class SpaceInviteLink(Base):
+    """Shareable organization invite link; people without an account sign up first.
+
+    Redeeming a live link makes the caller an active ``member`` directly — the
+    act of opening the link and confirming is their consent.
+    """
+    __tablename__ = "space_invite_links"
+    __table_args__ = (
+        CheckConstraint("use_count >= 0", name="ck_space_invite_link_uses"),
+        CheckConstraint("max_uses IS NULL OR max_uses > 0", name="ck_space_invite_link_max_uses"),
+    )
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"), index=True)
+    code: Mapped[str] = mapped_column(String(48), unique=True)
+    created_by_user_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("public.users.id"))
+    max_uses: Mapped[int | None] = mapped_column(Integer)
+    use_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AgentAccessGrant(Base):
     """Agent owner lets one organization member call the agent (agent sharing P1).
 
