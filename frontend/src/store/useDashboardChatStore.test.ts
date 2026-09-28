@@ -408,6 +408,31 @@ describe("useDashboardChatStore message polling", () => {
     expect(useDashboardChatStore.getState().overview?.rooms[0].last_message_preview).toBe("Message recalled");
   });
 
+  it("marks a rejected optimistic message as failed", () => {
+    useDashboardChatStore.getState().insertMessage("rm_empty", {
+      hub_msg_id: "tmp_2",
+      msg_id: "tmp_2",
+      sender_id: "hu_1",
+      sender_name: "Human",
+      type: "message",
+      text: "hello",
+      payload: { text: "hello" },
+      room_id: "rm_empty",
+      topic: null,
+      topic_id: null,
+      goal: null,
+      state: "queued",
+      state_counts: null,
+      created_at: "2026-05-11T08:00:00Z",
+      is_mine: true,
+    });
+
+    useDashboardChatStore.getState().markMessageFailed("rm_empty", "tmp_2");
+
+    const message = useDashboardChatStore.getState().messages.rm_empty.find((m) => m.hub_msg_id === "tmp_2");
+    expect(message?.state).toBe("failed");
+  });
+
   it("patches an optimistic message with persisted ids after send returns", () => {
     useDashboardChatStore.getState().insertMessage("rm_empty", {
       hub_msg_id: "tmp_1",

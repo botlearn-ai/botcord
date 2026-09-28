@@ -229,9 +229,12 @@ function EmptyRoomGuide({
 }) {
   const locale = useLanguage();
   const t = messageList[locale];
-  const canManageRoom = room?.my_role === "owner" || room?.my_role === "admin";
+  const isDm = room?.room_id.startsWith("rm_dm_") ?? false;
+  const canManageRoom = !isDm && (room?.my_role === "owner" || room?.my_role === "admin");
   const hasOtherMembers = (room?.member_count ?? 0) > 1;
-  const starterPrompts = [t.emptyPromptPlan, t.emptyPromptSummary, t.emptyPromptRoles];
+  const starterPrompts = isDm
+    ? [t.emptyDmPromptIntro, t.emptyDmPromptOverview]
+    : [t.emptyPromptPlan, t.emptyPromptSummary, t.emptyPromptRoles];
 
   const prefillComposer = (text: string) => {
     window.dispatchEvent(new CustomEvent(PREFILL_ROOM_COMPOSER_EVENT, {
@@ -247,9 +250,11 @@ function EmptyRoomGuide({
             <Bot className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-base font-semibold text-text-primary">{t.emptyTitle}</h3>
+            <h3 className="text-base font-semibold text-text-primary">
+              {isDm ? t.emptyDmTitle : t.emptyTitle}
+            </h3>
             <p className="mt-1 text-sm leading-6 text-text-secondary">
-              {hasOtherMembers ? t.emptyGroupDesc : t.emptySoloDesc}
+              {isDm ? t.emptyDmDesc : hasOtherMembers ? t.emptyGroupDesc : t.emptySoloDesc}
             </p>
           </div>
         </div>

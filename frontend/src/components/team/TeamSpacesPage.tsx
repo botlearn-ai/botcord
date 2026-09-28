@@ -546,8 +546,8 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                   </strong>
                   <p className="text-text-secondary">
                     {t(
-                      "在 Team 中查看消息与房间，在这里管理成员、Agent 和组织设置。Agent 任务执行暂未开放。",
-                      "Open Team for messages and rooms. Manage members, Agents and organization settings here. Agent task execution is not available yet.",
+                      "在 Team 中查看消息与房间，在这里管理成员、Agent 和组织设置。Agent 的 owner 可以授权成员通过私信使用自己的 Agent。",
+                      "Open Team for messages and rooms. Manage members, Agents and organization settings here. Agent owners can share their Agents with members through direct messages.",
                     )}
                   </p>
                   <Link className="mt-2 inline-flex items-center gap-2 text-neon-cyan" href={`/chats/team?space=${encodeURIComponent(space.id)}`}>

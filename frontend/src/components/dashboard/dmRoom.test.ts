@@ -41,4 +41,18 @@ describe("resolveDmDisplayName", () => {
       "zh",
     )).toBe("DM ag_alpha & ag_beta");
   });
+
+  it("names a non-contact agent peer for a Human participant (human previews carry no agent_id)", () => {
+    expect(resolveDmDisplayName(
+      "rm_dm_ag_barry_hu_alice",
+      "hu_alice",
+      [],
+      "Barry & alice 的私聊",
+      [
+        { agent_id: "ag_barry", display_name: "Barry" },
+        { agent_id: null, display_name: "alice" },
+      ],
+      "zh",
+    )).toBe("Barry");
+  });
 });

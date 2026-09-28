@@ -259,9 +259,10 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     human: s.human,
     viewMode: s.viewMode,
   })));
-  const { insertMessage, patchMessageIdentity, patchRoom, pollNewMessages, refreshOverview } = useDashboardChatStore(useShallow((s) => ({
+  const { insertMessage, patchMessageIdentity, markMessageFailed, patchRoom, pollNewMessages, refreshOverview } = useDashboardChatStore(useShallow((s) => ({
     insertMessage: s.insertMessage,
     patchMessageIdentity: s.patchMessageIdentity,
+    markMessageFailed: s.markMessageFailed,
     patchRoom: s.patchRoom,
     pollNewMessages: s.pollNewMessages,
     refreshOverview: s.refreshOverview,
@@ -436,13 +437,16 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
         }
       }
     } catch (err: unknown) {
+      // The Hub never accepted the message: keep it visible but flagged so it
+      // does not look queued forever.
+      markMessageFailed(roomId, clientTempId);
       setError(
         err instanceof ApiError && err.message === "agent_access_revoked"
           ? chatPane[locale].agentAccessRevoked
           : err instanceof Error ? err.message : "Failed to send",
       );
     }
-  }, [locale, uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchMessageIdentity, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms, replyingTo, setReplyingTo, human?.avatar_url, user?.avatar_url]);
+  }, [locale, uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchMessageIdentity, markMessageFailed, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms, replyingTo, setReplyingTo, human?.avatar_url, user?.avatar_url]);
 
   if (sendDenied) {
     return (

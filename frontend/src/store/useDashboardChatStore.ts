@@ -489,6 +489,8 @@ interface DashboardChatState {
 
   insertMessage: (roomId: string, message: DashboardMessage) => void;
   patchMessageIdentity: (roomId: string, temporaryId: string, patch: Partial<Pick<DashboardMessage, "hub_msg_id" | "msg_id" | "topic_id">>) => void;
+  /** Mark a still-unconfirmed optimistic message as failed (send rejected). */
+  markMessageFailed: (roomId: string, temporaryId: string) => void;
   markMessageRecalled: (roomId: string, msgId: string, patch?: { recalled_at?: string | null; recalled_by_id?: string | null; recalled_by_type?: "agent" | "human" | null }) => void;
   applyMessageStatusReaction: (event: RealtimeMetaEvent) => void;
   recallMessage: (roomId: string, msgId: string) => Promise<void>;
@@ -709,6 +711,22 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             if (message.hub_msg_id !== temporaryId && message.msg_id !== temporaryId) return message;
             changed = true;
             return { ...message, ...definedPatch };
+          });
+          if (!changed) return state;
+          return {
+            messages: { ...state.messages, [roomId]: nextMessages },
+          };
+        }),
+
+      markMessageFailed: (roomId, temporaryId) =>
+        set((state) => {
+          const current = state.messages[roomId];
+          if (!current) return state;
+          let changed = false;
+          const nextMessages = current.map((message) => {
+            if (message.hub_msg_id !== temporaryId && message.msg_id !== temporaryId) return message;
+            changed = true;
+            return { ...message, state: "failed" };
           });
           if (!changed) return state;
           return {

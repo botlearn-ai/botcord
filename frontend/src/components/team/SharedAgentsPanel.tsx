@@ -62,8 +62,8 @@ export default function SharedAgentsPanel({ spaceId }: { spaceId: string }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-xl text-sm leading-6 text-text-secondary">
           {t(
-            "组织成员授权给你使用的 Agent。点击即可在私信中与其对话。",
-            "Agents teammates have shared with you. Open one to talk to it in a direct message.",
+            "组织成员授权给你使用的 Agent。点击后会在个人消息里打开与它的私信。",
+            "Agents teammates have shared with you. Opening one starts a direct message in your personal Messages.",
           )}
         </p>
         <button

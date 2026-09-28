@@ -84,9 +84,12 @@ export function resolveDmDisplayName(
   if (peer) {
     const contact = contacts.find((c) => c.contact_agent_id === peer);
     if (contact) return contact.alias || contact.display_name || peer;
-    const memberName = dmMemberNames(roomId, members)?.[
-      parseDmRoomId(roomId)?.a === peer ? 0 : 1
-    ];
+    // Only the peer's own name is needed. Human members carry no agent_id in
+    // room previews, so requiring both names (dmMemberNames) would fall back
+    // to the raw peer id for human↔agent DMs with a non-contact agent.
+    const memberName = members
+      ?.find((member) => member.agent_id === peer && member.display_name.trim())
+      ?.display_name.trim();
     return memberName || peer;
   }
 

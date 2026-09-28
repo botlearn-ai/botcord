@@ -2087,6 +2087,10 @@ export const messageList: TranslationMap<{
   emptyRoomSettings: string
   emptyTryPrompt: string
   emptyPromptPlan: string
+  emptyDmTitle: string
+  emptyDmDesc: string
+  emptyDmPromptIntro: string
+  emptyDmPromptOverview: string
   emptyPromptSummary: string
   emptyPromptRoles: string
 }> = {
@@ -2118,6 +2122,10 @@ export const messageList: TranslationMap<{
     emptyRoomSettings: 'Room settings',
     emptyTryPrompt: 'Use prompt',
     emptyPromptPlan: '@all Help me turn this room into a working plan. Ask clarifying questions, then propose next steps.',
+    emptyDmTitle: 'Start the conversation',
+    emptyDmDesc: 'This is a direct message. Tell it what you need — no @mention required.',
+    emptyDmPromptIntro: 'What can you help me with? Suggest three things to start.',
+    emptyDmPromptOverview: 'Give me a quick overview of the project you are working on.',
     emptyPromptSummary: '@all Please introduce what you can help with in this room and suggest three useful tasks to start.',
     emptyPromptRoles: '@all Based on this room goal, suggest roles, owners, and a first checklist.',
   },
@@ -2149,6 +2157,10 @@ export const messageList: TranslationMap<{
     emptyRoomSettings: '房间设置',
     emptyTryPrompt: '使用',
     emptyPromptPlan: '@all 帮我把这个房间变成可执行计划。先问必要的澄清问题，再给出下一步。',
+    emptyDmTitle: '开始对话',
+    emptyDmDesc: '这是一对一私信，直接说你需要什么，不用 @。',
+    emptyDmPromptIntro: '你能帮我做些什么？先给我三个可以开始的方向。',
+    emptyDmPromptOverview: '给我快速介绍一下你正在负责的项目。',
     emptyPromptSummary: '@all 请介绍你们在这个房间里能帮我做什么，并建议 3 个适合马上开始的任务。',
     emptyPromptRoles: '@all 根据这个房间目标，建议分工、负责人和第一版 checklist。',
   },
