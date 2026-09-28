@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, X } from "lucide-react";
+import { Bot, Loader2, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
-import { spaceError, type SpaceUser } from "@/lib/team-spaces";
 import {
-  teamConversationsApi,
-  type TeamConversation,
-} from "@/lib/team-conversations";
+  spaceError,
+  type SpaceAgent,
+  type SpaceUser,
+  type TeamSpace,
+} from "@/lib/team-spaces";
+import { agentAddBlocker, newRoomBody, orgRoomsApi } from "@/lib/org-rooms";
 
 export const teamInput =
   "w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2.5 text-sm outline-none focus:border-neon-cyan disabled:opacity-50";
@@ -16,18 +18,25 @@ export const teamButton =
 
 export default function TeamConversationDialog({
   spaceId,
+  space,
   kind,
   users,
+  agents = [],
+  ownedAgentIds = [],
   userId,
   onClose,
   onCreated,
 }: {
   spaceId: string;
+  space?: TeamSpace;
   kind: "room" | "dm";
   users: SpaceUser[];
+  /** Organization Agents that may be pulled into a new room. */
+  agents?: SpaceAgent[];
+  ownedAgentIds?: string[];
   userId: string;
   onClose: () => void;
-  onCreated: (conversation: TeamConversation) => void;
+  onCreated: (room: { room_id: string; kind: "room" | "dm" }) => void;
 }) {
   const zh = useLanguage() === "zh";
   const t = (cn: string, en: string) => (zh ? cn : en);
@@ -39,11 +48,13 @@ export default function TeamConversationDialog({
     kind === "dm" ? "private" : "organization"
   );
   const [selected, setSelected] = useState<string[]>([]);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const choices = users.filter(
     (u) => u.user_id !== userId && u.status === "active"
   );
+  const agentChoices = kind === "room" ? agents.filter((a) => a.status === "active") : [];
   useEffect(() => {
     mounted.current = true;
     dialog.current?.showModal();
@@ -67,13 +78,14 @@ export default function TeamConversationDialog({
           setBusy(true);
           setError(null);
           try {
-            const conversation = await teamConversationsApi.create(spaceId, {
-              kind,
-              name: name.trim(),
-              visibility,
-              member_ids: visibility === "private" ? selected : [],
-            });
-            if (mounted.current) onCreated(conversation);
+            const created =
+              kind === "dm"
+                ? await orgRoomsApi.openDm(spaceId, selected[0])
+                : await orgRoomsApi.create(
+                    spaceId,
+                    newRoomBody(name, visibility, selected, selectedAgents)
+                  );
+            if (mounted.current) onCreated({ room_id: created.room_id, kind });
           } catch (cause) {
             if (mounted.current) setError(cause);
           } finally {
@@ -181,11 +193,55 @@ export default function TeamConversationDialog({
             </div>
           </fieldset>
         )}
+        {agentChoices.length > 0 && (
+          <fieldset className="space-y-2" disabled={busy}>
+            <legend className="mb-2 text-sm font-medium">
+              {t("拉 Agent 进房间（可选）", "Add Agents (optional)")}
+            </legend>
+            <div className="max-h-44 space-y-1 overflow-y-auto">
+              {agentChoices.map((agent) => {
+                const blocked = space ? agentAddBlocker(space, agent, ownedAgentIds) != null : false;
+                return (
+                  <label
+                    key={agent.agent_id}
+                    className={`flex items-center gap-3 rounded-lg p-3 ${
+                      blocked ? "opacity-60" : "cursor-pointer hover:bg-glass-bg"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      name="agent"
+                      value={agent.agent_id}
+                      disabled={blocked}
+                      checked={selectedAgents.includes(agent.agent_id)}
+                      onChange={(e) =>
+                        setSelectedAgents(
+                          e.target.checked
+                            ? [...selectedAgents, agent.agent_id]
+                            : selectedAgents.filter((id) => id !== agent.agent_id)
+                        )
+                      }
+                    />
+                    <Bot size={15} className="shrink-0 text-neon-cyan" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block break-words text-sm">{agent.display_name}</span>
+                      {blocked && (
+                        <span className="block text-[11px] text-text-secondary">
+                          {t("仅 Agent 所有者或组织管理员可添加", "Only its owner or an organization admin can add it")}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
         <p className="text-xs leading-5 text-text-secondary">
           {visibility === "organization"
             ? t(
-                "组织内当前和之后加入的成员均可查看全部房间历史。",
-                "Current and future organization members can read this room’s full history."
+                "组织成员都能在房间列表里看到并加入，加入后可查看全部历史。",
+                "Everyone in the organization can find and join this room, then read its full history."
               )
             : t(
                 "仅所选成员可以访问。退出组织后将失去访问权限。",

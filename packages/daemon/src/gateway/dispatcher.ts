@@ -1892,7 +1892,7 @@ export class Dispatcher {
         agentId: msg.accountId,
         roomId: msg.conversation.id,
         runtime: route.runtime,
-        grantId: execution.grant.grantId,
+        grantId: execution.grant?.grantId ?? null,
         reason: execution.reason,
         turnId,
       });

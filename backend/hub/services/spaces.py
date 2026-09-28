@@ -176,6 +176,11 @@ async def remove_user(db, space_id, actor_id, target_id):
         membership.version += 1
         await db.execute(delete(SpaceRoleBinding).where(SpaceRoleBinding.agent_membership_id == membership.id))
         audit(db, space_id, actor_id, "agent_membership.removed", membership.id, version=membership.version)
+    # Leaving the organization also leaves its rooms (with the agents they sponsored).
+    from hub.services import org_rooms
+
+    human_id = await db.scalar(select(User.human_id).where(User.id == target_id))
+    await org_rooms.drop_space_participants(db, space_id, [human_id, *(m.agent_id for m in agents)])
     audit(db, space_id, actor_id, "membership.removed", target.id, version=target.version)
 
 
@@ -286,3 +291,6 @@ async def remove_agent(db, space_id, actor_id, agent_id):
         membership.version += 1
         await db.execute(delete(SpaceRoleBinding).where(SpaceRoleBinding.agent_membership_id == membership.id))
         audit(db, space_id, actor_id, "agent_membership.removed", membership.id, version=membership.version)
+        from hub.services import org_rooms
+
+        await org_rooms.drop_space_participants(db, space_id, [agent_id])

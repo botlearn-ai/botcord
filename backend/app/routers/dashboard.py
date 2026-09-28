@@ -301,6 +301,9 @@ async def _build_rooms_from_sql(
             "last_message_preview",
             "last_message_at",
             "last_sender_name",
+            "space_id",
+            "space_kind",
+            "space_visibility",
         )
         for item in mapped:
             room_id = item.get("room_id")
@@ -636,6 +639,10 @@ async def _build_rooms_from_membership(
             "has_unread": unread_counts.get(rid, 0) > 0,
             "unread_count": unread_counts.get(rid, 0),
             "created_at": room.created_at.isoformat() if room.created_at else None,
+            # Organization rooms carry their space so personal lists can skip them.
+            "space_id": str(room.space_id) if room.space_id else None,
+            "space_kind": room.space_kind,
+            "space_visibility": room.space_visibility,
         })
 
     return _sort_room_previews(result_rooms)
@@ -1447,6 +1454,9 @@ async def join_room(
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Already a member")
 
+    from hub.services.org_rooms import assert_generic_room
+
+    await assert_generic_room(db, room_id)
     member = RoomMember(
         room_id=room_id,
         agent_id=viewer_id,
@@ -2091,6 +2101,9 @@ async def accept_join_request(
     jr.responded_by = viewer_id
     jr.resolved_at = func.now()
 
+    from hub.services.org_rooms import assert_generic_room
+
+    await assert_generic_room(db, room_id)
     new_member = RoomMember(
         room_id=room_id,
         agent_id=jr.agent_id,
@@ -3014,6 +3027,9 @@ async def human_room_send(
         raise HTTPException(status_code=403, detail="Human send disabled for this room")
 
     await _enforce_agent_access_on_dm_send(db, room_id, sender_id, ctx.user_id)
+    from hub.services.org_rooms import assert_org_send_allowed
+
+    await assert_org_send_allowed(db, room_id, sender_id, ctx.user_id)
 
     effective_member = await effective_human_send_member(
         db,

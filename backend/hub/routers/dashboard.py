@@ -960,6 +960,9 @@ async def join_room(
     if room.max_members is not None and current_count >= room.max_members:
         raise I18nHTTPException(status_code=400, message_key="room_is_full")
 
+    from hub.services.org_rooms import assert_generic_room
+
+    await assert_generic_room(db, room.room_id)
     # Add member
     new_member = RoomMember(
         room_id=room.room_id,

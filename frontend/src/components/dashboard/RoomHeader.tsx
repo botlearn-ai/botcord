@@ -12,7 +12,7 @@ import { common } from "@/lib/i18n/translations/common";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
-import { ArrowLeft, Info, Loader2, Settings, Share2, UserPlus, X } from "lucide-react";
+import { ArrowLeft, Info, Loader2, Settings, Share2, UserPlus, Users, X } from "lucide-react";
 import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -30,7 +30,21 @@ import { animateIfMotion, cleanupAnime } from "@/lib/anime";
 const OPEN_ROOM_ADD_MEMBER_EVENT = "botcord:open-room-add-member";
 const OPEN_ROOM_SETTINGS_EVENT = "botcord:open-room-settings";
 
-export default function RoomHeader() {
+export interface RoomHeaderProps {
+  /** Replaces the default mobile back navigation (push /chats/messages). */
+  onBack?: () => void;
+  /** Title override (e.g. organization DM peer name). */
+  title?: string;
+  /**
+   * Membership is managed elsewhere (organization rooms): join/share/add/
+   * settings entries are replaced by this single members entry.
+   */
+  onOpenMembers?: () => void;
+  membersLabel?: string;
+}
+
+export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel }: RoomHeaderProps = {}) {
+  const managed = Boolean(onOpenMembers);
   const [joinRequestStatus, setJoinRequestStatus] = useState<"idle" | "sending" | "pending" | "rejected">("idle");
   const [showRulePopover, setShowRulePopover] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -63,6 +77,8 @@ export default function RoomHeader() {
   })));
   const { overview, getRoomSummary, refreshOverview, roomMessagesLoading } = useDashboardChatStore(useShallow((state) => ({
     overview: state.overview,
+    // getRoomSummary falls back to organization rooms; re-render when they land.
+    spaceRooms: state.spaceRooms,
     getRoomSummary: state.getRoomSummary,
     refreshOverview: state.refreshOverview,
     roomMessagesLoading: openedRoomId ? Boolean(state.messagesLoading[openedRoomId]) : false,
@@ -106,7 +122,7 @@ export default function RoomHeader() {
     : null;
   // For participant views, show the peer. For an owner observing a bot-to-bot
   // DM, show both Bot names rather than the persisted legacy ID title.
-  const titleText = isDMRoom && room
+  const titleText = title ? title : isDMRoom && room
     ? resolveDmDisplayName(
       openedRoomId,
       selfId,
@@ -150,7 +166,7 @@ export default function RoomHeader() {
   }, []);
 
   useEffect(() => {
-    if (!canActAsCurrentViewer || !room?.room_id || isJoined || !isInviteOnly) return;
+    if (managed || !canActAsCurrentViewer || !room?.room_id || isJoined || !isInviteOnly) return;
     setJoinRequestStatus("idle");
     let cancelled = false;
     api.getMyJoinRequest(room.room_id).then((res) => {
@@ -161,7 +177,7 @@ export default function RoomHeader() {
       }
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [canActAsCurrentViewer, room?.room_id, isJoined, isInviteOnly]);
+  }, [managed, canActAsCurrentViewer, room?.room_id, isJoined, isInviteOnly]);
 
   // Close rule popover on outside click
   useEffect(() => {
@@ -266,10 +282,12 @@ export default function RoomHeader() {
 
   useEffect(() => {
     const openAddMember = () => {
-      if (canAddMembers) void handleOpenAddMemberModal();
+      if (onOpenMembers) onOpenMembers();
+      else if (canAddMembers) void handleOpenAddMemberModal();
     };
     const openSettings = () => {
-      setShowSettingsModal(true);
+      if (onOpenMembers) onOpenMembers();
+      else setShowSettingsModal(true);
     };
 
     window.addEventListener(OPEN_ROOM_ADD_MEMBER_EVENT, openAddMember);
@@ -278,12 +296,16 @@ export default function RoomHeader() {
       window.removeEventListener(OPEN_ROOM_ADD_MEMBER_EVENT, openAddMember);
       window.removeEventListener(OPEN_ROOM_SETTINGS_EVENT, openSettings);
     };
-  }, [canAddMembers, handleOpenAddMemberModal]);
+  }, [canAddMembers, handleOpenAddMemberModal, onOpenMembers]);
 
   // A deep-linked/public room can render before its summary request resolves.
   // Keep the header slot mounted at its final height so the message viewport
   // and composer do not jump once the metadata arrives.
   const handleMobileBack = () => {
+    if (onBack) {
+      onBack();
+      return;
+    }
     useDashboardUIStore.getState().returnToMessageList();
     router.push("/chats/messages");
   };
@@ -296,7 +318,7 @@ export default function RoomHeader() {
   );
 
   const renderJoinButton = () => {
-    if (isJoined || isOwnerChatRoom) return null;
+    if (managed || isJoined || isOwnerChatRoom) return null;
 
     if (room.required_subscription_product_id) {
       return (
@@ -444,7 +466,7 @@ export default function RoomHeader() {
           </div>
           <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-text-secondary max-md:hidden">
             <button
-              onClick={() => setShowSettingsModal(true)}
+              onClick={() => (onOpenMembers ? onOpenMembers() : setShowSettingsModal(true))}
               className="shrink-0 whitespace-nowrap hover:text-neon-cyan hover:underline transition-colors"
             >
               {room.member_count} {room.member_count !== 1 ? t.members : t.member}
@@ -486,7 +508,19 @@ export default function RoomHeader() {
               {t.guest}
             </span>
           )}
-          {isJoined && !isDMRoom && !isOwnerChatRoom && (
+          {onOpenMembers && (
+            <span className="group relative">
+              <button
+                onClick={onOpenMembers}
+                className={iconBtn}
+                aria-label={membersLabel ?? t.roomSettings}
+              >
+                <Users className="h-4 w-4" />
+              </button>
+              <span className={tooltipCls}>{membersLabel ?? t.roomSettings}</span>
+            </span>
+          )}
+          {!managed && isJoined && !isDMRoom && !isOwnerChatRoom && (
             <span className="group relative">
               <button
                 onClick={() => setShowShareModal(true)}
@@ -498,7 +532,7 @@ export default function RoomHeader() {
               <span className={tooltipCls}>{t.shareRoom}</span>
             </span>
           )}
-          {canAddMembers && (
+          {!managed && canAddMembers && (
             <span className="group relative max-md:hidden">
               <button
                 onClick={() => void handleOpenAddMemberModal()}
@@ -511,7 +545,7 @@ export default function RoomHeader() {
               <span className={tooltipCls}>{locale === "zh" ? "添加房间成员" : "Add members"}</span>
             </span>
           )}
-          {!isOwnerChatRoom && (
+          {!managed && !isOwnerChatRoom && (
             <span className="group relative">
               <button
                 onClick={() => setShowSettingsModal(true)}

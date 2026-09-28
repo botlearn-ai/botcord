@@ -117,6 +117,8 @@ class HumanRoomSummary(BaseModel):
     slow_mode_seconds: int | None = None
     required_subscription_product_id: str | None = None
     created_at: str | None = None
+    # Organization (Team) rooms carry their space so personal lists can skip them.
+    space_id: str | None = None
 
 
 class HumanRoomListResponse(BaseModel):
@@ -442,6 +444,7 @@ def _serialize_human_room_summary(
         slow_mode_seconds=room.slow_mode_seconds,
         required_subscription_product_id=room.required_subscription_product_id,
         created_at=created_at.isoformat() if created_at else None,
+        space_id=str(room.space_id) if room.space_id else None,
     )
 
 
@@ -989,6 +992,9 @@ async def join_room_as_human(
         if current_count >= room.max_members:
             raise HTTPException(status_code=400, detail="room_is_full")
 
+    from hub.services.org_rooms import assert_generic_room
+
+    await assert_generic_room(db, room_id)
     new_member = RoomMember(
         room_id=room_id,
         agent_id=me,
@@ -1449,6 +1455,9 @@ async def invite_room_member_as_human(
         if current_count >= room.max_members:
             raise HTTPException(status_code=400, detail="room_is_full")
 
+    from hub.services.org_rooms import assert_generic_room
+
+    await assert_generic_room(db, room_id)
     new_role = RoomRole.admin if body.role == "admin" else RoomRole.member
     new_member = RoomMember(
         room_id=room_id,
@@ -2637,6 +2646,9 @@ async def resolve_pending_approval(
                 payload = {}
             room_id_for_invite = payload.get("room_id")
             if room_id_for_invite:
+                from hub.services.org_rooms import assert_generic_room
+
+                await assert_generic_room(db, room_id_for_invite)
                 db.add(
                     RoomMember(
                         room_id=room_id_for_invite,

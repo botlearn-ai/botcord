@@ -123,3 +123,19 @@ describe("scrubGuestEnv", () => {
     });
   });
 });
+
+describe("team room space_context", () => {
+  const team = (restricted: boolean) => ({ source_type: "dashboard_human_room", space_context: { space_id: "sp1", restricted } });
+
+  it("restricts non-owner team-room requests regardless of route config", () => {
+    expect(resolveTurnExecution(msg({ raw: team(true) }), { runtime: "claude-code", nonOwnerExecution: "full" }, botcord))
+      .toEqual({ profile: "restricted" });
+    expect(resolveTurnExecution(msg({ raw: team(true) }), { runtime: "openclaw-acp" }, botcord))
+      .toEqual({ profile: "refused", reason: "runtime_unsupported" });
+  });
+
+  it("leaves owner requests in team rooms on full permissions", () => {
+    expect(resolveTurnExecution(msg({ raw: team(false) }), { runtime: "claude-code" }, botcord))
+      .toEqual({ profile: "default" });
+  });
+});

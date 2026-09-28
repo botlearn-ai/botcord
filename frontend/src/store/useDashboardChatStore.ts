@@ -465,6 +465,8 @@ interface DashboardChatState {
   publicHumansQuery: string | null;
   recentVisitedRooms: PublicRoom[];
   ownedAgentRooms: HumanAgentRoomSummary[];
+  /** Organization (Team) rooms the viewer joined; only a getRoomSummary fallback, never listed personally. */
+  spaceRooms: DashboardRoom[];
   optimisticOwnerChatRooms: Record<string, HumanAgentRoomSummary>;
   ownedAgentRoomsLoading: boolean;
   ownedAgentRoomsLoaded: boolean;
@@ -479,6 +481,7 @@ interface DashboardChatState {
   logout: () => void;
   closeAgentCardState: () => void;
   getRoomSummary: (roomId: string) => DashboardRoom | null;
+  setSpaceRooms: (rooms: DashboardRoom[]) => void;
   getVisibleMessageRooms: () => DashboardRoom[];
   hasMessage: (roomId: string, hubMsgId: string) => boolean;
   applyRealtimeEventHint: (event: RealtimeMetaEvent) => void;
@@ -556,6 +559,7 @@ const initialChatState = {
   publicHumansQuery: null as string | null,
   recentVisitedRooms: [],
   ownedAgentRooms: [],
+  spaceRooms: [] as DashboardRoom[],
   optimisticOwnerChatRooms: {},
   ownedAgentRoomsLoading: false,
   ownedAgentRoomsLoaded: false,
@@ -673,8 +677,11 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         const recentRoom = state.recentVisitedRooms.find((room) => room.room_id === roomId);
         if (recentRoom) return toRoomSummary(recentRoom);
         const ownedAgentRoom = state.ownedAgentRooms.find((room) => room.room_id === roomId);
-        return ownedAgentRoom ? ownedAgentRoomToDashboardRoom(ownedAgentRoom) : null;
+        if (ownedAgentRoom) return ownedAgentRoomToDashboardRoom(ownedAgentRoom);
+        return state.spaceRooms.find((room) => room.room_id === roomId) ?? null;
       },
+
+      setSpaceRooms: (spaceRooms) => set({ spaceRooms }),
 
       getVisibleMessageRooms: () =>
         buildVisibleMessageRooms({

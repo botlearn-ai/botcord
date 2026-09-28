@@ -1,5 +1,7 @@
 # Team 实施进度
 
+2026-09-28：组织房间改为 Hub 原生 Room（方案 A），agent 可以进入组织房间。`rooms` 新增 `space_id`、`space_kind`（room/dm）、`space_visibility`（organization/private）（迁移 `007_org_rooms.sql`）。新接口 `/api/spaces/{space}/rooms|dms|rooms/{room}/join|members|agents|participants`；消息、历史、已读复用 `/api/dashboard/rooms/{room}/*`。拉 agent：必须是已入组 agent，由其 owner 或组织管理员操作。通用加成员/入群/邀请码/审批路径对组织房间返回 403 `org_room_membership_managed_by_team`；成员或 agent 离开组织即移出全部组织房间。Hub 在 inbox 下发 `space_context`，非 owner 的请求在 daemon 端按只读执行（被授权者按 `access_context` 角色）。旧 `team_conversations` 数据用 `scripts/migrate_team_conversations_to_rooms.py` 迁移（幂等），旧表保留不再使用。
+
 2026-09-28：组织邀请链接与组织内新建 Agent。管理员可生成可分享的邀请链接（可选有效期 1/7/30 天或永久、使用次数上限，可撤销）；未注册 BotCord 的人打开 `/join/<code>` 可免登录预览组织，登录/注册后直接成为成员（曾被移除或暂停的人不能通过链接重新加入）。原“按用户 ID 邀请”保留为次要入口。组织 Agent 区块新增“新建 Agent”，复用 Create Bot 流程，创建后管理员自动加入组织、普通成员自动提交入组申请。需先应用迁移 `005_space_invite_links.sql`。
 
 2026-09-28：P1 Agent 共享已实现。组织内 owner 可以授权成员以咨询者或协作者身份调用自己的 agent，通信复用人与 agent 私信，daemon 在执行层强制约束。详见 [Agent 共享设计 §5.4](agent-sharing-design.md)。需要先应用迁移 `004_agent_access_grants.sql`，再部署 Hub，最后发布 daemon。

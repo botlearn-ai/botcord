@@ -29,14 +29,22 @@ import {
 import { subscribeToPageReturn } from "@/lib/page-return";
 import { canManage, spaceError } from "@/lib/team-spaces";
 import {
-  conversationName,
-  teamConversationsApi,
-  type TeamConversation,
-} from "@/lib/team-conversations";
+  orgRoomPreviewMeta,
+  orgRoomsApi,
+  orgRoomsForView,
+  orgRoomTitle,
+  orgRoomToDashboardRoom,
+  orgRoomUnread,
+  type OrgRoom,
+} from "@/lib/org-rooms";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import UnreadBadge from "@/components/ui/UnreadBadge";
 import TeamSpacesPage from "./TeamSpacesPage";
 import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
 import TeamConversationDialog, { teamButton } from "./TeamConversationDialog";
-import TeamThread from "./TeamThread";
+import TeamRoomPane from "./TeamRoomPane";
+import TeamRoomMembersDialog from "./TeamRoomMembersDialog";
 import SharedAgentsPanel from "./SharedAgentsPanel";
 
 /** "Alice: " / "我: " prefix for conversation previews (none when unknown). */
@@ -62,6 +70,119 @@ export function listTime(iso: string, zh: boolean, now = new Date()): string {
     return at.toLocaleDateString(zh ? "zh-CN" : "en-US", { weekday: "short" });
   }
   return at.toLocaleDateString(zh ? "zh-CN" : "en-US", { month: "numeric", day: "numeric" });
+}
+
+/** One row of the Team conversation list (joined room/DM, or an open room to join). */
+export function TeamRoomRow({
+  room,
+  title,
+  unread,
+  href,
+  selected,
+  viewerNames,
+  joining,
+  onJoin,
+}: {
+  room: OrgRoom;
+  title: string;
+  unread: number;
+  href: string;
+  selected: boolean;
+  viewerNames: (string | null | undefined)[];
+  joining: string | null;
+  onJoin: () => void;
+}) {
+  const zh = useLanguage() === "zh";
+  const t = (cn: string, en: string) => (zh ? cn : en);
+  const agentDm =
+    room.space_kind === "dm" && room.participants.some((p) => p.kind === "agent");
+  const icon = (
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass-bg text-neon-cyan">
+      {agentDm ? (
+        <Bot size={19} />
+      ) : room.space_kind === "dm" ? (
+        <MessageCircle size={19} />
+      ) : room.space_visibility === "private" ? (
+        <LockKeyhole size={19} />
+      ) : (
+        <Hash size={19} />
+      )}
+    </span>
+  );
+  const name = (
+    <span className={`truncate text-sm ${unread > 0 ? "font-semibold" : "font-medium"}`}>
+      {title}
+    </span>
+  );
+  if (!room.joined) {
+    return (
+      <div
+        className="mb-1 flex items-center gap-3 rounded-xl p-3"
+        data-unjoined-room={room.room_id}
+      >
+        {icon}
+        <div className="min-w-0 flex-1">
+          {name}
+          <p className="mt-1 truncate text-xs text-text-secondary">
+            {room.member_count} {t("位成员 · 未加入", "members · not joined")}
+          </p>
+        </div>
+        <button
+          className="shrink-0 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan disabled:opacity-50"
+          disabled={joining != null}
+          aria-label={t(`加入 ${title}`, `Join ${title}`)}
+          onClick={() => onJoin()}
+        >
+          {joining === room.room_id ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            t("加入", "Join")
+          )}
+        </button>
+      </div>
+    );
+  }
+  const at = room.last_message_at ?? room.created_at;
+  return (
+    <Link
+      href={href}
+      aria-current={selected ? "page" : undefined}
+      className={`mb-1 flex items-start gap-3 rounded-xl p-3 ${
+        selected ? "bg-neon-cyan/10" : "hover:bg-glass-bg"
+      }`}
+    >
+      {icon}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          {name}
+          {agentDm && (
+            <span className="shrink-0 rounded bg-neon-cyan/10 px-1.5 text-[10px] font-medium text-neon-cyan">
+              Agent
+            </span>
+          )}
+          {at && (
+            <span className="ml-auto shrink-0 text-[11px] text-text-secondary tabular-nums">
+              {listTime(at, zh)}
+            </span>
+          )}
+        </div>
+        <div className="mt-1 flex items-center gap-2">
+          <p
+            className={`min-w-0 flex-1 truncate text-xs ${
+              unread > 0 ? "text-text-primary" : "text-text-secondary"
+            }`}
+          >
+            {room.last_message_preview
+              ? `${previewSender(orgRoomPreviewMeta(room, viewerNames), zh)}${room.last_message_preview}`
+              : t("暂无消息，开始讨论吧", "Start the conversation")}
+          </p>
+          {unread > 0 && (
+            <UnreadBadge count={unread} label={t(`${unread} 条未读`, `${unread} unread`)} />
+          )}
+        </div>
+      </div>
+    </Link>
+  );
 }
 
 export type TeamView =
@@ -183,7 +304,11 @@ export function TeamWorkspace({
   const view = teamView(query.get("view"));
   const selectedId = query.get("conversation");
   const { selected: space, user, members } = snapshot;
-  const [conversations, setConversations] = useState<TeamConversation[]>([]);
+  const [rooms, setRooms] = useState<OrgRoom[]>([]);
+  const [viewerId, setViewerId] = useState("");
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [joining, setJoining] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const [search, setSearch] = useState("");
@@ -202,18 +327,23 @@ export function TeamWorkspace({
       controller.current = new AbortController();
       const task = (async () => {
         try {
-          const response = await teamConversationsApi.list(
+          const response = await orgRoomsApi.list(
             space.id,
             controller.current!.signal
           );
           if (mounted.current && version === generation.current) {
-            setConversations(response.conversations);
+            setRooms(response.rooms);
+            setViewerId(response.viewer_id);
             setError(null);
+            // Shared room components resolve the opened room via getRoomSummary.
+            useDashboardChatStore
+              .getState()
+              .setSpaceRooms(response.rooms.filter((r) => r.joined).map(orgRoomToDashboardRoom));
           }
         } catch (cause) {
           if (mounted.current && version === generation.current) {
             setError(cause);
-            setConversations([]);
+            setRooms([]);
           }
         } finally {
           if (mounted.current && version === generation.current)
@@ -244,22 +374,42 @@ export function TeamWorkspace({
       controller.current?.abort();
       clearInterval(timer);
       document.removeEventListener("visibilitychange", poll);
+      useDashboardChatStore.getState().setSpaceRooms([]);
     };
   }, [reload, messaging]);
-  const title = (c: TeamConversation) =>
-    conversationName(c, user.id, t("成员已离开", "Member has left"));
+  useEffect(() => setMembersOpen(false), [selectedId]);
+  const title = (c: OrgRoom) => orgRoomTitle(c, t("成员已离开", "Member has left"));
+  const viewerNames = [snapshot.human?.display_name, user.display_name];
+  const ownedAgentIds = (user.agents ?? []).map((a) => a.agent_id);
+  // The open conversation is being read: don't count it as unread.
+  const unreadOf = (c: OrgRoom) => (c.room_id === selectedId ? 0 : orgRoomUnread(c));
   const inbox = view === "messages" || view === "rooms";
-  const current = conversations.find((c) => c.id === selectedId);
-  const visible = conversations.filter(
+  const current = rooms.find((c) => c.room_id === selectedId);
+  const visible = orgRoomsForView(rooms, view === "rooms" ? "rooms" : "messages").filter(
     (c) =>
-      (view !== "rooms" || c.kind === "room") &&
-      (!unreadOnly || c.unread_count > 0) &&
+      (!unreadOnly || unreadOf(c) > 0) &&
       title(c).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
   );
-  const unread = conversations.reduce((sum, c) => sum + c.unread_count, 0);
-  const roomUnread = conversations
-    .filter((c) => c.kind === "room")
-    .reduce((sum, c) => sum + c.unread_count, 0);
+  const unread = rooms.reduce((sum, c) => sum + unreadOf(c), 0);
+  const roomUnread = orgRoomsForView(rooms, "rooms").reduce((sum, c) => sum + unreadOf(c), 0);
+  const openRoom = async (roomId: string, targetView: TeamView = view) => {
+    await reload(true);
+    void useDashboardSessionStore.getState().refreshHumanRooms();
+    router.push(teamHref(space.id, targetView === "rooms" ? "rooms" : "messages", roomId));
+  };
+  const join = async (c: OrgRoom) => {
+    if (joining) return;
+    setJoining(c.room_id);
+    setJoinError(null);
+    try {
+      await orgRoomsApi.join(space.id, c.room_id);
+      if (mounted.current) await openRoom(c.room_id);
+    } catch (cause) {
+      if (mounted.current) setJoinError(cause);
+    } finally {
+      if (mounted.current) setJoining(null);
+    }
+  };
   const activeUsers = members.users.filter((m) => m.status === "active").length;
   const activeAgents = members.agents.filter(
     (m) => m.status === "active"
@@ -355,15 +505,14 @@ export function TeamWorkspace({
             >
               <Icon size={18} />
               <span className="flex-1">{label}</span>
-              {count != null && (
-                <span
-                  className={`rounded-full px-1.5 text-[11px] tabular-nums ${
-                    isUnread ? "bg-red-500 font-medium text-white" : "bg-glass-bg"
-                  }`}
-                >
-                  {count > 99 ? "99+" : count}
-                </span>
-              )}
+              {count != null &&
+                (isUnread ? (
+                  <UnreadBadge count={count} />
+                ) : (
+                  <span className="rounded-full bg-glass-bg px-1.5 text-[11px] tabular-nums">
+                    {count > 99 ? "99+" : count}
+                  </span>
+                ))}
             </Link>
           ))}
           <Link
@@ -508,60 +657,23 @@ export function TeamWorkspace({
                   )}
                 </div>
               )}
+              {joinError != null && (
+                <p role="alert" className="px-3 pb-2 text-xs text-red-500">
+                  {spaceError(joinError, zh)}
+                </p>
+              )}
               {visible.map((c) => (
-                <Link
-                  key={c.id}
-                  href={teamHref(space.id, view, c.id)}
-                  aria-current={selectedId === c.id ? "page" : undefined}
-                  className={`mb-1 flex items-start gap-3 rounded-xl p-3 ${
-                    selectedId === c.id
-                      ? "bg-neon-cyan/10"
-                      : "hover:bg-glass-bg"
-                  }`}
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass-bg text-neon-cyan">
-                    {c.kind === "dm" ? (
-                      <MessageCircle size={19} />
-                    ) : c.visibility === "private" ? (
-                      <LockKeyhole size={19} />
-                    ) : (
-                      <Hash size={19} />
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`truncate text-sm ${c.unread_count > 0 ? "font-semibold" : "font-medium"}`}
-                      >
-                        {title(c)}
-                      </span>
-                      {(c.last_message_at || c.updated_at) && (
-                        <span className="ml-auto shrink-0 text-[11px] text-text-secondary tabular-nums">
-                          {listTime(c.last_message_at ?? c.updated_at, zh)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-1 flex items-center gap-2">
-                      <p
-                        className={`min-w-0 flex-1 truncate text-xs ${
-                          c.unread_count > 0 ? "text-text-primary" : "text-text-secondary"
-                        }`}
-                      >
-                        {c.last_message
-                          ? `${previewSender(c, zh)}${c.last_message}`
-                          : t("暂无消息，开始讨论吧", "Start the conversation")}
-                      </p>
-                      {c.unread_count > 0 && (
-                        <span
-                          className="min-w-[18px] shrink-0 rounded-full bg-red-500 px-1.5 text-center text-[10px] font-medium leading-[18px] text-white tabular-nums"
-                          aria-label={t(`${c.unread_count} 条未读`, `${c.unread_count} unread`)}
-                        >
-                          {c.unread_count > 99 ? "99+" : c.unread_count}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </Link>
+                <TeamRoomRow
+                  key={c.room_id}
+                  room={c}
+                  title={title(c)}
+                  unread={unreadOf(c)}
+                  href={teamHref(space.id, view, c.room_id)}
+                  selected={selectedId === c.room_id}
+                  viewerNames={viewerNames}
+                  joining={joining}
+                  onJoin={() => void join(c)}
+                />
               ))}
             </div>
             <button
@@ -580,16 +692,39 @@ export function TeamWorkspace({
               selectedId ? "" : "max-md:hidden"
             }`}
           >
-            {current && !error ? (
-              <TeamThread
-                key={`${space.id}:${current.id}`}
-                spaceId={space.id}
-                conversation={current}
-                userId={user.id}
-                users={members.users}
+            {current && current.joined && !error ? (
+              <TeamRoomPane
+                key={`${space.id}:${current.room_id}`}
+                roomId={current.room_id}
+                title={title(current)}
+                allowHumanSend={current.allow_human_send !== false}
                 onBack={() => router.push(teamHref(space.id, view))}
-                onUpdated={() => void reload(true)}
+                onOpenMembers={() => setMembersOpen(true)}
               />
+            ) : current && !current.joined && !error ? (
+              <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+                <Hash size={36} className="mb-4 text-neon-cyan" />
+                <h2 className="max-w-lg break-words text-xl font-semibold">{title(current)}</h2>
+                <p className="mt-2 text-sm text-text-secondary">
+                  {t("这是组织公开房间，加入后即可查看历史和发言。", "This organization room is open. Join to read its history and chat.")}
+                </p>
+                {joinError != null && (
+                  <p role="alert" className="mt-3 text-sm text-red-500">{spaceError(joinError, zh)}</p>
+                )}
+                <div className="mt-6 flex gap-3">
+                  <button className={teamButton} onClick={() => router.push(teamHref(space.id, view))}>
+                    {t("返回", "Back")}
+                  </button>
+                  <button
+                    className={`${teamButton} bg-neon-cyan/10 text-neon-cyan`}
+                    disabled={joining != null}
+                    onClick={() => void join(current)}
+                  >
+                    {joining === current.room_id && <Loader2 size={16} className="animate-spin" />}
+                    {t("加入房间", "Join room")}
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center overflow-y-auto p-8 text-center">
                 <div className="mb-6 rounded-3xl border border-glass-border bg-glass-bg p-6 text-neon-cyan">
@@ -680,7 +815,16 @@ export function TeamWorkspace({
           </header>
           <div className="p-4 sm:p-6">
             {view === "shared" ? (
-              <SharedAgentsPanel spaceId={space.id} />
+              <SharedAgentsPanel
+                spaceId={space.id}
+                myAgents={members.agents.filter(
+                  (a) =>
+                    a.status === "active" &&
+                    (a.sponsor_user_membership_id === space.membership.id ||
+                      ownedAgentIds.includes(a.agent_id))
+                )}
+                onOpenRoom={(roomId) => openRoom(roomId, "messages")}
+              />
             ) : (
               <TeamSpacesPage
                 teamMode
@@ -695,26 +839,34 @@ export function TeamWorkspace({
       {dialog && (
         <TeamConversationDialog
           spaceId={space.id}
+          space={space}
           kind={dialog}
           users={members.users}
+          agents={members.agents}
+          ownedAgentIds={ownedAgentIds}
           userId={user.id}
           onClose={() => setDialog(null)}
-          onCreated={(conversation) => {
-            setConversations((previous) => [
-              conversation,
-              ...previous.filter((c) => c.id !== conversation.id),
-            ]);
+          onCreated={async (created) => {
             setDialog(null);
             setUnreadOnly(false);
             setSearch("");
-            router.push(
-              teamHref(
-                space.id,
-                conversation.kind === "room" ? "rooms" : "messages",
-                conversation.id
-              )
-            );
+            await openRoom(created.room_id, created.kind === "room" ? "rooms" : "messages");
+          }}
+        />
+      )}
+      {membersOpen && current?.joined && (
+        <TeamRoomMembersDialog
+          key={current.room_id}
+          spaceId={space.id}
+          space={space}
+          room={current}
+          members={members}
+          viewerId={viewerId}
+          ownedAgentIds={ownedAgentIds}
+          onClose={() => setMembersOpen(false)}
+          onChanged={() => {
             void reload(true);
+            useDashboardChatStore.getState().bumpRoomMembersVersion(current.room_id);
           }}
         />
       )}
@@ -736,9 +888,7 @@ export function TeamWorkspace({
               <span className="relative">
                 <Icon size={20} />
                 {isUnread && count != null && (
-                  <span className="absolute -right-2.5 -top-1.5 min-w-[16px] rounded-full bg-red-500 px-1 text-center text-[10px] font-medium leading-4 text-white tabular-nums">
-                    {count > 99 ? "99+" : count}
-                  </span>
+                  <UnreadBadge count={count} size="sm" className="absolute -right-3 -top-1.5" />
                 )}
               </span>
               <span className="max-w-full truncate">{short ?? label}</span>

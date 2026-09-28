@@ -600,6 +600,13 @@ class Room(Base):
         Boolean, nullable=False, default=True, server_default=sa_text("TRUE")
     )
     slow_mode_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # Organization rooms: a Room owned by a Team space. ``space_kind`` is
+    # "room" or "dm"; ``space_visibility`` is "organization" (every active
+    # member may join) or "private" (explicit members only). Null for
+    # personal rooms.
+    space_id: Mapped[_uuid.UUID | None] = mapped_column(ForeignKey("spaces.id"), nullable=True, index=True)
+    space_kind: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    space_visibility: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

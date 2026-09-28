@@ -134,3 +134,137 @@ it("renders a mobile bottom navigation with team sections", () => {
   expect(html).toContain("md:hidden");
   expect(html).toContain('aria-label="组织设置"');
 });
+
+import { TeamRoomRow } from "./TeamWorkspacePage";
+import TeamConversationDialog from "./TeamConversationDialog";
+import TeamRoomMembersDialog from "./TeamRoomMembersDialog";
+import type { OrgRoom } from "@/lib/org-rooms";
+import type { SpaceAgent, TeamSpace } from "@/lib/team-spaces";
+
+const orgRoom = (overrides: Partial<OrgRoom> = {}): OrgRoom => ({
+  room_id: "rm_1",
+  name: "Launch",
+  member_count: 3,
+  my_role: "member",
+  last_message_preview: "ship it",
+  last_message_at: new Date().toISOString(),
+  last_sender_name: "Alice",
+  unread_count: 3,
+  has_unread: true,
+  space_id: "org-a",
+  space_kind: "room",
+  space_visibility: "organization",
+  joined: true,
+  participants: [],
+  ...overrides,
+});
+const row = (room: OrgRoom, unread = room.unread_count ?? 0, title = room.dm_peer_name ?? room.name) =>
+  renderToStaticMarkup(
+    <TeamRoomRow
+      room={room}
+      title={title}
+      unread={unread}
+      href={teamHref("org-a", "messages", room.room_id)}
+      selected={false}
+      viewerNames={["Test owner"]}
+      joining={null}
+      onJoin={() => {}}
+    />
+  );
+
+it("renders joined rooms with unread badge, bold title and sender preview", () => {
+  const html = row(orgRoom());
+  expect(html).toContain('aria-label="3 条未读"');
+  expect(html).toContain("font-semibold");
+  expect(html).toContain("Alice: ship it");
+  expect(html).toContain('href="/chats/team?space=org-a&amp;conversation=rm_1"');
+  expect(row(orgRoom({ last_sender_name: "Test owner" }), 0)).toContain("我: ship it");
+});
+
+it("titles DMs by peer and badges Agent DMs", () => {
+  const html = row(
+    orgRoom({
+      room_id: "rm_sdm_1",
+      space_kind: "dm",
+      name: "Test owner & Bot",
+      dm_peer_name: "Helper Bot",
+      participants: [
+        { id: "hu_me", kind: "human", display_name: "Test owner", role: "owner" },
+        { id: "ag_h", kind: "agent", display_name: "Helper Bot", role: "member" },
+      ],
+    }),
+    0
+  );
+  expect(html).toContain("Helper Bot");
+  expect(html).not.toContain("Test owner &amp; Bot");
+  expect(html).toContain(">Agent<");
+});
+
+it("offers joining organization rooms the viewer is not in", () => {
+  const html = row(orgRoom({ joined: false, unread_count: 0, last_message_preview: null }), 0);
+  expect(html).toContain('data-unjoined-room="rm_1"');
+  expect(html).toContain('aria-label="加入 Launch"');
+  expect(html).not.toContain("<a ");
+});
+
+const memberSpace = {
+  id: "org-a",
+  kind: "organization",
+  status: "active",
+  roles: ["member"],
+  membership: { id: "m-me", status: "active" },
+} as unknown as TeamSpace;
+const orgAgents = [
+  { agent_id: "ag_mine", display_name: "My Bot", status: "active", sponsor_user_membership_id: "m-me" },
+  { agent_id: "ag_other", display_name: "Their Bot", status: "active", sponsor_user_membership_id: "m-2" },
+] as SpaceAgent[];
+
+it("lets room creation pull in Agents and explains the ones you can't add", () => {
+  const html = renderToStaticMarkup(
+    <TeamConversationDialog
+      spaceId="org-a"
+      space={memberSpace}
+      kind="room"
+      users={[]}
+      agents={orgAgents}
+      userId="me"
+      onClose={() => {}}
+      onCreated={() => {}}
+    />
+  );
+  expect(html).toContain("拉 Agent 进房间");
+  expect(html).toContain("My Bot");
+  expect(html).toContain("Their Bot");
+  expect(html.match(/<input[^>]*value="ag_other"[^>]*>/)?.[0]).toContain('disabled=""');
+  expect(html.match(/<input[^>]*value="ag_mine"[^>]*>/)?.[0]).not.toContain("disabled");
+  expect(html).toContain("仅 Agent 所有者或组织管理员可添加");
+});
+
+it("groups room participants and marks Agents; DMs can't take Agents", () => {
+  const participants = [
+    { id: "hu_me", kind: "human" as const, display_name: "Test owner", role: "owner" },
+    { id: "ag_mine", kind: "agent" as const, display_name: "My Bot", role: "member" },
+  ];
+  const render = (room: OrgRoom) =>
+    renderToStaticMarkup(
+      <TeamRoomMembersDialog
+        spaceId="org-a"
+        space={memberSpace}
+        room={room}
+        members={{ users: [], agents: orgAgents }}
+        viewerId="hu_me"
+        ownedAgentIds={["ag_mine"]}
+        onClose={() => {}}
+        onChanged={() => {}}
+      />
+    );
+  const html = render(orgRoom({ participants }));
+  expect(html).toContain("成员与 Agent");
+  expect(html).toContain("添加 Agent");
+  expect(html).toContain("添加成员");
+  expect(html).toContain('aria-label="移除 My Bot"');
+  expect(html).not.toContain('aria-label="移除 Test owner"');
+  const dm = render(orgRoom({ space_kind: "dm", participants }));
+  expect(dm).toContain("私聊不能添加 Agent");
+  expect(dm).not.toContain("添加 Agent<");
+});

@@ -59,6 +59,10 @@ export interface DashboardRoom {
    * merge time by `mergeOwnerVisibleRooms`.
    */
   _originAgent?: { agent_id: string; display_name: string };
+  /** Organization (Team) rooms carry their space; personal lists exclude them. */
+  space_id?: string | null;
+  space_kind?: "room" | "dm" | null;
+  space_visibility?: "organization" | "private" | null;
 }
 
 export interface RoomResponse {
@@ -1013,6 +1017,8 @@ export interface HumanInfo {
 
 export interface HumanRoomSummary {
   room_id: string;
+  /** Set for organization (Team) rooms; personal lists skip them. */
+  space_id?: string | null;
   name: string;
   description: string;
   rule: string | null;

@@ -13,10 +13,11 @@ import { roomList, messagesGrouping } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 
-import { animateIfMotion, animatePop, cleanupAnime } from "@/lib/anime";
+import { animateIfMotion, cleanupAnime } from "@/lib/anime";
+import UnreadBadge from "@/components/ui/UnreadBadge";
 import { ContactInfo, DashboardMessage, DashboardRoom } from "@/lib/types";
 import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
-import { getIsoTimestampValue, getRoomActivityTimestamp, humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
+import { excludeSpaceRooms, getIsoTimestampValue, getRoomActivityTimestamp, humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
 import { canPrefetchMessagePage } from "@/lib/message-prefetch";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -86,30 +87,6 @@ function formatLastMessageTime(isoTime: string | null): string {
     : date.toLocaleDateString();
 }
 
-function formatUnreadCount(count: number): string {
-  return count > 99 ? "99+" : String(count);
-}
-
-function UnreadBadge({ count }: { count: number }) {
-  const badgeRef = useRef<HTMLSpanElement | null>(null);
-
-  useEffect(() => {
-    const badge = badgeRef.current;
-    if (!badge) return;
-
-    const animation = animatePop(badge);
-    return () => cleanupAnime(animation);
-  }, [count]);
-
-  return (
-    <span
-      ref={badgeRef}
-      className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold leading-none text-[var(--color-on-accent)] shadow-[0_0_10px_rgba(34,211,238,0.55)]"
-    >
-      {formatUnreadCount(count)}
-    </span>
-  );
-}
 
 export default function RoomList({
   rooms: propsRooms,
@@ -191,10 +168,12 @@ export default function RoomList({
   // Sidebar feels identity-agnostic.
   const rooms = (() => {
     if (propsRooms) return propsRooms;
-    const agentRooms = overview?.rooms ?? [];
-    if (humanRooms.length === 0) return agentRooms;
+    // Organization (Team) rooms live in the Team workspace, not here.
+    const personal = excludeSpaceRooms(overview?.rooms ?? [], humanRooms);
+    const agentRooms = personal.agentRooms;
+    if (personal.humanRooms.length === 0) return agentRooms;
     const seen = new Set(agentRooms.map((r) => r.room_id));
-    const extras = humanRooms
+    const extras = personal.humanRooms
       .filter((r) => !seen.has(r.room_id))
       .map(humanRoomToDashboardRoom);
     return [...agentRooms, ...extras];
