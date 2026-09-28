@@ -19,7 +19,8 @@ export async function openSharedAgentChat(
   ui.setUserChatAgentId(null);
   ui.setFocusedRoomId(room_id);
   ui.setOpenedRoomId(room_id);
-  const path = "/chats/messages";
+  // Keep the room in the URL so a refresh (or a shared link) reopens the DM.
+  const path = `/chats/messages/${encodeURIComponent(room_id)}`;
   ui.startPrimaryNavigation("messages", path);
   push(path);
   void useDashboardChatStore.getState().loadRoomMessages(room_id);
