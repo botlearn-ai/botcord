@@ -1,15 +1,18 @@
 /**
  * Requester-derived execution policy (agent-sharing M0).
  *
- * Until per-requester grants exist, every turn is either owner-trusted (runs
- * with the route's normal permissions) or restricted (read-only tools, no
+ * Until per-requester grants exist, every turn on a restricted route is
+ * either owner-trusted (runs with the route's normal permissions) or restricted (read-only tools, no
  * shell, replies delivered by the daemon). A turn is owner-trusted only when
  * the inbound provably originates from the agent's owner or an owner-issued
  * system path, or when the Hub marks the sender as owned by the same owner
  * (`sender_same_owner`, e.g. the owner's other agents or the owner posting in
  * a room). Any other BotCord sender — other humans and agents in rooms, DMs,
- * contact requests — is restricted unless the route opts out with
- * `nonOwnerExecution: "full"`.
+ * contact requests — is restricted when the route opts in with
+ * `nonOwnerExecution: "restricted"`.
+ *
+ * Opt-in for now: personal mode keeps the legacy full-permission behavior;
+ * team mode / agent sharing enables restriction for the routes it manages.
  */
 import type { GatewayInboundMessage, GatewayRoute } from "./types.js";
 
@@ -77,7 +80,7 @@ function wantsRestriction(
   route: Pick<GatewayRoute, "nonOwnerExecution">,
   opts: { botcordChannel: boolean },
 ): boolean {
-  if (route.nonOwnerExecution === "full") return false;
+  if (route.nonOwnerExecution !== "restricted") return false;
   return !isOwnerTrustedInbound(msg, opts);
 }
 

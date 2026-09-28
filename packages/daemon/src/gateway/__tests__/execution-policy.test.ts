@@ -54,14 +54,16 @@ describe("isOwnerTrustedInbound", () => {
 });
 
 describe("isRestrictedTurn", () => {
-  it("restricts non-owner turns on capable runtimes unless the route opts out", () => {
-    expect(isRestrictedTurn(msg(), { runtime: "claude-code" }, botcord)).toBe(true);
+  it("restricts non-owner turns only on routes that opt in", () => {
+    expect(isRestrictedTurn(msg(), { runtime: "claude-code", nonOwnerExecution: "restricted" }, botcord)).toBe(true);
+    expect(isRestrictedTurn(msg(), { runtime: "claude-code" }, botcord)).toBe(false);
     expect(isRestrictedTurn(msg(), { runtime: "codex", nonOwnerExecution: "full" }, botcord)).toBe(false);
   });
 
   it("reports runtimes that cannot enforce restriction instead of restricting them", () => {
-    expect(isRestrictedTurn(msg(), { runtime: "openclaw-acp" }, botcord)).toBe(false);
-    expect(restrictionUnsupported(msg(), { runtime: "openclaw-acp" }, botcord)).toBe(true);
-    expect(restrictionUnsupported(msg(), { runtime: "kimi-cli", nonOwnerExecution: "full" }, botcord)).toBe(false);
+    const restricted = { nonOwnerExecution: "restricted" as const };
+    expect(isRestrictedTurn(msg(), { runtime: "openclaw-acp", ...restricted }, botcord)).toBe(false);
+    expect(restrictionUnsupported(msg(), { runtime: "openclaw-acp", ...restricted }, botcord)).toBe(true);
+    expect(restrictionUnsupported(msg(), { runtime: "kimi-cli" }, botcord)).toBe(false);
   });
 });

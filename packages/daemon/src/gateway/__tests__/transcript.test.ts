@@ -286,15 +286,15 @@ describe("Dispatcher transcript integration", () => {
     expect(out.finalText).toBe("ok");
   });
 
-  it("non-owner-chat (restricted turn): daemon delivers the runtime text", async () => {
+  it("non-owner-chat: outbound{gated_non_owner_chat}, channel never sends", async () => {
     const s = track(await scaffold({ runtimeFactory: () => new FakeRuntime({ reply: "ok" }) }));
     await s.dispatcher.handle(
       makeEnvelope({ conversation: { id: "rm_normal", kind: "group" } }),
     );
     const recs = await s.recordsForRoom("rm_normal");
     const out = recs.find((r) => r.kind === "outbound") as Extract<TranscriptRecord, { kind: "outbound" }>;
-    expect(out.deliveryStatus).toBe("delivered");
-    expect(s.channel.sends.length).toBe(1);
+    expect(out.deliveryStatus).toBe("gated_non_owner_chat");
+    expect(s.channel.sends.length).toBe(0);
   });
 
   it("third-party direct chat: runtime text is delivered", async () => {

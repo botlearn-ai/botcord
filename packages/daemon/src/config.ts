@@ -72,7 +72,7 @@ export interface RouteRule {
   gateway?: string;
   /** Overrides `OpenclawGatewayProfile.defaultAgent` when set. */
   openclawAgent?: string;
-  /** Execution policy for non-owner requesters on this route (default "restricted"). */
+  /** Execution policy for non-owner requesters on this route (default "full"). */
   nonOwnerExecution?: NonOwnerExecution;
 }
 
@@ -167,9 +167,9 @@ export interface DaemonConfig {
   /**
    * Execution policy for turns whose requester is not the agent owner.
    * `default` applies to every managed agent route and `defaultRoute`
-   * (fallback "restricted"); `agents` overrides it per agent id — e.g.
-   * `{ "agents": { "ag_x": "full" } }` for a service agent that must run
-   * scripts for other users.
+   * (fallback "full", the legacy behavior); `agents` overrides it per agent
+   * id — e.g. `{ "agents": { "ag_x": "restricted" } }` for an agent shared
+   * with or serving other people in team mode.
    */
   nonOwnerExecution?: NonOwnerExecutionConfig;
   /** If true, stream blocks (only meaningful for rm_oc_* rooms). */

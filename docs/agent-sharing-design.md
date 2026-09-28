@@ -22,7 +22,7 @@
 | `agent_approval_queue` 只支持联系人、入群、支付三类审批，daemon 不读写它 | `backend/hub/models.py:1802`、`hub/enums.py:188` | 没有工具动作审批 |
 | 准入只有 `contact_policy` / `allow_human_sender` 等“能不能发消息”的判断 | `backend/hub/policy.py:166` | 能发消息等于能驱动全部能力 |
 
-> **现存风险（独立于本功能）**：只要能给 Agent 发消息（联系人、同 room 成员），就相当于拿到了 owner 机器上的完整 shell。M0 已实现止血，见第 5.3 节。
+> **现存风险（独立于本功能）**：只要能给 Agent 发消息（联系人、同 room 成员），就相当于拿到了 owner 机器上的完整 shell。M0 已实现受限机制（第 5.3 节），但**暂时只在 team 模式启用**：个人模式保持原有行为，这个风险在个人模式下仍然存在。
 
 ## 2. 角色
 
@@ -90,9 +90,11 @@
 
 **Codex 的限制**：`codex exec` 非交互，没有逐次调用工具前的 hook，因此第一版 Codex 只能用静态 sandbox，不支持第 6 节的逐动作审核。需要审核的动作在 Codex 下直接失败，并提示“请改用 Claude Code 或请求 owner 升级为 operator”。
 
-### 5.3 M0 已实现：非 owner 请求默认受限（2026-09-28）
+### 5.3 M0 已实现：非 owner 请求的受限执行（按需开启，2026-09-28）
 
 实现位于 `packages/daemon/src/gateway/execution-policy.ts`，接入点在 dispatcher 和各 runtime adapter。
+
+**启用范围**：目前只在 team 模式启用。路由或 agent 的 `nonOwnerExecution` 默认为 `full`，即个人模式保持原有行为；设为 `restricted` 后，非 owner 请求才走受限配置。team 模式（agent 进入组织会话、Agent 共享）上线时，由它为自己管理的路由开启 `restricted`。团队会话目前还不支持 agent 参与，所以眼下这套机制已经就绪，但实际不会限制任何回合。
 
 - **owner 信任判定**：满足以下任一条件即为 owner 回合，否则一律视为非 owner：
   - 会话 id 以 `rm_oc_` 开头（owner-chat）；
@@ -113,7 +115,7 @@
   - CC 的受限参数已在本机实测：读文件成功；bash、写文件、读 `.env` 全部被拒绝。Codex 只读 sandbox 同样实测：写文件被拒，网络不可用。
 - **回复投递**：受限回合没有 shell，无法执行 `botcord send`，改由 daemon 投递最终文本（沿用第三方网关已有的模式）。`NO_REPLY` 不投递。`contact_request` 保持不投递，Hub 已经为它创建了 owner 审批。
 - **会话隔离**：受限回合的 session key 加 `#restricted` 后缀，不会 resume 完整权限时期的会话。升级后，已有 room 的会话会重新开始一次。
-- **按 agent 放开**：`config.json` 设置 `"nonOwnerExecution": { "default": "restricted", "agents": { "ag_x": "full" } }`，或在路由规则里写 `nonOwnerExecution: "full"`。用于必须替别人跑脚本、写文件的服务型 agent（例如 PPT 生成）。
+- **配置**：`config.json` 设置 `"nonOwnerExecution": { "agents": { "ag_x": "restricted" } }` 可以按 agent 开启，`default` 字段可以整体切换，也可以在路由规则里写 `nonOwnerExecution`。
 - **部署顺序**：先上线 backend（下发 `sender_same_owner`），再升级 daemon。反过来的话，同一 owner 名下 agent 之间的协作会先被误判为受限。
 - **未覆盖**：Kimi 和 OpenClaw ACP 在 daemon 侧无法约束，这两个 runtime 的非 owner 回合维持原行为，并记 warn 日志 `runtime cannot enforce restricted execution`。
 - **已知弱点**：Codex 只读 sandbox 不限制读路径，模型仍可能读到 home 下的文件并写进回复。M1 会通过专属工作目录和剥离环境变量来缓解。
@@ -186,7 +188,7 @@
 
 | 阶段 | 内容 |
 |---|---|
-| **M0 止血（已实现）** | 非 owner 请求默认受限，由 daemon 代为投递回复，受限回合的会话单独隔离，owner 可以按 agent 放开。详见第 5.3 节 |
+| **M0 受限机制（已实现，只在 team 模式启用）** | 非 owner 请求走受限配置，由 daemon 代为投递回复，受限回合的会话单独隔离；默认关闭，由 team 模式或 owner 按 agent 开启。详见第 5.3 节 |
 | **M1 共享 + 咨询者** | `agent_access_grants`、邀请与撤销、Hub 签发访问上下文、会话与记忆隔离、审计；CC 和 Codex 都支持 |
 | **M2 协作者** | 专属 worktree、环境变量剥离、PreToolUse guard 加静态规则、daemon 负责交付 PR |
 | **M3 快速审核** | `JudgeProvider`（jev 为主，LLM 为备选）、`tool_action` 审批与回传控制帧、operator 角色 |
@@ -194,7 +196,7 @@
 
 ## 11. 待决问题
 
-1. M0 上线前需要为存量服务型 agent 配置 `nonOwnerExecution: "full"`（例如 botcord-dev 上替别人生成文件的 agent），否则它们在 room 里只能做只读问答。
+1. 个人模式何时默认开启受限？开启前需要让替别人写文件、跑脚本的服务型 agent（例如 PPT 生成）改用 Agent 共享的协作者角色，或者显式设为 `full`。
 2. jev 的 `criteria` 措辞和阈值需要拿真实工具调用样本校准。上线初期所有 allow 判定都应抽样复核。
 3. 访客的 token 消耗由谁承担：第一版计入 owner，M4 再引入计费？
 4. `workspace_scope` 只支持 git 仓库，还是也要支持普通目录（后者无法用 worktree 隔离，只能给 `readonly`）？

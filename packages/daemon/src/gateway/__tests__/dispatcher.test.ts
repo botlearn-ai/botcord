@@ -335,10 +335,13 @@ function cloudRunRaw(budget: {
   };
 }
 
-/** Pre-restriction behavior: non-owner turns keep full permissions and `botcord_send` gating. */
-function legacyFullConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
+/** Route opted into restricted execution for non-owner requesters (team mode). */
+function restrictedConfig(
+  runtime = "claude-code",
+  overrides: Partial<GatewayConfig> = {}
+): GatewayConfig {
   return baseConfig({
-    defaultRoute: { runtime: "claude-code", cwd: "/tmp/default", nonOwnerExecution: "full" },
+    defaultRoute: { runtime, cwd: "/tmp/default", nonOwnerExecution: "restricted" },
     ...overrides,
   });
 }
@@ -757,10 +760,7 @@ describe("Dispatcher", () => {
         errorText: "acp error -32603: Internal error",
       });
     };
-    const { dispatcher, store, channel } = await scaffold({
-      runtimeFactory,
-      config: legacyFullConfig(),
-    });
+    const { dispatcher, store, channel } = await scaffold({ runtimeFactory });
 
     await dispatcher.handle(
       makeEnvelope({
@@ -3505,11 +3505,12 @@ describe("Dispatcher", () => {
     ]);
   });
 
-  describe("restricted execution for non-owner requesters", () => {
+  describe("restricted execution for non-owner requesters (opt-in)", () => {
     it("runs non-owner turns as public trust in a separate session and delivers the reply", async () => {
       const runtime = new FakeRuntime({ reply: "hi there", newSessionId: "sid-r" });
       const { dispatcher, channel, store } = await scaffold({
         runtimeFactory: () => runtime,
+        config: restrictedConfig(),
       });
 
       await dispatcher.handle(
@@ -3523,7 +3524,10 @@ describe("Dispatcher", () => {
 
     it("keeps owner-issued inbound on the route's normal trust", async () => {
       const runtime = new FakeRuntime({ reply: "done", newSessionId: "sid-o" });
-      const { dispatcher, store } = await scaffold({ runtimeFactory: () => runtime });
+      const { dispatcher, store } = await scaffold({
+        runtimeFactory: () => runtime,
+        config: restrictedConfig(),
+      });
 
       await dispatcher.handle(
         makeEnvelope({
@@ -3539,7 +3543,10 @@ describe("Dispatcher", () => {
 
     it("does not deliver NO_REPLY on restricted turns", async () => {
       const runtime = new FakeRuntime({ reply: "NO_REPLY" });
-      const { dispatcher, channel } = await scaffold({ runtimeFactory: () => runtime });
+      const { dispatcher, channel } = await scaffold({
+        runtimeFactory: () => runtime,
+        config: restrictedConfig(),
+      });
 
       await dispatcher.handle(
         makeEnvelope({ id: "m2", conversation: { id: "rm_g_other", kind: "group" } })
@@ -3550,7 +3557,10 @@ describe("Dispatcher", () => {
 
     it("keeps contact requests gated (the Hub queues an owner approval)", async () => {
       const runtime = new FakeRuntime({ reply: "please add me" });
-      const { dispatcher, channel } = await scaffold({ runtimeFactory: () => runtime });
+      const { dispatcher, channel } = await scaffold({
+        runtimeFactory: () => runtime,
+        config: restrictedConfig(),
+      });
 
       await dispatcher.handle(
         makeEnvelope({
@@ -3568,7 +3578,7 @@ describe("Dispatcher", () => {
       const runtime = new FakeRuntime({ reply: "would-be-reply" });
       const { dispatcher, channel } = await scaffold({
         runtimeFactory: () => runtime,
-        config: baseConfig({ defaultRoute: { runtime: "openclaw-acp", cwd: "/tmp/default" } }),
+        config: restrictedConfig("openclaw-acp"),
       });
 
       await dispatcher.handle(
@@ -3579,12 +3589,9 @@ describe("Dispatcher", () => {
       expect(channel.sends.length).toBe(0);
     });
 
-    it("honors nonOwnerExecution=full", async () => {
+    it("keeps legacy full execution when the route does not opt in", async () => {
       const runtime = new FakeRuntime({ reply: "x" });
-      const { dispatcher } = await scaffold({
-        runtimeFactory: () => runtime,
-        config: legacyFullConfig(),
-      });
+      const { dispatcher } = await scaffold({ runtimeFactory: () => runtime });
 
       await dispatcher.handle(
         makeEnvelope({ id: "m5", conversation: { id: "rm_g_other", kind: "group" } })
@@ -3594,14 +3601,13 @@ describe("Dispatcher", () => {
     });
   });
 
-  it("non-owner-chat room (nonOwnerExecution=full): discards result.text, agent must use botcord_send", async () => {
+  it("non-owner-chat room: discards result.text, agent must use botcord_send", async () => {
     const runtime = new FakeRuntime({
       reply: "would-be-reply",
       newSessionId: "sid-1",
     });
     const { dispatcher, channel, store } = await scaffold({
       runtimeFactory: () => runtime,
-      config: legacyFullConfig(),
     });
 
     await dispatcher.handle(
@@ -3690,7 +3696,6 @@ describe("Dispatcher", () => {
           runtime: "claude-code",
           cwd: "/tmp/d",
           queueMode: "serial",
-          nonOwnerExecution: "full",
         },
       }),
       channels: new Map<string, ChannelAdapter>([[channel.id, channel]]),

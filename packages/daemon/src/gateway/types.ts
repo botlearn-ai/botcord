@@ -65,8 +65,9 @@ export interface GatewayRoute {
   trustLevel?: TrustLevel;
   /**
    * Execution policy for turns whose requester is not the agent owner.
-   * Defaults to `"restricted"` (read-only tools, no shell, daemon-delivered
-   * reply); `"full"` keeps the route's normal permissions for everyone.
+   * Defaults to `"full"` (legacy: normal permissions for everyone);
+   * `"restricted"` runs non-owner turns with read-only tools, no shell and a
+   * daemon-delivered reply. Team mode / agent sharing opts routes in.
    */
   nonOwnerExecution?: NonOwnerExecution;
   /** Required when `runtime === "openclaw-acp"`. Resolved at config-load time. */
