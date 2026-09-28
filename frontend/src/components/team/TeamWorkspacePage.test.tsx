@@ -16,7 +16,7 @@ vi.mock("./TeamSpacesPage", () => ({
 vi.mock("./SharedAgentsPanel", () => ({
   default: ({ spaceId }: { spaceId: string }) => <div data-shared-agents={spaceId}>Shared</div>,
 }));
-import { TeamWorkspace, teamHref, teamView } from "./TeamWorkspacePage";
+import { TeamWorkspace, listTime, previewSender, teamHref, teamView } from "./TeamWorkspacePage";
 const snapshot = {
   selected: {
     id: "org-a",
@@ -110,4 +110,27 @@ it("keeps the organization in every destination and normalizes unknown views", (
     "/chats/team?space=a%2Fb&view=rooms&conversation=c%2Fd"
   );
   expect(teamHref("other")).toBe("/chats/team?space=other");
+});
+
+it("prefixes previews with the sender, or 我 for your own messages", () => {
+  expect(previewSender({ last_message_author_name: "Alice", last_message_mine: false }, true)).toBe("Alice: ");
+  expect(previewSender({ last_message_author_name: "Danny", last_message_mine: true }, true)).toBe("我: ");
+  expect(previewSender({}, false)).toBe("");
+});
+
+it("formats list times like a chat app", () => {
+  const now = new Date(2026, 8, 28, 17, 42);
+  expect(listTime(new Date(2026, 8, 28, 9, 5).toISOString(), true, now)).toBe("09:05");
+  expect(listTime(new Date(2026, 8, 27, 22, 0).toISOString(), true, now)).toBe("昨天");
+  expect(listTime(new Date(2026, 7, 1, 8, 0).toISOString(), true, now)).toBe("8/1");
+});
+
+it("renders a mobile bottom navigation with team sections", () => {
+  const html = renderToStaticMarkup(
+    <TeamWorkspace snapshot={snapshot} onMembershipChanged={() => {}} />
+  );
+  const bars = html.match(/aria-label="团队导航"/g) ?? [];
+  expect(bars.length).toBe(2); // desktop sidebar + mobile bottom bar
+  expect(html).toContain("md:hidden");
+  expect(html).toContain('aria-label="组织设置"');
 });

@@ -16,6 +16,10 @@ export interface TeamConversation {
   last_sequence: number;
   unread_count: number;
   last_message: string | null;
+  /** Sender and time of the latest message, for "sender: text" previews. */
+  last_message_author_name?: string | null;
+  last_message_mine?: boolean;
+  last_message_at?: string | null;
   participants: TeamParticipant[];
   can_send: boolean;
 }

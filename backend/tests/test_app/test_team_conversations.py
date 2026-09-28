@@ -34,7 +34,7 @@ async def test_room_messages_unread_pagination_and_idempotent_retry(client, db_s
     for i in range(2, 5):
         assert (await client.post(path, headers=alice, json={"content": f"Message {i}", "client_id": str(uuid.uuid4())})).status_code == 201
     listing = (await client.get(base, headers=owner)).json()["conversations"]
-    assert listing[0]["unread_count"] == 4
+    assert listing[0]["unread_count"] == 3  # the owner's own message is not unread
     latest = (await client.get(path + "?limit=2", headers=owner)).json()
     assert [m["sequence"] for m in latest["messages"]] == [3, 4]
     assert latest["has_more"] is True
@@ -49,7 +49,15 @@ async def test_room_messages_unread_pagination_and_idempotent_retry(client, db_s
     assert (await client.put(read_path, headers=owner, json={"sequence": 999})).json()["sequence"] == 4
     assert (await client.put(read_path, headers=owner, json={"sequence": 1})).json()["sequence"] == 4
     assert (await client.get(base, headers=owner)).json()["conversations"][0]["unread_count"] == 0
-    assert (await client.get(base, headers=alice)).json()["conversations"][0]["unread_count"] == 4
+    # Alice's latest send marked everything up to it as read for her.
+    assert (await client.get(base, headers=alice)).json()["conversations"][0]["unread_count"] == 0
+    # Preview carries the sender and time so lists can show "sender: text".
+    for viewer, mine in ((owner, False), (alice, True)):
+        item = (await client.get(base, headers=viewer)).json()["conversations"][0]
+        assert item["last_message"] == "Message 4"
+        assert item["last_message_author_name"] == "Alice"
+        assert item["last_message_mine"] is mine
+        assert item["last_message_at"] is not None
 
 
 async def test_private_rooms_and_dms_do_not_grant_admin_bypass(client, db_session, actors):

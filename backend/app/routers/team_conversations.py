@@ -93,15 +93,23 @@ async def conversations_out(db, conversations, actor):
             "user_id": user.id, "membership_id": member.id, "display_name": user.display_name})
     reads = {r.conversation_id: r.last_sequence for r in (await db.scalars(select(TeamConversationRead).where(
         TeamConversationRead.conversation_id.in_(ids), TeamConversationRead.membership_id == actor.id))).all()}
-    latest = {m.conversation_id: m.content[:160] for m in (await db.scalars(select(TeamMessage)
+    latest_rows = (await db.execute(select(TeamMessage, User.display_name)
         .join(TeamConversation, and_(TeamConversation.id == TeamMessage.conversation_id,
                                     TeamConversation.last_sequence == TeamMessage.sequence))
-        .where(TeamMessage.conversation_id.in_(ids)))).all()}
+        .join(SpaceUserMembership, SpaceUserMembership.id == TeamMessage.author_membership_id)
+        .join(User, User.id == SpaceUserMembership.user_id)
+        .where(TeamMessage.conversation_id.in_(ids)))).all()
+    latest = {m.conversation_id: (m, author) for m, author in latest_rows}
     return [{
         "id": c.id, "space_id": c.space_id, "kind": c.kind, "visibility": c.visibility,
         "name": c.name, "updated_at": c.updated_at, "last_sequence": c.last_sequence,
         "unread_count": max(0, c.last_sequence - reads.get(c.id, 0)),
-        "last_message": latest.get(c.id), "participants": participants.get(c.id, []),
+        "last_message": latest[c.id][0].content[:160] if c.id in latest else None,
+        # Preview metadata so lists can show "sender: text" and a timestamp.
+        "last_message_author_name": latest[c.id][1] if c.id in latest else None,
+        "last_message_mine": latest[c.id][0].author_membership_id == actor.id if c.id in latest else False,
+        "last_message_at": latest[c.id][0].created_at if c.id in latest else None,
+        "participants": participants.get(c.id, []),
         "can_send": c.kind != "dm" or len(participants.get(c.id, [])) == 2,
     } for c in conversations]
 
@@ -210,6 +218,13 @@ async def send_message(space_id: UUID, conversation_id: UUID, body: MessageIn,
         sequence=conversation.last_sequence, author_membership_id=actor.id,
         content=body.content, client_id=body.client_id)
     db.add(message)
+    # Sending means the author has seen the conversation up to their own message.
+    read = await db.get(TeamConversationRead, (conversation_id, actor.id))
+    if read:
+        read.last_sequence = max(read.last_sequence, message.sequence)
+    else:
+        db.add(TeamConversationRead(space_id=space_id, conversation_id=conversation_id,
+            membership_id=actor.id, last_sequence=message.sequence))
     await db.flush()
     return message_out(message, user.id, user.display_name)
 

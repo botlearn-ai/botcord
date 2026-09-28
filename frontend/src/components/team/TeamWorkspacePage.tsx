@@ -39,6 +39,31 @@ import TeamConversationDialog, { teamButton } from "./TeamConversationDialog";
 import TeamThread from "./TeamThread";
 import SharedAgentsPanel from "./SharedAgentsPanel";
 
+/** "Alice: " / "我: " prefix for conversation previews (none when unknown). */
+export function previewSender(
+  c: { last_message_author_name?: string | null; last_message_mine?: boolean },
+  zh: boolean
+): string {
+  if (c.last_message_mine) return zh ? "我: " : "You: ";
+  return c.last_message_author_name ? `${c.last_message_author_name}: ` : "";
+}
+
+/** Chat-list timestamp: time today, "昨天"/weekday this week, else a date. */
+export function listTime(iso: string, zh: boolean, now = new Date()): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const day = 24 * 60 * 60 * 1000;
+  if (at.getTime() >= startOfToday) {
+    return at.toLocaleTimeString(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+  if (at.getTime() >= startOfToday - day) return zh ? "昨天" : "Yesterday";
+  if (at.getTime() >= startOfToday - 6 * day) {
+    return at.toLocaleDateString(zh ? "zh-CN" : "en-US", { weekday: "short" });
+  }
+  return at.toLocaleDateString(zh ? "zh-CN" : "en-US", { month: "numeric", day: "numeric" });
+}
+
 export type TeamView =
   | "messages"
   | "rooms"
@@ -232,6 +257,9 @@ export function TeamWorkspace({
       title(c).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
   );
   const unread = conversations.reduce((sum, c) => sum + c.unread_count, 0);
+  const roomUnread = conversations
+    .filter((c) => c.kind === "room")
+    .reduce((sum, c) => sum + c.unread_count, 0);
   const activeUsers = members.users.filter((m) => m.status === "active").length;
   const activeAgents = members.agents.filter(
     (m) => m.status === "active"
@@ -242,12 +270,14 @@ export function TeamWorkspace({
       label: t("消息", "Messages"),
       Icon: MessageSquare,
       count: unread || null,
+      unread: true,
     },
     {
       id: "rooms" as const,
       label: t("房间", "Rooms"),
       Icon: Hash,
-      count: null,
+      count: roomUnread || null,
+      unread: true,
     },
     {
       id: "members" as const,
@@ -259,10 +289,13 @@ export function TeamWorkspace({
     {
       id: "shared" as const,
       label: t("可用 Agent", "Shared Agents"),
+      short: t("共享", "Shared"),
       Icon: Share2,
       count: null,
     },
-  ];
+  ] as { id: TeamView; label: string; short?: string; Icon: typeof MessageSquare; count: number | null; unread?: boolean }[];
+  // Mobile hides the bottom bar while a conversation is open (full-screen thread).
+  const mobileThreadOpen = inbox && Boolean(selectedId);
   return (
     <div
       className="flex h-full min-h-0 flex-col md:flex-row"
@@ -295,12 +328,21 @@ export function TeamWorkspace({
                 ))}
             </select>
           </label>
+          <Link
+            href={teamHref(space.id, "settings")}
+            aria-label={t("组织设置", "Organization settings")}
+            className={`rounded-lg p-2 md:hidden ${
+              view === "settings" ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-secondary"
+            }`}
+          >
+            <Settings size={18} />
+          </Link>
         </div>
         <nav
-          className="flex gap-1 overflow-x-auto p-2 md:flex-col md:p-3"
+          className="hidden gap-1 p-3 md:flex md:flex-col"
           aria-label={t("团队导航", "Team navigation")}
         >
-          {navigation.map(({ id, label, Icon, count }) => (
+          {navigation.map(({ id, label, Icon, count, unread: isUnread }) => (
             <Link
               key={id}
               href={teamHref(space.id, id)}
@@ -314,7 +356,11 @@ export function TeamWorkspace({
               <Icon size={18} />
               <span className="flex-1">{label}</span>
               {count != null && (
-                <span className="hidden rounded-md bg-glass-bg px-1.5 text-[11px] tabular-nums md:inline">
+                <span
+                  className={`rounded-full px-1.5 text-[11px] tabular-nums ${
+                    isUnread ? "bg-red-500 font-medium text-white" : "bg-glass-bg"
+                  }`}
+                >
                   {count > 99 ? "99+" : count}
                 </span>
               )}
@@ -484,19 +530,36 @@ export function TeamWorkspace({
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium">
+                      <span
+                        className={`truncate text-sm ${c.unread_count > 0 ? "font-semibold" : "font-medium"}`}
+                      >
                         {title(c)}
                       </span>
+                      {(c.last_message_at || c.updated_at) && (
+                        <span className="ml-auto shrink-0 text-[11px] text-text-secondary tabular-nums">
+                          {listTime(c.last_message_at ?? c.updated_at, zh)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <p
+                        className={`min-w-0 flex-1 truncate text-xs ${
+                          c.unread_count > 0 ? "text-text-primary" : "text-text-secondary"
+                        }`}
+                      >
+                        {c.last_message
+                          ? `${previewSender(c, zh)}${c.last_message}`
+                          : t("暂无消息，开始讨论吧", "Start the conversation")}
+                      </p>
                       {c.unread_count > 0 && (
-                        <span className="ml-auto shrink-0 rounded-full bg-neon-cyan/15 px-1.5 text-[10px] text-neon-cyan">
+                        <span
+                          className="min-w-[18px] shrink-0 rounded-full bg-red-500 px-1.5 text-center text-[10px] font-medium leading-[18px] text-white tabular-nums"
+                          aria-label={t(`${c.unread_count} 条未读`, `${c.unread_count} unread`)}
+                        >
                           {c.unread_count > 99 ? "99+" : c.unread_count}
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 truncate text-xs text-text-secondary">
-                      {c.last_message ||
-                        t("暂无消息，开始讨论吧", "Start the conversation")}
-                    </p>
                   </div>
                 </Link>
               ))}
@@ -654,6 +717,34 @@ export function TeamWorkspace({
             void reload(true);
           }}
         />
+      )}
+      {!mobileThreadOpen && (
+        <nav
+          className="liquid-rail mt-auto flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 items-stretch justify-around border-t border-glass-border px-1 pt-1 pb-[env(safe-area-inset-bottom)] md:hidden"
+          aria-label={t("团队导航", "Team navigation")}
+        >
+          {navigation.map(({ id, label, short, Icon, count, unread: isUnread }) => (
+            <Link
+              key={id}
+              href={teamHref(space.id, id)}
+              aria-label={label}
+              aria-current={view === id ? "page" : undefined}
+              className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] ${
+                view === id ? "text-neon-cyan" : "text-text-secondary"
+              }`}
+            >
+              <span className="relative">
+                <Icon size={20} />
+                {isUnread && count != null && (
+                  <span className="absolute -right-2.5 -top-1.5 min-w-[16px] rounded-full bg-red-500 px-1 text-center text-[10px] font-medium leading-4 text-white tabular-nums">
+                    {count > 99 ? "99+" : count}
+                  </span>
+                )}
+              </span>
+              <span className="max-w-full truncate">{short ?? label}</span>
+            </Link>
+          ))}
+        </nav>
       )}
     </div>
   );
