@@ -1,5 +1,17 @@
 # @botcord/daemon
 
+## 0.6.0
+
+### Minor Changes
+
+- ecc1f6c: Honor the Hub's Team room `space_context` on inbox messages: in organization rooms, requests from anyone but the agent's owner run with the restricted (read-only) profile regardless of local route config (grantees still follow their `access_context` role), and runtimes that cannot enforce restriction refuse the turn instead of running with full permissions. `protocol-core` adds the `SpaceContext` inbox type.
+
+### Patch Changes
+
+- Updated dependencies [ecc1f6c]
+  - @botcord/protocol-core@0.4.0
+  - @botcord/cli@0.1.23
+
 ## 0.5.0
 
 ### Minor Changes

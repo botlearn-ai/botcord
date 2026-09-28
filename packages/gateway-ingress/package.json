@@ -1,6 +1,6 @@
 {
   "name": "@botcord/gateway-ingress",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Always-on observer service that bridges third-party providers (Telegram / WeChat / Feishu) to Cloud Agents over a payload-opaque runtime WS — see docs/cloud-gateway-ingress-technical-design.md. Deployed as a Docker image — NOT published to npm.",
   "type": "module",
