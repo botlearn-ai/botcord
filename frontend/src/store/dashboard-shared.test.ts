@@ -103,6 +103,27 @@ describe("buildVisibleMessageRooms", () => {
   });
 });
 
+describe("organization rooms stay out of personal lists", () => {
+  it("drops overview space rooms and their human-room twins", () => {
+    const overview = makeOverview({ room_id: "rm_org", space_id: "org-a", space_kind: "room" });
+    overview.rooms.push({ ...overview.rooms[0], room_id: "rm_personal", space_id: null, space_kind: null });
+    const rooms = buildVisibleMessageRooms({
+      overview,
+      recentVisitedRooms: [],
+      token: "token",
+      humanRooms: [
+        makeHumanRoom({ room_id: "rm_org" }),
+        makeHumanRoom({ room_id: "rm_sdm_abc" }),
+        makeHumanRoom({ room_id: "rm_human_1" }),
+      ],
+    });
+    expect(rooms.map((room) => room.room_id).sort()).toEqual(["rm_human_1", "rm_personal"]);
+    expect(
+      mergeDashboardRoomsWithHumanRooms(overview.rooms, [makeHumanRoom({ room_id: "rm_org" })]).map((r) => r.room_id),
+    ).toEqual(["rm_personal"]);
+  });
+});
+
 describe("mergeDashboardRoomsWithHumanRooms", () => {
   it("keeps human-owned created rooms visible outside the agent overview", () => {
     const rooms = mergeDashboardRoomsWithHumanRooms(makeOverview().rooms, [
@@ -206,4 +227,13 @@ describe("isRoomOwnedByCurrentViewer", () => {
     expect(isRoomOwnedByCurrentViewer(room, { activeAgentId: "ag_1", humanId: "hu_1" })).toBe(true);
     expect(isRoomOwnedByCurrentViewer(room, { activeAgentId: "ag_2", humanId: "hu_1" })).toBe(false);
   });
+});
+
+it("drops human rooms that carry their own space_id even before the overview loads", async () => {
+  const { excludeSpaceRooms } = await import("./dashboard-shared");
+  const { humanRooms } = excludeSpaceRooms([], [
+    { room_id: "rm_team", space_id: "sp1" },
+    { room_id: "rm_personal", space_id: null },
+  ]);
+  expect(humanRooms.map((r) => r.room_id)).toEqual(["rm_personal"]);
 });

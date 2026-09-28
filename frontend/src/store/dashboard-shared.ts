@@ -100,10 +100,37 @@ export function humanRoomToDashboardRoom(r: HumanRoomSummary): DashboardRoom {
   };
 }
 
-export function mergeDashboardRoomsWithHumanRooms(
+/** Organization DMs use a dedicated prefix (rm_sdm_*). */
+export function isSpaceRoomId(roomId: string): boolean {
+  return roomId.startsWith("rm_sdm_");
+}
+
+export function isSpaceRoom(room: Pick<DashboardRoom, "room_id" | "space_id">): boolean {
+  return Boolean(room.space_id) || isSpaceRoomId(room.room_id);
+}
+
+/**
+ * Drop organization (Team) rooms from personal lists: by their own
+ * `space_id`, the overview's space rooms, or the org DM prefix.
+ */
+export function excludeSpaceRooms<T extends { room_id: string; space_id?: string | null }>(
   agentRooms: DashboardRoom[],
-  humanRooms: HumanRoomSummary[],
+  humanRooms: T[],
+): { agentRooms: DashboardRoom[]; humanRooms: T[] } {
+  const spaceIds = new Set(agentRooms.filter(isSpaceRoom).map((room) => room.room_id));
+  return {
+    agentRooms: spaceIds.size ? agentRooms.filter((room) => !spaceIds.has(room.room_id)) : agentRooms,
+    humanRooms: humanRooms.filter(
+      (room) => !room.space_id && !spaceIds.has(room.room_id) && !isSpaceRoomId(room.room_id),
+    ),
+  };
+}
+
+export function mergeDashboardRoomsWithHumanRooms(
+  allAgentRooms: DashboardRoom[],
+  allHumanRooms: HumanRoomSummary[],
 ): DashboardRoom[] {
+  const { agentRooms, humanRooms } = excludeSpaceRooms(allAgentRooms, allHumanRooms);
   if (humanRooms.length === 0) {
     return [...agentRooms].sort(compareRoomsByActivityDesc);
   }

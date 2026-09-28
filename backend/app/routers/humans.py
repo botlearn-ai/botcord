@@ -117,6 +117,8 @@ class HumanRoomSummary(BaseModel):
     slow_mode_seconds: int | None = None
     required_subscription_product_id: str | None = None
     created_at: str | None = None
+    # Organization (Team) rooms carry their space so personal lists can skip them.
+    space_id: str | None = None
 
 
 class HumanRoomListResponse(BaseModel):
@@ -442,6 +444,7 @@ def _serialize_human_room_summary(
         slow_mode_seconds=room.slow_mode_seconds,
         required_subscription_product_id=room.required_subscription_product_id,
         created_at=created_at.isoformat() if created_at else None,
+        space_id=str(room.space_id) if room.space_id else None,
     )
 
 

@@ -791,3 +791,25 @@ describe("shared room history requests", () => {
     expect(useDashboardChatStore.getState().messagesHasMore.rm_shared).toBe(false);
   });
 });
+
+describe("organization rooms in the chat store", () => {
+  beforeEach(() => {
+    useDashboardChatStore.getState().resetChatState();
+    useDashboardSessionStore.setState({ token: "token", humanRooms: [] });
+  });
+
+  it("resolves Team rooms for the shared room pane but keeps them out of personal lists", () => {
+    const base = makeOverview();
+    const orgRoom = { ...base.rooms[0], room_id: "rm_org_1", name: "Org room", space_id: "org-a", space_kind: "room" as const };
+    useDashboardChatStore.setState({ overview: { ...base, rooms: [...base.rooms, orgRoom] } });
+    const chat = useDashboardChatStore.getState();
+    expect(chat.getRoomSummary("rm_org_1")?.name).toBe("Org room");
+    expect(chat.getVisibleMessageRooms().map((room) => room.room_id)).not.toContain("rm_org_1");
+
+    // Before the overview includes a freshly joined room, the Team list supplies it.
+    chat.setSpaceRooms([{ ...orgRoom, room_id: "rm_org_2", name: "Joined just now" }]);
+    expect(useDashboardChatStore.getState().getRoomSummary("rm_org_2")?.name).toBe("Joined just now");
+    expect(useDashboardChatStore.getState().getVisibleMessageRooms().map((room) => room.room_id)).not.toContain("rm_org_2");
+  });
+});
+

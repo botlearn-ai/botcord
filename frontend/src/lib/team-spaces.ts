@@ -327,6 +327,44 @@ export function spaceError(error: unknown, zh: boolean): string {
       "你曾被移出或暂停该组织，无法通过链接重新加入，请联系管理员直接邀请。",
       "You were previously removed or suspended, so you cannot rejoin by link. Ask an administrator to invite you directly.",
     ],
+    agent_owner_or_manager_required: [
+      "只有该 Agent 的所有者或组织管理员可以把它拉进房间。",
+      "Only the Agent's owner or an organization admin can add it to a room.",
+    ],
+    agents_only_in_rooms: [
+      "私聊不能添加 Agent，请在房间里添加。",
+      "Agents can't join direct messages. Add them to a room instead.",
+    ],
+    agent_access_required: [
+      "你需要是该 Agent 的所有者，或持有它在本组织的有效授权。",
+      "You need to own this Agent or hold an active grant for it in this organization.",
+    ],
+    cannot_remove_room_owner: [
+      "不能移除房间所有者。",
+      "The room owner can't be removed.",
+    ],
+    room_membership_required: [
+      "你需要先加入该房间。",
+      "Join this room first.",
+    ],
+    room_manager_required: [
+      "只有房间所有者/管理员或组织管理员可以移除成员。",
+      "Only room owners/admins or organization admins can remove participants.",
+    ],
+    room_invite_required: [
+      "这是私密房间，需要成员邀请你加入。",
+      "This is a private room. A member needs to add you.",
+    ],
+    org_room_membership_managed_by_team: [
+      "组织房间的成员请在 Team 工作区里管理。",
+      "Manage organization room members in the Team workspace.",
+    ],
+    cannot_dm_self: ["不能和自己私聊。", "You can't message yourself."],
+    dm_members_fixed: ["私聊成员不可更改。", "Direct message members can't change."],
+    room_not_found: [
+      "房间不存在或你已失去访问权限。",
+      "This room is unavailable or you no longer have access.",
+    ],
     organization_role_required: [
       "当前成员角色不允许执行此操作。",
       "Your membership role does not allow this action.",
