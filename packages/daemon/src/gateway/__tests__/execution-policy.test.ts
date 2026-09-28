@@ -36,9 +36,15 @@ describe("isOwnerTrustedInbound", () => {
     expect(isOwnerTrustedInbound(msg({ raw: { source_type: "agent" } }), botcord)).toBe(false);
   });
 
+  it("trusts senders the Hub marks as owned by the same owner", () => {
+    expect(isOwnerTrustedInbound(msg({ raw: { source_type: "agent", sender_same_owner: true } }), botcord)).toBe(true);
+    expect(isOwnerTrustedInbound(msg({ raw: { source_type: "agent", sender_same_owner: false } }), botcord)).toBe(false);
+  });
+
   it("requires every batched entry to be owner-issued", () => {
     const owner = { source_type: "dashboard_user_chat" };
     expect(isOwnerTrustedInbound(msg({ raw: { batch: [owner, owner] } }), botcord)).toBe(true);
+    expect(isOwnerTrustedInbound(msg({ raw: { batch: [owner, { sender_same_owner: true }] } }), botcord)).toBe(true);
     expect(isOwnerTrustedInbound(msg({ raw: { batch: [owner, { source_type: "agent" }] } }), botcord)).toBe(false);
   });
 

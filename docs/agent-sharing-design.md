@@ -98,6 +98,7 @@
   - 会话 id 以 `rm_oc_` 开头（owner-chat）；
   - `source_type` 为 `dashboard_user_chat`、`cloud_agent_run`、`botcord_schedule`（daemon 根据已验签的 `wake_agent` 帧合成）或 `cloud_gateway_ingress`；
   - 非 BotCord channel（Telegram / 微信 / 飞书），因为它们本身受 owner 配置的发送者白名单约束。
+  - Hub 在 inbox 消息上标记了 `sender_same_owner: true`，即发送方是同一 owner 名下的其他 agent，或 owner 本人在 room 里发言。这个字段由 Hub 在 `/hub/inbox` 计算（`backend/hub/routers/hub.py` 的 `_load_same_owner_senders`），发送者无法伪造。
   - 批量消息要求每一条都满足上述条件。
 - **受限执行配置**（dispatcher 传入 `trustLevel: "public"`）：
 
@@ -113,6 +114,7 @@
 - **回复投递**：受限回合没有 shell，无法执行 `botcord send`，改由 daemon 投递最终文本（沿用第三方网关已有的模式）。`NO_REPLY` 不投递。`contact_request` 保持不投递，Hub 已经为它创建了 owner 审批。
 - **会话隔离**：受限回合的 session key 加 `#restricted` 后缀，不会 resume 完整权限时期的会话。升级后，已有 room 的会话会重新开始一次。
 - **按 agent 放开**：`config.json` 设置 `"nonOwnerExecution": { "default": "restricted", "agents": { "ag_x": "full" } }`，或在路由规则里写 `nonOwnerExecution: "full"`。用于必须替别人跑脚本、写文件的服务型 agent（例如 PPT 生成）。
+- **部署顺序**：先上线 backend（下发 `sender_same_owner`），再升级 daemon。反过来的话，同一 owner 名下 agent 之间的协作会先被误判为受限。
 - **未覆盖**：Kimi 和 OpenClaw ACP 在 daemon 侧无法约束，这两个 runtime 的非 owner 回合维持原行为，并记 warn 日志 `runtime cannot enforce restricted execution`。
 - **已知弱点**：Codex 只读 sandbox 不限制读路径，模型仍可能读到 home 下的文件并写进回复。M1 会通过专属工作目录和剥离环境变量来缓解。
 

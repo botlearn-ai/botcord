@@ -108,6 +108,8 @@ export type InboxMessage = {
   source_user_name?: string | null;
   source_session_kind?: string | null;
   reply_preview?: ReplyPreview | null;
+  /** Hub-computed: sender belongs to the same owner as the receiving agent. */
+  sender_same_owner?: boolean;
 };
 
 export type InboxPollResponse = {

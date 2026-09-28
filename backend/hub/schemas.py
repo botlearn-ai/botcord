@@ -358,6 +358,10 @@ class InboxMessage(BaseModel):
     source_user_name: str | None = None
     source_session_kind: str | None = None
     reply_preview: ReplyPreview | None = None
+    # Hub-computed: the sender (agent or human) belongs to the same owner as
+    # the receiving agent. Daemons use it to keep owner-internal collaboration
+    # on full execution while restricting other requesters.
+    sender_same_owner: bool = False
 
 
 class InboxPollResponse(BaseModel):

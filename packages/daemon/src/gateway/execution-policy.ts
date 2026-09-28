@@ -5,8 +5,10 @@
  * with the route's normal permissions) or restricted (read-only tools, no
  * shell, replies delivered by the daemon). A turn is owner-trusted only when
  * the inbound provably originates from the agent's owner or an owner-issued
- * system path; any other BotCord sender — other humans and agents in rooms,
- * DMs, contact requests — is restricted unless the route opts out with
+ * system path, or when the Hub marks the sender as owned by the same owner
+ * (`sender_same_owner`, e.g. the owner's other agents or the owner posting in
+ * a room). Any other BotCord sender — other humans and agents in rooms, DMs,
+ * contact requests — is restricted unless the route opts out with
  * `nonOwnerExecution: "full"`.
  */
 import type { GatewayInboundMessage, GatewayRoute } from "./types.js";
@@ -29,18 +31,15 @@ const OWNER_SOURCE_TYPES = new Set([
   "cloud_gateway_ingress",
 ]);
 
-function readSourceTypes(raw: unknown): string[] {
-  if (!raw || typeof raw !== "object") return [];
-  const batch = (raw as { batch?: unknown }).batch;
-  if (Array.isArray(batch) && batch.length > 0) {
-    return batch.map((entry) =>
-      entry && typeof entry === "object" && typeof (entry as { source_type?: unknown }).source_type === "string"
-        ? ((entry as { source_type: string }).source_type)
-        : "",
-    );
-  }
-  const sourceType = (raw as { source_type?: unknown }).source_type;
-  return typeof sourceType === "string" ? [sourceType] : [""];
+/** One inbound entry (the message itself, or each member of a batch) is owner-trusted. */
+function entryOwnerTrusted(entry: unknown): boolean {
+  if (!entry || typeof entry !== "object") return false;
+  const { source_type: sourceType, sender_same_owner: sameOwner } = entry as {
+    source_type?: unknown;
+    sender_same_owner?: unknown;
+  };
+  if (sameOwner === true) return true;
+  return typeof sourceType === "string" && OWNER_SOURCE_TYPES.has(sourceType);
 }
 
 /**
@@ -54,8 +53,9 @@ export function isOwnerTrustedInbound(
 ): boolean {
   if (!opts.botcordChannel) return true;
   if (msg.conversation.id.startsWith(OWNER_CHAT_PREFIX)) return true;
-  const sourceTypes = readSourceTypes(msg.raw);
-  return sourceTypes.length > 0 && sourceTypes.every((t) => OWNER_SOURCE_TYPES.has(t));
+  const batch = (msg.raw as { batch?: unknown } | null | undefined)?.batch;
+  if (Array.isArray(batch) && batch.length > 0) return batch.every(entryOwnerTrusted);
+  return entryOwnerTrusted(msg.raw);
 }
 
 /**
