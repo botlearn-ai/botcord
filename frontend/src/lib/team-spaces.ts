@@ -1,5 +1,5 @@
 /** User-authenticated Team governance. These calls never select an Agent actor. */
-import { ApiError, apiFetch } from "./api";
+import { ApiError, apiFetch, publicApiFetch } from "./api";
 
 export type MembershipStatus = "invited" | "active" | "suspended" | "removed";
 export type SpaceRole = "owner" | "admin" | "member";
@@ -65,8 +65,37 @@ export interface AgentAccessGrantInput {
   allowed_commands?: string[];
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await apiFetch(path, { ...init, cache: "no-store" }, null);
+export type InviteLinkStatus = "active" | "expired" | "exhausted" | "revoked";
+export interface InviteLink {
+  id: string;
+  space_id: string;
+  code: string;
+  path: string;
+  max_uses: number | null;
+  use_count: number;
+  expires_at: string | null;
+  status: InviteLinkStatus;
+  created_at: string;
+}
+export interface InviteLinkInput {
+  expires_in_days: number | null;
+  max_uses: number | null;
+}
+export interface OrgInvitePreview {
+  space_id: string;
+  organization_name: string;
+  inviter_name: string | null;
+  member_count: number;
+  status: InviteLinkStatus | "unavailable";
+  expires_at: string | null;
+}
+
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  fetcher: (path: string, init: RequestInit) => Promise<Response> = (p, i) => apiFetch(p, i, null),
+): Promise<T> {
+  const response = await fetcher(path, { ...init, cache: "no-store" });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new ApiError(
@@ -121,6 +150,22 @@ export const teamSpacesApi = {
     request<void>(`${spacePath(id)}/agents/${part(agentId)}`, {
       method: "DELETE",
     }),
+  inviteLinks: (id: string, signal?: AbortSignal) =>
+    request<{ links: InviteLink[] }>(`${spacePath(id)}/invite-links`, { signal }),
+  createInviteLink: (id: string, body: InviteLinkInput) =>
+    request<InviteLink>(`${spacePath(id)}/invite-links`, post(body)),
+  revokeInviteLink: (id: string, linkId: string) =>
+    request<InviteLink>(`${spacePath(id)}/invite-links/${part(linkId)}`, {
+      method: "DELETE",
+    }),
+  /** Public preview: works without a session, so never attach credentials. */
+  orgInvite: (code: string, signal?: AbortSignal) =>
+    request<OrgInvitePreview>(`/api/org-invites/${part(code)}`, { signal }, publicApiFetch),
+  acceptOrgInvite: (code: string) =>
+    request<{ space_id: string; status: "active" }>(
+      `/api/org-invites/${part(code)}/accept`,
+      post(),
+    ),
   accessGrants: (id: string, agentId: string, signal?: AbortSignal) =>
     request<{ grants: AgentAccessGrant[] }>(
       `${spacePath(id)}/agents/${part(agentId)}/access-grants`,
@@ -160,6 +205,20 @@ export function canManage(space: TeamSpace): boolean {
     space.membership.status === "active" &&
     space.roles.some((role) => role === "owner" || role === "admin")
   );
+}
+
+/** Add a freshly created Agent: managers admit directly, members apply for approval. */
+export async function admitNewAgent(
+  spaceId: string,
+  agentId: string,
+  direct: boolean,
+): Promise<"added" | "requested"> {
+  if (direct) {
+    await teamSpacesApi.addOwnedAgent(spaceId, agentId);
+    return "added";
+  }
+  await teamSpacesApi.requestAgent(spaceId, agentId);
+  return "requested";
 }
 
 export function canRemoveUser(
@@ -239,6 +298,26 @@ export function spaceError(error: unknown, zh: boolean): string {
     agent_access_revoked: [
       "你对该 Agent 的使用授权已被撤销或过期。",
       "Your access to this Agent has been revoked or has expired.",
+    ],
+    invite_link_not_found: [
+      "邀请链接不存在，请向管理员索取新的链接。",
+      "This invite link does not exist. Ask an administrator for a new one.",
+    ],
+    invite_link_expired: [
+      "邀请链接已过期，请向管理员索取新的链接。",
+      "This invite link has expired. Ask an administrator for a new one.",
+    ],
+    invite_link_exhausted: [
+      "邀请链接已达使用上限，请向管理员索取新的链接。",
+      "This invite link has reached its usage limit. Ask an administrator for a new one.",
+    ],
+    invite_link_revoked: [
+      "邀请链接已被撤销，请向管理员索取新的链接。",
+      "This invite link was revoked. Ask an administrator for a new one.",
+    ],
+    membership_requires_direct_invite: [
+      "你曾被移出或暂停该组织，无法通过链接重新加入，请联系管理员直接邀请。",
+      "You were previously removed or suspended, so you cannot rejoin by link. Ask an administrator to invite you directly.",
     ],
     organization_role_required: [
       "当前成员角色不允许执行此操作。",

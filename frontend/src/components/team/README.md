@@ -8,6 +8,10 @@
 
 `TeamSpacesPage.tsx` 保留 `/settings/spaces` 的治理页面及无组织/待接受邀请引导。工作区通过 `section` 仅嵌入成员、Agent 或设置之一。嵌入页面共用工作区的页面级 store：切换成员、Agent、设置以及补齐默认组织 URL 时复用已验证快照，不重复加载身份、组织列表和成员；独立设置页仍自行加载和复核。组织成员请求在组织列表返回后立即发起，与身份请求并行，撤权或复核失败仍清除内容。现有 API 支持邀请、接受、退出/移除、Agent 申请/审批和政策设置。组织管理员添加自己拥有的 Agent 调用原子的 `/admission/add`；其他成员仍申请后由管理员批准。
 
+`OrgInviteLinks.tsx` 是成员区块的管理员邀请入口：生成邀请链接（有效期 1/7/30 天或永久，次数不限/1/5/20）、复制（剪贴板失败时选中文本）、系统分享、列出与撤销；按用户 ID 邀请降级为折叠的次要入口，普通成员只看到联系管理员提示。Agent 区块的「新建 Agent」复用 `dashboard/CreateAgentDialog`，创建后管理员直接 `/admission/add`，其他成员提交 `/admission` 申请。
+
+`OrgInviteLanding.tsx` 承接 `/join/[code]`：公开预览与登录态独立加载；未登录跳 `/login?next=/join/<code>`（登录页含注册并回跳），已登录接受后进入 `/chats/team?space=`；过期/用尽/撤销/组织不可用只显示原因。
+
 `TeamWorkspaceSkeleton.tsx` 与消息工作区三栏形态保持一致，供首次加载、鉴权等待使用。
 
 `organization_messaging_available` 控制旧 Hub 的兼容降级。成员文字交流和 Agent 执行是独立能力：Agent 可以加入组织，但尚不能参与团队对话、执行任务；不能以入组成功暗示其已可执行。
