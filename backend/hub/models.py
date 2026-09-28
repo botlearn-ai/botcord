@@ -206,6 +206,11 @@ class SpaceInviteLink(Base):
     expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Who the link is meant for (free text, e.g. "Alice"); links are personal by default.
+    label: Mapped[str | None] = mapped_column(String(64))
+    # Most recent member who joined through the link (the only one for single-use links).
+    redeemed_by_user_id: Mapped[_uuid.UUID | None] = mapped_column(ForeignKey("public.users.id"))
+    redeemed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AgentAccessGrant(Base):

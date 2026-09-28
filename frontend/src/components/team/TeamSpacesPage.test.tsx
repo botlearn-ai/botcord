@@ -152,11 +152,12 @@ describe("Team governance rendering", () => {
   });
   it("leads managers with invite links and keeps user-ID invites as a fallback", () => {
     const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="members" />);
-    expect(html).toContain("生成邀请链接");
-    for (const label of ["1 天", "7 天", "30 天", "永久", "不限次数", "1 次", "5 次", "20 次"])
+    expect(html).toContain("生成专属邀请链接");
+    expect(html).toContain("仅限 1 人");
+    expect(html).toContain("对方称呼（可选）");
+    for (const label of ["1 天", "7 天", "30 天", "永久", "多人可用（不限次数）"])
       expect(html).toContain(label);
     expect(html).toContain('<option value="7" selected="">');
-    expect(html).toContain('<option value="unlimited" selected="">');
     expect(html).toContain("<details");
     expect(html).toContain("已注册用户：按用户 ID 邀请");
     expect(html).not.toContain("请联系管理员获取邀请链接");

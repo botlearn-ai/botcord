@@ -2,14 +2,22 @@
 import type { InviteLink, InviteLinkInput, OrgInvitePreview } from "./team-spaces";
 
 export const INVITE_EXPIRY_OPTIONS = ["1", "7", "30", "never"] as const;
-export const INVITE_USES_OPTIONS = ["unlimited", "1", "5", "20"] as const;
 export type InviteExpiry = (typeof INVITE_EXPIRY_OPTIONS)[number];
-export type InviteUses = (typeof INVITE_USES_OPTIONS)[number];
 
-export function buildInviteLinkInput(expiry: InviteExpiry, uses: InviteUses): InviteLinkInput {
+/**
+ * Invites are personal by default: one person, seven days. `multiUse` is the
+ * advanced option for a shareable link anyone can use until it expires.
+ */
+export function buildInviteLinkInput(
+  expiry: InviteExpiry,
+  multiUse: boolean,
+  label = "",
+): InviteLinkInput {
+  const trimmed = label.trim();
   return {
     expires_in_days: expiry === "never" ? null : Number(expiry),
-    max_uses: uses === "unlimited" ? null : Number(uses),
+    max_uses: multiUse ? null : 1,
+    ...(trimmed ? { label: trimmed } : {}),
   };
 }
 
@@ -24,10 +32,17 @@ export function inviteExpiryLabel(value: InviteExpiry, zh: boolean): string {
   return zh ? `${n} 天` : `${n} day${n === 1 ? "" : "s"}`;
 }
 
-export function inviteUsesLabel(value: InviteUses, zh: boolean): string {
-  if (value === "unlimited") return zh ? "不限次数" : "Unlimited uses";
-  const n = Number(value);
-  return zh ? `${n} 次` : `${n} use${n === 1 ? "" : "s"}`;
+/** Row status for the manager's list; a used personal link reads "joined: <name>". */
+export function inviteRowStatus(
+  link: Pick<InviteLink, "status" | "max_uses" | "redeemed_by_name">,
+  zh: boolean,
+): string {
+  if (link.status === "exhausted" && link.max_uses === 1) {
+    const who = link.redeemed_by_name ?? (zh ? "成员" : "a member");
+    return zh ? `已加入：${who}` : `Joined: ${who}`;
+  }
+  if (link.status === "active" && link.max_uses === 1) return zh ? "待接受" : "Pending";
+  return inviteStatusLabel(link.status, zh);
 }
 
 export function inviteStatusLabel(
@@ -48,7 +63,13 @@ export function inviteStatusLabel(
 export function inviteUnavailableReason(
   status: Exclude<OrgInvitePreview["status"], "active">,
   zh: boolean,
+  singleUse = false,
 ): string {
+  if (status === "exhausted" && singleUse) {
+    return zh
+      ? "这是一个专属邀请，已经被使用过了。请向管理员索取你自己的邀请链接。"
+      : "This personal invite has already been used. Ask an administrator for your own invite link.";
+  }
   const reasons: Record<typeof status, [string, string]> = {
     expired: ["这个邀请链接已过期。", "This invite link has expired."],
     exhausted: ["这个邀请链接已达到使用次数上限。", "This invite link has reached its usage limit."],

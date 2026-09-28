@@ -88,7 +88,7 @@ async def test_new_user_previews_signs_up_and_joins(client, db_session, org):
     assert preview.status_code == 200
     assert preview.json() | {"expires_at": None} == {
         "space_id": str(org["space"]), "organization_name": "Acme", "inviter_name": "Danny",
-        "member_count": 2, "status": "active", "expires_at": None,
+        "member_count": 2, "status": "active", "expires_at": None, "single_use": True,
     }
 
     newcomer = uuid.uuid4()  # never used BotCord before
@@ -161,3 +161,30 @@ async def test_removed_member_cannot_rejoin_with_a_link(client, db_session, org)
     assert membership.status == "removed"
     assert await db_session.scalar(select(SpaceRoleBinding).where(
         SpaceRoleBinding.user_membership_id == membership.id)) is None
+
+
+@pytest.mark.asyncio
+async def test_links_are_personal_by_default(client, db_session, org):
+    link = (await _create(client, org, label="给 Alice")).json()
+    assert link["max_uses"] == 1
+    assert link["label"] == "给 Alice"
+    assert link["expires_at"] is not None  # 7 days by default
+
+    alice = uuid.uuid4()
+    assert (await client.post(f"/api/org-invites/{link['code']}/accept", headers=token_for(alice))).status_code == 200
+    # Forwarded to someone else: the personal link is already used.
+    other = await client.post(f"/api/org-invites/{link['code']}/accept", headers=token_for(uuid.uuid4()))
+    assert other.status_code == 410
+    assert other.json()["detail"] == "invite_link_exhausted"
+    # The invitee re-opening their own link still works (idempotent).
+    assert (await client.post(f"/api/org-invites/{link['code']}/accept", headers=token_for(alice))).status_code == 200
+
+    listed = (await client.get(f"/api/spaces/{org['space']}/invite-links",
+                               headers=token_for(org["danny_sub"]))).json()["links"]
+    used = next(item for item in listed if item["id"] == link["id"])
+    assert used["status"] == "exhausted"
+    assert used["redeemed_by_name"] is not None
+    assert used["redeemed_at"] is not None
+
+    shared = (await _create(client, org, max_uses=None)).json()
+    assert shared["max_uses"] is None

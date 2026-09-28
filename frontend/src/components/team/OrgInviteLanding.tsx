@@ -127,7 +127,7 @@ export function OrgInviteCard({
         {preview.status !== "active" ? (
           <div className="mt-6 space-y-4">
             <p role="alert" className="rounded-xl border border-glass-border bg-deep-black-light p-4 text-sm text-text-secondary">
-              {inviteUnavailableReason(preview.status, zh)}
+              {inviteUnavailableReason(preview.status, zh, preview.single_use === true)}
             </p>
             <Link href="/" className={secondary}>{t("返回首页", "Go home")}</Link>
           </div>
