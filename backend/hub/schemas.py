@@ -367,6 +367,10 @@ class InboxMessage(BaseModel):
     # Daemons enforce the grant's execution profile; ``active: false`` means
     # the grant was revoked or expired and the turn must not run.
     access_context: dict | None = None
+    # Organization (Team) room context: ``{space_id, restricted}``. When
+    # ``restricted`` is true the daemon runs the turn with the read-only
+    # profile regardless of its local route policy.
+    space_context: dict | None = None
 
 
 class InboxPollResponse(BaseModel):

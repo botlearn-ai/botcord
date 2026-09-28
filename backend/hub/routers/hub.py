@@ -2152,6 +2152,7 @@ async def poll_inbox(
                 "member_names": [agent_map.get(aid, aid) for aid in member_ids],
                 "my_role": my_role,
                 "my_can_send": my_can_send,
+                "space_id": str(rm.space_id) if rm.space_id else None,
             }
 
     # Batch-load dashboard user display names (owner-chat + human-room rows
@@ -2214,6 +2215,17 @@ async def poll_inbox(
                 source_session_kind=rec.source_session_kind,
                 sender_same_owner=rec.sender_id in same_owner_senders,
                 access_context=access_contexts.get(rec.sender_id),
+                space_context=(
+                    {
+                        "space_id": ri["space_id"],
+                        # Team rooms: requests from anyone but the owner (or a
+                        # grantee, handled by access_context) run restricted.
+                        "restricted": rec.sender_id not in same_owner_senders
+                        and rec.sender_id not in access_contexts,
+                    }
+                    if ri and ri.get("space_id")
+                    else None
+                ),
                 reply_preview=(
                     reply_preview_map.get(rec.reply_to_msg_id)
                     if rec.reply_to_msg_id

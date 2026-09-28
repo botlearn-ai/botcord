@@ -127,7 +127,7 @@ export type TurnExecution =
   | { profile: "default" }
   | { profile: "restricted"; grant?: TurnAccessGrant }
   | { profile: "collaborator"; grant: TurnAccessGrant }
-  | { profile: "refused"; reason: "grant_inactive" | "runtime_unsupported"; grant: TurnAccessGrant };
+  | { profile: "refused"; reason: "grant_inactive" | "runtime_unsupported"; grant?: TurnAccessGrant };
 
 function readAccessContext(entry: unknown): { grant: TurnAccessGrant; active: boolean } | null {
   if (!entry || typeof entry !== "object") return null;
@@ -183,6 +183,18 @@ export function resolveTurnExecution(
       return { profile: "restricted", grant: latest.grant };
     }
     return { profile: "refused", reason: "runtime_unsupported", grant: latest.grant };
+  }
+  // Team rooms: the Hub marks requests from anyone but the owner as restricted.
+  const teamRestricted = entries.some(
+    (entry) =>
+      !!entry &&
+      typeof entry === "object" &&
+      (entry as { space_context?: { restricted?: unknown } | null }).space_context?.restricted === true,
+  );
+  if (teamRestricted) {
+    return RESTRICTION_CAPABLE_RUNTIMES.has(route.runtime)
+      ? { profile: "restricted" }
+      : { profile: "refused", reason: "runtime_unsupported" };
   }
   return isRestrictedTurn(msg, route, opts) ? { profile: "restricted" } : { profile: "default" };
 }

@@ -112,6 +112,14 @@ export type InboxMessage = {
   sender_same_owner?: boolean;
   /** Hub-computed agent-sharing grant under which a non-owner human calls this agent. */
   access_context?: AccessContext | null;
+  /** Hub-computed Team (organization) room context. */
+  space_context?: SpaceContext | null;
+};
+
+/** Organization room context: non-owner requests there must run restricted. */
+export type SpaceContext = {
+  space_id: string;
+  restricted: boolean;
 };
 
 /** Agent-sharing grant attached by the Hub to inbox messages from a grantee. */

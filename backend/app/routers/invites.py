@@ -154,6 +154,8 @@ async def create_room_invite(
 ):
     payload = body or CreateInviteBody()
     room = await _load_room_or_404(room_id, db)
+    if room.space_id is not None:
+        raise HTTPException(status_code=403, detail="org_room_membership_managed_by_team")
     inviter = await _load_membership(room_id, ctx.active_agent_id, db)
     if not _can_invite(room, inviter):
         raise HTTPException(status_code=403, detail="You do not have invite permission")

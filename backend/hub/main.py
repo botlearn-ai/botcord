@@ -87,6 +87,7 @@ from app.routers.spaces import router as app_spaces_router
 from app.routers.agent_access import router as app_agent_access_router
 from app.routers.org_invites import public_router as app_org_invites_public_router
 from app.routers.org_invites import router as app_org_invites_router
+from app.routers.org_rooms import router as app_org_rooms_router
 from app.routers.team_conversations import router as app_team_conversations_router
 from app.routers.agent_management import router as app_agent_management_router
 from app.auth import require_beta_user
@@ -365,6 +366,7 @@ app.include_router(app_team_orchestration_router, dependencies=_beta_gate)
 app.include_router(app_spaces_router, dependencies=_beta_gate)
 app.include_router(app_agent_access_router, dependencies=_beta_gate)
 app.include_router(app_org_invites_router, dependencies=_beta_gate)
+app.include_router(app_org_rooms_router, dependencies=_beta_gate)
 # No beta gate: invitees must be able to join right after signing up.
 app.include_router(app_org_invites_public_router)
 app.include_router(app_team_conversations_router, dependencies=_beta_gate)

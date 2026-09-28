@@ -989,6 +989,9 @@ async def join_room_as_human(
         if current_count >= room.max_members:
             raise HTTPException(status_code=400, detail="room_is_full")
 
+    from hub.services.org_rooms import assert_generic_room
+
+    await assert_generic_room(db, room_id)
     new_member = RoomMember(
         room_id=room_id,
         agent_id=me,
@@ -1449,6 +1452,9 @@ async def invite_room_member_as_human(
         if current_count >= room.max_members:
             raise HTTPException(status_code=400, detail="room_is_full")
 
+    from hub.services.org_rooms import assert_generic_room
+
+    await assert_generic_room(db, room_id)
     new_role = RoomRole.admin if body.role == "admin" else RoomRole.member
     new_member = RoomMember(
         room_id=room_id,
@@ -2637,6 +2643,9 @@ async def resolve_pending_approval(
                 payload = {}
             room_id_for_invite = payload.get("room_id")
             if room_id_for_invite:
+                from hub.services.org_rooms import assert_generic_room
+
+                await assert_generic_room(db, room_id_for_invite)
                 db.add(
                     RoomMember(
                         room_id=room_id_for_invite,

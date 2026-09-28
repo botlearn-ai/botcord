@@ -1213,6 +1213,9 @@ async def add_member(
     if target_participant_type == ParticipantType.agent:
         await _ensure_subscription_room_access(db, room, target_participant_id)
 
+    from hub.services.org_rooms import assert_generic_room
+
+    await assert_generic_room(db, room.room_id)
     new_member = RoomMember(
         room_id=room.room_id,
         agent_id=target_participant_id,
