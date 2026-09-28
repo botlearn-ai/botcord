@@ -26,6 +26,7 @@
  * `system-context.ts` already gives the model the context it needs.
  */
 import type { GatewayInboundMessage } from "./gateway/index.js";
+import type { UserTurnContext } from "./gateway/types.js";
 import {
   sanitizeSenderName,
   sanitizeUntrustedContent,
@@ -72,6 +73,16 @@ const NON_OWNER_REPLY_HINT =
   "[This room is NOT owner-chat. Plain text output WILL NOT be sent. " +
   "To reply, call the `botcord_send` tool, or run " +
   '`botcord send --room <room_id> --text "..."` via Bash.]';
+/**
+ * Replaces {@link NON_OWNER_REPLY_HINT} on restricted turns (non-owner
+ * requester, see gateway/execution-policy.ts): the runtime has no shell, so
+ * the daemon delivers the final assistant text itself.
+ */
+const RESTRICTED_REPLY_HINT =
+  "[This request is from someone other than your owner, so you are running in " +
+  "restricted mode: read-only tools, no shell commands, no file writes. Reply in " +
+  "your final assistant message; BotCord daemon will deliver that text to this room. " +
+  'If no reply is needed, reply exactly "NO_REPLY".]';
 const THIRD_PARTY_REPLY_HINT =
   "[This is a third-party gateway chat. Reply normally in your final assistant " +
   "message; BotCord daemon will deliver that text through the same channel. " +
@@ -98,10 +109,9 @@ function isThirdPartyConversation(conversationId: string): boolean {
   );
 }
 
-function replyDeliveryHint(msg: GatewayInboundMessage): string {
-  return isThirdPartyConversation(msg.conversation.id)
-    ? THIRD_PARTY_REPLY_HINT
-    : NON_OWNER_REPLY_HINT;
+function replyDeliveryHint(msg: GatewayInboundMessage, ctx?: UserTurnContext): string {
+  if (isThirdPartyConversation(msg.conversation.id)) return THIRD_PARTY_REPLY_HINT;
+  return ctx?.restricted ? RESTRICTED_REPLY_HINT : NON_OWNER_REPLY_HINT;
 }
 
 function appendConversationFields(
@@ -309,7 +319,10 @@ function formatRoomContext(
  *   - Never throws on expected inputs. If something unforeseen happens the
  *     dispatcher falls back to the raw trimmed text.
  */
-export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
+export function composeBotCordUserTurn(
+  msg: GatewayInboundMessage,
+  ctx?: UserTurnContext,
+): string {
   const rawText = typeof msg.text === "string" ? msg.text : "";
   const trimmed = rawText.trim();
   if (!trimmed) return trimmed;
@@ -326,7 +339,7 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
 
   const batch = readBatch(msg.raw);
   if (batch) {
-    return composeBatchedTurn(msg, batch);
+    return composeBatchedTurn(msg, batch, ctx);
   }
 
   const conversation = msg.conversation;
@@ -385,7 +398,7 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
     "",
     hint,
     "",
-    replyDeliveryHint(msg),
+    replyDeliveryHint(msg, ctx),
   ];
   if (contactRequestHint) {
     lines.push("", contactRequestHint);
@@ -401,7 +414,8 @@ export function composeBotCordUserTurn(msg: GatewayInboundMessage): string {
  */
 function composeBatchedTurn(
   msg: GatewayInboundMessage,
-  batch: BatchedEntry[]
+  batch: BatchedEntry[],
+  ctx?: UserTurnContext
 ): string {
   const conversation = msg.conversation;
   const isGroup = conversation.kind === "group";
@@ -452,7 +466,7 @@ function composeBatchedTurn(
     "",
     hint,
     "",
-    replyDeliveryHint(msg),
+    replyDeliveryHint(msg, ctx),
   ];
 
   if (contactRequestSenders.length > 0) {

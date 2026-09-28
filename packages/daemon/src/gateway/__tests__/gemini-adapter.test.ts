@@ -392,3 +392,35 @@ describe("geminiModule registration", () => {
     expect(geminiModule.installHint).toBeDefined();
   });
 });
+
+describe("GeminiAdapter restricted execution", () => {
+  class ArgsGemini extends GeminiAdapter {
+    args(opts: Parameters<GeminiAdapter["run"]>[0]): string[] {
+      return this.buildArgs(opts);
+    }
+  }
+  const base = {
+    text: "x",
+    sessionId: null,
+    accountId: "ag_test",
+    cwd: "/tmp",
+    signal: new AbortController().signal,
+  };
+
+  it("public → plan approval mode, ignoring --yolo overrides but keeping the model", () => {
+    const argv = new ArgsGemini({ binary: "gemini" }).args({
+      ...base,
+      trustLevel: "public",
+      extraArgs: ["--yolo", "--approval-mode", "yolo", "--model", "gemini-2.5-pro"],
+    });
+    expect(argv[argv.indexOf("--approval-mode") + 1]).toBe("plan");
+    expect(argv.filter((a) => a === "--approval-mode")).toHaveLength(1);
+    expect(argv).not.toContain("--yolo");
+    expect(argv[argv.indexOf("--model") + 1]).toBe("gemini-2.5-pro");
+  });
+
+  it("trusted keeps --yolo", () => {
+    const argv = new ArgsGemini({ binary: "gemini" }).args({ ...base, trustLevel: "trusted" });
+    expect(argv).toContain("--yolo");
+  });
+});

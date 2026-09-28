@@ -14,6 +14,7 @@ import type {
   DaemonRouteDefault,
   OpenclawGatewayProfile,
   RouteRule,
+  NonOwnerExecutionConfig,
 } from "./config.js";
 import { resolveAgentIds } from "./config.js";
 import { agentWorkspaceDir } from "./agent-workspace.js";
@@ -216,6 +217,7 @@ function mapRoute(
     extraArgs: r.extraArgs,
     trustLevel: mapTrustLevel(rawTrust),
   };
+  if (r.nonOwnerExecution) out.nonOwnerExecution = r.nonOwnerExecution;
   if (r.adapter === "openclaw-acp") {
     out.gateway = resolveGateway(
       profiles,
@@ -292,6 +294,9 @@ export function toGatewayConfig(
     // (direct → cancel-previous, group → serial).
     trustLevel: mapTrustLevel(rawDefaultTrust),
   };
+  if (cfg.nonOwnerExecution?.default) {
+    defaultRoute.nonOwnerExecution = cfg.nonOwnerExecution.default;
+  }
   if (cfg.defaultRoute.adapter === "openclaw-acp") {
     const dr = cfg.defaultRoute as DaemonRouteDefault;
     defaultRoute.gateway = resolveGateway(
@@ -315,6 +320,7 @@ export function toGatewayConfig(
     opts.agentRuntimes ?? {},
     defaultRoute,
     profiles,
+    cfg.nonOwnerExecution,
   );
 
   return {
@@ -345,6 +351,7 @@ export function buildManagedRoutes(
   agentRuntimes: Record<string, AgentRuntimeMeta>,
   defaultRoute: GatewayRoute,
   openclawProfiles?: Map<string, PreparedGatewayProfile>,
+  nonOwnerExecution?: NonOwnerExecutionConfig,
 ): Map<string, GatewayRoute> {
   const out = new Map<string, GatewayRoute>();
   // Lazy-build profile map when caller didn't pass one (legacy callers).
@@ -384,6 +391,8 @@ export function buildManagedRoutes(
     if (runtime === "hermes-agent" && meta.hermesProfile) {
       route.hermesProfile = meta.hermesProfile;
     }
+    const execution = nonOwnerExecution?.agents?.[agentId] ?? nonOwnerExecution?.default;
+    if (execution) route.nonOwnerExecution = execution;
     out.set(agentId, route);
   }
   return out;

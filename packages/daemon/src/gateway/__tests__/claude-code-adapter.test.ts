@@ -363,7 +363,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
       expect(argv[modeIdx + 1]).toBe("bypassPermissions");
     });
 
-    it("public → --permission-mode bypassPermissions", async () => {
+    it("public → restricted read-only tool profile", async () => {
       const adapter = new ClaudeCodeAdapter({ binary: echoScript() });
       const ctrl = new AbortController();
       const res = await adapter.run({
@@ -375,9 +375,41 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
         trustLevel: "public",
       });
       const argv = JSON.parse(res.text) as string[];
-      const modeIdx = argv.indexOf("--permission-mode");
-      expect(modeIdx).toBeGreaterThanOrEqual(0);
-      expect(argv[modeIdx + 1]).toBe("bypassPermissions");
+      expect(argv[argv.indexOf("--permission-mode") + 1]).toBe("default");
+      expect(argv).not.toContain("bypassPermissions");
+      expect(argv[argv.indexOf("--allowedTools") + 1]).toBe("Read,Grep,Glob,WebSearch");
+      const denied = argv[argv.indexOf("--disallowedTools") + 1]!.split(",");
+      expect(denied).toEqual(expect.arrayContaining(["Bash", "Edit", "Write", "WebFetch"]));
+      expect(JSON.parse(argv[argv.indexOf("--settings") + 1]!)).toEqual({ disableAllHooks: true });
+      expect(argv).toContain("--strict-mcp-config");
+    });
+
+    it("public ignores operator permission overrides but keeps the model", async () => {
+      const adapter = new ClaudeCodeAdapter({ binary: echoScript() });
+      const ctrl = new AbortController();
+      const res = await adapter.run({
+        text: "x",
+        sessionId: null,
+        accountId: "ag_test",
+        cwd: tmpRoot,
+        signal: ctrl.signal,
+        trustLevel: "public",
+        extraArgs: [
+          "--permission-mode",
+          "bypassPermissions",
+          "--dangerously-skip-permissions",
+          "--allowedTools",
+          "Bash",
+          "--model",
+          "claude-sonnet-5",
+        ],
+      });
+      const argv = JSON.parse(res.text) as string[];
+      expect(argv.filter((a) => a === "--permission-mode")).toHaveLength(1);
+      expect(argv).not.toContain("bypassPermissions");
+      expect(argv).not.toContain("--dangerously-skip-permissions");
+      expect(argv.filter((a) => a === "--allowedTools")).toHaveLength(1);
+      expect(argv[argv.indexOf("--model") + 1]).toBe("claude-sonnet-5");
     });
 
     it("trusted → --permission-mode bypassPermissions", async () => {
@@ -471,7 +503,7 @@ process.stdout.write(JSON.stringify({type:"result", subtype:"success", session_i
         accountId: "ag_test",
         cwd: tmpRoot,
         signal: ctrl.signal,
-        trustLevel: "public",
+        trustLevel: "trusted",
         extraArgs: ["--permission-mode", "plan"],
       });
       const argv = JSON.parse(res.text) as string[];

@@ -125,6 +125,48 @@ function sanitizeClaudeExtraArgs(extraArgs: string[] | undefined): string[] {
   return out;
 }
 
+/**
+ * Restricted execution profile (non-owner requester, trustLevel "public").
+ * Read-only tools only; shell, writes, web fetch, MCP servers and project
+ * hooks are disabled. CLI deny rules take precedence over any allow rules
+ * the workspace's project settings might carry.
+ */
+export const CLAUDE_RESTRICTED_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "WebSearch"];
+export const CLAUDE_RESTRICTED_DISALLOWED_TOOLS = [
+  "Bash",
+  "Edit",
+  "Write",
+  "NotebookEdit",
+  "WebFetch",
+  "Read(~/.ssh/**)",
+  "Read(~/.aws/**)",
+  "Read(~/.config/**)",
+  "Read(~/.botcord/credentials/**)",
+  "Read(~/.botcord/daemon/**)",
+  "Read(**/.env*)",
+];
+
+/** Operator extra args that stay in effect on restricted turns (model choice only). */
+const CLAUDE_RESTRICTED_KEEP_FLAGS_WITH_VALUE = new Set(["--model", "--effort", "--fallback-model"]);
+
+function restrictedClaudeExtraArgs(extraArgs: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < extraArgs.length; i += 1) {
+    const arg = extraArgs[i];
+    const name = extraFlagName(arg);
+    if (!CLAUDE_RESTRICTED_KEEP_FLAGS_WITH_VALUE.has(name)) continue;
+    if (arg.includes("=")) {
+      out.push(arg);
+      continue;
+    }
+    const value = nextExtraValue(extraArgs, i);
+    if (value === undefined) continue;
+    out.push(arg, value);
+    i += 1;
+  }
+  return out;
+}
+
 /** Resolve the Claude Code CLI path on PATH or the macOS desktop bundle fallback. */
 export function resolveClaudeCommand(deps: ProbeDeps = {}): string | null {
   const onPath = resolveCommandOnPath("claude", deps);
@@ -245,7 +287,9 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
   }
 
   protected buildArgs(opts: RuntimeRunOptions): string[] {
-    const extraArgs = sanitizeClaudeExtraArgs(opts.extraArgs);
+    const restricted = opts.trustLevel === "public";
+    const sanitized = sanitizeClaudeExtraArgs(opts.extraArgs);
+    const extraArgs = restricted ? restrictedClaudeExtraArgs(sanitized) : sanitized;
     const args = ["-p", opts.text, "--output-format", "stream-json", "--verbose"];
     // Headless `-p` mode does not load project `.claude/` by default, so
     // per-agent skills seeded at `<workspace>/.claude/skills/` are invisible
@@ -263,7 +307,23 @@ export class ClaudeCodeAdapter extends NdjsonStreamAdapter {
     // MCP) because there is no prompt relay back to the user yet. Default to
     // bypassPermissions for every trust tier; operators who need a stricter
     // posture can still override with route/defaultRoute extraArgs.
-    if (!extraArgs.some((a) => a.startsWith("--permission-mode"))) {
+    //
+    // Restricted turns (non-owner requester) instead run in `default` mode
+    // with an explicit read-only allowlist: headless `-p` auto-denies every
+    // tool that is not allowed, so nothing blocks on a prompt.
+    if (restricted) {
+      args.push(
+        "--permission-mode",
+        "default",
+        "--allowedTools",
+        CLAUDE_RESTRICTED_ALLOWED_TOOLS.join(","),
+        "--disallowedTools",
+        CLAUDE_RESTRICTED_DISALLOWED_TOOLS.join(","),
+        "--settings",
+        JSON.stringify({ disableAllHooks: true }),
+        "--strict-mcp-config",
+      );
+    } else if (!extraArgs.some((a) => a.startsWith("--permission-mode"))) {
       args.push("--permission-mode", "bypassPermissions");
     }
     // Claude Code's `--append-system-prompt` is applied per invocation and NOT

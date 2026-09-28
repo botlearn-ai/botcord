@@ -9,10 +9,8 @@ export const DEFAULT_SESSION_STORE_MAX_ENTRY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 export function sessionKey(input: SessionKeyInput): string {
   const base = `${input.runtime}:${input.channel}:${input.accountId}:${input.conversationKind}:${input.conversationId}`;
   const thread = input.threadId;
-  if (typeof thread === "string" && thread.length > 0) {
-    return `${base}:${thread}`;
-  }
-  return base;
+  const withThread = typeof thread === "string" && thread.length > 0 ? `${base}:${thread}` : base;
+  return input.executionScope ? `${withThread}#${input.executionScope}` : withThread;
 }
 
 /** Options for constructing a `SessionStore`. */
