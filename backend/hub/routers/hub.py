@@ -16,6 +16,8 @@ from cachetools import TTLCache
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from hub import owner_chat_cache
+from hub import stage_diagnostics as send_diagnostics
+from hub.request_observability import request_id_for
 from hub.i18n import I18nHTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text, update
@@ -366,27 +368,33 @@ async def _publish_agent_realtime_event(
     db: AsyncSession,
     event: dict[str, Any],
 ) -> None:
-    try:
-        await db.execute(
-            text(
-                "select realtime.send(cast(:payload as jsonb), :event, :topic, true)"
-            ),
-            {
-                "payload": json.dumps(event),
-                "event": event["type"],
-                "topic": build_agent_realtime_topic(event["agent_id"]),
-            },
-        )
-        await db.commit()
-    except Exception as exc:
-        await db.rollback()
-        logger.error(
-            "Supabase realtime publish failed: agent=%s type=%s err=%s",
-            event.get("agent_id"),
-            event.get("type"),
-            exc,
-            exc_info=True,
-        )
+    with send_diagnostics.stage("publish", receiver_id=event.get("agent_id"),
+                                delivery_id=event.get("hub_msg_id")) as diagnostic:
+        try:
+            with send_diagnostics.stage("publish.execute"):
+                await db.execute(
+                    text(
+                        "select realtime.send(cast(:payload as jsonb), :event, :topic, true)"
+                    ),
+                    {
+                        "payload": json.dumps(event),
+                        "event": event["type"],
+                        "topic": build_agent_realtime_topic(event["agent_id"]),
+                    },
+                )
+            with send_diagnostics.stage("publish.commit"):
+                await db.commit()
+        except Exception as exc:
+            diagnostic["outcome"] = "handled_error"
+            with send_diagnostics.stage("publish.rollback"):
+                await db.rollback()
+            logger.error(
+                "Supabase realtime publish failed: agent=%s type=%s err=%s",
+                event.get("agent_id"),
+                event.get("type"),
+                exc,
+                exc_info=True,
+            )
 
 
 async def _collect_presence_observers(
@@ -496,79 +504,93 @@ async def notify_inbox(
 
     Returns the number of WebSocket connections that were successfully notified.
     """
-    if db is not None and resume_cloud:
-        from hub.services.cloud_agent import resume_cloud_agent_for_inbox
+    with send_diagnostics.stage(
+        "notify", receiver_id=agent_id,
+        delivery_id=realtime_event.get("hub_msg_id") if realtime_event else None,
+    ):
+        if db is not None and resume_cloud:
+            from hub.services.cloud_agent import resume_cloud_agent_for_inbox
 
-        await resume_cloud_agent_for_inbox(db, agent_id)
+            with send_diagnostics.stage("notify.resume") as diagnostic:
+                resumed = await resume_cloud_agent_for_inbox(db, agent_id)
+                diagnostic["outcome"] = "returned_true" if resumed else "returned_false"
+        else:
+            with send_diagnostics.stage("notify.resume") as diagnostic:
+                diagnostic["outcome"] = "skipped"
 
-    # Wake long-polling readers
-    cond = _inbox_conditions.get(agent_id)
-    if cond:
-        async with cond:
-            cond.notify_all()
+        # Wake long-polling readers
+        cond = _inbox_conditions.get(agent_id)
+        with send_diagnostics.stage("notify.condition") as diagnostic:
+            if cond:
+                async with cond:
+                    cond.notify_all()
+            else:
+                diagnostic["outcome"] = "skipped"
 
-    # Notify WebSocket connections
-    notified = 0
-    ws_set = _ws_connections.get(agent_id)
-    if ws_set:
-        counts = _ws_connection_counts(agent_id)
-        logger.info(
-            "notify_inbox: agent=%s ws_connections=%d total_ws_connections=%d total_ws_agents=%d",
-            agent_id,
-            len(ws_set),
-            counts["total_connections"],
-            counts["total_agents"],
-        )
-    else:
-        counts = _ws_connection_counts(agent_id)
-        logger.warning(
-            "notify_inbox: agent=%s no ws_connections total_ws_connections=%d total_ws_agents=%d",
-            agent_id,
-            counts["total_connections"],
-            counts["total_agents"],
-        )
-    if ws_set:
-        # Iterate a snapshot to avoid concurrent modification
-        dead: list[WebSocket] = []
-        for ws in list(ws_set):
-            try:
-                logger.info("notify_inbox: sending inbox_update to ws=%s state=%s", id(ws), ws.client_state)
-                await ws.send_json({"type": "inbox_update"})
-                notified += 1
-            except (WebSocketDisconnect, RuntimeError) as exc:
-                # Permanent disconnect — mark connection as dead
-                logger.debug(
-                    "WS send failed (disconnect) for agent=%s: %s",
-                    agent_id,
-                    exc,
-                )
-                dead.append(ws)
-            except Exception as exc:
-                # Transient or unknown error — log warning but keep connection alive
-                logger.warning(
-                    "WS send failed (transient) for agent=%s: %s",
-                    agent_id,
-                    exc,
-                )
-        for ws in dead:
-            ws_set.discard(ws)
-        if not ws_set:
-            _ws_connections.pop(agent_id, None)
-        if dead:
+        # Notify WebSocket connections
+        notified = 0
+        ws_set = _ws_connections.get(agent_id)
+        if ws_set:
             counts = _ws_connection_counts(agent_id)
-            logger.warning(
-                "notify_inbox: removed dead ws connections agent=%s dead_count=%d remaining_agent_ws=%d total_ws_connections=%d total_ws_agents=%d",
+            logger.info(
+                "notify_inbox: agent=%s ws_connections=%d total_ws_connections=%d total_ws_agents=%d",
                 agent_id,
-                len(dead),
-                counts["agent_connections"],
+                len(ws_set),
                 counts["total_connections"],
                 counts["total_agents"],
             )
+        else:
+            counts = _ws_connection_counts(agent_id)
+            logger.warning(
+                "notify_inbox: agent=%s no ws_connections total_ws_connections=%d total_ws_agents=%d",
+                agent_id,
+                counts["total_connections"],
+                counts["total_agents"],
+            )
+        if ws_set:
+            # Iterate a snapshot to avoid concurrent modification
+            dead: list[WebSocket] = []
+            for ws in list(ws_set):
+                try:
+                    logger.info("notify_inbox: sending inbox_update to ws=%s state=%s", id(ws), ws.client_state)
+                    with send_diagnostics.stage("notify.ws_send"):
+                        await ws.send_json({"type": "inbox_update"})
+                    notified += 1
+                except (WebSocketDisconnect, RuntimeError) as exc:
+                    # Permanent disconnect — mark connection as dead
+                    logger.debug(
+                        "WS send failed (disconnect) for agent=%s: %s",
+                        agent_id,
+                        exc,
+                    )
+                    dead.append(ws)
+                except Exception as exc:
+                    # Transient or unknown error — log warning but keep connection alive
+                    logger.warning(
+                        "WS send failed (transient) for agent=%s: %s",
+                        agent_id,
+                        exc,
+                    )
+            for ws in dead:
+                ws_set.discard(ws)
+            if not ws_set:
+                _ws_connections.pop(agent_id, None)
+            if dead:
+                counts = _ws_connection_counts(agent_id)
+                logger.warning(
+                    "notify_inbox: removed dead ws connections agent=%s dead_count=%d remaining_agent_ws=%d total_ws_connections=%d total_ws_agents=%d",
+                    agent_id,
+                    len(dead),
+                    counts["agent_connections"],
+                    counts["total_connections"],
+                    counts["total_agents"],
+                )
 
-    if db is not None and realtime_event is not None:
-        await _publish_agent_realtime_event(db, realtime_event)
+        if db is not None and realtime_event is not None:
+            with send_diagnostics.stage("notify.realtime"):
+                await _publish_agent_realtime_event(db, realtime_event)
 
-    return notified
+        return notified
 
 
 @router.get("/attention-policy")
@@ -1521,89 +1543,91 @@ async def _send_room_message(
     # Parse mention set for per-receiver tagging
     mentioned_set = set(envelope.mentions) if envelope.mentions else set()
 
-    for receiver_id in receivers:
-        hub_msg_id = generate_hub_msg_id()
-        if first_hub_msg_id is None:
-            first_hub_msg_id = hub_msg_id
-        receiver_hub_msg_ids[receiver_id] = hub_msg_id
-
-        is_mentioned = bool(mentioned_set) and (
-            receiver_id in mentioned_set or "@all" in mentioned_set
-        )
-
-        # Self-delivery and owner-chat human-delivery records are marked as
-        # delivered immediately so they never appear in any agent inbox poll.
-        _is_self_delivery = _self_delivery and receiver_id == envelope.from_
-        _is_owner_chat_human_delivery = (
-            is_owner_chat and receiver_id in owner_chat_human_receivers
-        )
-        record = MessageRecord(
-            hub_msg_id=hub_msg_id,
-            msg_id=envelope.msg_id,
-            sender_id=envelope.from_,
-            receiver_id=receiver_id,
-            room_id=room_id,
-            topic=topic,
-            topic_id=topic_id,
-            goal=goal,
-            state=(
-                MessageState.delivered
-                if (_is_self_delivery or _is_owner_chat_human_delivery)
-                else MessageState.queued
-            ),
-            envelope_json=envelope_json,
-            ttl_sec=envelope.ttl_sec,
-            mentioned=is_mentioned,
-            reply_to_msg_id=reply_to_msg_id,
-        )
-        try:
-            async with db.begin_nested():
-                db.add(record)
-                await db.flush()
-        except IntegrityError:
-            result = await db.execute(
-                select(MessageRecord).where(
-                    MessageRecord.msg_id == envelope.msg_id,
-                    MessageRecord.receiver_id == receiver_id,
-                )
-            )
-            existing = result.scalar_one()
+    with send_diagnostics.stage("room.fanout_write_and_attention"):
+        for receiver_id in receivers:
+            hub_msg_id = generate_hub_msg_id()
             if first_hub_msg_id is None:
-                first_hub_msg_id = existing.hub_msg_id
-            receiver_hub_msg_ids[receiver_id] = existing.hub_msg_id
-            continue
+                first_hub_msg_id = hub_msg_id
+            receiver_hub_msg_ids[receiver_id] = hub_msg_id
 
-    # Event 1 (room fan-out): stamp every cloud-hosted receiver whose
-    # attention policy would actually wake the runtime. Self-delivery and
-    # owner-chat human receivers are excluded — they don't represent
-    # agent-side work. Stays inside the same commit as the message rows.
-    _payload_text = None
-    if isinstance(envelope.payload, dict):
-        _payload_text = (
-            envelope.payload.get("text")
-            or envelope.payload.get("body")
-            or envelope.payload.get("message")
-        )
-    _agent_receivers = {
-        rid
-        for rid in receivers
-        if rid.startswith("ag_")
-        and not (_self_delivery and rid == envelope.from_)
-        and rid not in owner_chat_human_receivers
-    }
-    waking_agent_receivers: set[str] = set()
-    if _agent_receivers:
-        waking_agent_receivers = await maybe_bump_for_inbound_many(
-            db,
-            receiver_ids=_agent_receivers,
-            sender_id=envelope.from_,
-            room_id=room_id,
-            text=_payload_text if isinstance(_payload_text, str) else None,
-            mentioned_set=mentioned_set,
-            message_type=envelope.type.value,
-        )
+            is_mentioned = bool(mentioned_set) and (
+                receiver_id in mentioned_set or "@all" in mentioned_set
+            )
 
-    await db.commit()
+            # Self-delivery and owner-chat human-delivery records are marked as
+            # delivered immediately so they never appear in any agent inbox poll.
+            _is_self_delivery = _self_delivery and receiver_id == envelope.from_
+            _is_owner_chat_human_delivery = (
+                is_owner_chat and receiver_id in owner_chat_human_receivers
+            )
+            record = MessageRecord(
+                hub_msg_id=hub_msg_id,
+                msg_id=envelope.msg_id,
+                sender_id=envelope.from_,
+                receiver_id=receiver_id,
+                room_id=room_id,
+                topic=topic,
+                topic_id=topic_id,
+                goal=goal,
+                state=(
+                    MessageState.delivered
+                    if (_is_self_delivery or _is_owner_chat_human_delivery)
+                    else MessageState.queued
+                ),
+                envelope_json=envelope_json,
+                ttl_sec=envelope.ttl_sec,
+                mentioned=is_mentioned,
+                reply_to_msg_id=reply_to_msg_id,
+            )
+            try:
+                async with db.begin_nested():
+                    db.add(record)
+                    await db.flush()
+            except IntegrityError:
+                result = await db.execute(
+                    select(MessageRecord).where(
+                        MessageRecord.msg_id == envelope.msg_id,
+                        MessageRecord.receiver_id == receiver_id,
+                    )
+                )
+                existing = result.scalar_one()
+                if first_hub_msg_id is None:
+                    first_hub_msg_id = existing.hub_msg_id
+                receiver_hub_msg_ids[receiver_id] = existing.hub_msg_id
+                continue
+
+        # Event 1 (room fan-out): stamp every cloud-hosted receiver whose
+        # attention policy would actually wake the runtime. Self-delivery and
+        # owner-chat human receivers are excluded — they don't represent
+        # agent-side work. Stays inside the same commit as the message rows.
+        _payload_text = None
+        if isinstance(envelope.payload, dict):
+            _payload_text = (
+                envelope.payload.get("text")
+                or envelope.payload.get("body")
+                or envelope.payload.get("message")
+            )
+        _agent_receivers = {
+            rid
+            for rid in receivers
+            if rid.startswith("ag_")
+            and not (_self_delivery and rid == envelope.from_)
+            and rid not in owner_chat_human_receivers
+        }
+        waking_agent_receivers: set[str] = set()
+        if _agent_receivers:
+            waking_agent_receivers = await maybe_bump_for_inbound_many(
+                db,
+                receiver_ids=_agent_receivers,
+                sender_id=envelope.from_,
+                room_id=room_id,
+                text=_payload_text if isinstance(_payload_text, str) else None,
+                mentioned_set=mentioned_set,
+                message_type=envelope.type.value,
+            )
+
+    with send_diagnostics.stage("room.commit"):
+        await db.commit()
 
     _reply_preview_room: ReplyPreview | None = None
     if reply_to_msg_id:
@@ -1687,7 +1711,8 @@ async def _send_room_message(
             reply_to=reply_to_msg_id,
             reply_preview=_reply_preview_room,
         )
-        await _publish_agent_realtime_event(db, sender_rt_event)
+        with send_diagnostics.stage("room.sender_publish"):
+            await _publish_agent_realtime_event(db, sender_rt_event)
 
     if first_hub_msg_id is None:
         return SendResponse(
@@ -1713,85 +1738,86 @@ async def send_message(
     topic: str | None = Query(default=None),
 ):
     """Accept a message, verify it, attempt delivery or queue."""
-    # Sender must match JWT
-    if envelope.from_ != current_agent:
-        raise I18nHTTPException(status_code=403, message_key="sender_does_not_match_token")
+    with send_diagnostics.operation(request_id_for(request), envelope.msg_id):
+        # Sender must match JWT
+        if envelope.from_ != current_agent:
+            raise I18nHTTPException(status_code=403, message_key="sender_does_not_match_token")
 
-    # Allowed types: message, contact_request, result, error
-    # result/error are topic termination signals that need room fan-out
-    _SEND_ALLOWED_TYPES = (
-        MessageType.message,
-        MessageType.contact_request,
-        MessageType.result,
-        MessageType.error,
-    )
-    if envelope.type not in _SEND_ALLOWED_TYPES:
-        raise I18nHTTPException(status_code=400, message_key="send_invalid_type")
-
-    # Topic priority: envelope > query param
-    effective_topic = envelope.topic or topic
-
-    # Log send action
-    payload_preview = json.dumps(envelope.payload, ensure_ascii=False)[:200]
-    logger.info(
-        "SEND from=%s to=%s type=%s msg_id=%s topic=%s goal=%s payload=%s",
-        envelope.from_, envelope.to, envelope.type, envelope.msg_id,
-        effective_topic, envelope.goal, payload_preview,
-    )
-
-    # Rate limit (counts as 1 regardless of fan-out)
-    _check_rate_limit(current_agent, target_id=envelope.to, request=request)
-
-    # Verify envelope
-    await _verify_envelope(envelope, db)
-
-    # Scan for prompt injection patterns (log-only, never block).
-    # Check payload text (same fallback order as to_text()), plus topic/goal
-    # which also appear in the rendered prompt.
-    _pi_fields: list[str] = []
-    if isinstance(envelope.payload, dict):
-        _payload_text = (
-            envelope.payload.get("text")
-            or envelope.payload.get("body")
-            or envelope.payload.get("message")
-            or ""
+        # Allowed types: message, contact_request, result, error
+        # result/error are topic termination signals that need room fan-out
+        _SEND_ALLOWED_TYPES = (
+            MessageType.message,
+            MessageType.contact_request,
+            MessageType.result,
+            MessageType.error,
         )
-        if isinstance(_payload_text, str) and _payload_text:
-            _pi_fields.append(_payload_text)
-    for _extra in (envelope.topic, envelope.goal):
-        if isinstance(_extra, str) and _extra:
-            _pi_fields.append(_extra)
-    if _pi_fields:
-        _pi_combined = "\n".join(_pi_fields)
-        risk, patterns = scan_content(_pi_combined)
-        if risk != InjectionRisk.none:
-            logger.warning(
-                "prompt_injection_detected: sender=%s risk=%s msg_id=%s patterns=%s",
-                envelope.from_,
-                risk.value,
-                envelope.msg_id,
-                patterns,
+        if envelope.type not in _SEND_ALLOWED_TYPES:
+            raise I18nHTTPException(status_code=400, message_key="send_invalid_type")
+
+        # Topic priority: envelope > query param
+        effective_topic = envelope.topic or topic
+
+        # Log send action
+        payload_preview = json.dumps(envelope.payload, ensure_ascii=False)[:200]
+        logger.info(
+            "SEND from=%s to=%s type=%s msg_id=%s topic=%s goal=%s payload=%s",
+            envelope.from_, envelope.to, envelope.type, envelope.msg_id,
+            effective_topic, envelope.goal, payload_preview,
+        )
+
+        # Rate limit (counts as 1 regardless of fan-out)
+        _check_rate_limit(current_agent, target_id=envelope.to, request=request)
+
+        # Verify envelope
+        await _verify_envelope(envelope, db)
+
+        # Scan for prompt injection patterns (log-only, never block).
+        # Check payload text (same fallback order as to_text()), plus topic/goal
+        # which also appear in the rendered prompt.
+        _pi_fields: list[str] = []
+        if isinstance(envelope.payload, dict):
+            _payload_text = (
+                envelope.payload.get("text")
+                or envelope.payload.get("body")
+                or envelope.payload.get("message")
+                or ""
             )
+            if isinstance(_payload_text, str) and _payload_text:
+                _pi_fields.append(_payload_text)
+        for _extra in (envelope.topic, envelope.goal):
+            if isinstance(_extra, str) and _extra:
+                _pi_fields.append(_extra)
+        if _pi_fields:
+            _pi_combined = "\n".join(_pi_fields)
+            risk, patterns = scan_content(_pi_combined)
+            if risk != InjectionRisk.none:
+                logger.warning(
+                    "prompt_injection_detected: sender=%s risk=%s msg_id=%s patterns=%s",
+                    envelope.from_,
+                    risk.value,
+                    envelope.msg_id,
+                    patterns,
+                )
 
-    # Outbound message produced by an agent — clear its processing flag so
-    # the "working" badge drops back. Approximate (a single-turn assumption);
-    # mismatches recover via the failsafe timeout in set_processing.
-    # NOTE: a chatty agent that emits N messages in one turn will toggle
-    # processing 2N times, each of which is a realtime broadcast. Acceptable
-    # for V1; tighten when task/dispatch lifecycle wires explicit signals.
-    if current_agent.startswith("ag_") and envelope.type == MessageType.message:
-        presence_service.emit_processing_signal_async(current_agent, False)
+        # Outbound message produced by an agent — clear its processing flag so
+        # the "working" badge drops back. Approximate (a single-turn assumption);
+        # mismatches recover via the failsafe timeout in set_processing.
+        # NOTE: a chatty agent that emits N messages in one turn will toggle
+        # processing 2N times, each of which is a realtime broadcast. Acceptable
+        # for V1; tighten when task/dispatch lifecycle wires explicit signals.
+        if current_agent.startswith("ag_") and envelope.type == MessageType.message:
+            presence_service.emit_processing_signal_async(current_agent, False)
 
-    # Event 2: cloud-agent outbound. Stamp on the sender side before fan-out
-    # so a cloud agent actively emitting traffic doesn't get idle-paused mid-turn.
-    # The stamp lives in the same db session and persists with the message record.
-    await bump_if_cloud_agent(db, envelope.from_)
+        # Event 2: cloud-agent outbound. Stamp on the sender side before fan-out
+        # so a cloud agent actively emitting traffic doesn't get idle-paused mid-turn.
+        # The stamp lives in the same db session and persists with the message record.
+        await bump_if_cloud_agent(db, envelope.from_)
 
-    # Branch: room / direct message
-    if envelope.to.startswith("rm_"):
-        return await _send_room_message(envelope, request, db, topic=effective_topic, goal=envelope.goal)
-    else:
-        return await _send_direct_message(envelope, request, db, topic=effective_topic, goal=envelope.goal)
+        # Branch: room / direct message
+        if envelope.to.startswith("rm_"):
+            return await _send_room_message(envelope, request, db, topic=effective_topic, goal=envelope.goal)
+        else:
+            return await _send_direct_message(envelope, request, db, topic=effective_topic, goal=envelope.goal)
 
 
 @router.post("/receipt", response_model=ReceiptResponse)

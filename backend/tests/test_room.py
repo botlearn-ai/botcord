@@ -3710,3 +3710,34 @@ async def test_mention_in_history(client: AsyncClient):
     assert resp_c.json()["count"] >= 1
     carol_msgs = resp_c.json()["messages"]
     assert all(m["mentioned"] is False for m in carol_msgs)
+
+
+@pytest.mark.asyncio
+async def test_send_stage_diagnostics_room_linkage(client: AsyncClient, monkeypatch):
+    """Opt-in logs join the HTTP attempt to committed receiver notifications."""
+    from hub import stage_diagnostics as diagnostics
+
+    records = []
+    monkeypatch.setattr(diagnostics, "ENABLED", True)
+    monkeypatch.setattr(diagnostics, "_operations", 0)
+    monkeypatch.setattr(diagnostics.logger, "info", lambda template, data: records.append(json.loads(data)))
+    sk_a, a_id, a_key, a_token = await _create_agent(client, "alice")
+    _, b_id, _, b_token = await _create_agent(client, "bob")
+    room = await client.post("/hub/rooms", json={"name": "diagnostics", "member_ids": [b_id]},
+                             headers=_auth_header(a_token))
+    envelope = _build_envelope(sk_a, a_key, a_id, room.json()["room_id"],
+                               payload={"text": "PRIVATE diagnostics fixture"})
+    response = await client.post("/hub/send", json=envelope, headers=_auth_header(a_token))
+    assert response.status_code == 202
+    inbox = await client.get("/hub/inbox", headers=_auth_header(b_token), params={"ack": "false"})
+    assert inbox.json()["count"] == 1
+    assert len({r["operation_id"] for r in records}) == 1
+    assert {r["server_request_id"] for r in records} == {response.headers["X-BotCord-Request-ID"]}
+    assert {r["message_id_sha256"] for r in records} == {hashlib.sha256(envelope["msg_id"].encode()).hexdigest()}
+    by_name = {r["stage"]: r for r in records}
+    assert {"send.handler", "room.fanout_write_and_attention", "room.commit", "notify", "room.sender_publish"} <= by_name.keys()
+    assert by_name["notify"]["receiver_id_sha256"] == hashlib.sha256(b_id.encode()).hexdigest()
+    assert by_name["notify"]["delivery_id_sha256"] == hashlib.sha256(response.json()["hub_msg_id"].encode()).hexdigest()
+    assert by_name["room.commit"]["started_unix"] <= by_name["notify"]["started_unix"]
+    encoded = json.dumps(records)
+    assert "PRIVATE" not in encoded and a_token not in encoded and b_token not in encoded
