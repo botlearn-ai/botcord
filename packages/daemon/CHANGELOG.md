@@ -1,5 +1,11 @@
 # @botcord/daemon
 
+## 0.6.1
+
+### Patch Changes
+
+- 3bf7d24: `start` no longer SIGTERMs daemon processes running under a different HOME (e.g. an isolated e2e daemon killing the user's real daemon); the machine-wide ps sweep now only targets daemons that share the current HOME.
+
 ## 0.6.0
 
 ### Minor Changes
