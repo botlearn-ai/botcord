@@ -1,11 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   acquireDaemonSingletonLock,
   ensureNoOtherDaemonFromPidFile,
+  findOtherDaemonProcesses,
   isBotCordDaemonStartCommand,
   parseDaemonProcesses,
   readPid,
@@ -190,6 +191,39 @@ describe("daemon singleton pid helpers", () => {
     for (const cmd of matches) {
       expect(isBotCordDaemonStartCommand(cmd), `failed to match daemon: ${cmd}`).toBe(true);
     }
+  });
+
+  it("only reports extra daemon processes that share our HOME", async () => {
+    const entry = path.join(tmpDir, "packages", "daemon", "dist", "index.js");
+    mkdirSync(path.dirname(entry), { recursive: true });
+    writeFileSync(entry, "setInterval(() => {}, 1000);\n");
+    const ourHome = path.join(tmpDir, "home-ours");
+    const otherHome = path.join(tmpDir, "home-other");
+    const spawnDaemon = (home: string) => {
+      const child = spawn(process.execPath, [entry, "start", "--foreground"], {
+        stdio: "ignore",
+        env: { ...process.env, HOME: home },
+      });
+      children.push(child);
+      return child;
+    };
+    const same = spawnDaemon(ourHome);
+    const other = spawnDaemon(otherHome);
+    await waitForPid(same);
+    await waitForPid(other);
+
+    const found = findOtherDaemonProcesses({ currentPid: process.pid, home: ourHome }).map((p) => p.pid);
+    expect(found).toContain(same.pid);
+    expect(found).not.toContain(other.pid);
+  });
+
+  it("skips daemon processes whose HOME cannot be read", () => {
+    const found = findOtherDaemonProcesses({
+      currentPid: -1,
+      home: tmpDir,
+      readHome: () => null,
+    });
+    expect(found).toEqual([]);
   });
 
   it("terminates extra daemon processes discovered outside the pid file", async () => {

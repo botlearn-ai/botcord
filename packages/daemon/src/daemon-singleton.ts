@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { PID_PATH } from "./config.js";
 
@@ -72,18 +73,53 @@ export function parseDaemonProcesses(
   return out;
 }
 
+/**
+ * Best-effort read of another process's `HOME`. Returns null when it
+ * can't be determined (other user, process gone, unsupported platform).
+ */
+export function readProcessHome(pid: number): string | null {
+  try {
+    if (process.platform === "linux") {
+      const env = readFileSync(`/proc/${pid}/environ`, "utf8");
+      const entry = env.split("\0").find((kv) => kv.startsWith("HOME="));
+      return entry ? entry.slice("HOME=".length) : null;
+    }
+    // macOS/BSD: `-E` appends the environment after the argv, so the last
+    // HOME= token is the env entry.
+    const output = execFileSync("ps", ["-E", "-ww", "-o", "command=", "-p", String(pid)], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const matches = [...output.matchAll(/(?:^|\s)HOME=(\S+)/g)];
+    return matches.length > 0 ? matches[matches.length - 1]![1]! : null;
+  } catch {
+    return null;
+  }
+}
+
 export function findOtherDaemonProcesses(
   opts: {
     currentPid?: number;
+    home?: string;
+    readHome?: (pid: number) => string | null;
   } = {},
 ): DaemonProcessInfo[] {
   const currentPid = opts.currentPid ?? process.pid;
+  const home = path.resolve(opts.home ?? homedir());
+  const readHome = opts.readHome ?? readProcessHome;
   try {
     const output = execFileSync("ps", ["-axo", "pid=,command="], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     });
-    return parseDaemonProcesses(output, currentPid).filter((p) => pidAlive(p.pid));
+    // Only daemons sharing our HOME share our ~/.botcord state. A daemon
+    // started with a different HOME (e.g. an isolated e2e run) is an
+    // independent instance and must not be killed; unknown HOME is skipped.
+    return parseDaemonProcesses(output, currentPid).filter((p) => {
+      if (!pidAlive(p.pid)) return false;
+      const otherHome = readHome(p.pid);
+      return otherHome !== null && path.resolve(otherHome) === home;
+    });
   } catch {
     return [];
   }
