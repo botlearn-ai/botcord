@@ -135,7 +135,27 @@ async def revoke_grant(db: AsyncSession, space_id: UUID, actor_id: UUID, grant_i
 
 
 async def grant_is_valid(db: AsyncSession, grant: AgentAccessGrant) -> bool:
-    """Non-raising lifecycle check used on every send and inbox poll."""
+    """Non-raising lifecycle check used on every send and inbox poll.
+
+    Authoritative answer comes from the access graph (docs/access-graph-model.md
+    §8 PR 3); the legacy check still runs and logs any disagreement.
+    """
+    from hub.models import AccessEdge
+    from hub.services import access_decide
+    from hub.services.access_graph_hooks import ensure_current
+
+    await ensure_current(db)
+    edge = await db.scalar(select(AccessEdge).where(AccessEdge.source == f"agent_access_grant:{grant.id}"))
+    graph = edge is not None and await access_decide.grant_edge_valid(db, edge)
+    legacy = await _legacy_grant_is_valid(db, grant)
+    if graph != legacy:
+        access_decide._log_mismatch("grant_valid", grant=str(grant.id), agent=grant.agent_id,
+                                    legacy={"valid": legacy}, graph={"valid": graph, "edge": edge is not None},
+                                    kind="unexpected")
+    return graph
+
+
+async def _legacy_grant_is_valid(db: AsyncSession, grant: AgentAccessGrant) -> bool:
     if grant.revoked_at is not None:
         return False
     expires_at = _aware(grant.expires_at)

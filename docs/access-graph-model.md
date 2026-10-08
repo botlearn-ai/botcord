@@ -206,7 +206,7 @@ Task = 请求人 → agent + 路径快照 + 输入 + 状态 + 交付物 + 验收
 |---|---|
 | 1 | 新建 `principals`、`access_edges`、`access_edge_deps`、`access_edge_events`；组织加 `og_`；迁移脚本。过渡期旧表仍是数据源，Hub 后台每 60 秒把旧表投影到边表（`hub/services/access_graph_sync.py`，可重复执行、按 `source` 一一对应，变化写入事件表），代替逐个写入点的双写 |
 | 2 | `decide()` / `decide_many()`，影子模式：与现有判定对账，不一致只记日志 |
-| 3 | 组织、grant、manage 的读路径切到边表 |
+| 3 | **已做**：ownership / membership / grant 边改为同事务写穿（session 钩子：涉及的旧表一有改动，提交前在同一事务里重投影，Postgres 上加 advisory lock 串行化；读边表前若有未投影改动先投影）；授权有效性（`grant_is_valid`，私聊准入和 inbox 都依赖它）改为以边表为准，旧逻辑并行对账。授权额外要求：签发人仍是 agent 当前 owner，被授权人 / agent / 组织都处于 active。**未做**：组织成员检查（`require_membership` 等）仍读旧表——它们在写事务里持行锁，等写入改为以边表为主时一起切；manage 推迟，它的使用次数计数是高频原子更新，需要先单独设计计数存储 |
 | 4 | 回复规则表；inbox 下发统一判定结果（执行档位 + 是否唤醒），daemon 以 Hub 为准（发一版 daemon） |
 | 5 | 联系人、拉黑、消息策略、群成员切到边表；取消"同房间即可私聊" |
 | 6 | `Agent.user_id` 切到 ownership 边；停止双写，删除旧表和旧字段 |

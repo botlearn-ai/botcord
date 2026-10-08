@@ -158,6 +158,9 @@ PRESENCE_TYPING_TIMEOUT_SECONDS: float = float(
 PRESENCE_PROCESSING_FAILSAFE_TIMEOUT_SECONDS: float = float(
     os.getenv("PRESENCE_PROCESSING_FAILSAFE_TIMEOUT_SECONDS", "600")
 )
+# Re-project ownership / membership / grant edges before every commit that
+# touches their legacy tables (hub/services/access_graph_hooks.py).
+ACCESS_GRAPH_WRITE_THROUGH: bool = os.getenv("ACCESS_GRAPH_WRITE_THROUGH", "true").lower() in ("1", "true", "yes")
 # Compare access-graph decisions with the legacy checks and log disagreements
 # (logger "hub.access_shadow"). Never changes an outcome.
 ACCESS_DECIDE_SHADOW: bool = os.getenv("ACCESS_DECIDE_SHADOW", "true").lower() in ("1", "true", "yes")
