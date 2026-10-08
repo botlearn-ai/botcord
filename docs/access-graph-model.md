@@ -211,9 +211,14 @@ Task = 请求人 → agent + 路径快照 + 输入 + 状态 + 交付物 + 验收
 | 6 | `Agent.user_id` 切到 ownership 边；停止双写，删除旧表和旧字段 |
 | 后续 | Task；offer / order 下单 |
 
-## 9. 待定
+## 9. 决策与待定
 
-- 好友（connection）调用 agent 的默认执行档位：建议老用户保持 full，新用户默认 consult。
+已定（2026-10-08）：
+
+- 好友（connection）边默认能力为 consult：可以互相交流，agent 按只读执行。存量好友边迁移时同样写为 consult；owner 可以单独调高某一条边。生效时间为 daemon 以 Hub 判定为准之后（第 8 节 PR 4）。
+
+以后再定（做到对应功能时）：
+
 - 组织钱包的归属与 `og_` 主体的计费细节。
 - 组织成员在 Team 里调用外部 agent，默认代表组织还是个人（建议代表组织）。
 - offer 的数据条款默认值（建议：提供方 owner 可见，保留 30 天）。
