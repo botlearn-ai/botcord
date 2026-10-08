@@ -252,9 +252,12 @@ async def shadow_room_invite(
         logger.warning("access_shadow room_invite failed", exc_info=True)
         return None
     if decision.allowed != legacy_allowed:
+        # Same-owner agents may pull each other into rooms (docs §4); legacy wants a contact.
+        kind = ("expected_same_owner_invite"
+                if not legacy_allowed and decision.reason == "ownership" else "unexpected")
         _log_mismatch("room_invite", inviter=inviter_id, agent=agent.agent_id,
                       legacy={"allowed": legacy_allowed, "reason": legacy_reason},
-                      graph={"allowed": decision.allowed, "reason": decision.reason}, kind="unexpected")
+                      graph={"allowed": decision.allowed, "reason": decision.reason}, kind=kind)
     return decision
 
 
