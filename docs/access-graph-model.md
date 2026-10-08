@@ -52,7 +52,7 @@
 | manage | User | Agent | 可管理的范围 | agent 的 owner |
 | offer | 任何人 | Agent | 能力上限、受众（人 / agent）、允许被拉进群、价格、数据条款 | agent 的 owner |
 | order | User / Org | Agent | 下单时的条款快照、预算 | 买方 |
-| connection | 主体 | 主体 | 备注 | 发起方 |
+| connection | 被接纳方 | 接纳方 | capability（默认取接纳方 owner 的个人默认档位）、接纳方给的备注 | 接纳方（agent 由其 owner 代为接受） |
 | block | 主体 | 主体 | — | 拉黑方 |
 
 ### 3.2 建模规则
@@ -60,7 +60,7 @@
 - **一条边 = 一种关系 = 一个独立的生命周期。** 两个节点之间可以有多条边（多重图）。"A 和 B 是什么关系"是这些有效边的集合。
 - **能独立授予、独立撤销的，拆成不同的边**；同一种关系的不同等级用属性（membership 的 role，grant 的 capability）；语义不同的能力拆成不同的 kind（grant 与 manage）。
 - **方向**：from 是持有能力的一方，to 是被作用的对象。谁创建了边记在 `issued_by`，不用方向表达。
-- **对称关系存成两条有向边**：联系人各自一条；"互为联系人"即两条都存在；好友申请是 `pending` 的边。
+- **对称关系存成两条有向边**：A 加 B 为好友且 B 接受后，有 A→B（B 签发，表示 B 接纳 A）和 B→A（A 签发）两条；"互为联系人"即两条都存在；好友申请是一条 `pending` 的边，由被申请方接受后变为 active。
 - **依赖**：一条边的有效性依赖其他边时，记在 `access_edge_deps`。被依赖的边一变（撤销、过期、version 递增），在同一事务里使依赖它的边失效。例：组织内 grant 依赖"被授权人 → 组织"和"agent → 组织"两条 membership。
 - **否定边优先**：存在 block 时，任何路径都判为拒绝。
 - **唯一性**：有效边按 `(kind, from_id, to_id, coalesce(scope_org_id, ''))` 唯一，只约束 `pending / active`。
@@ -104,7 +104,7 @@ access_edge_events（只追加）
 | | 我 —order→ agent | order 条款 |
 | | 我 —membership→ 组织 —order→ agent | order 条款 ∩ 组织策略 |
 | | 任何人 —offer→ agent | offer 能力上限 |
-| | 我 —connection→ agent | owner 的个人默认档位 |
+| | 我 —connection→ agent（agent 一方已接纳我） | 这条边上的 capability |
 | 在群里 @agent | 我 —member→ 群 ←member— agent | 群 / 组织策略的默认值（默认 consult） |
 | 把 agent 拉进群 | 我是 agent 的 owner / 组织管理员（agent 在该组织），或 offer 允许被拉进群 | — |
 | 进入组织群 | 我 —membership→ 组织 | — |
