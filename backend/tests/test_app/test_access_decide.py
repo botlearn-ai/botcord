@@ -141,3 +141,17 @@ async def test_shadow_inbox_agrees_with_legacy_signals(db, graph, caplog):  # no
     ctx = await _load_access_contexts(db, "ag_barry", senders - same)
     await shadow_inbox(db, agent_id="ag_barry", sender_ids=senders, legacy_same_owner=same, legacy_access=ctx)
     assert shadow_lines(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_same_owner_room_invite_is_expected_difference(db, graph, caplog):  # noqa: F811
+    from hub.policy import check_room_invite_admission
+
+    caplog.set_level(logging.INFO, logger="hub.access_shadow")
+    # Legacy: Bolt may not pull its sibling Barry into a room without a contact edge.
+    with pytest.raises(I18nHTTPException):
+        await check_room_invite_admission(db, inviter=Principal("ag_bolt", A), invitee=await agent(db, "ag_barry"))
+    [line] = shadow_lines(caplog)
+    assert line["check"] == "room_invite" and line["kind"] == "expected_same_owner_invite"
+    assert line["graph"] == {"allowed": True, "reason": "ownership"}
+

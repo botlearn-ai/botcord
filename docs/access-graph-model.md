@@ -106,13 +106,14 @@ access_edge_events（只追加）
 | | 任何人 —offer→ agent | offer 能力上限 |
 | | 我 —connection→ agent（agent 一方已接纳我） | 这条边上的 capability |
 | 在群里 @agent | 我 —member→ 群 ←member— agent | 群 / 组织策略的默认值（默认 consult） |
-| 把 agent 拉进群 | 我是 agent 的 owner / 组织管理员（agent 在该组织），或 offer 允许被拉进群 | — |
+| 把 agent 拉进群 | 我是 agent 的 owner、同一 owner 名下的另一个 agent、组织管理员（agent 在该组织），或 offer 允许被拉进群，或 agent 已接纳我（connection） | — |
 | 进入组织群 | 我 —membership→ 组织 | — |
 
 要点：
 
 - **同在一个群，只能在群里使用 agent，不能凭此私聊。** 私聊必须有一条通向 agent 的边（现有"同房间即可私聊"的放行在切换时取消，切换前统计受影响的私聊数）。
 - **同一个 owner 不需要边**：由双方的 ownership 边推出。
+- **同一个 owner 的 agent 可以互相拉进群**（2026-10-08 确认）。旧逻辑要求先互加好友，切换到 `decide()` 后放宽。
 - 能力取路径上的最小值，再与提供方、使用方策略取交集。
 
 判定函数 `decide(调用人, 动作, 对象, 上下文)` / `decide_many(...)`（inbox 按批）返回：
