@@ -1129,6 +1129,7 @@ async def _send_direct_message(
         sender=Principal(id=envelope.from_, type=sender_type),
         receiver=receiver,
         message_type=envelope.type,
+        shadow_entry="hub_send",
     )
 
     # Handle contact_request: create/update ContactRequest record
@@ -2202,6 +2203,12 @@ async def poll_inbox(
         db,
         current_agent,
         {rec.sender_id for rec in rows if rec.sender_id not in same_owner_senders},
+    )
+    from hub.services.access_decide import shadow_inbox
+
+    await shadow_inbox(
+        db, agent_id=current_agent, sender_ids={rec.sender_id for rec in rows if rec.sender_id != "hub"},
+        legacy_same_owner=same_owner_senders, legacy_access=access_contexts,
     )
 
     # Build response

@@ -2737,6 +2737,7 @@ async def _enforce_agent_access_on_dm_send(
             sender=Principal(id=sender_id, type=ParticipantType.human),
             receiver=peer_agent,
             allow_same_room_bypass=False,
+            shadow_entry="dashboard_send_after_grant",
         )
     except HTTPException:
         raise HTTPException(status_code=403, detail="agent_access_revoked")
@@ -2844,6 +2845,7 @@ async def _ensure_dashboard_dm_room(
                 sender=Principal(id=sender_id, type=sender_type),
                 receiver=peer_agent,
                 allow_same_room_bypass=False,
+                shadow_entry="dashboard_dm_open",
             )
 
     room = Room(

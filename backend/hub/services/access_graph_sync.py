@@ -49,6 +49,8 @@ from hub.policy import _effective_contact_policy, _effective_room_invite_policy
 logger = logging.getLogger(__name__)
 
 _ADVISORY_LOCK_KEY = 0x6163_6365_7373_6772  # "accessgr"
+# When this process last finished a sync (shadow logs report the graph's age).
+LAST_SYNC_AT: datetime.datetime | None = None
 _MEMBERSHIP_STATUS = {"invited": "pending", "active": "active", "suspended": "revoked", "removed": "revoked"}
 _ROLE_RANK = {"owner": 3, "admin": 2, "member": 1}
 # Edge fields compared to decide whether a projected edge changed.
@@ -370,6 +372,8 @@ async def run_sync_once() -> SyncStats | None:
         except Exception:
             await db.rollback()
             raise
+    global LAST_SYNC_AT
+    LAST_SYNC_AT = datetime.datetime.now(datetime.timezone.utc)
     return stats
 
 

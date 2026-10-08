@@ -158,6 +158,9 @@ PRESENCE_TYPING_TIMEOUT_SECONDS: float = float(
 PRESENCE_PROCESSING_FAILSAFE_TIMEOUT_SECONDS: float = float(
     os.getenv("PRESENCE_PROCESSING_FAILSAFE_TIMEOUT_SECONDS", "600")
 )
+# Compare access-graph decisions with the legacy checks and log disagreements
+# (logger "hub.access_shadow"). Never changes an outcome.
+ACCESS_DECIDE_SHADOW: bool = os.getenv("ACCESS_DECIDE_SHADOW", "true").lower() in ("1", "true", "yes")
 # Legacy relation tables -> access graph projection (docs/access-graph-model.md §8).
 # 0 disables the background loop.
 ACCESS_GRAPH_SYNC_INTERVAL_SECONDS: float = float(
