@@ -170,7 +170,37 @@ async def check_direct_admission(
     receiver: Agent,
     message_type: MessageType | None = None,
     allow_same_room_bypass: bool = True,
+    shadow_entry: str = "direct",
 ) -> None:
+    """Gate direct sends and Human→Room speech (raises 403 on deny).
+
+    Also runs the access-graph decision in shadow mode and logs disagreements
+    (docs/access-graph-model.md §8, PR 2). The legacy outcome is authoritative.
+    """
+    from hub.services.access_decide import shadow_direct
+
+    contact_request = message_type == MessageType.contact_request
+    try:
+        reason = await _legacy_direct_admission(
+            db, sender=sender, receiver=receiver, message_type=message_type,
+            allow_same_room_bypass=allow_same_room_bypass,
+        )
+    except I18nHTTPException as exc:
+        await shadow_direct(db, sender_id=sender.id, agent=receiver, contact_request=contact_request,
+                            legacy_allowed=False, legacy_reason=exc.message_key, entry=shadow_entry)
+        raise
+    await shadow_direct(db, sender_id=sender.id, agent=receiver, contact_request=contact_request,
+                        legacy_allowed=True, legacy_reason=reason, entry=shadow_entry)
+
+
+async def _legacy_direct_admission(
+    db: AsyncSession,
+    *,
+    sender: Principal,
+    receiver: Agent,
+    message_type: MessageType | None = None,
+    allow_same_room_bypass: bool = True,
+) -> str:
     """Gate direct sends and Human→Room speech.
 
     Raises I18nHTTPException(403) on deny. ``contact_request`` always passes
@@ -181,7 +211,7 @@ async def check_direct_admission(
         raise I18nHTTPException(status_code=403, message_key="blocked")
 
     if message_type == MessageType.contact_request:
-        return
+        return "contact_request"
 
     if sender.type == ParticipantType.agent and not getattr(receiver, "allow_agent_sender", True):
         raise I18nHTTPException(status_code=403, message_key="agent_senders_disabled")
@@ -190,23 +220,23 @@ async def check_direct_admission(
 
     policy = _effective_contact_policy(receiver)
     if policy == ContactPolicy.open:
-        return
+        return "open"
     if policy == ContactPolicy.contacts_only:
         if await _is_contact(db, owner_id=receiver.agent_id, peer=sender):
-            return
+            return "contact"
         if await _same_owner(db, receiver=receiver, sender=sender):
-            return
+            return "same_owner"
         if allow_same_room_bypass and await _shares_room(
             db, receiver_agent_id=receiver.agent_id, sender=sender
         ):
-            return
+            return "same_room"
         raise I18nHTTPException(status_code=403, message_key="not_in_contacts")
     if policy == ContactPolicy.whitelist:
         # Reuse contacts as the whitelist source — see design doc §8.1.
         if await _is_contact(db, owner_id=receiver.agent_id, peer=sender):
-            return
+            return "contact"
         if await _same_owner(db, receiver=receiver, sender=sender):
-            return
+            return "same_owner"
         raise I18nHTTPException(status_code=403, message_key="not_in_whitelist")
     if policy == ContactPolicy.closed:
         raise I18nHTTPException(status_code=403, message_key="agent_closed_to_new_contacts")
@@ -218,6 +248,24 @@ async def check_room_invite_admission(
     inviter: Principal,
     invitee: Agent,
 ) -> None:
+    """Gate pulling an agent into a room (raises 403 on deny); shadow-compares the graph."""
+    from hub.services.access_decide import shadow_room_invite
+
+    try:
+        reason = await _legacy_room_invite_admission(db, inviter=inviter, invitee=invitee)
+    except I18nHTTPException as exc:
+        await shadow_room_invite(db, inviter_id=inviter.id, agent=invitee,
+                                 legacy_allowed=False, legacy_reason=exc.message_key)
+        raise
+    await shadow_room_invite(db, inviter_id=inviter.id, agent=invitee, legacy_allowed=True, legacy_reason=reason)
+
+
+async def _legacy_room_invite_admission(
+    db: AsyncSession,
+    *,
+    inviter: Principal,
+    invitee: Agent,
+) -> str:
     """Gate room-invite paths (room create initial members, add member,
     Human→Room invite). Reads ``room_invite_policy`` and the sender-class
     toggles. ``contact_request`` does not apply here."""
@@ -231,10 +279,10 @@ async def check_room_invite_admission(
 
     policy = _effective_room_invite_policy(invitee)
     if policy == RoomInvitePolicy.open:
-        return
+        return "open"
     if policy == RoomInvitePolicy.contacts_only:
         if await _is_contact(db, owner_id=invitee.agent_id, peer=inviter):
-            return
+            return "contact"
         raise I18nHTTPException(
             status_code=403, message_key="room_invite_requires_contact"
         )
