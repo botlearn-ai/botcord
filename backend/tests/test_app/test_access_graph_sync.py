@@ -174,9 +174,14 @@ async def test_legacy_changes_flow_into_edges(db, world):
     barry.contact_policy = ContactPolicy.contacts_only
     await db.commit()
 
+    # Membership edges are written through in the same transaction (PR 3);
+    # contacts and offers still wait for the projection loop.
+    [early] = (await db.scalars(select(AccessEdge).where(
+        AccessEdge.kind == "membership", AccessEdge.from_id == hu["Alice"]))).all()
+    assert early.status == "revoked"
     stats = await sync_access_graph(db)
     await db.commit()
-    assert stats.edges_revoked >= 2 and stats.edges_updated >= 1
+    assert stats.edges_revoked == 2  # Barry's contact edge and the offer
 
     [membership] = (await db.scalars(select(AccessEdge).where(
         AccessEdge.kind == "membership", AccessEdge.from_id == hu["Alice"]))).all()

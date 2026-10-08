@@ -22,3 +22,7 @@ async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit
 async def get_db() -> AsyncSession:  # type: ignore[misc]
     async with async_session() as session:
         yield session
+
+
+# Session hooks that keep authorization edges current (registered on import).
+import hub.services.access_graph_hooks  # noqa: E402,F401

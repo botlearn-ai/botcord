@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub import config as hub_config
-from hub.models import PUBLIC_PRINCIPAL_ID, AccessEdge, AccessEdgeDep, Agent
+from hub.models import PUBLIC_PRINCIPAL_ID, AccessEdge, AccessEdgeDep, AccessPrincipal, Agent
 
 logger = logging.getLogger("hub.access_shadow")
 
@@ -60,6 +60,31 @@ async def _live_edges(db: AsyncSession, *conditions, now: datetime.datetime) -> 
     )).all()
     broken = {d.edge_id for d in deps if d.status != LIVE or d.version != d.depends_on_version}
     return [e for e in edges if e.id not in broken]
+
+
+async def valid_grants(db: AsyncSession, edges: list[AccessEdge], now) -> list[AccessEdge]:
+    """Grant edges that are live *and* still backed by the agent's current owner.
+
+    Beyond edge liveness and dependencies: the issuer must still own the agent,
+    and the grantee, the agent and the scoping organization must be active.
+    """
+    edges = [e for e in edges if e.kind == "grant"]
+    if not edges:
+        return edges
+    owners = {e.to_id: e.from_id for e in await _live_edges(
+        db, AccessEdge.kind == "ownership", AccessEdge.to_id.in_({g.to_id for g in edges}), now=now)}
+    ids = {x for g in edges for x in (g.from_id, g.to_id, g.scope_org_id) if x}
+    active = set((await db.scalars(select(AccessPrincipal.id).where(
+        AccessPrincipal.id.in_(ids), AccessPrincipal.status == "active"))).all())
+    return [g for g in edges
+            if g.issued_by and owners.get(g.to_id) == g.issued_by
+            and g.from_id in active and g.to_id in active and (not g.scope_org_id or g.scope_org_id in active)]
+
+
+async def grant_edge_valid(db: AsyncSession, edge: AccessEdge, now=None) -> bool:
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    live = await _live_edges(db, AccessEdge.id == edge.id, now=now)
+    return bool(await valid_grants(db, live, now))
 
 
 async def _owner_of(db: AsyncSession, agent_id: str, now) -> AccessEdge | None:
@@ -110,6 +135,9 @@ async def decide_direct(
     now: datetime.datetime | None = None,
 ) -> Decision:
     """May ``sender_id`` message ``agent`` directly (DM / direct send)?"""
+    from hub.services.access_graph_hooks import ensure_current
+
+    await ensure_current(db)
     now = now or datetime.datetime.now(datetime.timezone.utc)
     if (blk := await _blocked(db, agent.agent_id, sender_id, now)) is not None:
         return Decision(False, "blocked", path=[_hop(blk)])
@@ -119,8 +147,8 @@ async def decide_direct(
         return Decision(False, denied)
     if (path := await _same_owner_path(db, sender_id, agent.agent_id, now)) is not None:
         return Decision(True, "ownership", "full", [_hop(e) for e in path])
-    grants = await _live_edges(db, AccessEdge.kind == "grant", AccessEdge.from_id == sender_id,
-                               AccessEdge.to_id == agent.agent_id, now=now)
+    grants = await valid_grants(db, await _live_edges(
+        db, AccessEdge.kind == "grant", AccessEdge.from_id == sender_id, AccessEdge.to_id == agent.agent_id, now=now), now)
     if grants:
         best = max(grants, key=lambda e: _CAPABILITY_RANK.get(e.role or "", 0))
         return Decision(True, "grant", best.role, [_hop(best)])
@@ -142,6 +170,9 @@ async def decide_room_invite(
     db: AsyncSession, *, inviter_id: str, agent: Agent, now: datetime.datetime | None = None,
 ) -> Decision:
     """May ``inviter_id`` pull ``agent`` into a conversation?"""
+    from hub.services.access_graph_hooks import ensure_current
+
+    await ensure_current(db)
     now = now or datetime.datetime.now(datetime.timezone.utc)
     if (blk := await _blocked(db, agent.agent_id, inviter_id, now)) is not None:
         return Decision(False, "blocked", path=[_hop(blk)])
@@ -169,6 +200,9 @@ async def decide_execution_many(
     two signals the legacy inbox computes (``sender_same_owner``,
     ``access_context``). Other senders get ``Decision(False, "default")``.
     """
+    from hub.services.access_graph_hooks import ensure_current
+
+    await ensure_current(db)
     now = now or datetime.datetime.now(datetime.timezone.utc)
     out: dict[str, Decision] = {}
     if not sender_ids:
@@ -182,8 +216,9 @@ async def decide_execution_many(
     grants: dict[str, AccessEdge] = {}
     humans = {s for s in sender_ids if s.startswith("hu_")}
     if humans:
-        for e in await _live_edges(db, AccessEdge.kind == "grant", AccessEdge.to_id == agent_id,
-                                   AccessEdge.from_id.in_(humans), now=now):
+        for e in await valid_grants(db, await _live_edges(
+                db, AccessEdge.kind == "grant", AccessEdge.to_id == agent_id, AccessEdge.from_id.in_(humans),
+                now=now), now):
             best = grants.get(e.from_id)
             if best is None or _CAPABILITY_RANK.get(e.role or "", 0) > _CAPABILITY_RANK.get(best.role or "", 0):
                 grants[e.from_id] = e

@@ -39,12 +39,14 @@ from hub.models import (
     ContactRequest,
     Organization,
     RoomMember,
+    Space,
     SpaceAgentMembership,
     SpaceRoleBinding,
     SpaceUserMembership,
     User,
 )
 from hub.policy import _effective_contact_policy, _effective_room_invite_policy
+import hub.services.access_graph_hooks  # noqa: E402,F401 — registers write-through hooks
 
 logger = logging.getLogger(__name__)
 
@@ -119,19 +121,25 @@ async def _desired_principals(db: AsyncSession) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {
         PUBLIC_PRINCIPAL_ID: {"kind": "public", "display_name": "Anyone", "avatar_url": None, "status": "active"},
     }
-    for u in (await db.execute(select(User.human_id, User.display_name, User.avatar_url, User.status))).all():
+    for u in (await db.execute(select(User.human_id, User.display_name, User.avatar_url, User.status,
+                                      User.banned_at))).all():
+        active = u.status == "active" and u.banned_at is None
         out[u.human_id] = {"kind": "user", "display_name": u.display_name or "", "avatar_url": u.avatar_url,
-                           "status": "active" if u.status == "active" else "inactive"}
+                           "status": "active" if active else "inactive"}
     for a in (await db.execute(select(Agent.agent_id, Agent.display_name, Agent.avatar_url, Agent.status))).all():
         out[a.agent_id] = {"kind": "agent", "display_name": a.display_name or "", "avatar_url": a.avatar_url,
                            "status": "active" if a.status == "active" else "inactive"}
-    for o in (await db.execute(select(Organization.principal_id, Organization.name))).all():
+    for o in (await db.execute(select(Organization.principal_id, Organization.name, Space.status)
+                               .join(Space, Space.id == Organization.space_id))).all():
         out[o.principal_id] = {"kind": "organization", "display_name": o.name, "avatar_url": None,
-                               "status": "active"}
+                               "status": "active" if o.status == "active" else "inactive"}
     return out
 
 
-async def _desired_edges(db: AsyncSession, now: datetime.datetime) -> list[_Edge]:
+async def _desired_edges(db: AsyncSession, now: datetime.datetime, kinds: set[str] | None = None) -> list[_Edge]:
+    def want(kind: str) -> bool:
+        return kinds is None or kind in kinds
+
     human_by_user = {r.id: r.human_id for r in (await db.execute(select(User.id, User.human_id))).all()}
     org_by_space = {r.space_id: r.principal_id
                     for r in (await db.execute(select(Organization.space_id, Organization.principal_id))).all()}
@@ -150,12 +158,12 @@ async def _desired_edges(db: AsyncSession, now: datetime.datetime) -> list[_Edge
             owner_id = human_by_user.get(own.owner_user_id)
         elif agent.user_id is not None:
             owner_id = human_by_user.get(agent.user_id)
-        if owner_id:
+        if owner_id and want("ownership"):
             edges.append(_Edge(f"ownership:{agent.agent_id}", "ownership", owner_id, owner_kind,
                                agent.agent_id, "agent"))
         direct = _effective_contact_policy(agent) == ContactPolicy.open
         room_invite = _effective_room_invite_policy(agent) == RoomInvitePolicy.open
-        if direct or room_invite:
+        if (direct or room_invite) and want("offer"):
             edges.append(_Edge(
                 f"offer:{agent.agent_id}", "offer", PUBLIC_PRINCIPAL_ID, "public", agent.agent_id, "agent",
                 role="consult", issued_by=owner_id,
@@ -164,6 +172,8 @@ async def _desired_edges(db: AsyncSession, now: datetime.datetime) -> list[_Edge
             ))
 
     # organization memberships (personal spaces are not projected)
+    if not want("membership"):
+        return edges + await _desired_rest(db, now, kinds, human_by_user, org_by_space)
     roles: dict[Any, str] = {}
     for b in (await db.scalars(select(SpaceRoleBinding).where(SpaceRoleBinding.user_membership_id.is_not(None)))).all():
         if _ROLE_RANK.get(b.role_key, 0) > _ROLE_RANK.get(roles.get(b.user_membership_id, ""), 0):
@@ -189,8 +199,16 @@ async def _desired_edges(db: AsyncSession, now: datetime.datetime) -> list[_Edge
             deps=[(f"space_user_membership:{m.sponsor_user_membership_id}", m.sponsor_version)],
         ))
 
+    return edges + await _desired_rest(db, now, kinds, human_by_user, org_by_space)
+
+
+async def _desired_rest(db, now, kinds, human_by_user, org_by_space) -> list[_Edge]:
+    def want(kind: str) -> bool:
+        return kinds is None or kind in kinds
+
+    edges: list[_Edge] = []
     # grants
-    for g in (await db.scalars(select(AgentAccessGrant))).all():
+    for g in (await db.scalars(select(AgentAccessGrant))).all() if want("grant") else ():
         grantee = human_by_user.get(g.grantee_user_id)
         if grantee is None:
             continue
@@ -203,7 +221,7 @@ async def _desired_edges(db: AsyncSession, now: datetime.datetime) -> list[_Edge
             deps=[(f"space_user_membership:{g.grantee_membership_id}", g.grantee_membership_version),
                   (f"space_agent_membership:{g.agent_membership_id}", g.agent_membership_version)],
         ))
-    for g in (await db.scalars(select(AgentManagementGrant))).all():
+    for g in (await db.scalars(select(AgentManagementGrant))).all() if want("manage") else ():
         user = human_by_user.get(g.user_id)
         if user is None:
             continue
@@ -217,14 +235,17 @@ async def _desired_edges(db: AsyncSession, now: datetime.datetime) -> list[_Edge
 
     # connections: a Contact row "owner lists peer" means owner accepted peer -> edge peer -> owner.
     accepted_pairs: set[tuple[str, str]] = set()
-    for c in (await db.scalars(select(Contact))).all():
+    if not want("connection") and not want("block") and not want("member"):
+        return edges
+    for c in (await db.scalars(select(Contact))).all() if want("connection") else ():
         accepted_pairs.add((c.contact_agent_id, c.owner_id))
         edges.append(_Edge(
             f"contact:{c.id}", "connection", c.contact_agent_id, _participant_kind(c.peer_type),
             c.owner_id, _participant_kind(c.owner_type), role="consult", issued_by=c.owner_id,
             terms={"alias": c.alias} if c.alias else {},
         ))
-    for r in (await db.scalars(select(ContactRequest).where(ContactRequest.state == ContactRequestState.pending))).all():
+    pending = select(ContactRequest).where(ContactRequest.state == ContactRequestState.pending)
+    for r in (await db.scalars(pending)).all() if want("connection") else ():
         if (r.from_agent_id, r.to_agent_id) in accepted_pairs:
             continue
         edges.append(_Edge(
@@ -232,14 +253,14 @@ async def _desired_edges(db: AsyncSession, now: datetime.datetime) -> list[_Edge
             r.to_agent_id, _participant_kind(r.to_type), role="consult", status="pending",
             issued_by=r.from_agent_id, terms={"message": r.message} if r.message else {},
         ))
-    for b in (await db.scalars(select(Block))).all():
+    for b in (await db.scalars(select(Block))).all() if want("block") else ():
         edges.append(_Edge(
             f"block:{b.id}", "block", b.owner_id, _participant_kind(b.owner_type),
             b.blocked_agent_id, _participant_kind(b.blocked_type), issued_by=b.owner_id,
         ))
 
     # conversation membership
-    for m in (await db.scalars(select(RoomMember))).all():
+    for m in (await db.scalars(select(RoomMember))).all() if want("member") else ():
         terms = {k: v for k, v in (("can_send", m.can_send), ("can_invite", m.can_invite)) if v is not None}
         role = m.role.value if hasattr(m.role, "value") else str(m.role)
         edges.append(_Edge(
@@ -268,8 +289,13 @@ def _same(edge: AccessEdge, want: _Edge) -> bool:
     return want.version is None or edge.version == want.version
 
 
-async def sync_access_graph(db: AsyncSession, *, now: datetime.datetime | None = None) -> SyncStats:
-    """Apply the legacy → graph projection inside the caller's transaction."""
+async def sync_access_graph(
+    db: AsyncSession, *, now: datetime.datetime | None = None, kinds: set[str] | None = None,
+) -> SyncStats:
+    """Apply the legacy → graph projection inside the caller's transaction.
+
+    ``kinds`` limits the edge projection (principals are always synced).
+    """
     now = now or datetime.datetime.now(datetime.timezone.utc)
     stats = SyncStats()
 
@@ -295,7 +321,7 @@ async def sync_access_graph(db: AsyncSession, *, now: datetime.datetime | None =
     # 2. edges
     wanted: dict[str, _Edge] = {}
     live_keys: set[tuple] = set()
-    for e in await _desired_edges(db, now):
+    for e in await _desired_edges(db, now, kinds):
         if e.from_id not in known or (e.to_kind != "conversation" and e.to_id not in known):
             stats.skip(f"{e.kind}:unknown_principal")
             continue
@@ -307,7 +333,10 @@ async def sync_access_graph(db: AsyncSession, *, now: datetime.datetime | None =
             live_keys.add(key)
         wanted[e.source] = e
 
-    have = {e.source: e for e in (await db.scalars(select(AccessEdge).where(AccessEdge.source.is_not(None)))).all()}
+    have_q = select(AccessEdge).where(AccessEdge.source.is_not(None))
+    if kinds is not None:
+        have_q = have_q.where(AccessEdge.kind.in_(kinds))
+    have = {e.source: e for e in (await db.scalars(have_q)).all()}
     # Revoke first so a re-created relation can take over the live unique key.
     for source, edge in have.items():
         if source not in wanted and edge.status in ("pending", "active"):
@@ -339,11 +368,15 @@ async def sync_access_graph(db: AsyncSession, *, now: datetime.datetime | None =
     await db.flush()
 
     # 3. dependencies
-    ids = [e.id for e in have.values()]
+    ids = [have[src].id for src in wanted]
     have_deps: dict[Any, set[tuple]] = {}
     if ids:
         for d in (await db.scalars(select(AccessEdgeDep).where(AccessEdgeDep.edge_id.in_(ids)))).all():
             have_deps.setdefault(d.edge_id, set()).add((d.depends_on_edge_id, d.depends_on_version))
+    missing = {src for w in wanted.values() for src, _ in w.deps if src not in have}
+    if missing:
+        for e in (await db.scalars(select(AccessEdge).where(AccessEdge.source.in_(missing)))).all():
+            have[e.source] = e
     for source, want in wanted.items():
         edge = have[source]
         target = {(have[s].id, v) for s, v in want.deps if s in have}
