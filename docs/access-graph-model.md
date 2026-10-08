@@ -42,7 +42,8 @@ Conversation / Topic / Message 是沟通设施，不承载权限，也不承载�
 | ownership | User / Org → Agent | — | 拥有 |
 | membership | User → Org | role: owner / admin / member | 组织成员 |
 | membership | Agent → Org | role: participant | agent 加入组织 |
-| grant | User → Agent | capability: consult / collaborate / manage；约束（workspace、命令白名单、额度）；`scope_org_id` | 组织内共享 |
+| grant | User → Agent | capability: consult / collaborate；约束（workspace、命令白名单、额度）；`scope_org_id` | 组织内共享 |
+| manage | User → Agent | 可管理的范围 | 管理 agent 配置（对应现有 `AgentManagementGrant`） |
 | offer | 任何人 → Agent | 能力上限、价格、数据条款 | 公开服务 |
 | order | User / Org → Agent | 下单时的条款快照、预算 | 个人下单或组织采购 |
 | connection | 主体 ↔ 主体 | — | 联系人，决定能否发起私聊 |
@@ -52,7 +53,7 @@ Conversation / Topic / Message 是沟通设施，不承载权限，也不承载�
 
 ```
 id, kind, from_type, from_id, to_type, to_id, role, terms(jsonb),
-scope_org_id, status, version, issued_by, expires_at, revoked_at, created_at
+scope_org_id, depends_on(jsonb), status, version, issued_by, expires_at, revoked_at, created_at
 ```
 
 约束：
@@ -60,6 +61,43 @@ scope_org_id, status, version, issued_by, expires_at, revoked_at, created_at
 - 每种 kind 的端点类型和 `terms` 结构用 check 约束 + 应用层 schema 校验，禁止"什么都能塞"。
 - 新增 kind 或新增允许的路径需要明确评审。
 - 沿用现有做法：依赖的边带 `version`，被依赖的边一变，依赖它的边自动失效。
+
+### 3.1 边的建模规则
+
+**一条边 = 一种关系 = 一个独立的生命周期。** 两个节点之间可以有多条边（多重图），节点之间的"关系"是这些有效边的集合，不是一条带多个标签的边。
+
+| 规则 | 说明 |
+|---|---|
+| 能独立授予、独立撤销的，拆成不同的边 | 例：同一用户对同一 agent，可以同时有组织 A 里的 grant、组织 B 里的 grant、自己下的 order，各自有签发人、有效期、撤销 |
+| 同一种关系的不同等级，用属性 | 例：membership 的 role（member / admin），grant 的 capability（consult < collaborate）。升降级只改属性并递增 version |
+| 语义不同的能力，拆成不同的 kind | 例："使用 agent"（grant）和"管理 agent 配置"（manage）签发人和风险不同，不放在同一条边里 |
+| 唯一性 | 有效边按 `(kind, from, to, scope_org_id)` 唯一（部分唯一索引，只约束 active / pending） |
+
+**方向：from 是"持有能力的一方"，to 是"被作用的对象"。** 谁创建了这条边不由方向表达，单独记在 `issued_by`。
+
+| kind | from（持有方） | to（对象） | issued_by |
+|---|---|---|---|
+| ownership | 拥有者 | agent | 系统 / 转让人 |
+| membership | 成员 | 组织 | 管理员或邀请链接 |
+| grant | 被授权人 | agent | agent 的 owner |
+| manage | 被授权人 | agent | agent 的 owner |
+| order | 买方 | agent | 买方 |
+| offer | 任何人 | agent | agent 的 owner |
+| connection | 我 | 对方 | 我 |
+| block | 拉黑方 | 被拉黑方 | 拉黑方 |
+
+**对称关系存成两条有向边。** 联系人每一方都有自己的边（各自的备注、各自可删除）；"互为联系人"等于两条边都存在。好友申请是一条 `pending` 的边。
+
+**依赖用 `depends_on` 表达，不做"边指向边"。** `depends_on` 记录所依赖的边 id 和 version，任何一条被依赖的边变化，依赖它的边立即失效。例：
+
+- 组织内 grant 依赖"被授权人 → 组织"和"agent → 组织"两条 membership；
+- 组织采购后给某个成员单独开通：一条 grant（成员 → agent），依赖组织的 order 和成员的 membership。
+
+**否定边优先。** block 存在时，任何路径都判为拒绝。
+
+**生命周期：** `pending → active → revoked / expired`。关键属性变更递增 `version`；每次变化另写一条只追加的 `access_edge_events`，用于审计和追溯 Task 的路径快照。
+
+**索引：** `(from_id, kind, status)`、`(to_id, kind, status)`，加上上面的部分唯一索引。查"A 和 B 之间有什么关系"即 `from=A and to=B` 或 `from=B and to=A`。
 
 ## 4. 授权：白名单路径，最多两跳
 
@@ -111,7 +149,7 @@ Task = 请求人 → agent + 路径快照 + 输入 + 状态 + 交付物 + 验收
 | `SpaceUserMembership` + `SpaceRoleBinding` | membership 边（User → Org） |
 | `SpaceAgentMembership` | membership 边（Agent → Org） |
 | `AgentAccessGrant` | grant 边 |
-| `AgentManagementGrant` | grant 边（capability = manage），需先盘点调用方 |
+| `AgentManagementGrant` | manage 边，需先盘点调用方 |
 | `Agent.message_policy` 开放 | offer 边（免费） |
 | `Contact` / `Block` | connection / block 边 |
 | `Space` / `PersonalSpace` | 去掉；Organization 作为主体 |
