@@ -31,7 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from hub.id_generators import generate_botlearn_installation_id, generate_human_id
+from hub.id_generators import generate_botlearn_installation_id, generate_human_id, generate_org_principal_id
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     ApprovalKind,
     ApprovalState,
@@ -93,6 +93,7 @@ class Organization(Base):
     space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"), unique=True)
     slug: Mapped[str] = mapped_column(String(64), unique=True)
     name: Mapped[str] = mapped_column(String(128))
+    principal_id: Mapped[str] = mapped_column(String(32), unique=True, default=generate_org_principal_id)
 
 
 class OrganizationPolicy(Base):
@@ -244,6 +245,120 @@ class AgentAccessGrant(Base):
     revoked_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("public.users.id"))
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+ACCESS_EDGE_KINDS = (
+    "ownership", "membership", "member", "grant", "manage", "offer", "order", "connection", "block",
+)
+ACCESS_EDGE_STATUSES = ("pending", "active", "revoked", "expired")
+PUBLIC_PRINCIPAL_ID = "pr_public"
+
+
+class AccessPrincipal(Base):
+    """Registry of every principal (user / agent / organization / public).
+
+    Detail stays in users / agents / organizations; edges reference this table so
+    both endpoints of a principal-to-principal edge are integrity-checked.
+    See docs/access-graph-model.md §2.
+    """
+
+    __tablename__ = "principals"
+    __table_args__ = (
+        CheckConstraint("kind IN ('user', 'agent', 'organization', 'public')", name="ck_principal_kind"),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    display_name: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    avatar_url: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="active", server_default="active")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AccessEdge(Base):
+    """Typed, directed relation between two nodes (docs/access-graph-model.md §3).
+
+    ``from_id`` is the side holding the ability, ``to_id`` the object acted on.
+    ``to_id`` may be a conversation (``rm_*``), so only ``from_id`` carries a FK.
+    ``source`` is the natural key of the legacy row this edge was projected from
+    (``contact:12``); NULL for edges created natively.
+    """
+
+    __tablename__ = "access_edges"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('ownership', 'membership', 'member', 'grant', 'manage', 'offer', 'order', "
+            "'connection', 'block')",
+            name="ck_access_edge_kind",
+        ),
+        CheckConstraint("status IN ('pending', 'active', 'revoked', 'expired')", name="ck_access_edge_status"),
+        CheckConstraint("version > 0", name="ck_access_edge_version"),
+        CheckConstraint(
+            "(kind = 'ownership' AND from_kind IN ('user', 'organization') AND to_kind = 'agent') OR "
+            "(kind = 'membership' AND from_kind IN ('user', 'agent') AND to_kind = 'organization') OR "
+            "(kind = 'member' AND from_kind IN ('user', 'agent') AND to_kind = 'conversation') OR "
+            "(kind IN ('grant', 'manage') AND from_kind = 'user' AND to_kind = 'agent') OR "
+            "(kind = 'offer' AND from_kind = 'public' AND to_kind = 'agent') OR "
+            "(kind = 'order' AND from_kind IN ('user', 'organization') AND to_kind = 'agent') OR "
+            "(kind IN ('connection', 'block') AND from_kind IN ('user', 'agent') AND to_kind IN ('user', 'agent'))",
+            name="ck_access_edge_endpoints",
+        ),
+        Index(
+            "uq_access_edges_live", "kind", "from_id", "to_id", "scope_org_id", unique=True,
+            postgresql_where=sa_text("status IN ('pending', 'active')"),
+            sqlite_where=sa_text("status IN ('pending', 'active')"),
+        ),
+        Index("ix_access_edges_from", "from_id", "kind", "status"),
+        Index("ix_access_edges_to", "to_id", "kind", "status"),
+        Index("ix_access_edges_scope", "scope_org_id", "kind"),
+    )
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    kind: Mapped[str] = mapped_column(String(16))
+    from_id: Mapped[str] = mapped_column(ForeignKey("principals.id"))
+    from_kind: Mapped[str] = mapped_column(String(16))
+    to_id: Mapped[str] = mapped_column(String(64))
+    to_kind: Mapped[str] = mapped_column(String(16))
+    # '' means "no organization scope"; kept NOT NULL so the live-edge unique index works.
+    scope_org_id: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    role: Mapped[str | None] = mapped_column(String(32))
+    terms: Mapped[dict] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), default=dict, server_default="{}")
+    status: Mapped[str] = mapped_column(String(16), default="active", server_default="active")
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    issued_by: Mapped[str | None] = mapped_column(String(32))
+    source: Mapped[str | None] = mapped_column(String(96), unique=True)
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AccessEdgeDep(Base):
+    """``edge_id`` is valid only while ``depends_on_edge_id`` is live at ``depends_on_version``."""
+
+    __tablename__ = "access_edge_deps"
+    edge_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("access_edges.id", ondelete="CASCADE"), primary_key=True)
+    depends_on_edge_id: Mapped[_uuid.UUID] = mapped_column(
+        ForeignKey("access_edges.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    depends_on_version: Mapped[int] = mapped_column(Integer)
+
+
+class AccessEdgeEvent(Base):
+    """Append-only history of edge changes (audit + Task path snapshots)."""
+
+    __tablename__ = "access_edge_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    edge_id: Mapped[_uuid.UUID] = mapped_column(Uuid, index=True)
+    event: Mapped[str] = mapped_column(String(16))
+    actor_id: Mapped[str | None] = mapped_column(String(32))
+    version: Mapped[int] = mapped_column(Integer)
+    before: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"))
+    after: Mapped[dict | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"))
+    at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class TeamConversation(Base):

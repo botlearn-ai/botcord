@@ -158,6 +158,11 @@ PRESENCE_TYPING_TIMEOUT_SECONDS: float = float(
 PRESENCE_PROCESSING_FAILSAFE_TIMEOUT_SECONDS: float = float(
     os.getenv("PRESENCE_PROCESSING_FAILSAFE_TIMEOUT_SECONDS", "600")
 )
+# Legacy relation tables -> access graph projection (docs/access-graph-model.md §8).
+# 0 disables the background loop.
+ACCESS_GRAPH_SYNC_INTERVAL_SECONDS: float = float(
+    os.getenv("ACCESS_GRAPH_SYNC_INTERVAL_SECONDS", "60")
+)
 PRESENCE_CLEANUP_INTERVAL_SECONDS: float = float(
     os.getenv("PRESENCE_CLEANUP_INTERVAL_SECONDS", "30")
 )

@@ -140,6 +140,7 @@ async def lifespan(app: FastAPI):
     agent_schedule_task = None
     cloud_agent_idle_task = None
     owner_chat_fanout_task = None
+    access_graph_task = None
     if not test_db_override:
         # Background message expiry loop
         expiry_task = asyncio.create_task(message_expiry_loop())
@@ -153,6 +154,10 @@ async def lifespan(app: FastAPI):
         agent_schedule_task = asyncio.create_task(agent_schedule_loop())
         # Background Cloud Agent idle sandbox pause loop
         cloud_agent_idle_task = asyncio.create_task(cloud_agent_idle_pause_loop())
+        # Legacy relation tables -> access graph projection
+        if hub_config.ACCESS_GRAPH_SYNC_INTERVAL_SECONDS > 0:
+            from hub.services.access_graph_sync import access_graph_sync_loop
+            access_graph_task = asyncio.create_task(access_graph_sync_loop())
         # Owner-chat Redis fanout subscriber (multi-instance WS delivery).
         # No-op start when Redis is disabled.
         from hub import owner_chat_cache
@@ -165,6 +170,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     for task in (
+        access_graph_task,
         owner_chat_fanout_task,
         cloud_agent_idle_task,
         agent_schedule_task,

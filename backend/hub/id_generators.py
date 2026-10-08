@@ -23,6 +23,11 @@ def generate_human_id() -> str:
     return "hu_" + secrets.token_hex(6)
 
 
+def generate_org_principal_id() -> str:
+    """Generate an organization principal id: 'og_' + 12 random hex chars."""
+    return "og_" + secrets.token_hex(6)
+
+
 def generate_key_id() -> str:
     """Generate key_id: 'k_' + 12 random hex chars."""
     return "k_" + secrets.token_hex(6)
