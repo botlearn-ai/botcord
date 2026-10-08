@@ -185,7 +185,7 @@ Task = 请求人 → agent + 路径快照 + 输入 + 状态 + 交付物 + 验收
 | `agent_access_grants` | 2 | grant，依赖两条 membership |
 | `agent_management_grants` | 2 | manage（先盘点调用方） |
 | `contacts` | 98 | connection，备注进 terms |
-| `contact_requests` | 27 | connection：pending / active / revoked |
+| `contact_requests` | 27 | 只投影 pending 的申请（pending connection）；已接受的由 `contacts` 表示，已拒绝的不投影 |
 | `blocks` | 0 | block |
 | `contact_policy=open` 的 agent | 6 | offer（免费，consult），`allow_*_sender` 进 terms 的受众 |
 | `room_invite_policy=open` | 3 | 同一条 offer 的 terms：允许被拉进群 |
@@ -203,7 +203,7 @@ Task = 请求人 → agent + 路径快照 + 输入 + 状态 + 交付物 + 验收
 
 | PR | 内容 |
 |---|---|
-| 1 | 新建 `principals`、`access_edges`、`access_edge_deps`、`access_edge_events`；组织加 `og_`；迁移脚本；所有写旧表的路径同时写边表（双写） |
+| 1 | 新建 `principals`、`access_edges`、`access_edge_deps`、`access_edge_events`；组织加 `og_`；迁移脚本。过渡期旧表仍是数据源，Hub 后台每 60 秒把旧表投影到边表（`hub/services/access_graph_sync.py`，可重复执行、按 `source` 一一对应，变化写入事件表），代替逐个写入点的双写 |
 | 2 | `decide()` / `decide_many()`，影子模式：与现有判定对账，不一致只记日志 |
 | 3 | 组织、grant、manage 的读路径切到边表 |
 | 4 | 回复规则表；inbox 下发统一判定结果（执行档位 + 是否唤醒），daemon 以 Hub 为准（发一版 daemon） |
