@@ -1,5 +1,11 @@
 # @botcord/daemon
 
+## 0.7.1
+
+### Patch Changes
+
+- b1054c1: Treat Team-mode organization DMs (`rm_sdm_*`) as direct conversations, like personal DMs: they no longer get group-room prompts, room context or group reply rules, so agents reply in member↔agent DMs.
+
 ## 0.7.0
 
 ### Minor Changes
