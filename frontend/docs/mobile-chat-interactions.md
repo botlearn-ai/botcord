@@ -209,3 +209,52 @@ Avatar and reply-indicator focused tests passed, including broken image fallback
 changed image URL recovery, human profile rendering in the mobile header, and
 bot fallback selection. Production build passed.
 Android local-component screenshot: [Human avatar fallback](screenshots/android-composer/avatars.png).
+
+## Team conversation mobile layout (2026-10-09)
+
+Team threads now hide the Personal / Team switch and organization navigation
+on phones. Returning to the conversation list restores navigation. Room headers
+use less vertical padding, and Agent permission chips scroll horizontally rather
+than stacking into multiple rows. The composer gives text the full available
+width, with attachment and send controls below it. Desktop keeps its
+existing single-row composer. Bottom safe-area spacing is owned by the dashboard
+root instead of being applied a second time by the Team composer.
+
+The message feed observes height changes. Readers following the latest message
+stay at the bottom when the keyboard or composer changes height; readers browsing
+history retain their position.
+
+Validation: 44 focused tests passed across seven files. Local Chrome checks used
+real TeamWorkspace, TeamRoomPane and shared chat components with synthetic room,
+message and member data and stubbed API methods. Checked 320/390/430px phones,
+1280px desktop, a 390×360 viewport, and a simulated 360px visual viewport while
+editing. No page errors or horizontal page overflow. Verified full-width mobile
+input, visible composer, latest-message following after shrinking the viewport,
+and restored navigation on the list route. The temporary fixture was removed.
+These checks do not cover native iOS keyboard animation or production send/upload.
+
+- [390px Team conversation](screenshots/mobile-chat/team-390-740.png)
+- [Simulated keyboard with mention menu](screenshots/mobile-chat/team-keyboard-390.png)
+- [Browser measurements](mobile-team-chat-browser-results.json)
+
+### Compact headers and sender identity follow-up
+
+Mobile room titles now use a 49px header. Agent permissions start in a collapsed
+33px disclosure; tap to expand the existing interactive badges. Desktop retains
+the expanded permissions. Own messages omit the sender name. Avatars appear next
+to bubbles on all screen sizes, including full-width topic messages. Other group
+senders have a small name above the bubble; direct conversations omit this label.
+Profile access remains available through the avatar and group sender name.
+
+Local browser checks at 320/390/430/1280px verified avatar positions, sender label
+placement, absence of horizontal overflow, and permission expansion/collapse.
+The fixture used real RoomHeader, RoomAgentChips, MessageBubble and MessageComposer
+components with synthetic data. No browser page errors occurred.
+
+- [Updated conversation](screenshots/mobile-chat/team-side-avatars-390.png)
+- [Measurements](mobile-team-avatar-browser-results.json)
+
+The standalone @ shortcut was subsequently removed. Typing `@` in the text field
+still opens member suggestions, and selection preserves the recipient identity
+when sending. Composer tests now exercise typed mentions, keyboard selection,
+Escape and IME behavior. The screenshots above predate this button removal.

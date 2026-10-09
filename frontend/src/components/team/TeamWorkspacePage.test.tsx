@@ -313,3 +313,15 @@ it("groups room participants and marks Agents; DMs can't take Agents", () => {
   expect(dm).toContain("私聊不能添加 Agent");
   expect(dm).not.toContain("添加 Agent<");
 });
+
+it("hides organization navigation only inside mobile conversations", () => {
+  for (const view of ["messages", "rooms", "members", "settings", "agents"]) {
+    route.query = new URLSearchParams({ space: "org-a", view, conversation: "rm-test" });
+    const html = renderToStaticMarkup(<TeamWorkspace snapshot={snapshot} onMembershipChanged={() => {}} />);
+    const aside = html.match(/<aside class="([^"]+)"/)?.[1];
+    expect(aside?.includes("max-md:hidden")).toBe(view === "messages" || view === "rooms");
+  }
+  route.query = new URLSearchParams("space=org-a");
+  const html = renderToStaticMarkup(<TeamWorkspace snapshot={snapshot} onMembershipChanged={() => {}} />);
+  expect(html.match(/<aside class="([^"]+)"/)?.[1]).not.toContain("max-md:hidden");
+});

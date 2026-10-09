@@ -1,0 +1,37 @@
+{
+  "results": [
+    {
+      "width": 320,
+      "headerHeight": 49,
+      "collapsedPermissionsHeight": 33,
+      "sideAvatars": true,
+      "ownNameHidden": true,
+      "horizontalOverflow": false
+    },
+    {
+      "width": 390,
+      "headerHeight": 49,
+      "collapsedPermissionsHeight": 33,
+      "sideAvatars": true,
+      "ownNameHidden": true,
+      "horizontalOverflow": false
+    },
+    {
+      "width": 430,
+      "headerHeight": 49,
+      "collapsedPermissionsHeight": 33,
+      "sideAvatars": true,
+      "ownNameHidden": true,
+      "horizontalOverflow": false
+    },
+    {
+      "width": 1280,
+      "headerHeight": 65,
+      "collapsedPermissionsHeight": 0,
+      "sideAvatars": true,
+      "ownNameHidden": true,
+      "horizontalOverflow": false
+    }
+  ],
+  "pageErrors": []
+}

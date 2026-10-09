@@ -1,5 +1,6 @@
 "use client";
 
+import { observeChatViewportResize } from "./mobileChat";
 import MessageHistoryControl, { canAutoLoadHistory } from "./MessageHistoryControl";
 
 /**
@@ -571,6 +572,16 @@ export default function MessageList({
       commitRoomSeen(roomId);
     }
   }, [roomId, commitRoomSeen]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    return observeChatViewportResize(
+      container,
+      () => wasNearBottomRef.current && !isLoadingMoreRef.current,
+      scrollToBottom,
+    );
+  }, [roomId, messages.length > 0, scrollToBottom]);
 
   const scrollToBottomAfterLayout = useCallback(() => {
     requestAnimationFrame(() => {

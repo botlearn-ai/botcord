@@ -22,7 +22,7 @@ it("shows real agent activity independently of receipts and removes each actor o
   try {
     await render([]);
     expect(host.querySelector('[role="status"]')).toBeNull();
-    expect(host.querySelector('.md\\:hidden img')?.getAttribute("src")).toBe("/profile-me.png");
+    expect(host.querySelector('[data-sender-avatar] img')?.getAttribute("src")).toBe("/profile-me.png");
     await render(["Alice", "Bob", "Carol", "Dave"].map((name) => reaction(name, 10000)));
     expect(host.querySelectorAll(".replying-avatar")).toHaveLength(3);
     expect(host.querySelector('[role="status"]')?.textContent).toContain("+1");
@@ -35,6 +35,33 @@ it("shows real agent activity independently of receipts and removes each actor o
     expect(host.querySelector('[role="status"]')).toBeNull();
     await render([{ ...reaction("Alice", 10000), state: "cleared" }]);
     expect(host.querySelector('[role="status"]')).toBeNull();
+  } finally {
+    await act(() => root.unmount());
+    host.remove();
+  }
+});
+
+it("puts avatars beside bubbles and only labels other group senders above the bubble", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const message = { hub_msg_id: "m1", msg_id: "m1", sender_id: "hu_peer", sender_name: "Alice", sender_kind: "human", type: "message", text: "Hello", payload: {}, room_id: "rm_group", state: "sent", created_at: new Date().toISOString() } as DashboardMessage;
+  try {
+    for (const fullWidth of [false, true]) {
+      for (const own of [false, true]) {
+        await act(() => root.render(<MessageBubble message={{ ...message, is_mine: own }} isOwn={!own} fullWidth={fullWidth} />));
+        const bubble = host.querySelector(".liquid-message")!;
+        expect(bubble.querySelector("[data-sender-avatar]")).toBeNull();
+        expect(host.querySelectorAll("[data-sender-avatar]")).toHaveLength(1);
+        expect(host.querySelector("[data-sender-avatar]")?.className).not.toContain("max-md:hidden");
+        expect(host.querySelector("[data-sender-name]")?.textContent ?? null).toBe(own ? null : "Alice");
+        expect(bubble.querySelector("[data-sender-name]")).toBeNull();
+        if (!own) expect(bubble.previousElementSibling?.hasAttribute("data-sender-name")).toBe(true);
+      }
+    }
+    await act(() => root.render(<MessageBubble message={{ ...message, room_id: "rm_dm_hu_me_hu_peer" }} isOwn={false} />));
+    expect(host.querySelector("[data-sender-name]")).toBeNull();
+    expect(host.querySelectorAll("[data-sender-avatar]")).toHaveLength(1);
   } finally {
     await act(() => root.unmount());
     host.remove();

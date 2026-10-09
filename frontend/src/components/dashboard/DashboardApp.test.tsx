@@ -26,7 +26,10 @@ vi.mock("./ActivityPanel", () => ({ default: () => <div data-view="ActivityPanel
 vi.mock("./WorkspaceModeSwitch", () => ({ default: () => <div data-view="WorkspaceModeSwitch" /> }));
 vi.mock("./ChatPane", () => ({ default: ({ sidebarTabOverride }: { sidebarTabOverride: string }) => <div data-view={sidebarTabOverride} /> }));
 vi.mock("./sidebar", () => ({ default: () => <nav /> }));
-vi.mock("@/components/team/TeamWorkspacePage", () => ({ default: () => <div data-view="team" /> }));
+vi.mock("@/components/team/TeamWorkspacePage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/team/TeamWorkspacePage")>();
+  return { teamView: actual.teamView, default: () => <div data-view="team" /> };
+});
 vi.mock("@/store/useDashboardSessionStore", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/store/useDashboardSessionStore")>();
   const store = actual.useDashboardSessionStore;
@@ -53,6 +56,7 @@ import { useDashboardChatStore as chat } from "@/store/useDashboardChatStore";
 const render = () => renderToStaticMarkup(<DashboardApp />);
 beforeEach(() => {
   route.pathname = "/chats/messages";
+  route.query = new URLSearchParams();
   session.setState({ ...session.getInitialState(), authResolved: true, sessionMode: "authed-ready", token: "fixture" });
   ui.setState({ ...ui.getInitialState() });
   chat.setState({ ...chat.getInitialState() });
@@ -96,6 +100,19 @@ describe("shell subscription boundaries", () => {
 });
 
 describe("mobile conversation chrome", () => {
+  it.each(["messages", "rooms"])("focuses Team %s threads and restores navigation on return", (view) => {
+    route.pathname = "/chats/team";
+    route.query = new URLSearchParams({ view, conversation: "rm_team" });
+    expect(render()).toContain('data-mobile-conversation="true"');
+    route.query.delete("conversation");
+    expect(render()).toContain('data-mobile-conversation="false"');
+  });
+  it.each(["members", "agents", "settings", "shared"])("keeps Team %s navigation even with a conversation query", (view) => {
+    route.pathname = "/chats/team";
+    route.query = new URLSearchParams({ view, conversation: "rm_team" });
+    expect(render()).toContain('data-mobile-conversation="false"');
+  });
+
   it.each(["room", "user-chat"] as const)("focuses %s details and restores navigation on return", (messagesPane) => {
     ui.setState({ sidebarTab: "messages", messagesPane, openedRoomId: messagesPane === "room" ? "rm_test" : null });
     expect(render()).toContain('data-mobile-conversation="true"');

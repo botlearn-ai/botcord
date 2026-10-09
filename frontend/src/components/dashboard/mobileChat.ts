@@ -14,3 +14,20 @@ export function composerPopoverGeometry(anchor: { left: number; top: number; wid
     maxHeight: Math.max(0, Math.min(280, bottom - viewport.top - padding)),
   };
 }
+
+/** Keep a reader following the latest message when the keyboard or composer resizes the feed. */
+export function observeChatViewportResize(
+  container: HTMLElement,
+  shouldFollow: () => boolean,
+  follow: () => void,
+): () => void {
+  let height = container.clientHeight;
+  const observer = new ResizeObserver(() => {
+    const nextHeight = container.clientHeight;
+    if (nextHeight === height) return;
+    height = nextHeight;
+    if (shouldFollow()) follow();
+  });
+  observer.observe(container);
+  return () => observer.disconnect();
+}
