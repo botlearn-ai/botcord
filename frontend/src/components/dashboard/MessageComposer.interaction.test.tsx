@@ -19,6 +19,14 @@ const key = async (value: string, isComposing = false) => act(() => {
   input().dispatchEvent(new KeyboardEvent("keyup", { key: value, isComposing, bubbles: true }));
 });
 
+const typeMentionTrigger = async () => act(() => {
+  input().focus();
+  const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+  setValue.call(input(), "@");
+  input().setSelectionRange(1, 1);
+  input().dispatchEvent(new Event("input", { bubbles: true }));
+});
+
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
@@ -39,8 +47,9 @@ afterEach(async () => {
 });
 
 describe("composer interaction", () => {
-  it("opens mentions from the shortcut, inserts a choice, and sends its identity", async () => {
-    await click(host.querySelector<HTMLButtonElement>('[aria-label="Mention someone"]')!);
+  it("opens mentions by typing @, inserts a choice, and sends its identity", async () => {
+    await typeMentionTrigger();
+    expect(host.querySelector('button[aria-label="Mention someone"]')).toBeNull();
     expect(input().value).toBe("@");
     expect(options()).toHaveLength(2);
     expect(input().getAttribute("aria-controls")).toBe(document.querySelector('[role="listbox"]')?.id);
@@ -53,7 +62,7 @@ describe("composer interaction", () => {
   });
 
   it("keeps immediate typing after a selection in order and clears edited identities", async () => {
-    await click(host.querySelector<HTMLButtonElement>('[aria-label="Mention someone"]')!);
+    await typeMentionTrigger();
     await click(options()[0]);
     expect(input().selectionStart).toBe(7);
     const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
@@ -63,7 +72,7 @@ describe("composer interaction", () => {
     });
     await click(host.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!);
     expect(onSend).toHaveBeenLastCalledWith("@Alice(hu_alice) hello", [], ["hu_alice"]);
-    await click(host.querySelector<HTMLButtonElement>('[aria-label="Mention someone"]')!);
+    await typeMentionTrigger();
     await click(options()[0]);
     await act(() => {
       setValue.call(input(), "@Alic hello");
@@ -74,14 +83,14 @@ describe("composer interaction", () => {
   });
 
   it("keeps Escape closed after keyup", async () => {
-    await click(host.querySelector<HTMLButtonElement>('[aria-label="Mention someone"]')!);
+    await typeMentionTrigger();
     await key("Escape");
     expect(options()).toHaveLength(0);
     expect(input().value).toBe("@");
   });
 
   it("leaves IME arrows and Enter to the input method", async () => {
-    await click(host.querySelector<HTMLButtonElement>('[aria-label="Mention someone"]')!);
+    await typeMentionTrigger();
     await key("ArrowDown", true);
     expect(options()[0].getAttribute("aria-selected")).toBe("true");
     await key("Escape", true);

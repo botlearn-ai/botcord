@@ -49,7 +49,7 @@ import UserChatPane from "./UserChatPane";
 import WalletPanel from "./WalletPanel";
 import ActivityPanel from "./ActivityPanel";
 import WorkspaceModeSwitch from "./WorkspaceModeSwitch";
-import TeamWorkspacePage from "@/components/team/TeamWorkspacePage";
+import TeamWorkspacePage, { teamView } from "@/components/team/TeamWorkspacePage";
 
 const USER_CHAT_SUBTAB = "__user-chat__";
 type DashboardSidebarTab = "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
@@ -1140,8 +1140,9 @@ export default function DashboardApp() {
     }
   };
 
-  const mobileConversationOpen = !teamMode
-    && visibleSidebarTab === "messages"
+  const mobileConversationOpen = teamMode
+    ? ["messages", "rooms"].includes(teamView(searchParams.get("view"))) && Boolean(searchParams.get("conversation"))
+    : visibleSidebarTab === "messages"
     && !uiStore.messagesShowRequests
     && (uiStore.messagesPane === "user-chat" || Boolean(uiStore.openedRoomId));
   const mobileMessagesShowsMain =

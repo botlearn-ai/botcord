@@ -479,7 +479,7 @@ export function TeamWorkspace({
       className="flex h-full min-h-0 flex-col md:flex-row"
       data-team-workspace="true"
     >
-      <aside className="flex shrink-0 flex-col border-b border-glass-border bg-glass-bg md:w-52 md:border-b-0 md:border-r xl:w-56">
+      <aside className={`flex shrink-0 flex-col border-b border-glass-border bg-glass-bg md:w-52 md:border-b-0 md:border-r xl:w-56 ${mobileThreadOpen ? "max-md:hidden" : ""}`}>
         <div className="flex h-[76px] shrink-0 items-center gap-3 border-b border-glass-border px-4">
           <div className="rounded-xl bg-neon-cyan/10 p-2.5 text-neon-cyan">
             <Building2 size={22} />

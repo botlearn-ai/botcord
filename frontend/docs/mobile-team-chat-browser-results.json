@@ -1,0 +1,185 @@
+[
+  {
+    "viewport": 320,
+    "height": 700,
+    "root": {
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 700,
+      "bottom": 700
+    },
+    "composer": {
+      "x": 8,
+      "y": 590,
+      "width": 304,
+      "height": 102,
+      "bottom": 692
+    },
+    "input": {
+      "x": 15,
+      "y": 597,
+      "width": 290,
+      "height": 44,
+      "bottom": 641
+    },
+    "header": {
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 57,
+      "bottom": 57
+    },
+    "switchVisible": false,
+    "orgVisible": false,
+    "overflow": false
+  },
+  {
+    "viewport": 390,
+    "height": 740,
+    "root": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 740,
+      "bottom": 740
+    },
+    "composer": {
+      "x": 8,
+      "y": 630,
+      "width": 374,
+      "height": 102,
+      "bottom": 732
+    },
+    "input": {
+      "x": 15,
+      "y": 637,
+      "width": 360,
+      "height": 44,
+      "bottom": 681
+    },
+    "header": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 57,
+      "bottom": 57
+    },
+    "switchVisible": false,
+    "orgVisible": false,
+    "overflow": false
+  },
+  {
+    "viewport": 430,
+    "height": 800,
+    "root": {
+      "x": 0,
+      "y": 0,
+      "width": 430,
+      "height": 800,
+      "bottom": 800
+    },
+    "composer": {
+      "x": 8,
+      "y": 690,
+      "width": 414,
+      "height": 102,
+      "bottom": 792
+    },
+    "input": {
+      "x": 15,
+      "y": 697,
+      "width": 400,
+      "height": 44,
+      "bottom": 741
+    },
+    "header": {
+      "x": 0,
+      "y": 0,
+      "width": 430,
+      "height": 57,
+      "bottom": 57
+    },
+    "switchVisible": false,
+    "orgVisible": false,
+    "overflow": false
+  },
+  {
+    "viewport": 1280,
+    "height": 800,
+    "root": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 800,
+      "bottom": 800
+    },
+    "composer": {
+      "x": 560,
+      "y": 734,
+      "width": 704,
+      "height": 58,
+      "bottom": 792
+    },
+    "input": {
+      "x": 671,
+      "y": 741,
+      "width": 534,
+      "height": 44,
+      "bottom": 785
+    },
+    "header": {
+      "x": 544,
+      "y": 56,
+      "width": 736,
+      "height": 65,
+      "bottom": 121
+    },
+    "switchVisible": true,
+    "orgVisible": true,
+    "overflow": false
+  },
+  {
+    "viewport": 390,
+    "height": 360,
+    "root": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 360,
+      "bottom": 360
+    },
+    "composer": {
+      "x": 8,
+      "y": 250,
+      "width": 374,
+      "height": 102,
+      "bottom": 352
+    },
+    "input": {
+      "x": 15,
+      "y": 257,
+      "width": 360,
+      "height": 44,
+      "bottom": 301
+    },
+    "header": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 57,
+      "bottom": 57
+    },
+    "switchVisible": false,
+    "orgVisible": false,
+    "overflow": false
+  },
+  {
+    "simulatedKeyboardHeight": 360,
+    "composerVisible": true
+  },
+  {
+    "listNavigationRestored": true,
+    "pageErrors": []
+  }
+]

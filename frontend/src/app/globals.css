@@ -1129,6 +1129,11 @@ html[data-theme="dark"] .liquid-message-error {
   .dashboard-root[data-mobile-conversation="true"] .dashboard-workspace-switch,
   .dashboard-root[data-keyboard-open="true"] [data-dashboard-sidebar],
   .dashboard-root[data-keyboard-open="true"] .dashboard-workspace-switch { display: none; }
+  .dashboard-root[data-keyboard-open="true"] .team-room-composer { padding-bottom: 4px; }
+  .liquid-composer { box-shadow: none; }
+  .liquid-composer:focus-within { border-color: var(--color-neon-cyan); }
+  .liquid-composer .liquid-input:not([aria-invalid="true"]) { border-color: transparent; background: transparent; box-shadow: none; }
+  .liquid-composer .liquid-input::placeholder { white-space: nowrap; text-overflow: ellipsis; }
   .liquid-message { overflow-wrap: anywhere; min-width: 0; }
   .liquid-message-action { opacity: 1; pointer-events: auto; background: transparent; border-color: transparent; box-shadow: none; }
 }

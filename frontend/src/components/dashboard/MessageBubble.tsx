@@ -19,7 +19,6 @@ import { getActionMenuPosition } from "@/lib/message-action-menu";
 import { resolveMessageMentionTargets } from "@/lib/message-mentions";
 import { canRecallDashboardMessage, isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
 import AttachmentItem, { getPreviewableImageAttachments } from "@/components/ui/AttachmentItem";
-import CopyableId from "@/components/ui/CopyableId";
 import ChatMarkdown from "./ChatMarkdown";
 import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
 import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
@@ -32,7 +31,6 @@ import { useConfirm } from "@/store/useConfirmStore";
 import BotAvatar from "./BotAvatar";
 import TeamMessageFeedback, { TeamMessageFeedbackContext } from "@/components/team/TeamMessageFeedback";
 import ParticipantAvatar from "./ParticipantAvatar";
-import { PresenceDot } from "./PresenceDot";
 
 interface MessageBubbleProps {
   message: DashboardMessage;
@@ -355,7 +353,8 @@ function SenderAvatar({
       tabIndex={0}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       onKeyDown={onKeyDown}
-      className="max-md:hidden mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
+      data-sender-avatar
+      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
       title={displayName}
       aria-label={`Open ${displayName}`}
     >
@@ -741,7 +740,7 @@ function MessageBubble({
     };
   }, [isOwn, menuVisible]);
 
-  const sideAvatar = !fullWidth && (
+  const sideAvatar = (
     <SenderAvatar
       senderId={message.sender_id}
       displayName={senderDisplayName}
@@ -850,151 +849,142 @@ function MessageBubble({
       {/* For own messages: button left of bubble */}
       {isOwn && !fullWidth && actionButtons}
       {!isOwn && sideAvatar}
-      <div
-        className={`${fullWidth ? "w-full" : "max-w-[70%] max-md:max-w-[calc(100%-3.25rem)]"} liquid-message rounded-2xl border px-3 py-2 ${
-          isErrorMessage
-            ? "liquid-message-error"
-            : isOwn
-              ? "liquid-message-own"
-              : "liquid-message-peer"
-        }`}
-      >
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={(e) => { e.stopPropagation(); handleSelectSender(); }}
-          onKeyDown={handleSelectSenderByKey}
-          className={`mb-0.5 flex items-center gap-1.5 rounded px-1 transition-colors hover:bg-glass-bg ${isOwn ? "justify-end" : "-ml-1"}`}
-        >
-          <span className={fullWidth ? "inline-flex" : "inline-flex md:hidden"}>
-            <ParticipantAvatar id={message.sender_id} name={senderDisplayName} avatarUrl={senderAvatarUrl} isHuman={isHuman} />
-          </span>
-          {!isHuman && <PresenceDot agentId={message.sender_id} size="xs" />}
-          <span
-            className={`text-xs font-medium hover:underline ${
-              isHuman ? "text-neon-green" : "text-neon-purple"
-            }`}
-          >
-            {senderDisplayName}
-          </span>
-          {!isHuman && <CopyableId value={message.sender_id} />}
-        </div>
-
-        {/* Quote-reply preview */}
-        {!isRecalled && message.reply_preview && (
-          <ReplyQuoteBlock preview={message.reply_preview} onJump={handleJumpToReplyTarget} />
-        )}
-
-        {/* Goal badge */}
-        {!isRecalled && message.goal && (
-          <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-neon-purple/20 bg-neon-purple/5 px-2 py-1.5">
-            <span className="mt-px text-xs text-neon-purple/70">🎯</span>
-            <span className="text-xs leading-relaxed text-neon-purple/90">{message.goal}</span>
-          </div>
-        )}
-
-        {!isRecalled && metadataMentions.length > 0 && (
-          <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-            {metadataMentions.map((mention) => (
-              <MentionChip
-                key={mention.id}
-                id={mention.id}
-                label={mention.label}
-                onSelectAgent={selectAgent}
-                onSelectHuman={requestOpenHuman}
-              />
-            ))}
-          </div>
-        )}
-
-        {isRecalled ? (
-          <p className="mt-1 text-sm italic text-text-secondary/70">
-            {recalledMessageLabel(locale)}
-          </p>
-        ) : isErrorMessage ? (
+      <div className={fullWidth ? "min-w-0 flex-1" : "min-w-0 max-w-[70%] max-md:max-w-[calc(100%-5.75rem)]"}>
+        {!isOwn && roomSummary?.space_kind !== "dm" && !effectiveRoomId?.startsWith("rm_dm_") && !effectiveRoomId?.startsWith("rm_oc_") && (
           <button
             type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              setShowErrorDetails(true);
-            }}
-            className="mt-1.5 flex w-full min-w-0 items-start gap-2 rounded-md border border-zinc-700/45 bg-zinc-900/35 px-2.5 py-2 text-left text-xs transition-colors hover:border-zinc-600/70 hover:bg-zinc-900/55"
+            data-sender-name
+            onClick={(event) => { event.stopPropagation(); handleSelectSender(); }}
+            className="mb-1 block max-w-full truncate px-1 text-left text-[11px] leading-4 text-text-secondary hover:text-text-primary hover:underline"
           >
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
-            <span className="min-w-0 flex-1">
-              <span className="block font-medium text-zinc-300/80">
-                {errorTitle}
-              </span>
-              <span className="mt-0.5 block truncate text-zinc-500">
-                {displayText || "Runtime error"}
-              </span>
-              <span className="mt-1 block text-[11px] text-zinc-600">{errorDetailsLabel}</span>
-            </span>
+            {senderDisplayName}
           </button>
-        ) : transferInfo ? (
-          <TransferCard info={transferInfo} isNotice={displayText?.startsWith("[BotCord Notice]")} />
-        ) : (
-          displayText && (
-            <CollapsibleMessageBody
-              text={displayText}
-              expandLabel={locale === "zh" ? "展开全文" : "Show more"}
-              collapseLabel={locale === "zh" ? "收起" : "Show less"}
-            >
-              <ChatMarkdown content={displayText} mentionCandidates={mentionCandidates} />
-            </CollapsibleMessageBody>
-          )
         )}
-
-        {!isRecalled && attachments.length > 0 && (
-          <div className="mt-1.5 flex flex-col gap-1.5">
-            {attachments.map((att, i) => (
-              <AttachmentItem
-                key={`${att.filename}-${att.url}-${i}`}
-                attachment={att}
-                previewAttachments={imagePreviewAttachments}
-                onPreview={onPreviewAttachment}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Footer: time + type + state */}
-        <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${isOwn ? "justify-end" : ""}`}>
-          <span className="font-mono text-[10px] text-text-secondary/50">
-            {timestampLabel}
-          </span>
-          {message.type !== "message" && (
-            <span className="rounded bg-glass-bg px-1 font-mono text-[10px] text-text-secondary/70">
-              {message.type}
-            </span>
+        <div
+          className={`liquid-message min-w-0 rounded-2xl border px-3 py-2 ${
+            isErrorMessage
+              ? "liquid-message-error"
+              : isOwn
+                ? "liquid-message-own"
+                : "liquid-message-peer"
+          }`}
+        >
+          {/* Quote-reply preview */}
+          {!isRecalled && message.reply_preview && (
+            <ReplyQuoteBlock preview={message.reply_preview} onJump={handleJumpToReplyTarget} />
           )}
-          <ReplyingAvatarStack reactions={activeStatusReactions.filter((reaction) => reaction.kind === "replying")} />
-          {activeStatusReactions.filter((reaction) => reaction.kind !== "replying").map((reaction) => (
-            <span
-              key={`${reaction.actor_id}:${reaction.kind}`}
-              className="inline-flex items-center gap-1 rounded border border-yellow-400/25 bg-yellow-400/10 px-1 py-px text-[10px] font-medium text-yellow-200"
-              title={`${reaction.actor_name || reaction.actor_id} replying`}
-            >
-              <span className="text-[11px] leading-none">{reaction.emoji}</span>
-              <span className="max-w-[96px] truncate">{reaction.actor_name || reaction.actor_id}</span>
-            </span>
-          ))}
-          {showMessageStatus && !(teamFeedback && message.sender_kind === "human") && (
-            <>
-              {message.state_counts && Object.keys(message.state_counts).length > 0 ? (
-                <StateCountsBadges counts={message.state_counts} />
-              ) : sc ? (
-                <MessageStateBadge
-                  state={message.state}
-                  label={sc.label}
-                  color={sc.color}
-                  icon={sc.icon}
+
+          {/* Goal badge */}
+          {!isRecalled && message.goal && (
+            <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-neon-purple/20 bg-neon-purple/5 px-2 py-1.5">
+              <span className="mt-px text-xs text-neon-purple/70">🎯</span>
+              <span className="text-xs leading-relaxed text-neon-purple/90">{message.goal}</span>
+            </div>
+          )}
+
+          {!isRecalled && metadataMentions.length > 0 && (
+            <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+              {metadataMentions.map((mention) => (
+                <MentionChip
+                  key={mention.id}
+                  id={mention.id}
+                  label={mention.label}
+                  onSelectAgent={selectAgent}
+                  onSelectHuman={requestOpenHuman}
                 />
-              ) : null}
-            </>
+              ))}
+            </div>
           )}
+
+          {isRecalled ? (
+            <p className="mt-1 text-sm italic text-text-secondary/70">
+              {recalledMessageLabel(locale)}
+            </p>
+          ) : isErrorMessage ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setShowErrorDetails(true);
+              }}
+              className="mt-1.5 flex w-full min-w-0 items-start gap-2 rounded-md border border-zinc-700/45 bg-zinc-900/35 px-2.5 py-2 text-left text-xs transition-colors hover:border-zinc-600/70 hover:bg-zinc-900/55"
+            >
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium text-zinc-300/80">
+                  {errorTitle}
+                </span>
+                <span className="mt-0.5 block truncate text-zinc-500">
+                  {displayText || "Runtime error"}
+                </span>
+                <span className="mt-1 block text-[11px] text-zinc-600">{errorDetailsLabel}</span>
+              </span>
+            </button>
+          ) : transferInfo ? (
+            <TransferCard info={transferInfo} isNotice={displayText?.startsWith("[BotCord Notice]")} />
+          ) : (
+            displayText && (
+              <CollapsibleMessageBody
+                text={displayText}
+                expandLabel={locale === "zh" ? "展开全文" : "Show more"}
+                collapseLabel={locale === "zh" ? "收起" : "Show less"}
+              >
+                <ChatMarkdown content={displayText} mentionCandidates={mentionCandidates} />
+              </CollapsibleMessageBody>
+            )
+          )}
+
+          {!isRecalled && attachments.length > 0 && (
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              {attachments.map((att, i) => (
+                <AttachmentItem
+                  key={`${att.filename}-${att.url}-${i}`}
+                  attachment={att}
+                  previewAttachments={imagePreviewAttachments}
+                  onPreview={onPreviewAttachment}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Footer: time + type + state */}
+          <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${isOwn ? "justify-end" : ""}`}>
+            <span className="font-mono text-[10px] text-text-secondary/50">
+              {timestampLabel}
+            </span>
+            {message.type !== "message" && (
+              <span className="rounded bg-glass-bg px-1 font-mono text-[10px] text-text-secondary/70">
+                {message.type}
+              </span>
+            )}
+            <ReplyingAvatarStack reactions={activeStatusReactions.filter((reaction) => reaction.kind === "replying")} />
+            {activeStatusReactions.filter((reaction) => reaction.kind !== "replying").map((reaction) => (
+              <span
+                key={`${reaction.actor_id}:${reaction.kind}`}
+                className="inline-flex items-center gap-1 rounded border border-yellow-400/25 bg-yellow-400/10 px-1 py-px text-[10px] font-medium text-yellow-200"
+                title={`${reaction.actor_name || reaction.actor_id} replying`}
+              >
+                <span className="text-[11px] leading-none">{reaction.emoji}</span>
+                <span className="max-w-[96px] truncate">{reaction.actor_name || reaction.actor_id}</span>
+              </span>
+            ))}
+            {showMessageStatus && !(teamFeedback && message.sender_kind === "human") && (
+              <>
+                {message.state_counts && Object.keys(message.state_counts).length > 0 ? (
+                  <StateCountsBadges counts={message.state_counts} />
+                ) : sc ? (
+                  <MessageStateBadge
+                    state={message.state}
+                    label={sc.label}
+                    color={sc.color}
+                    icon={sc.icon}
+                  />
+                ) : null}
+              </>
+            )}
+          </div>
+          <TeamMessageFeedback message={message} />
         </div>
-        <TeamMessageFeedback message={message} />
       </div>
       {isOwn && sideAvatar}
       {/* For others' messages: button right of bubble */}

@@ -23,3 +23,12 @@ it("hints only Agents that don't reply to every message", () => {
   expect(html).not.toContain("Mine");
   expect(renderToStaticMarkup(<RoomReplyHints agents={[agents[2]]} />)).toBe("");
 });
+
+it("starts mobile permissions collapsed with the agent count and keeps desktop chips", () => {
+  const html = renderToStaticMarkup(<RoomAgentChips agents={agents} />);
+  expect(html).toContain("Agent 与权限 · 3");
+  expect(html).toContain('<details class="group shrink-0');
+  expect(html).not.toMatch(/<details[^>]*\bopen[= >]/);
+  expect(html).toContain('class="hidden md:contents"');
+  expect(renderToStaticMarkup(<RoomAgentChips agents={[]} />)).toBe("");
+});

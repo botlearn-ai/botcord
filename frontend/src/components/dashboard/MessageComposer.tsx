@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import ComposerPopover from "./ComposerPopover";
-import { detectMention, insertMentionTrigger, hydrateMentionDraft, reconcileDraftMentions, serializeDraftMentions, type DraftMention, type MentionMatch } from "./composer-mentions";
+import { detectMention, hydrateMentionDraft, reconcileDraftMentions, serializeDraftMentions, type DraftMention, type MentionMatch } from "./composer-mentions";
 import { shouldSendOnEnter } from "./mobileChat";
 import { AtSign, Bot, Coins, FileText, FileUp, Hash, Plus, Send, User, X } from "lucide-react";
 import { animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
@@ -555,7 +555,7 @@ export default function MessageComposer({
           ))}
         </div>
       )}
-      <div ref={composerRowRef} className="relative flex items-end gap-2">
+      <div ref={composerRowRef} className="relative flex items-end gap-2 max-md:flex-wrap max-md:gap-0">
         {showActionMenu && (
           <>
             {allowAttachments && (
@@ -611,35 +611,7 @@ export default function MessageComposer({
             </div>
           </>
         )}
-        {mentionEnabled && (
-          <button
-            type="button"
-            disabled={disabled}
-            aria-label={actionLabels?.mention ?? "Mention someone"}
-            aria-haspopup="listbox"
-            aria-expanded={!!mentionMatch && suggestions.length > 0}
-            aria-controls={mentionMatch && suggestions.length > 0 ? mentionListId : undefined}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              const el = inputRef.current;
-              if (!el) return;
-              const next = insertMentionTrigger(text, el.selectionStart, el.selectionEnd);
-              if (next.text.length > MESSAGE_MAX_LENGTH) return;
-              setActionMenuOpen(false);
-              setPickedMentions(reconcileDraftMentions(text, next.text, pickedMentions));
-              setText(next.text);
-              el.value = next.text;
-              el.focus({ preventScroll: true });
-              el.setSelectionRange(next.cursor, next.cursor);
-              updateMentionMatch();
-              autoResize();
-            }}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-glass-bg hover:text-neon-cyan disabled:opacity-50"
-          >
-            <AtSign className="h-4 w-4" />
-          </button>
-        )}
-        <div className="relative min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1 max-md:order-first max-md:basis-full">
           {pickedMentions.length > 0 && (
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
               <div className="whitespace-pre-wrap break-words border border-transparent px-3 py-2 text-base md:text-sm [@media(pointer:coarse)]:text-base text-text-primary" style={{ transform: `translateY(-${inputScrollTop}px)`, overflowWrap: "break-word" }}>
@@ -787,7 +759,7 @@ export default function MessageComposer({
           onMouseDown={(event) => event.preventDefault()}
           onClick={handleSendClick}
           disabled={!canSend}
-          className="liquid-send-button flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-cyan/15 text-neon-cyan transition-colors hover:bg-neon-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
+          className="liquid-send-button max-md:ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-cyan/15 text-neon-cyan transition-colors hover:bg-neon-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="Send message"
         >
           <Send ref={sendIconRef} className="w-4 h-4" />

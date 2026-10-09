@@ -72,7 +72,7 @@ export default function TeamRoomPane({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {opened && <MessageList key={roomId} />}
       </div>
-      <div className="shrink-0 border-t border-glass-border px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] max-md:px-2">
+      <div className="team-room-composer shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2">
         {allowHumanSend ? (
           <>
             <RoomReplyHints agents={agentAccess} />

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { composerPopoverGeometry, shouldSendOnEnter } from "./mobileChat";
+import { describe, expect, it, vi } from "vitest";
+import { composerPopoverGeometry, shouldSendOnEnter, observeChatViewportResize } from "./mobileChat";
 
 describe("chat keyboard", () => {
   it("keeps Return for newlines on touch keyboards", () => {
@@ -25,4 +25,37 @@ describe("composer popovers", () => {
     expect(panel.width).toBe(304);
     expect(panel.top).toBe(392);
   });
+});
+
+it("follows viewport height changes only while reading the latest messages", () => {
+  let resize = () => {};
+  const disconnect = vi.fn();
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: () => void) { resize = callback; }
+    observe() {}
+    disconnect = disconnect;
+  });
+  try {
+    const container = { clientHeight: 600 };
+    let following = true;
+    const follow = vi.fn();
+    const cleanup = observeChatViewportResize(container as HTMLElement, () => following, follow);
+    resize();
+    expect(follow).not.toHaveBeenCalled();
+    container.clientHeight = 250;
+    resize();
+    expect(follow).toHaveBeenCalledTimes(1);
+    following = false;
+    container.clientHeight = 200;
+    resize();
+    expect(follow).toHaveBeenCalledTimes(1);
+    following = true;
+    container.clientHeight = 600;
+    resize();
+    expect(follow).toHaveBeenCalledTimes(2);
+    cleanup();
+    expect(disconnect).toHaveBeenCalledOnce();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
