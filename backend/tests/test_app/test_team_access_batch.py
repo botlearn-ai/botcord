@@ -28,6 +28,15 @@ async def _add_agents(db, org, names):  # noqa: F811
     await db.commit()
 
 
+# Fields added after the batching rewrite (presence, runtime, owner stats) are
+# checked in test_team_access.py; equivalence covers the original fields.
+_EXTRA = {"avatar_url", "runtime", "hosting_kind", "status", "room_count", "grant_count", "pending_request_count"}
+
+
+def _base(rows):
+    return [{k: v for k, v in r.items() if k not in _EXTRA} for r in rows]
+
+
 async def _reference_directory(db, space_id, user_id):
     """The per-agent implementation the batched directory replaced (PR #1054)."""
     agents = await team_access._org_agents(db, space_id)
@@ -101,7 +110,7 @@ async def test_directory_matches_per_agent_implementation(db_session, org):  # n
 
     got = await team_access.agent_directory(db, space, alice)
     want = await _reference_directory(db, space, alice)
-    assert got == want
+    assert _base(got) == want
     access = {r["agent_id"]: r["my_access"] for r in got}
     assert access == {
         "ag_barry": "collaborator", "ag_consult": "consultant", "ag_expired": "none", "ag_moved": "none",
@@ -111,7 +120,7 @@ async def test_directory_matches_per_agent_implementation(db_session, org):  # n
     assert by_id["ag_pending"]["pending_request"]["requested_role"] == "collaborator"
     assert by_id["ag_quiet"]["default_reply_mode"] == "mention_only"
     # Danny's view: owner of everything he sponsors, nothing else.
-    assert await team_access.agent_directory(db, space, danny) == await _reference_directory(db, space, danny)
+    assert _base(await team_access.agent_directory(db, space, danny)) == await _reference_directory(db, space, danny)
 
 
 async def _bulk_agents_for_alice(db, org, names, room_id):  # noqa: F811

@@ -17,7 +17,6 @@ import {
   RefreshCw,
   Search,
   Settings,
-  Share2,
   Users,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -46,7 +45,7 @@ import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
 import TeamConversationDialog, { teamButton } from "./TeamConversationDialog";
 import TeamRoomPane from "./TeamRoomPane";
 import TeamRoomMembersDialog from "./TeamRoomMembersDialog";
-import SharedAgentsPanel from "./SharedAgentsPanel";
+import TeamAgentsPage from "./TeamAgentsPage";
 
 /** "Alice: " / "我: " prefix for conversation previews (none when unknown). */
 export function previewSender(
@@ -186,18 +185,13 @@ export function TeamRoomRow({
   );
 }
 
-export type TeamView =
-  | "messages"
-  | "rooms"
-  | "members"
-  | "agents"
-  | "shared"
-  | "settings";
+export type TeamView = "messages" | "rooms" | "members" | "agents" | "settings";
 export function teamView(value: string | null): TeamView {
+  // "shared" was the former Agent directory; it now lives on the Agent page.
+  if (value === "shared") return "agents";
   return value === "rooms" ||
     value === "members" ||
     value === "agents" ||
-    value === "shared" ||
     value === "settings"
     ? value
     : "messages";
@@ -379,7 +373,12 @@ export function TeamWorkspace({
     };
   }, [reload, messaging]);
   useEffect(() => setMembersOpen(false), [selectedId]);
-  // Owners: pending access requests on their Agents, badged on the Agent nav item.
+  // Old "Agent directory" links: rewrite the URL to the Agent page.
+  const legacyView = query.get("view") === "shared";
+  useEffect(() => {
+    if (legacyView) router.replace(teamHref(space.id, "agents"));
+  }, [legacyView, router, space.id]);
+  // Owners: pending access requests on their Agents — the only Agent nav badge.
   const accessRequests = useToDecide(space.id).length;
   useEffect(() => {
     void useTeamAccessStore.getState().refreshToDecide(space.id);
@@ -460,21 +459,13 @@ export function TeamWorkspace({
       id: "agents" as const,
       label: "Agent",
       Icon: Bot,
-      count: activeAgents,
-      badge: accessRequests,
-      badgeLabel: t(`${accessRequests} 个权限申请待处理`, `${accessRequests} access requests to review`),
-    },
-    {
-      id: "shared" as const,
-      label: t("Agent 目录", "Agent directory"),
-      short: t("目录", "Directory"),
-      Icon: Share2,
       count: null,
+      badge: accessRequests,
+      badgeLabel: t(`${accessRequests} 个权限申请待处理`, `${accessRequests} access requests need your action`),
     },
   ] as {
     id: TeamView;
     label: string;
-    short?: string;
     Icon: typeof MessageSquare;
     count: number | null;
     unread?: boolean;
@@ -836,16 +827,20 @@ export function TeamWorkspace({
             )}
           </main>
         </>
+      ) : view === "agents" ? (
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+          <TeamAgentsPage
+            snapshot={snapshot}
+            onOpenRoom={(roomId) => openRoom(roomId, "messages")}
+            onChanged={onMembershipChanged}
+          />
+        </main>
       ) : (
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           <header className="flex h-[76px] items-center justify-between border-b border-glass-border px-6">
             <h1 className="font-semibold">
               {view === "members"
                 ? t("组织成员", "Organization members")
-                : view === "agents"
-                ? t("组织 Agent", "Organization Agents")
-                : view === "shared"
-                ? t("Agent 目录", "Agent directory")
                 : t("组织设置", "Organization settings")}
             </h1>
             <Link className="text-sm text-neon-cyan" href={teamHref(space.id)}>
@@ -853,20 +848,12 @@ export function TeamWorkspace({
             </Link>
           </header>
           <div className="p-4 sm:p-6">
-            {view === "shared" ? (
-              <SharedAgentsPanel
-                spaceId={space.id}
-                agentsHref={teamHref(space.id, "agents")}
-                onOpenRoom={(roomId) => openRoom(roomId, "messages")}
-              />
-            ) : (
-              <TeamSpacesPage
-                teamMode
-                section={view}
-                sharedStore={sharedStore}
-                onChanged={onMembershipChanged}
-              />
-            )}
+            <TeamSpacesPage
+              teamMode
+              section={view}
+              sharedStore={sharedStore}
+              onChanged={onMembershipChanged}
+            />
           </div>
         </main>
       )}
@@ -909,7 +896,7 @@ export function TeamWorkspace({
           className="liquid-rail mt-auto flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 items-stretch justify-around border-t border-glass-border px-1 pt-1 pb-[env(safe-area-inset-bottom)] md:hidden"
           aria-label={t("团队导航", "Team navigation")}
         >
-          {navigation.map(({ id, label, short, Icon, count, unread: isUnread, badge, badgeLabel }) => (
+          {navigation.map(({ id, label, Icon, count, unread: isUnread, badge, badgeLabel }) => (
             <Link
               key={id}
               href={teamHref(space.id, id)}
@@ -928,7 +915,7 @@ export function TeamWorkspace({
                   <UnreadBadge count={badge} label={badgeLabel} size="sm" className="absolute -right-3 -top-1.5" />
                 ) : null}
               </span>
-              <span className="max-w-full truncate">{short ?? label}</span>
+              <span className="max-w-full truncate">{label}</span>
             </Link>
           ))}
         </nav>

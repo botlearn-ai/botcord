@@ -17,7 +17,7 @@ import datetime
 import logging
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.models import (
@@ -25,6 +25,7 @@ from hub.models import (
     Agent,
     AgentAccessGrant,
     AgentAccessRequest,
+    AgentPresence,
     AgentRoomPolicyOverride,
     AgentSenderReplyRule,
     Room,
@@ -85,6 +86,28 @@ async def agent_directory(db: AsyncSession, space_id: UUID, user_id: UUID) -> li
         AgentAccessRequest.status == "pending"))).all()}
     grants = await agent_access.active_grants_for_grantee(
         db, [a.agent_id for _, a, _, owner in agents if owner != user_id], user_id)
+    agent_ids = [a.agent_id for _, a, _, _ in agents]
+    owned = [a.agent_id for _, a, _, owner in agents if owner == user_id]
+    presence = dict((await db.execute(select(AgentPresence.agent_id, AgentPresence.effective_status).where(
+        AgentPresence.agent_id.in_(agent_ids)))).all()) if agent_ids else {}
+    room_counts = dict((await db.execute(
+        select(RoomMember.agent_id, func.count()).join(Room, Room.room_id == RoomMember.room_id)
+        .where(RoomMember.agent_id.in_(agent_ids), Room.space_id == space_id)
+        .group_by(RoomMember.agent_id))).all()) if agent_ids else {}
+    pending_counts: dict[str, int] = {}
+    grant_counts: dict[str, int] = {}
+    if owned:
+        pending_counts = dict((await db.execute(
+            select(AgentAccessRequest.agent_id, func.count()).where(
+                AgentAccessRequest.space_id == space_id, AgentAccessRequest.agent_id.in_(owned),
+                AgentAccessRequest.status == "pending").group_by(AgentAccessRequest.agent_id))).all())
+        live = list((await db.scalars(select(AgentAccessGrant).where(
+            AgentAccessGrant.space_id == space_id, AgentAccessGrant.agent_id.in_(owned),
+            AgentAccessGrant.revoked_at.is_(None)))).all())
+        valid = await agent_access.valid_grant_ids(db, live)
+        for g in live:
+            if g.id in valid:
+                grant_counts[g.agent_id] = grant_counts.get(g.agent_id, 0) + 1
     out = []
     for _membership, agent, display_name, owner_id in agents:
         if owner_id == user_id:
@@ -103,6 +126,14 @@ async def agent_directory(db: AsyncSession, space_id: UUID, user_id: UUID) -> li
             "grant_id": grant_id,
             "pending_request": {"id": req.id, "requested_role": req.requested_role} if req else None,
             "default_reply_mode": _agent_default_attention(agent).value,
+            "avatar_url": agent.avatar_url,
+            "runtime": agent.runtime,
+            "hosting_kind": agent.hosting_kind,
+            "status": presence.get(agent.agent_id, "offline"),
+            "room_count": room_counts.get(agent.agent_id, 0),
+            # Owner-only usage numbers (None for agents the caller does not own).
+            "grant_count": grant_counts.get(agent.agent_id, 0) if owner_id == user_id else None,
+            "pending_request_count": pending_counts.get(agent.agent_id, 0) if owner_id == user_id else None,
         })
     return out
 

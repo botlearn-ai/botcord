@@ -13,12 +13,10 @@ import {
   RefreshCw,
   Plus,
   ArrowRight,
-  KeyRound,
 } from "lucide-react";
 import { useStore } from "zustand";
 import { useLanguage } from "@/lib/i18n";
 import {
-  admitNewAgent,
   canManage,
   canRemoveUser,
   spaceError,
@@ -27,13 +25,8 @@ import {
 } from "@/lib/team-spaces";
 import { subscribeToPageReturn } from "@/lib/page-return";
 import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
-import AgentAccessPanel from "./AgentAccessPanel";
-import AccessRequestsInbox from "./AccessRequestsInbox";
 import AccessOverviewSection from "./AccessOverviewSection";
-import { useToDecide } from "@/store/useTeamAccessStore";
 import OrgInviteLinks from "./OrgInviteLinks";
-import CreateAgentDialog from "@/components/dashboard/CreateAgentDialog";
-import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { createTeamSpaceStore, type TeamSpaceStore } from "@/store/team-space-store";
 import {
   useConfirm,
@@ -51,7 +44,7 @@ const primary = `${button} border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan`;
 export default function TeamSpacesPage({ teamMode = false, section, onChanged, sharedStore }: {
   teamMode?: boolean;
   sharedStore?: TeamSpaceStore;
-  section?: "members" | "agents" | "settings";
+  section?: "members" | "settings";
   onChanged?: () => void;
 }) {
   const zh = useLanguage() === "zh";
@@ -83,11 +76,8 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [humanId, setHumanId] = useState("");
-  const [agentId, setAgentId] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
-  const [sharingAgentId, setSharingAgentId] = useState<string | null>(null);
-  const [showCreateAgent, setShowCreateAgent] = useState(false);
   const createNameRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (showCreate) createNameRef.current?.focus();
@@ -104,7 +94,6 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
   useEffect(() => {
     setNotice(null);
     setHumanId("");
-    setAgentId("");
     if (!sharedStore) void load(requestedId);
     return () => {
       if (!sharedStore) store.getState().cancel();
@@ -194,22 +183,11 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
       member: t("成员", "Member"),
     })[value] ?? value;
   const space = snapshot?.selected;
-  const toDecide = useToDecide(space?.id ?? "");
   const personal = space?.kind === "personal";
   const active =
     space?.status === "active" && space.membership.status === "active";
   const manager = space ? canManage(space) : false;
   const owner = manager && space?.roles.includes("owner");
-  const directAgentAdmission = manager && space?.agent_direct_admission_available === true;
-  const availableAgents =
-    snapshot?.user.agents.filter(
-      (agent) =>
-        !snapshot.members.agents.some(
-          (m) =>
-            m.agent_id === agent.agent_id &&
-            (m.status === "active" || m.status === "invited"),
-        ),
-    ) ?? [];
 
   if (teamMode && loading && !section) return <TeamWorkspaceSkeleton />;
 
@@ -708,233 +686,24 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                   </ul>
                 </section>}
 
-                {(!section || section === "agents") && <section className={`${panel} space-y-5`}>
-                  <h2 className="flex items-center gap-2 text-lg font-semibold">
+                {!section && <Link
+                  className={`${panel} flex items-center gap-4 transition-colors hover:border-neon-cyan/40 focus-visible:outline-2 focus-visible:outline-neon-cyan`}
+                  href={`/chats/team?space=${encodeURIComponent(space.id)}&view=agents`}
+                >
+                  <span className="rounded-xl bg-neon-cyan/10 p-3 text-neon-cyan">
                     <Bot size={20} />
-                    {t("组织 Agent", "Organization Agents")}
-                  </h2>
-                  <p className="text-sm leading-6 text-text-secondary">
-                    {t(
-                      "管理员可直接添加自己拥有的 Agent；其他成员提交申请后由管理员批准。加入后所有权仍属于本人，所有者可授权组织成员通过私信使用自己的 Agent。",
-                      "Managers can add their own Agents; other members apply for approval. Ownership remains personal. Owners can grant teammates access to their Agents through direct messages.",
-                    )}
-                  </p>
-                  <form
-                    className="flex flex-wrap items-end gap-3"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void run(
-                        async () => {
-                          if (directAgentAdmission) await teamSpacesApi.addOwnedAgent(space.id, agentId);
-                          else await teamSpacesApi.requestAgent(space.id, agentId);
-                          setAgentId("");
-                        },
-                        directAgentAdmission
-                          ? t("Agent 已添加到组织。", "Agent added to the organization.")
-                          : t("申请已提交，等待组织批准。", "Application submitted for organization approval."),
-                      );
-                    }}
-                  >
-                    <label className="min-w-0 flex-1 space-y-2 text-sm">
-                      <span>
-                        {t("选择自己的 Agent", "Choose one of your Agents")}
-                      </span>
-                      <select
-                        className={input}
-                        value={agentId}
-                        onChange={(e) => setAgentId(e.target.value)}
-                        disabled={busy || !availableAgents.length}
-                        required
-                      >
-                        <option value="">
-                          {availableAgents.length
-                            ? t("请选择 Agent", "Select an Agent")
-                            : t(
-                                "暂无可申请的 Agent",
-                                "No Agents available to apply",
-                              )}
-                        </option>
-                        {availableAgents.map((a) => (
-                          <option key={a.agent_id} value={a.agent_id}>
-                            {a.display_name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="flex w-full flex-wrap gap-3 sm:w-auto">
-                      <button className={`${primary} flex-1 sm:flex-none`} disabled={busy || !agentId}>
-                        {directAgentAdmission ? t("添加 Agent", "Add Agent") : t("申请加入", "Apply to join")}
-                      </button>
-                      <button
-                        type="button"
-                        className={`${button} flex-1 sm:flex-none`}
-                        disabled={busy}
-                        onClick={() => setShowCreateAgent(true)}
-                      >
-                        <Plus size={16} />
-                        {t("新建 Agent", "New Agent")}
-                      </button>
-                    </div>
-                  </form>
-                  <AccessRequestsInbox
-                    spaceId={space.id}
-                    agentNames={Object.fromEntries(
-                      snapshot.members.agents.map((a) => [a.agent_id, a.display_name]),
-                    )}
-                    hideWhenEmpty
-                  />
-                  {showCreateAgent && (
-                    <CreateAgentDialog
-                      onClose={() => setShowCreateAgent(false)}
-                      onSuccess={async (newAgentId) => {
-                        setShowCreateAgent(false);
-                        // Keep the global owned-Agent list in sync, as the sidebar entry does.
-                        await useDashboardSessionStore.getState().refreshUserProfile().catch(() => undefined);
-                        // Admission runs after the dialog closes so failures surface on this page.
-                        void run(
-                          async () => {
-                            await admitNewAgent(space.id, newAgentId, directAgentAdmission);
-                          },
-                          directAgentAdmission
-                            ? t("Agent 已创建并加入组织。", "Agent created and added to the organization.")
-                            : t("Agent 已创建，加入申请已提交，等待管理员批准。", "Agent created. Application submitted; waiting for administrator approval."),
-                        );
-                      }}
-                    />
-                  )}
-                  {snapshot.members.agents.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-glass-border p-6 text-center text-sm text-text-secondary">
-                      {t(
-                        "还没有 Agent。选择自己的 Agent 发起第一份申请。",
-                        "No Agents yet. Apply with one of your own Agents to get started.",
-                      )}
-                    </p>
-                  ) : (
-                    <ul className="divide-y divide-glass-border">
-                      {snapshot.members.agents.map((agent) => {
-                        const sponsor = snapshot.members.users.find(
-                          (u) => u.id === agent.sponsor_user_membership_id,
-                        );
-                        return (
-                          <li
-                            key={agent.id}
-                            className="flex flex-wrap items-center justify-between gap-3 py-4"
-                          >
-                            <div className="min-w-0">
-                              <p className="break-words font-medium">
-                                {agent.display_name}
-                              </p>
-                              <p className="mt-1 text-xs text-text-secondary">
-                                {t("所有者", "Owner")}:{" "}
-                                {sponsor?.display_name ?? "—"} ·{" "}
-                                {status(agent.status)}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {agent.status === "active" &&
-                                sponsor?.user_id === snapshot.user.id && (
-                                  <button
-                                    className={button}
-                                    disabled={busy}
-                                    aria-expanded={sharingAgentId === agent.agent_id}
-                                    onClick={() =>
-                                      setSharingAgentId(
-                                        sharingAgentId === agent.agent_id ? null : agent.agent_id,
-                                      )
-                                    }
-                                  >
-                                    <KeyRound size={16} />
-                                    {t("权限与回复", "Access & replies")}
-                                    {(() => {
-                                      const n = toDecide.filter((r) => r.agent_id === agent.agent_id).length;
-                                      return n ? (
-                                        <span
-                                          className="rounded-full bg-neon-cyan/15 px-1.5 text-[11px] tabular-nums text-neon-cyan"
-                                          aria-label={t(`${n} 个申请待处理`, `${n} pending requests`)}
-                                        >
-                                          {n}
-                                        </span>
-                                      ) : null;
-                                    })()}
-                                  </button>
-                                )}
-                              {manager && agent.status === "invited" && (
-                                <button
-                                  className={primary}
-                                  disabled={busy}
-                                  onClick={() =>
-                                    void run(
-                                      async () => {
-                                        await teamSpacesApi.approveAgent(
-                                          space.id,
-                                          agent.agent_id,
-                                        );
-                                      },
-                                      t(
-                                        "Agent 已加入组织。",
-                                        "Agent joined the organization.",
-                                      ),
-                                    )
-                                  }
-                                >
-                                  {t("批准加入", "Approve")}
-                                </button>
-                              )}
-                              {(manager ||
-                                sponsor?.user_id === snapshot.user.id) &&
-                                agent.status !== "removed" && (
-                                  <button
-                                    className={button}
-                                    disabled={busy}
-                                    onClick={() =>
-                                      void run(
-                                        async () => {
-                                          if (
-                                            !(await confirmForSpace({
-                                              title: `${t("移除 Agent", "Remove Agent")}: ${agent.display_name}`,
-                                              message: t(
-                                                "撤销组织成员关系，个人 Agent 和其他组织身份将保留。",
-                                                "Revoke this membership. The personal Agent and other organization memberships will remain.",
-                                              ),
-                                              tone: "danger",
-                                            }))
-                                          )
-                                            return false;
-                                          await teamSpacesApi.removeAgent(
-                                            space.id,
-                                            agent.agent_id,
-                                          );
-                                        },
-                                        t(
-                                          "Agent 成员关系已更新。",
-                                          "Agent membership updated.",
-                                        ),
-                                      )
-                                    }
-                                  >
-                                    {agent.status === "invited"
-                                      ? t("撤销申请", "Cancel application")
-                                      : t("移除", "Remove")}
-                                  </button>
-                                )}
-                            </div>
-                            {sharingAgentId === agent.agent_id &&
-                              agent.status === "active" &&
-                              sponsor?.user_id === snapshot.user.id && (
-                                <AgentAccessPanel
-                                  spaceId={space.id}
-                                  agentId={agent.agent_id}
-                                  agentName={agent.display_name}
-                                  users={snapshot.members.users}
-                                  userId={snapshot.user.id}
-                                />
-                              )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </section>}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold">{t("组织 Agent", "Organization Agents")}</span>
+                    <span className="mt-1 block text-sm text-text-secondary">
+                      {t("添加 Agent、授权成员使用、设置回复方式。", "Add Agents, share them with members and choose when they reply.")}
+                    </span>
+                  </span>
+                  <span className="inline-flex shrink-0 items-center gap-1 text-sm text-neon-cyan">
+                    {t("在 Agent 页面管理", "Manage on the Agent page")}
+                    <ArrowRight size={16} />
+                  </span>
+                </Link>}
 
                 {(!section || section === "settings") && <section className={`${panel} space-y-5`}>
                   <h2 className="flex items-center gap-2 text-lg font-semibold">

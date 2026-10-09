@@ -23,7 +23,16 @@ import {
   replyModeHint,
   replyRulesApi,
   teamAccessApi,
+  agentRowActions,
+  agentStatusLabel,
+  agentTabCounts,
+  accessSummary,
+  filterAgents,
+  ownerAgentSummary,
+  pendingCountFor,
+  runtimeLabel,
   type AccessRequest,
+  type DirectoryAgent,
 } from "./team-access";
 
 const now = new Date("2026-10-09T00:00:00.000Z");
@@ -170,5 +179,82 @@ describe("team access helpers", () => {
       req("new", "ag_a", "cancelled", "2026-10-03T00:00:00Z"),
     ]);
     expect(latest.ag_a.id).toBe("new");
+  });
+});
+
+describe("Team Agent page helpers", () => {
+  const agent = (id: string, my_access: DirectoryAgent["my_access"], extra: Partial<DirectoryAgent> = {}) =>
+    ({
+      agent_id: id,
+      display_name: id,
+      owner_name: "Owner",
+      my_access,
+      grant_id: null,
+      pending_request: null,
+      default_reply_mode: "mention_only",
+      avatar_url: null,
+      runtime: null,
+      hosting_kind: null,
+      status: "online",
+      room_count: 0,
+      grant_count: my_access === "owner" ? 0 : null,
+      pending_request_count: my_access === "owner" ? 0 : null,
+      ...extra,
+    }) as DirectoryAgent;
+  const pending = (agentId: string) => ({ id: `r-${agentId}`, agent_id: agentId }) as AccessRequest;
+  const agents = [
+    agent("zeta", "none"),
+    agent("mine-b", "owner", { pending_request_count: 2 }),
+    agent("mine-a", "owner"),
+    agent("collab", "collaborator"),
+    agent("reader", "consultant"),
+  ];
+
+  it("counts tabs from the live request list, falling back to the directory", () => {
+    expect(agentTabCounts(agents, null)).toEqual({ all: 5, mine: 2, available: 2, action: 1 });
+    // Once loaded, the store wins: mine-b's requests were decided, mine-a got one.
+    expect(agentTabCounts(agents, [pending("mine-a")])).toEqual({ all: 5, mine: 2, available: 2, action: 1 });
+    expect(agentTabCounts(agents, [])).toMatchObject({ action: 0 });
+    // Requests on Agents I don't own never count.
+    expect(pendingCountFor(agents[0], [pending("zeta")])).toBe(0);
+    expect(pendingCountFor(agents[2], [pending("mine-a"), pending("mine-a")])).toBe(2);
+  });
+  it("filters by tab and orders mine, usable, then the rest by name", () => {
+    expect(filterAgents(agents, "all", null).map((a) => a.agent_id)).toEqual([
+      "mine-a",
+      "mine-b",
+      "collab",
+      "reader",
+      "zeta",
+    ]);
+    expect(filterAgents(agents, "mine", null).map((a) => a.agent_id)).toEqual(["mine-a", "mine-b"]);
+    expect(filterAgents(agents, "available", null).map((a) => a.agent_id)).toEqual(["collab", "reader"]);
+    expect(filterAgents(agents, "action", null).map((a) => a.agent_id)).toEqual(["mine-b"]);
+  });
+  it("chooses row actions by what the viewer may do", () => {
+    expect(agentRowActions(agent("x", "owner"))).toEqual(["chat", "manage"]);
+    expect(agentRowActions(agent("x", "collaborator"))).toEqual(["chat"]);
+    expect(agentRowActions(agent("x", "consultant"))).toEqual(["upgrade", "chat"]);
+    expect(agentRowActions(agent("x", "none"))).toEqual(["request"]);
+    const asked = { id: "r", requested_role: "collaborator" as const };
+    expect(agentRowActions(agent("x", "none", { pending_request: asked }))).toEqual(["cancel"]);
+    expect(agentRowActions(agent("x", "consultant", { pending_request: asked }))).toEqual(["cancel", "chat"]);
+  });
+  it("labels status, runtime and summaries in plain language", () => {
+    expect(agentStatusLabel("working", true)).toBe("工作中");
+    expect(agentStatusLabel("away", false)).toBe("Away");
+    expect(runtimeLabel("claude-code")).toBe("Claude Code");
+    expect(runtimeLabel("codex", "daemon")).toBe("Codex");
+    expect(runtimeLabel("custom-cli")).toBe("custom-cli");
+    expect(runtimeLabel(null, "cloud")).toBe("Cloud");
+    expect(runtimeLabel(null, "daemon")).toBeNull();
+    expect(ownerAgentSummary({ grant_count: 2, room_count: 3, default_reply_mode: "mention_only" }, true)).toBe(
+      "2 人可用 · 在 3 个房间 · 只在被 @ 时",
+    );
+    expect(ownerAgentSummary({ grant_count: 1, room_count: 1, default_reply_mode: "always" }, false)).toBe(
+      "1 person has access · in 1 room · Every message",
+    );
+    expect(accessSummary("consultant", true)).toBe("你可以：回答问题、读取文件");
+    expect(accessSummary("none", false)).toContain("Ask the owner");
   });
 });
