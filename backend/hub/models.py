@@ -349,6 +349,34 @@ class AccessGraphSetting(Base):
     value: Mapped[str] = mapped_column(Text)
 
 
+class AgentAccessRequest(Base):
+    """An organization member asks an agent's owner for access (team mode).
+
+    Approval creates an ``AgentAccessGrant`` issued by the owner; the request
+    keeps the outcome for the requester and the audit trail.
+    """
+
+    __tablename__ = "agent_access_requests"
+    __table_args__ = (
+        CheckConstraint("requested_role IN ('consultant', 'collaborator')", name="ck_access_request_role"),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected', 'cancelled')", name="ck_access_request_status"),
+        Index("ix_access_requests_space_agent", "space_id", "agent_id", "status"),
+        Index("uq_access_requests_pending", "space_id", "agent_id", "requester_user_id", unique=True,
+              postgresql_where=sa_text("status = 'pending'"), sqlite_where=sa_text("status = 'pending'")),
+    )
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"))
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.agent_id"))
+    requester_user_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("public.users.id"))
+    requested_role: Mapped[str] = mapped_column(String(16))
+    message: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+    decided_by_user_id: Mapped[_uuid.UUID | None] = mapped_column(ForeignKey("public.users.id"))
+    decided_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    grant_id: Mapped[_uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AgentSenderReplyRule(Base):
     """Per-sender attention rule for an agent, optionally scoped to one room.
 
@@ -513,6 +541,11 @@ class Agent(Base):
     )
     attention_keywords: Mapped[str] = mapped_column(
         Text, nullable=False, default="[]", server_default="[]"
+    )
+    # What non-owners may make the agent do through relations created from now
+    # on (new friends, new personal rooms, a new public offer): 'consult' | 'full'.
+    non_owner_capability: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="consult", server_default="consult"
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

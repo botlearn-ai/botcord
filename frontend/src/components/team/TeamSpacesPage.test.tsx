@@ -189,6 +189,6 @@ describe("Team governance rendering", () => {
       ],
     } as unknown as TeamSnapshot["members"];
     const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />);
-    expect(html.match(/授权成员使用/g)).toHaveLength(1);
+    expect(html.match(/权限与回复/g)).toHaveLength(1);
   });
 });

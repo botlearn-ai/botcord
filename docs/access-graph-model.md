@@ -210,6 +210,7 @@ Task = 请求人 → agent + 路径快照 + 输入 + 状态 + 交付物 + 验收
 | 4 | **已做**：`InboxMessage.hub_decision`（是否唤醒 + 执行档位 full / collaborator / consult / deny + 依据），daemon 照做、本地配置只能收紧；`access_edges.capability`（好友、公开、agent 在群里的成员边），存量关系 full、新关系 consult、组织群固定 consult，由 owner 通过 `PATCH /api/agents/{id}/access/capability` 调整，投影不覆盖；按人回复规则 `agent_sender_reply_rules` + `/api/agents/{id}/reply-rules`。前端界面待做 |
 | 5 | 联系人、拉黑、消息策略、群成员切到边表；取消"同房间即可私聊" |
 | 6 | `Agent.user_id` 切到 ownership 边；停止双写，删除旧表和旧字段 |
+| UI | team 模式：组织 Agent 目录（我能做什么）、权限申请与审批、群内权限与回复提示、owner 的 Agent 权限与回复面板、按人回复开关、管理员总览；个人模式：仅"别人使用时的默认权限"开关（`agents.non_owner_capability`，迁移 010） |
 | 后续 | Task；offer / order 下单 |
 
 ## 9. 决策与待定

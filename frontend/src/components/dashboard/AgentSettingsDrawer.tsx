@@ -22,6 +22,7 @@ import AgentSchedulesTab from "./AgentSchedulesTab";
 import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
 import BotRuntimeCapabilitiesPanel from "./BotRuntimeCapabilitiesPanel";
 import AgentSkillsTab from "./AgentSkillsTab";
+import AgentDefaultPermission from "./AgentDefaultPermission";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import { mergeRuntimeFileContentResult, runtimeFileNeedsContentLoad } from "@/lib/runtime-files";
 
@@ -816,6 +817,8 @@ function AgentSettingsDrawer({
                       {labels.dmReplyNote}
                     </p>
                   </section>
+
+                  <AgentDefaultPermission agentId={agentId} />
 
                   {policySaving && (
                     <div className="flex items-center gap-2 text-xs text-text-secondary">

@@ -39,14 +39,15 @@ def _edge_out(e: AccessEdge) -> dict:
 @router.get("/access/relations")
 async def list_relations(agent_id: str, ctx: RequestContext = Depends(require_user),
                          db: AsyncSession = Depends(transaction, scope="function")):
-    await _owned_agent(db, agent_id, ctx)
+    agent = await _owned_agent(db, agent_id, ctx)
     edges = (await db.scalars(select(AccessEdge).where(AccessEdge.status == "active", (
         ((AccessEdge.kind == "connection") & (AccessEdge.to_id == agent_id))
         | ((AccessEdge.kind == "member") & (AccessEdge.from_id == agent_id))
         | ((AccessEdge.kind == "offer") & (AccessEdge.to_id == agent_id)))))).all()
     org_rooms = set((await db.scalars(select(Room.room_id).where(
         Room.room_id.in_([e.to_id for e in edges if e.kind == "member"]), Room.space_id.is_not(None)))).all())
-    out = {"connections": [], "rooms": [], "public": None}
+    out = {"default_capability": agent.non_owner_capability or "consult",
+           "connections": [], "rooms": [], "public": None}
     for e in edges:
         if e.kind == "connection":
             out["connections"].append(_edge_out(e))
@@ -91,6 +92,21 @@ async def set_capability(agent_id: str, body: CapabilityIn, ctx: RequestContext 
                                version=edge.version, before={"capability": before},
                                after={"capability": body.capability}))
     return _edge_out(edge)
+
+
+class DefaultCapabilityIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    capability: str = Field(pattern=r"^(consult|full)$")
+
+
+@router.patch("/access/default")
+async def set_default_capability(agent_id: str, body: DefaultCapabilityIn,
+                                 ctx: RequestContext = Depends(require_user),
+                                 db: AsyncSession = Depends(transaction, scope="function")):
+    """Capability given to non-owners through relations created from now on."""
+    agent = await _owned_agent(db, agent_id, ctx)
+    agent.non_owner_capability = body.capability
+    return {"agent_id": agent_id, "default_capability": body.capability}
 
 
 class ReplyRuleIn(BaseModel):
