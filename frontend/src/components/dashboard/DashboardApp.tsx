@@ -28,6 +28,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useDashboardUnreadStore } from "@/store/useDashboardUnreadStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
+import { useTeamAccessStore } from "@/store/useTeamAccessStore";
 import { useShallow } from "zustand/react/shallow";
 import AgentBrowser from "./AgentBrowser";
 import AgentCardModal from "./AgentCardModal";
@@ -728,6 +729,10 @@ export default function DashboardApp() {
             roomId: realtimeEvent.room_id,
             hubMsgId: realtimeEvent.hub_msg_id,
           });
+          // Team access requests: identifiers only; the store refetches if that organization is open.
+          if (anchor.kind === "human" && useTeamAccessStore.getState().applyRealtimeEvent(realtimeEvent)) {
+            return;
+          }
           if (realtimeEvent.type === "agent_status_changed") {
             const ext = (realtimeEvent.ext || {}) as Record<string, unknown>;
             const status = ext.status as Record<string, unknown> | undefined;
@@ -752,6 +757,8 @@ export default function DashboardApp() {
           });
           if (status === "SUBSCRIBED") {
             realtimeStore.setRealtimeStatus("connected");
+            // Access-request hints may have been missed while disconnected.
+            if (anchor.kind === "human") useTeamAccessStore.getState().resync();
             // Refresh presence snapshots for any agents we're already tracking,
             // so we recover from events missed during the disconnect window.
             try {

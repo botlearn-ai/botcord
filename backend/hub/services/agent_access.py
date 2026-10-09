@@ -182,15 +182,18 @@ async def _legacy_grant_is_valid(db: AsyncSession, grant: AgentAccessGrant) -> b
     return True
 
 
+# Newest first. A replacement grant can share created_at with the one it revoked
+# (same second on SQLite, same transaction on Postgres); the live one wins the tie.
+_LATEST_FIRST = (AgentAccessGrant.created_at.desc(), AgentAccessGrant.revoked_at.is_(None).desc(),
+                 AgentAccessGrant.id.desc())
+
+
 async def latest_grant_for_pair(db: AsyncSession, agent_id: str, grantee_user_id: UUID) -> AgentAccessGrant | None:
     """Most recent grant (live or not) between this agent and grantee."""
-    # Unrevoked grants first: a replacement grant can share its creation
-    # timestamp with the one it revoked.
     return await db.scalar(
         select(AgentAccessGrant)
         .where(AgentAccessGrant.agent_id == agent_id, AgentAccessGrant.grantee_user_id == grantee_user_id)
-        .order_by(AgentAccessGrant.revoked_at.is_(None).desc(), AgentAccessGrant.created_at.desc(),
-                  AgentAccessGrant.id.desc())
+        .order_by(*_LATEST_FIRST)
         .limit(1)
     )
 
@@ -200,6 +203,44 @@ async def active_grant_for_pair(db: AsyncSession, agent_id: str, grantee_user_id
     if grant is not None and await grant_is_valid(db, grant):
         return grant
     return None
+
+
+async def valid_grant_ids(db: AsyncSession, grants: list[AgentAccessGrant]) -> set[UUID]:
+    """Batch ``grant_is_valid``: ids of the grants whose access-graph edge is valid.
+
+    Same graph rules (live edge, intact dependencies, issuer still owns the
+    agent, active principals) in a fixed number of queries. The legacy shadow
+    comparison that ``grant_is_valid`` logs is skipped.
+    """
+    from hub.models import AccessEdge
+    from hub.services import access_decide
+    from hub.services.access_graph_hooks import ensure_current
+
+    if not grants:
+        return set()
+    await ensure_current(db)
+    now = _now()
+    by_source = {f"agent_access_grant:{g.id}": g.id for g in grants}
+    live = await access_decide._live_edges(db, AccessEdge.source.in_(by_source), now=now)
+    return {by_source[e.source] for e in await access_decide.valid_grants(db, live, now)}
+
+
+async def active_grants_for_grantee(
+    db: AsyncSession, agent_ids: list[str], grantee_user_id: UUID,
+) -> dict[str, AgentAccessGrant]:
+    """Batch ``active_grant_for_pair`` over many agents: agent_id -> valid latest grant."""
+    if not agent_ids:
+        return {}
+    rows = await db.scalars(
+        select(AgentAccessGrant)
+        .where(AgentAccessGrant.agent_id.in_(agent_ids), AgentAccessGrant.grantee_user_id == grantee_user_id)
+        .order_by(*_LATEST_FIRST)
+    )
+    latest: dict[str, AgentAccessGrant] = {}
+    for grant in rows.all():
+        latest.setdefault(grant.agent_id, grant)
+    valid = await valid_grant_ids(db, list(latest.values()))
+    return {agent_id: g for agent_id, g in latest.items() if g.id in valid}
 
 
 async def list_shared_agents(db: AsyncSession, space_id: UUID, user_id: UUID) -> list[AgentAccessGrant]:

@@ -159,3 +159,68 @@ async def test_private_room_access_needs_membership_and_upgrade_replaces_grant(c
     d = by_agent((await client.get(f"{base(org)}/agent-directory", headers=org["alice"])).json()["agents"])
     assert d["ag_barry"]["my_access"] == "collaborator"
 
+
+
+@pytest.mark.asyncio
+async def test_request_changes_notify_owner_and_requester(client, db_session, org, monkeypatch):  # noqa: F811
+    from hub.models import User
+    from hub.services import team_access
+
+    sent: list[list[dict]] = []
+
+    async def capture(events):
+        sent.append(events)
+
+    monkeypatch.setattr(team_access, "publish_realtime_events", capture)
+    danny_hu = await db_session.scalar(select(User.human_id).where(User.id == org["danny_id"]))
+    recipients = sorted([danny_hu, org["alice_hu"]])
+
+    def check(status, req_id):
+        events = sent.pop()
+        assert [e["agent_id"] for e in events] == recipients
+        for e in events:
+            assert e["type"] == "access_request_changed"
+            # Only identifiers + status: no message, role or names.
+            assert e["ext"] == {"space_id": str(org["space"]), "request_id": req_id, "status": status}
+            assert e["room_id"] is None and e["hub_msg_id"] is None
+
+    r1 = (await client.post(f"{base(org)}/agents/ag_barry/access-requests", headers=org["alice"],
+                            json={"role": "collaborator", "message": "secret plan"})).json()
+    check("pending", r1["id"])
+    await client.post(f"{base(org)}/access-requests/{r1['id']}/reject", headers=org["danny"])
+    check("rejected", r1["id"])
+    r2 = (await client.post(f"{base(org)}/agents/ag_barry/access-requests", headers=org["alice"],
+                            json={"role": "consultant"})).json()
+    check("pending", r2["id"])
+    await client.post(f"{base(org)}/access-requests/{r2['id']}/cancel", headers=org["alice"])
+    check("cancelled", r2["id"])
+    r3 = (await client.post(f"{base(org)}/agents/ag_barry/access-requests", headers=org["alice"],
+                            json={"role": "consultant"})).json()
+    check("pending", r3["id"])
+    await client.post(f"{base(org)}/access-requests/{r3['id']}/approve", headers=org["danny"], json={})
+    check("approved", r3["id"])
+
+    # Failed calls publish nothing; Eve (outside the org) is never a recipient.
+    assert (await client.post(f"{base(org)}/access-requests/{r3['id']}/approve", headers=org["danny"],
+                              json={})).status_code == 409
+    assert (await client.post(f"{base(org)}/agents/ag_barry/access-requests", headers=org["eve"],
+                              json={"role": "consultant"})).status_code in (403, 404)
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_publish_realtime_events_uses_hub_publisher(monkeypatch):
+    from hub.routers import hub as hub_router
+    from hub.services import team_access
+
+    seen = []
+
+    async def fake(db, event):
+        seen.append(event)
+
+    monkeypatch.setattr(hub_router, "_publish_agent_realtime_event", fake)
+    events = [{"type": "access_request_changed", "agent_id": "hu_a", "ext": {}}]
+    await team_access.publish_realtime_events(events)
+    assert seen == events
+    await team_access.publish_realtime_events([])
+    assert seen == events

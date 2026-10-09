@@ -17,7 +17,7 @@ import {
 } from "@/lib/team-access";
 import { orgRoomsApi } from "@/lib/org-rooms";
 import { useConfirm } from "@/store/useConfirmStore";
-import { useToDecide, useTeamAccessStore } from "@/store/useTeamAccessStore";
+import { useAccessChanges, useToDecide, useTeamAccessStore } from "@/store/useTeamAccessStore";
 import { teamButton } from "./TeamConversationDialog";
 import AccessBadge from "./AccessBadge";
 import AccessRequestDialog from "./AccessRequestDialog";
@@ -52,6 +52,8 @@ export default function SharedAgentsPanel({
   const [requesting, setRequesting] = useState<DirectoryAgent | null>(null);
   const [version, setVersion] = useState(0);
   const toDecide = useToDecide(spaceId);
+  // Realtime: a request was filed, decided or cancelled — refetch rows.
+  const changes = useAccessChanges(spaceId);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
 
   useEffect(() => {
@@ -80,7 +82,7 @@ export default function SharedAgentsPanel({
       mounted.current = false;
       controller.abort();
     };
-  }, [spaceId, version]);
+  }, [spaceId, version, changes]);
 
   async function act(key: string, task: () => Promise<unknown>, after?: () => void) {
     if (busy) return;

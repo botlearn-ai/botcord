@@ -384,6 +384,21 @@ export function TeamWorkspace({
   useEffect(() => {
     void useTeamAccessStore.getState().refreshToDecide(space.id);
   }, [space.id, view]);
+  // Realtime access-request hints apply only to the open organization; catch up when the tab returns.
+  useEffect(() => {
+    const store = useTeamAccessStore.getState();
+    store.setActiveSpace(space.id);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") useTeamAccessStore.getState().resync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      if (useTeamAccessStore.getState().activeSpaceId === space.id) {
+        useTeamAccessStore.getState().setActiveSpace(null);
+      }
+    };
+  }, [space.id]);
   const title = (c: OrgRoom) => orgRoomTitle(c, t("成员已离开", "Member has left"));
   const viewerNames = [snapshot.human?.display_name, user.display_name];
   const ownedAgentIds = (user.agents ?? []).map((a) => a.agent_id);

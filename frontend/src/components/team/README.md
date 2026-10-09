@@ -8,7 +8,7 @@
 
 `TeamRoomMembersDialog.tsx`（成员与 Agent）列出房间里的人和 Agent，可从组织成员/组织 active Agent 中添加；无权限添加的 Agent 显示原因而非隐藏（Agent 所有者或组织管理员才可添加），私聊不能加 Agent；移除遵循 Hub 规则（房间所有者不可移除）。`SharedAgentsPanel.tsx` 分「我的 Agent」与「共享给我的」，点击经 `/agent-dms` 打开组织内与该 Agent 的私聊。
 
-Agent 使用权限：`SharedAgentsPanel.tsx`（导航「Agent 目录」）列出组织全部 Agent 及「我能做什么」徽标（所有者/协作/只读/无权限；`AccessBadge` 悬停或点按显示白话解释）。能用的点「对话」开私聊；无权限或只读的经 `AccessRequestDialog` 申请，申请中可取消。`AccessRequestsInbox` 是 Agent 所有者的待处理申请：批准时可改角色，协作者另填仓库路径与允许命令；数量经 `store/useTeamAccessStore.ts` 显示在 Agent 导航徽标上。Agent 页「权限与回复」打开 `AgentAccessPanel`：该 Agent 的申请、授权（`AgentAccessGrants`）、所在房间的回复方式（`RoomReplyModeControl`，走房间 policy API）与按人规则。`TeamRoomPane` 用 `TeamRoomAgentAccess` 在房间头下列出每个 Agent 与我的能力，并在输入框上方提示「只在被 @ 时回复」等。成员对话框里，自己拥有的 Agent 可改本房间回复方式，并可给成员开「说话不用 @ 也回复」。设置页对所有者/管理员显示 `AccessOverviewSection`（403 时隐藏）。
+Agent 使用权限：`SharedAgentsPanel.tsx`（导航「Agent 目录」）列出组织全部 Agent 及「我能做什么」徽标（所有者/协作/只读/无权限；`AccessBadge` 悬停或点按显示白话解释）。能用的点「对话」开私聊；无权限或只读的经 `AccessRequestDialog` 申请，申请中可取消。`AccessRequestsInbox` 是 Agent 所有者的待处理申请：批准时可改角色，协作者另填仓库路径与允许命令；数量经 `store/useTeamAccessStore.ts` 显示在 Agent 导航徽标上。申请的创建/批准/拒绝/取消会经 Human 实时频道（`human:<hu_id>`）推送 `access_request_changed`（只含 space_id、request_id、status），`DashboardApp` 转给 store：只对当前打开的组织刷新徽标、收件箱和目录行；频道重连或标签页重新可见时补拉一次。Agent 页「权限与回复」打开 `AgentAccessPanel`：该 Agent 的申请、授权（`AgentAccessGrants`）、所在房间的回复方式（`RoomReplyModeControl`，走房间 policy API）与按人规则。`TeamRoomPane` 用 `TeamRoomAgentAccess` 在房间头下列出每个 Agent 与我的能力，并在输入框上方提示「只在被 @ 时回复」等。成员对话框里，自己拥有的 Agent 可改本房间回复方式，并可给成员开「说话不用 @ 也回复」。设置页对所有者/管理员显示 `AccessOverviewSection`（403 时隐藏）。
 
 `TeamConversationDialog.tsx` 使用原生模态框的焦点约束和 Escape 关闭行为，创建组织公开房间、指定成员私密房间（可勾选 Agent 一并拉入）或一对一成员私聊。组织公开房间对全体成员可见、加入后可读全部历史；私密房间仅对被加入的成员可见。
 
