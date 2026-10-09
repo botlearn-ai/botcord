@@ -55,6 +55,7 @@ import {
   type DaemonAttentionPolicy,
 } from "./gateway/policy-resolver.js";
 import { applyLocalMention } from "./mention-scan.js";
+import { hubWake } from "./gateway/execution-policy.js";
 import {
   createDiagnosticBundle,
   uploadDiagnosticBundle,
@@ -574,6 +575,10 @@ export async function startDaemon(
     const attentionGate = async (
       msg: GatewayInboundMessage
     ): Promise<boolean> => {
+      // The Hub already resolved reply rules (incl. per-sender rules) for this
+      // message; older Hubs omit the decision and we fall back to local logic.
+      const decided = hubWake(msg);
+      if (decided !== null) return decided;
       const policy: DaemonAttentionPolicy = await policyResolver.resolve(
         msg.accountId,
         msg.conversation.id

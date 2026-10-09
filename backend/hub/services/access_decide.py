@@ -155,11 +155,11 @@ async def decide_direct(
     conns = await _live_edges(db, AccessEdge.kind == "connection", AccessEdge.from_id == sender_id,
                               AccessEdge.to_id == agent.agent_id, now=now)
     if conns:
-        return Decision(True, "connection", conns[0].role or "consult", [_hop(conns[0])])
+        return Decision(True, "connection", conns[0].capability or "consult", [_hop(conns[0])])
     offers = await _live_edges(db, AccessEdge.kind == "offer", AccessEdge.from_id == PUBLIC_PRINCIPAL_ID,
                                AccessEdge.to_id == agent.agent_id, now=now)
     if offers and (offers[0].terms or {}).get("direct"):
-        return Decision(True, "offer", offers[0].role or "consult", [_hop(offers[0])])
+        return Decision(True, "offer", offers[0].capability or "consult", [_hop(offers[0])])
     if await _shared_conversation(db, sender_id, agent.agent_id):
         # By design a shared room does not open a DM (docs §4).
         return Decision(False, "room_only")

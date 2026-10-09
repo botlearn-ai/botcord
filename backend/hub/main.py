@@ -85,6 +85,7 @@ from app.routers.telegram import router as app_telegram_router
 from app.routers.team_orchestration import router as app_team_orchestration_router
 from app.routers.spaces import router as app_spaces_router
 from app.routers.agent_access import router as app_agent_access_router
+from app.routers.agent_relations import router as app_agent_relations_router
 from app.routers.org_invites import public_router as app_org_invites_public_router
 from app.routers.org_invites import router as app_org_invites_router
 from app.routers.org_rooms import router as app_org_rooms_router
@@ -371,6 +372,7 @@ app.include_router(app_schedules_router, dependencies=_beta_gate)
 app.include_router(app_team_orchestration_router, dependencies=_beta_gate)
 app.include_router(app_spaces_router, dependencies=_beta_gate)
 app.include_router(app_agent_access_router, dependencies=_beta_gate)
+app.include_router(app_agent_relations_router, dependencies=_beta_gate)
 app.include_router(app_org_invites_router, dependencies=_beta_gate)
 app.include_router(app_org_rooms_router, dependencies=_beta_gate)
 # No beta gate: invitees must be able to join right after signing up.

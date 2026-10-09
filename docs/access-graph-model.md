@@ -136,7 +136,7 @@ access_edge_events（只追加）
 
 回复策略**只能收窄，不能放宽**：名单里的人如果在图上没有路径，仍然不能使用 agent。
 
-规则表（由现有 `AgentRoomPolicyOverride` 扩展）：
+规则表：按群的规则沿用现有 `AgentRoomPolicyOverride`；按人的规则新建 `agent_sender_reply_rules`（`room_scope` 为空表示所有群）。原设想的合并表结构为：
 
 ```
 agent_reply_rules
@@ -207,7 +207,7 @@ Task = 请求人 → agent + 路径快照 + 输入 + 状态 + 交付物 + 验收
 | 1 | 新建 `principals`、`access_edges`、`access_edge_deps`、`access_edge_events`；组织加 `og_`；迁移脚本。过渡期旧表仍是数据源，Hub 后台每 60 秒把旧表投影到边表（`hub/services/access_graph_sync.py`，可重复执行、按 `source` 一一对应，变化写入事件表），代替逐个写入点的双写 |
 | 2 | `decide()` / `decide_many()`，影子模式：与现有判定对账，不一致只记日志 |
 | 3 | **已做**：ownership / membership / grant 边改为同事务写穿（session 钩子：涉及的旧表一有改动，提交前在同一事务里重投影，Postgres 上加 advisory lock 串行化；读边表前若有未投影改动先投影）；授权有效性（`grant_is_valid`，私聊准入和 inbox 都依赖它）改为以边表为准，旧逻辑并行对账。授权额外要求：签发人仍是 agent 当前 owner，被授权人 / agent / 组织都处于 active。**未做**：组织成员检查（`require_membership` 等）仍读旧表——它们在写事务里持行锁，等写入改为以边表为主时一起切；manage 推迟，它的使用次数计数是高频原子更新，需要先单独设计计数存储 |
-| 4 | 回复规则表；inbox 下发统一判定结果（执行档位 + 是否唤醒），daemon 以 Hub 为准（发一版 daemon） |
+| 4 | **已做**：`InboxMessage.hub_decision`（是否唤醒 + 执行档位 full / collaborator / consult / deny + 依据），daemon 照做、本地配置只能收紧；`access_edges.capability`（好友、公开、agent 在群里的成员边），存量关系 full、新关系 consult、组织群固定 consult，由 owner 通过 `PATCH /api/agents/{id}/access/capability` 调整，投影不覆盖；按人回复规则 `agent_sender_reply_rules` + `/api/agents/{id}/reply-rules`。前端界面待做 |
 | 5 | 联系人、拉黑、消息策略、群成员切到边表；取消"同房间即可私聊" |
 | 6 | `Agent.user_id` 切到 ownership 边；停止双写，删除旧表和旧字段 |
 | 后续 | Task；offer / order 下单 |
@@ -216,7 +216,7 @@ Task = 请求人 → agent + 路径快照 + 输入 + 状态 + 交付物 + 验收
 
 已定（2026-10-08）：
 
-- 好友（connection）边默认能力为 consult：可以互相交流，agent 按只读执行。存量好友边迁移时同样写为 consult；owner 可以单独调高某一条边。生效时间为 daemon 以 Hub 判定为准之后（第 8 节 PR 4）。
+- 个人模式关系（好友、个人群里的 agent、公开 agent）：迁移 009 运行之前已存在的关系为 full，之后新建的默认 consult，owner 可逐条调高（2026-10-09 确认，替代此前"存量好友也改 consult"）。组织群固定 consult，组织内授权按授权角色。
 
 以后再定（做到对应功能时）：
 

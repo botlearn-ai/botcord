@@ -327,10 +327,51 @@ class AccessEdge(Base):
     status: Mapped[str] = mapped_column(String(16), default="active", server_default="active")
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     issued_by: Mapped[str | None] = mapped_column(String(32))
+    # How far a non-owner may make the agent act through this edge
+    # ('consult' | 'full'); used by connection / offer / agent member edges.
+    # Owned by the edge: set when the edge is created, then only changed by the
+    # agent owner — the legacy projection never overwrites it.
+    capability: Mapped[str | None] = mapped_column(String(16))
     source: Mapped[str | None] = mapped_column(String(96), unique=True)
     expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AccessGraphSetting(Base):
+    """Small key/value settings for the access graph (e.g. the legacy cutoff)."""
+
+    __tablename__ = "access_graph_settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
+class AgentSenderReplyRule(Base):
+    """Per-sender attention rule for an agent, optionally scoped to one room.
+
+    Resolution, most specific first: room + sender → room override
+    (``AgentRoomPolicyOverride``) → sender (all rooms) → agent default.
+    Reply rules only decide whether a message wakes the agent; they never
+    widen what the sender may do (docs/access-graph-model.md §5).
+    """
+
+    __tablename__ = "agent_sender_reply_rules"
+    __table_args__ = (
+        Index("uq_asrr_agent_sender_room", "agent_id", "sender_id", "room_scope", unique=True),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agent_id: Mapped[str] = mapped_column(String(32), ForeignKey("agents.agent_id", ondelete="CASCADE"))
+    sender_id: Mapped[str] = mapped_column(String(32))
+    # '' = every room; otherwise a room id.
+    room_scope: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    attention_mode: Mapped[AttentionMode] = mapped_column(
+        Enum(AttentionMode, name="attentionmode", native_enum=False, length=32)
+    )
+    keywords: Mapped[str | None] = mapped_column(Text)
+    muted_until: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

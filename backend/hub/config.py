@@ -161,6 +161,8 @@ PRESENCE_PROCESSING_FAILSAFE_TIMEOUT_SECONDS: float = float(
 # Re-project ownership / membership / grant edges before every commit that
 # touches their legacy tables (hub/services/access_graph_hooks.py).
 ACCESS_GRAPH_WRITE_THROUGH: bool = os.getenv("ACCESS_GRAPH_WRITE_THROUGH", "true").lower() in ("1", "true", "yes")
+# Attach InboxMessage.hub_decision (wake + execution profile) to inbox items.
+HUB_DECISION_ENABLED: bool = os.getenv("HUB_DECISION_ENABLED", "true").lower() in ("1", "true", "yes")
 # Compare access-graph decisions with the legacy checks and log disagreements
 # (logger "hub.access_shadow"). Never changes an outcome.
 ACCESS_DECIDE_SHADOW: bool = os.getenv("ACCESS_DECIDE_SHADOW", "true").lower() in ("1", "true", "yes")

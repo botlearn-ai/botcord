@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  hubWake,
   isOwnerTrustedInbound,
   isRestrictedTurn,
   resolveTurnExecution,
@@ -139,3 +140,63 @@ describe("team room space_context", () => {
       .toEqual({ profile: "default" });
   });
 });
+
+describe("hub_decision (PR 4)", () => {
+  const cc = { runtime: "claude-code" } as const;
+  const grant = {
+    grant_id: "g1", space_id: "s1", role: "collaborator", active: true,
+    requester_id: "hu_a", workspace_path: "/repo", allowed_commands: ["cat"],
+  };
+  const d = (profile: string, basis = "connection", wake = true) => ({ hub_decision: { wake, wake_reason: "x", profile, basis } });
+
+  it("executes the Hub's profile", () => {
+    expect(resolveTurnExecution(msg({ raw: d("full", "owner") }), cc, botcord).profile).toBe("default");
+    expect(resolveTurnExecution(msg({ raw: d("full") }), cc, botcord).profile).toBe("default");
+    expect(resolveTurnExecution(msg({ raw: d("consult") }), cc, botcord).profile).toBe("restricted");
+    expect(resolveTurnExecution(msg({ raw: { ...d("collaborator", "grant"), access_context: grant } }), cc, botcord))
+      .toMatchObject({ profile: "collaborator", grant: { grantId: "g1" } });
+    // Collaborator without a live grant context drops to read-only.
+    expect(resolveTurnExecution(msg({ raw: d("collaborator", "grant") }), cc, botcord).profile).toBe("restricted");
+  });
+
+  it("overrides the legacy owner-trust and full-permission defaults", () => {
+    // Legacy would trust sender_same_owner; the Hub says consult.
+    expect(resolveTurnExecution(msg({ raw: { sender_same_owner: true, ...d("consult") } }), cc, botcord).profile)
+      .toBe("restricted");
+  });
+
+  it("lets local config tighten but never widen", () => {
+    const strict = { runtime: "claude-code", nonOwnerExecution: "restricted" } as const;
+    expect(resolveTurnExecution(msg({ raw: d("full", "connection") }), strict, botcord).profile).toBe("restricted");
+    expect(resolveTurnExecution(msg({ raw: d("full", "owner_channel") }), strict, botcord).profile).toBe("default");
+    const loose = { runtime: "claude-code", nonOwnerExecution: "full" } as const;
+    expect(resolveTurnExecution(msg({ raw: d("consult") }), loose, botcord).profile).toBe("restricted");
+  });
+
+  it("refuses denied turns and runtimes that cannot enforce restriction", () => {
+    expect(resolveTurnExecution(msg({ raw: d("deny", "grant_inactive") }), cc, botcord))
+      .toMatchObject({ profile: "refused", reason: "grant_inactive" });
+    expect(resolveTurnExecution(msg({ raw: d("deny", "no_path") }), cc, botcord))
+      .toMatchObject({ profile: "refused", reason: "hub_denied" });
+    expect(resolveTurnExecution(msg({ raw: d("consult") }), { runtime: "kimi" }, botcord))
+      .toMatchObject({ profile: "refused", reason: "runtime_unsupported" });
+  });
+
+  it("uses the weakest profile in a batch and falls back to legacy when any entry lacks a decision", () => {
+    const batch = (...entries: unknown[]) => msg({ raw: { batch: entries } });
+    expect(resolveTurnExecution(batch(d("full"), d("consult")), cc, botcord).profile).toBe("restricted");
+    expect(resolveTurnExecution(batch(d("consult"), { sender_same_owner: true }), cc, botcord).profile).toBe("default");
+  });
+
+  it("wakes when any entry's Hub decision wakes; null without decisions", () => {
+    const batch = (...entries: unknown[]) => msg({ raw: { batch: entries } });
+    expect(hubWake(batch(d("full", "room", false), d("full", "room", true)))).toBe(true);
+    expect(hubWake(batch(d("full", "room", false)))).toBe(false);
+    expect(hubWake(msg({ raw: {} }))).toBeNull();
+  });
+
+  it("leaves third-party channels to their owner allowlists", () => {
+    expect(resolveTurnExecution(msg({ raw: d("deny") }), cc, { botcordChannel: false }).profile).toBe("default");
+  });
+});
+
