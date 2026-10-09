@@ -2279,6 +2279,7 @@ async def mark_room_read(
 @router.get("/rooms/{room_id}/messages")
 async def get_room_messages(
     room_id: str,
+    activity_for: str | None = Query(default=None, max_length=6500),
     before: str | None = Query(default=None),
     after: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
@@ -2480,6 +2481,15 @@ async def get_room_messages(
         msg_ids,
     )
 
+    from hub.services.room_message_activity import load_room_message_activity
+
+    tracked_ids = list(dict.fromkeys((activity_for or "").split(","))) if activity_for else []
+    if len(tracked_ids) > 100:
+        raise HTTPException(status_code=422, detail="Too many activity message IDs")
+    activity = await load_room_message_activity(
+        db, room_id, list(dict.fromkeys(msg_ids + tracked_ids))
+    ) if is_member else {}
+
     messages = []
     for rec in records:
         parsed = extract_text_from_envelope(rec.envelope_json)
@@ -2515,9 +2525,12 @@ async def get_room_messages(
         }
         if is_member:
             msg["mentioned"] = rec.mentioned
+            msg["reply_activity"] = activity.get(rec.msg_id, [])
         messages.append(msg)
 
-    return {"messages": messages, "has_more": has_more}
+    return {"messages": messages, "has_more": has_more, "activity_updates": {
+        msg_id: activity.get(msg_id, []) for msg_id in tracked_ids
+    } if is_member else {}}
 
 
 @router.post("/rooms/{room_id}/messages/{msg_id}/recall")

@@ -1050,7 +1050,18 @@ export const useDashboardChatStore = create<DashboardChatState>()(
               await get().loadRoomMessages(roomId, { force: Boolean(opts?.expectedHubMsgId) });
               return;
             }
-            const result = await api.getRoomMessages(roomId, { after: newestPersisted.hub_msg_id, limit: 50 });
+            const activityFor = existing.filter((m) =>
+              m.sender_kind === "human" && !m.hub_msg_id.startsWith("tmp_")
+              && (!m.reply_activity || m.reply_activity.some((a) => a.status !== "completed"))
+            ).slice(-100).map((m) => m.msg_id);
+            const result = await api.getRoomMessages(roomId, { after: newestPersisted.hub_msg_id, limit: 50, activityFor });
+            if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessagePollRequestByRoom)) return;
+            if (result.activity_updates && Object.keys(result.activity_updates).length) {
+              set((state) => ({ messages: { ...state.messages, [roomId]: (state.messages[roomId] || []).map((m) =>
+                Object.prototype.hasOwnProperty.call(result.activity_updates, m.msg_id)
+                  ? { ...m, reply_activity: result.activity_updates![m.msg_id] } : m
+              ) } }));
+            }
             if (result.messages.length > 0) {
               if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessagePollRequestByRoom)) return;
               const newMsgs = result.messages.reverse();

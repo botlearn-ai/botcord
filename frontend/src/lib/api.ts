@@ -398,8 +398,9 @@ export const api = {
     return apiGet<DashboardOverview>("/api/dashboard/overview");
   },
 
-  getRoomMessages(roomId: string, opts?: { before?: string; after?: string; limit?: number }) {
+  getRoomMessages(roomId: string, opts?: { before?: string; after?: string; limit?: number; activityFor?: string[] }) {
     const params: Record<string, string> = {};
+    if (opts?.activityFor?.length) params.activity_for = opts.activityFor.join(",");
     if (opts?.before) params.before = opts.before;
     if (opts?.after) params.after = opts.after;
     if (opts?.limit) params.limit = String(opts.limit);

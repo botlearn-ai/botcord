@@ -153,7 +153,19 @@ export interface ReplyPreview {
   deleted: boolean;
 }
 
+export interface RoomReplyActivity {
+  agent_id: string;
+  agent_name: string;
+  avatar_url?: string | null;
+  status: "waiting" | "processing" | "completed" | "failed";
+  error?: string | null;
+}
+
 export interface DashboardMessage {
+  reply_activity?: RoomReplyActivity[];
+  send_status?: "sending" | "sent" | "failed";
+  send_error?: string;
+  retry_reply_to?: string | null;
   hub_msg_id: string;
   msg_id: string;
   sender_id: string;
@@ -399,6 +411,7 @@ export interface RoomMessagesViewerContext {
 }
 
 export interface DashboardMessageResponse {
+  activity_updates?: Record<string, RoomReplyActivity[]>;
   messages: DashboardMessage[];
   has_more: boolean;
   viewer_context: RoomMessagesViewerContext;
