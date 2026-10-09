@@ -91,7 +91,7 @@ jobs:
         uses: changesets/action@v1
         with:
           version: pnpm exec changeset version
-          publish: pnpm exec changeset publish
+          publish: pnpm release
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
         env:
