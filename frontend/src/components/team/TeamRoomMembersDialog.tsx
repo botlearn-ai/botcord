@@ -11,6 +11,9 @@ import {
   type OrgParticipant,
   type OrgRoom,
 } from "@/lib/org-rooms";
+import { replyRulesApi } from "@/lib/team-access";
+import { useDashboardChatStore } from "@/store/useDashboardChatStore";
+import RoomReplyModeControl from "./RoomReplyModeControl";
 
 const row = "flex items-center gap-3 rounded-xl px-3 py-2.5";
 const smallButton =
@@ -88,11 +91,64 @@ export default function TeamRoomMembersDialog({
   const agents = participants.filter((p) => p.kind === "agent");
   const addableAgents = members.agents.filter((a) => a.status === "active" && !inRoom.has(a.agent_id));
   const addableUsers = members.users.filter((u) => u.status === "active" && !inRoom.has(u.human_id));
+  // Agents here that the viewer owns: their reply settings for this room are editable.
+  const ownedHere = agents.filter((p) => ownedAgentIds.includes(p.id));
+  const ownedKey = ownedHere.map((p) => p.id).join(",");
+  // agentId -> human ids whose messages wake it here without an @.
+  const [wakers, setWakers] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    if (!ownedKey) return;
+    let cancelled = false;
+    void Promise.all(
+      ownedKey.split(",").map(async (agentId) => {
+        const { rules } = await replyRulesApi.list(agentId);
+        return [
+          agentId,
+          rules
+            .filter((r) => r.room_id === room.room_id && r.attention_mode === "always")
+            .map((r) => r.sender_id),
+        ] as const;
+      }),
+    )
+      .then((entries) => {
+        if (!cancelled) setWakers(Object.fromEntries(entries));
+      })
+      .catch((cause) => {
+        if (!cancelled) setError(cause);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ownedKey, room.room_id]);
+  const replyChanged = () => useDashboardChatStore.getState().bumpRoomMembersVersion(room.room_id);
+  const toggleWake = async (agentId: string, senderId: string, on: boolean) => {
+    const key = `wake:${agentId}:${senderId}`;
+    if (busy) return;
+    setBusy(key);
+    setError(null);
+    try {
+      if (on)
+        await replyRulesApi.put(agentId, { sender_id: senderId, room_id: room.room_id, attention_mode: "always" });
+      else await replyRulesApi.remove(agentId, senderId, room.room_id);
+      if (mounted.current)
+        setWakers((prev) => {
+          const rest = (prev[agentId] ?? []).filter((id) => id !== senderId);
+          return { ...prev, [agentId]: on ? [...rest, senderId] : rest };
+        });
+      replyChanged();
+    } catch (cause) {
+      if (mounted.current) setError(cause);
+    } finally {
+      if (mounted.current) setBusy(null);
+    }
+  };
 
   const participantRow = (p: OrgParticipant) => {
     const removable = canRemoveParticipant(p, { space, viewerId, myRole, ownedAgentIds, isDm });
+    const ownsAgent = p.kind === "agent" && ownedAgentIds.includes(p.id);
+    const wakeToggles = p.kind === "human" && !isDm ? ownedHere : [];
     return (
-      <li key={p.id} className={row}>
+      <li key={p.id} className={`${row} flex-wrap`}>
         <span
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
             p.kind === "agent" ? "bg-neon-cyan/10 text-neon-cyan" : "bg-glass-bg text-text-secondary"
@@ -126,6 +182,46 @@ export default function TeamRoomMembersDialog({
             {busy === `rm:${p.id}` ? <Loader2 size={13} className="animate-spin" /> : null}
             {t("移除", "Remove")}
           </button>
+        )}
+        {ownsAgent && !isDm && (
+          <div className="w-full pl-11">
+            <span className="mb-1 block text-[11px] text-text-secondary">
+              {t("在这个房间什么时候回复", "When it replies in this room")}
+            </span>
+            <RoomReplyModeControl
+              agentId={p.id}
+              roomId={room.room_id}
+              label={t(`${p.display_name} 在本房间的回复方式`, `${p.display_name}'s reply mode in this room`)}
+              onSaved={replyChanged}
+            />
+          </div>
+        )}
+        {wakeToggles.length > 0 && (
+          <div className="w-full space-y-1 pl-11">
+            {wakeToggles.map((agent) => {
+              const on = (wakers[agent.id] ?? []).includes(p.id);
+              const key = `wake:${agent.id}:${p.id}`;
+              return (
+                <label key={agent.id} className="flex cursor-pointer items-center gap-2 text-[11px] text-text-secondary">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    className="accent-neon-cyan"
+                    checked={on}
+                    disabled={busy != null}
+                    onChange={(e) => void toggleWake(agent.id, p.id, e.target.checked)}
+                  />
+                  <span className="min-w-0 break-words">
+                    {t(
+                      `说话不用 @，${agent.display_name} 也回复`,
+                      `Wakes ${agent.display_name} without @`,
+                    )}
+                  </span>
+                  {busy === key && <Loader2 size={11} className="animate-spin" />}
+                </label>
+              );
+            })}
+          </div>
         )}
       </li>
     );

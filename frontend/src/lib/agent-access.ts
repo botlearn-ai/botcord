@@ -72,7 +72,7 @@ export function grantRoleLabel(role: AgentAccessRole, zh: boolean): string {
 }
 
 export function grantExpiryLabel(
-  grant: AgentAccessGrant,
+  grant: Pick<AgentAccessGrant, "expires_at">,
   zh: boolean,
   now: Date = new Date(),
 ): string {

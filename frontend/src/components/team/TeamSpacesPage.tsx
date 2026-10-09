@@ -27,7 +27,10 @@ import {
 } from "@/lib/team-spaces";
 import { subscribeToPageReturn } from "@/lib/page-return";
 import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
-import AgentAccessGrants from "./AgentAccessGrants";
+import AgentAccessPanel from "./AgentAccessPanel";
+import AccessRequestsInbox from "./AccessRequestsInbox";
+import AccessOverviewSection from "./AccessOverviewSection";
+import { useToDecide } from "@/store/useTeamAccessStore";
 import OrgInviteLinks from "./OrgInviteLinks";
 import CreateAgentDialog from "@/components/dashboard/CreateAgentDialog";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -191,6 +194,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
       member: t("成员", "Member"),
     })[value] ?? value;
   const space = snapshot?.selected;
+  const toDecide = useToDecide(space?.id ?? "");
   const personal = space?.kind === "personal";
   const active =
     space?.status === "active" && space.membership.status === "active";
@@ -772,6 +776,13 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                       </button>
                     </div>
                   </form>
+                  <AccessRequestsInbox
+                    spaceId={space.id}
+                    agentNames={Object.fromEntries(
+                      snapshot.members.agents.map((a) => [a.agent_id, a.display_name]),
+                    )}
+                    hideWhenEmpty
+                  />
                   {showCreateAgent && (
                     <CreateAgentDialog
                       onClose={() => setShowCreateAgent(false)}
@@ -833,7 +844,18 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                                     }
                                   >
                                     <KeyRound size={16} />
-                                    {t("授权成员使用", "Share with members")}
+                                    {t("权限与回复", "Access & replies")}
+                                    {(() => {
+                                      const n = toDecide.filter((r) => r.agent_id === agent.agent_id).length;
+                                      return n ? (
+                                        <span
+                                          className="rounded-full bg-neon-cyan/15 px-1.5 text-[11px] tabular-nums text-neon-cyan"
+                                          aria-label={t(`${n} 个申请待处理`, `${n} pending requests`)}
+                                        >
+                                          {n}
+                                        </span>
+                                      ) : null;
+                                    })()}
                                   </button>
                                 )}
                               {manager && agent.status === "invited" && (
@@ -899,7 +921,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                             {sharingAgentId === agent.agent_id &&
                               agent.status === "active" &&
                               sponsor?.user_id === snapshot.user.id && (
-                                <AgentAccessGrants
+                                <AgentAccessPanel
                                   spaceId={space.id}
                                   agentId={agent.agent_id}
                                   agentName={agent.display_name}
@@ -1010,6 +1032,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                       {t("未开放", "Not available")}
                     </span>
                   </div>
+                  {manager && <AccessOverviewSection spaceId={space.id} />}
                 </section>}
               </>
             )

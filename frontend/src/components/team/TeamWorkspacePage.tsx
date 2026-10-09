@@ -39,6 +39,7 @@ import {
 } from "@/lib/org-rooms";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useToDecide, useTeamAccessStore } from "@/store/useTeamAccessStore";
 import UnreadBadge from "@/components/ui/UnreadBadge";
 import TeamSpacesPage from "./TeamSpacesPage";
 import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
@@ -378,6 +379,11 @@ export function TeamWorkspace({
     };
   }, [reload, messaging]);
   useEffect(() => setMembersOpen(false), [selectedId]);
+  // Owners: pending access requests on their Agents, badged on the Agent nav item.
+  const accessRequests = useToDecide(space.id).length;
+  useEffect(() => {
+    void useTeamAccessStore.getState().refreshToDecide(space.id);
+  }, [space.id, view]);
   const title = (c: OrgRoom) => orgRoomTitle(c, t("成员已离开", "Member has left"));
   const viewerNames = [snapshot.human?.display_name, user.display_name];
   const ownedAgentIds = (user.agents ?? []).map((a) => a.agent_id);
@@ -435,15 +441,31 @@ export function TeamWorkspace({
       Icon: Users,
       count: activeUsers,
     },
-    { id: "agents" as const, label: "Agent", Icon: Bot, count: activeAgents },
+    {
+      id: "agents" as const,
+      label: "Agent",
+      Icon: Bot,
+      count: activeAgents,
+      badge: accessRequests,
+      badgeLabel: t(`${accessRequests} 个权限申请待处理`, `${accessRequests} access requests to review`),
+    },
     {
       id: "shared" as const,
-      label: t("可用 Agent", "Shared Agents"),
-      short: t("共享", "Shared"),
+      label: t("Agent 目录", "Agent directory"),
+      short: t("目录", "Directory"),
       Icon: Share2,
       count: null,
     },
-  ] as { id: TeamView; label: string; short?: string; Icon: typeof MessageSquare; count: number | null; unread?: boolean }[];
+  ] as {
+    id: TeamView;
+    label: string;
+    short?: string;
+    Icon: typeof MessageSquare;
+    count: number | null;
+    unread?: boolean;
+    badge?: number;
+    badgeLabel?: string;
+  }[];
   // Mobile hides the bottom bar while a conversation is open (full-screen thread).
   const mobileThreadOpen = inbox && Boolean(selectedId);
   return (
@@ -492,7 +514,7 @@ export function TeamWorkspace({
           className="hidden gap-1 p-3 md:flex md:flex-col"
           aria-label={t("团队导航", "Team navigation")}
         >
-          {navigation.map(({ id, label, Icon, count, unread: isUnread }) => (
+          {navigation.map(({ id, label, Icon, count, unread: isUnread, badge, badgeLabel }) => (
             <Link
               key={id}
               href={teamHref(space.id, id)}
@@ -505,6 +527,7 @@ export function TeamWorkspace({
             >
               <Icon size={18} />
               <span className="flex-1">{label}</span>
+              {badge ? <UnreadBadge count={badge} label={badgeLabel} /> : null}
               {count != null &&
                 (isUnread ? (
                   <UnreadBadge count={count} />
@@ -695,6 +718,7 @@ export function TeamWorkspace({
             {current && current.joined && !error ? (
               <TeamRoomPane
                 key={`${space.id}:${current.room_id}`}
+                spaceId={space.id}
                 roomId={current.room_id}
                 title={title(current)}
                 allowHumanSend={current.allow_human_send !== false}
@@ -806,7 +830,7 @@ export function TeamWorkspace({
                 : view === "agents"
                 ? t("组织 Agent", "Organization Agents")
                 : view === "shared"
-                ? t("可用 Agent", "Shared Agents")
+                ? t("Agent 目录", "Agent directory")
                 : t("组织设置", "Organization settings")}
             </h1>
             <Link className="text-sm text-neon-cyan" href={teamHref(space.id)}>
@@ -817,12 +841,7 @@ export function TeamWorkspace({
             {view === "shared" ? (
               <SharedAgentsPanel
                 spaceId={space.id}
-                myAgents={members.agents.filter(
-                  (a) =>
-                    a.status === "active" &&
-                    (a.sponsor_user_membership_id === space.membership.id ||
-                      ownedAgentIds.includes(a.agent_id))
-                )}
+                agentsHref={teamHref(space.id, "agents")}
                 onOpenRoom={(roomId) => openRoom(roomId, "messages")}
               />
             ) : (
@@ -875,7 +894,7 @@ export function TeamWorkspace({
           className="liquid-rail mt-auto flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 items-stretch justify-around border-t border-glass-border px-1 pt-1 pb-[env(safe-area-inset-bottom)] md:hidden"
           aria-label={t("团队导航", "Team navigation")}
         >
-          {navigation.map(({ id, label, short, Icon, count, unread: isUnread }) => (
+          {navigation.map(({ id, label, short, Icon, count, unread: isUnread, badge, badgeLabel }) => (
             <Link
               key={id}
               href={teamHref(space.id, id)}
@@ -890,6 +909,9 @@ export function TeamWorkspace({
                 {isUnread && count != null && (
                   <UnreadBadge count={count} size="sm" className="absolute -right-3 -top-1.5" />
                 )}
+                {badge ? (
+                  <UnreadBadge count={badge} label={badgeLabel} size="sm" className="absolute -right-3 -top-1.5" />
+                ) : null}
               </span>
               <span className="max-w-full truncate">{short ?? label}</span>
             </Link>

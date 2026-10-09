@@ -114,6 +114,8 @@ async function request<T>(
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
+/** Shared user-auth request helper for Team endpoints (no Agent actor). */
+export const spaceRequest = request;
 const part = encodeURIComponent;
 const spacePath = (id: string) => `/api/spaces/${part(id)}`;
 const post = (body?: unknown): RequestInit => ({
@@ -364,6 +366,30 @@ export function spaceError(error: unknown, zh: boolean): string {
     room_not_found: [
       "房间不存在或你已失去访问权限。",
       "This room is unavailable or you no longer have access.",
+    ],
+    cannot_request_own_agent: [
+      "这是你自己的 Agent，不需要申请。",
+      "This is your own Agent; no request is needed.",
+    ],
+    access_already_granted: [
+      "你已经有这个权限了，刷新后即可使用。",
+      "You already have this access. Refresh to use it.",
+    ],
+    request_not_found: [
+      "申请不存在或已被撤回，请刷新。",
+      "This request no longer exists. Refresh to continue.",
+    ],
+    request_not_pending: [
+      "申请已被处理，请刷新查看最新状态。",
+      "This request was already handled. Refresh to see its status.",
+    ],
+    invalid_allowed_command: [
+      "允许执行的命令只能包含字母、数字、空格和 _ . / : @ = + -，每条最多 64 个字符。",
+      "Allowed commands may only use letters, digits, spaces and _ . / : @ = + -, up to 64 characters each.",
+    ],
+    agent_not_found: [
+      "Agent 不存在，或你不是它的所有者。",
+      "This Agent doesn't exist or you don't own it.",
     ],
     organization_role_required: [
       "当前成员角色不允许执行此操作。",

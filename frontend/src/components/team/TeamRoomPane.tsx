@@ -14,16 +14,19 @@ import MessageList from "@/components/dashboard/MessageList";
 import RoomHumanComposer from "@/components/dashboard/RoomHumanComposer";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
+import { RoomAgentChips, RoomReplyHints, useRoomAgentAccess } from "./TeamRoomAgentAccess";
 
 export const TEAM_ROOM_POLL_MS = 5000;
 
 export default function TeamRoomPane({
+  spaceId,
   roomId,
   title,
   allowHumanSend,
   onBack,
   onOpenMembers,
 }: {
+  spaceId: string;
   roomId: string;
   title: string;
   allowHumanSend: boolean;
@@ -32,6 +35,7 @@ export default function TeamRoomPane({
 }) {
   const zh = useLanguage() === "zh";
   const opened = useDashboardUIStore((s) => s.openedRoomId === roomId);
+  const agentAccess = useRoomAgentAccess(spaceId, roomId);
 
   useEffect(() => {
     const ui = useDashboardUIStore.getState();
@@ -62,12 +66,16 @@ export default function TeamRoomPane({
         onOpenMembers={onOpenMembers}
         membersLabel={zh ? "成员与 Agent" : "Members & Agents"}
       />
+      <RoomAgentChips agents={agentAccess} />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {opened && <MessageList key={roomId} />}
       </div>
       <div className="shrink-0 border-t border-glass-border px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] max-md:px-2">
         {allowHumanSend ? (
-          <RoomHumanComposer roomId={roomId} />
+          <>
+            <RoomReplyHints agents={agentAccess} />
+            <RoomHumanComposer roomId={roomId} />
+          </>
         ) : (
           <p className="text-center text-xs text-text-secondary/60">
             {zh ? "该房间暂不允许成员发言" : "Members can't send messages in this room"}

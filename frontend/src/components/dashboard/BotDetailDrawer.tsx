@@ -48,6 +48,7 @@ import BotWalletTab from "./BotWalletTab";
 import DashboardSelect from "./DashboardSelect";
 import AgentSkillsTab from "./AgentSkillsTab";
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
+import AgentDefaultPermission from "./AgentDefaultPermission";
 import { mergeRuntimeFileContentResult, runtimeFileNeedsContentLoad } from "@/lib/runtime-files";
 
 type TabKey = "overview" | "wallet" | "settings" | "skills" | "files";
@@ -917,6 +918,8 @@ export function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerC
           />
         </label>
       </section>
+
+      <AgentDefaultPermission agentId={agentId} className="liquid-card rounded-2xl border border-glass-border p-4" />
 
       <section className="liquid-card rounded-2xl border border-glass-border p-4">
         <h3 className="mb-1 text-sm font-semibold text-text-primary">{t.settings.defaultReplyTitle}</h3>

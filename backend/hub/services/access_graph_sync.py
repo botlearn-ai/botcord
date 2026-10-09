@@ -122,9 +122,12 @@ async def legacy_full_before(db: AsyncSession) -> datetime.datetime | None:
     return _aware(datetime.datetime.fromisoformat(raw)) if raw else None
 
 
-def _initial_capability(created_at, cutoff) -> str:
+def _initial_capability(created_at, cutoff, default: str | None = None) -> str:
+    """Pre-cutoff relations keep 'full'; newer ones start at the agent's default."""
     created_at = _aware(created_at)
-    return "full" if cutoff is not None and created_at is not None and created_at < cutoff else "consult"
+    if cutoff is not None and created_at is not None and created_at < cutoff:
+        return "full"
+    return default if default in ("consult", "full") else "consult"
 
 
 def _lifecycle(expires_at, revoked_at, now) -> str:
@@ -185,7 +188,8 @@ async def _desired_edges(db: AsyncSession, now: datetime.datetime, kinds: set[st
         if (direct or room_invite) and want("offer"):
             edges.append(_Edge(
                 f"offer:{agent.agent_id}", "offer", PUBLIC_PRINCIPAL_ID, "public", agent.agent_id, "agent",
-                role="consult", issued_by=owner_id, capability=_initial_capability(agent.created_at, cutoff),
+                role="consult", issued_by=owner_id,
+                capability=_initial_capability(agent.created_at, cutoff, agent.non_owner_capability),
                 terms={"direct": direct, "room_invite": room_invite, "price": 0,
                        "audience": {"human": bool(agent.allow_human_sender), "agent": bool(agent.allow_agent_sender)}},
             ))
@@ -226,6 +230,7 @@ async def _desired_rest(db, now, kinds, human_by_user, org_by_space) -> list[_Ed
         return kinds is None or kind in kinds
 
     cutoff = await legacy_full_before(db)
+    agent_defaults = dict((await db.execute(select(Agent.agent_id, Agent.non_owner_capability))).all())
 
     edges: list[_Edge] = []
     # grants
@@ -263,7 +268,8 @@ async def _desired_rest(db, now, kinds, human_by_user, org_by_space) -> list[_Ed
         edges.append(_Edge(
             f"contact:{c.id}", "connection", c.contact_agent_id, _participant_kind(c.peer_type),
             c.owner_id, _participant_kind(c.owner_type), role="consult", issued_by=c.owner_id,
-            terms={"alias": c.alias} if c.alias else {}, capability=_initial_capability(c.created_at, cutoff),
+            terms={"alias": c.alias} if c.alias else {},
+            capability=_initial_capability(c.created_at, cutoff, agent_defaults.get(c.owner_id)),
         ))
     pending = select(ContactRequest).where(ContactRequest.state == ContactRequestState.pending)
     for r in (await db.scalars(pending)).all() if want("connection") else ():
@@ -289,7 +295,8 @@ async def _desired_rest(db, now, kinds, human_by_user, org_by_space) -> list[_Ed
         kind = _participant_kind(m.participant_type)
         capability = None
         if kind == "agent":
-            capability = "consult" if m.room_id in org_rooms else _initial_capability(m.joined_at, cutoff)
+            capability = ("consult" if m.room_id in org_rooms
+                          else _initial_capability(m.joined_at, cutoff, agent_defaults.get(m.agent_id)))
         edges.append(_Edge(
             f"room_member:{m.id}", "member", m.agent_id, kind,
             m.room_id, "conversation", role=role, terms=terms, capability=capability,
