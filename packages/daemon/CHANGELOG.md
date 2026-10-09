@@ -1,5 +1,17 @@
 # @botcord/daemon
 
+## 0.7.0
+
+### Minor Changes
+
+- 0897993: Execute the Hub's per-message decision (`InboxMessage.hub_decision`): whether the message wakes the agent and how far it may make the agent act (full / collaborator / read-only / refused). Local `nonOwnerExecution` can only tighten it. Messages without a Hub decision keep the previous behavior.
+
+### Patch Changes
+
+- Updated dependencies [0897993]
+  - @botcord/protocol-core@0.5.0
+  - @botcord/cli@0.1.24
+
 ## 0.6.1
 
 ### Patch Changes
