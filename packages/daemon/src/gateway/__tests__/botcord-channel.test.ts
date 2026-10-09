@@ -550,11 +550,19 @@ describe("createBotCordChannel — inbox normalization", () => {
         room_id: "rm_oc_owner",
         text: "owner text",
       }),
+      // Team-mode organization DM (member <-> agent).
+      makeInbox({
+        hub_msg_id: "m_sdm",
+        room_id: "rm_sdm_4e232f38c2d98e6b31b3",
+        text: "org dm text",
+      }),
     ]);
     try {
       const dm = emits.find((e) => e.message.id === "m_dm")!.message;
       const oc = emits.find((e) => e.message.id === "m_oc")!.message;
+      const sdm = emits.find((e) => e.message.id === "m_sdm")!.message;
       expect(dm.conversation.kind).toBe("direct");
+      expect(sdm.conversation.kind).toBe("direct");
       expect(oc.conversation.kind).toBe("direct");
       expect(oc.trace?.streamable).toBe(true);
       expect(oc.sender.kind).toBe("user");

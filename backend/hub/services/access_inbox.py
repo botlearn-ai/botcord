@@ -22,11 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.enums import AttentionMode
 from hub.models import PUBLIC_PRINCIPAL_ID, AccessEdge, Agent, AgentSenderReplyRule
-from hub.policy import EffectiveAttention, resolve_effective_attention
+from hub.policy import EffectiveAttention, is_direct_room_id, resolve_effective_attention
 from hub.services.access_decide import decide_execution_many
 
 OWNER_CHAT_PREFIX = "rm_oc_"
-DM_PREFIX = "rm_dm_"
 # source_type values that identify owner-issued inbound (mirrors the daemon).
 OWNER_SOURCE_TYPES = {"dashboard_user_chat", "cloud_agent_run", "botcord_schedule", "cloud_gateway_ingress"}
 _RANK = {"deny": 0, "consult": 1, "collaborator": 2, "full": 3}
@@ -145,7 +144,7 @@ async def decide_inbox(
     out: dict[str, dict] = {}
     for item in items:
         room = item.room_id or ""
-        is_dm = room.startswith(DM_PREFIX)
+        is_dm = is_direct_room_id(room)
         path = paths.get(item.sender_id)
         ctx = access_contexts.get(item.sender_id)
 

@@ -168,3 +168,19 @@ async def test_wake_rules_and_sender_precedence(db, setup):  # noqa: F811
     await db.commit()
     out = await decide_inbox(db, agent=barry, items=[item(1, hu["Alice"], "rm_dev", text="plain")], access_contexts={})
     assert out["h1"]["wake"] is True
+
+
+@pytest.mark.asyncio
+async def test_org_dm_is_direct(db, setup):  # noqa: F811
+    """Team-mode DMs (rm_sdm_*) always wake and use DM rules, like rm_dm_*."""
+    from hub.policy import is_direct_room_id, resolve_effective_attention
+
+    barry, hu = setup["barry"], setup["hu"]
+    assert is_direct_room_id("rm_sdm_4e232f38c2d98e6b31b3") and not is_direct_room_id("rm_dev")
+    barry.default_attention = AttentionMode.mention_only
+    await db.commit()
+    eff = await resolve_effective_attention(db, agent=barry, room_id="rm_sdm_4e232f38c2d98e6b31b3")
+    assert eff.source == "dm_forced"
+    out = await decide_inbox(db, agent=barry, items=[item(1, hu["Danny"], "rm_sdm_4e232f38c2d98e6b31b3", text="hi")],
+                             access_contexts={})
+    assert (out["h1"]["wake"], out["h1"]["wake_reason"], out["h1"]["profile"]) == (True, "direct", "full")

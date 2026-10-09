@@ -16,6 +16,7 @@
  */
 import { sanitizeUntrustedContent } from "./gateway/index.js";
 import type { GatewayInboundMessage } from "./gateway/index.js";
+import { isDirectRoomId } from "./gateway/direct-room.js";
 
 /** Subset of Hub `/hub/rooms/:id` needed to render the block. */
 export interface RoomInfoSnapshot {
@@ -110,7 +111,7 @@ export function renderRoomContextBlock(
 export function shouldInjectRoomContext(message: GatewayInboundMessage): boolean {
   if (message.conversation.kind !== "group") return false;
   const id = message.conversation.id;
-  if (id.startsWith("rm_dm_")) return false;
+  if (isDirectRoomId(id)) return false;
   if (id.startsWith("rm_oc_")) return false;
   return true;
 }

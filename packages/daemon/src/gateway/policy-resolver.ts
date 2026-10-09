@@ -23,6 +23,7 @@
  */
 
 import type { AttentionPolicy } from "@botcord/protocol-core";
+import { isDirectRoomId } from "./direct-room.js";
 
 export type DaemonAttentionPolicy = Omit<AttentionPolicy, "mode"> & {
   mode: AttentionPolicy["mode"] | "allowed_senders";
@@ -83,7 +84,7 @@ function maybeForceDirectConversation(
 
 function isDirectConversation(roomId: string): boolean {
   return (
-    roomId.startsWith("rm_dm_") ||
+    isDirectRoomId(roomId) ||
     roomId.startsWith("telegram:user:") ||
     roomId.startsWith("wechat:user:") ||
     roomId.startsWith("feishu:user:")

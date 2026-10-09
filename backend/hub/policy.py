@@ -307,8 +307,17 @@ class EffectiveAttention:
     source: EffectiveSource = "global"
 
 
+# One-to-one rooms: personal DMs and organization DMs (Team mode, see
+# hub/services/org_rooms.py). Everything else with an rm_ id is a group room.
+DIRECT_ROOM_PREFIXES = ("rm_dm_", "rm_sdm_")
+
+
+def is_direct_room_id(room_id: str | None) -> bool:
+    return bool(room_id and room_id.startswith(DIRECT_ROOM_PREFIXES))
+
+
 def _is_dm_room(room_id: str | None) -> bool:
-    return bool(room_id and room_id.startswith("rm_dm_"))
+    return is_direct_room_id(room_id)
 
 
 def _decode_keywords(raw: str | None) -> list[str]:

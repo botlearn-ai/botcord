@@ -29,6 +29,7 @@ import type {
 import type { Gateway } from "../gateway.js";
 import { sanitizeUntrustedContent } from "./sanitize.js";
 import { revokeAgent } from "../../provision.js";
+import { isDirectRoomId } from "../direct-room.js";
 
 const RECONNECT_BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000];
 const RECONNECT_JITTER_RATIO = 0.25;
@@ -38,7 +39,6 @@ const WS_STALE_TIMEOUT_MS = 60_000;
 const MAX_AUTH_FAILURES = 5;
 const SEEN_MESSAGES_CAP = 500;
 const OWNER_CHAT_PREFIX = "rm_oc_";
-const DM_ROOM_PREFIX = "rm_dm_";
 const INBOX_POLL_LIMIT = 50;
 const INBOX_LEASE_RENEW_INTERVAL_MS = 40_000;
 const CHANNEL_PERMANENT_STOP = "channel_permanent_stop";
@@ -338,7 +338,7 @@ function normalizeInbox(
   const ownerTrust = isOwnerTrust(msg);
   const text = ownerTrust ? rawText : sanitizeUntrustedContent(rawText);
 
-  const isDm = msg.room_id.startsWith(DM_ROOM_PREFIX);
+  const isDm = isDirectRoomId(msg.room_id);
   const isOwnerChat = msg.room_id.startsWith(OWNER_CHAT_PREFIX);
   const sourceType = msg.source_type as string | undefined;
   const senderKind: "user" | "agent" =
