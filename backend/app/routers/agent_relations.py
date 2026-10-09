@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import RequestContext, require_user
 from app.routers.spaces import transaction
 from hub.enums import AttentionMode
-from hub.models import PUBLIC_PRINCIPAL_ID, AccessEdge, AccessEdgeEvent, Agent, AgentSenderReplyRule, Room
+from hub.models import PUBLIC_PRINCIPAL_ID, AccessEdge, AccessEdgeEvent, Agent, AgentSenderReplyRule, Room, User
 
 router = APIRouter(prefix="/api/agents/{agent_id}", tags=["app-agent-relations"])
 
@@ -86,7 +86,8 @@ async def set_capability(agent_id: str, body: CapabilityIn, ctx: RequestContext 
     if (edge.capability or "consult") != body.capability:
         before = edge.capability
         edge.capability = body.capability
-        db.add(AccessEdgeEvent(edge_id=edge.id, event="capability", actor_id=agent.user_id and str(agent.user_id),
+        actor = ctx.human_id or await db.scalar(select(User.human_id).where(User.id == ctx.user_id))
+        db.add(AccessEdgeEvent(edge_id=edge.id, event="capability", actor_id=actor,
                                version=edge.version, before={"capability": before},
                                after={"capability": body.capability}))
     return _edge_out(edge)
