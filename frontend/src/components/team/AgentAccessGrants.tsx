@@ -35,12 +35,15 @@ export default function AgentAccessGrants({
   agentName,
   users,
   userId,
+  onChanged,
 }: {
   spaceId: string;
   agentId: string;
   agentName: string;
   users: SpaceUser[];
   userId: string;
+  /** Called after a grant was created or revoked. */
+  onChanged?: () => void;
 }) {
   const zh = useLanguage() === "zh";
   const t = (cn: string, en: string) => (zh ? cn : en);
@@ -90,6 +93,7 @@ export default function AgentAccessGrants({
       if ((await task()) === false) return;
       if (!mounted.current) return;
       setNotice({ error: false, text: success });
+      onChanged?.();
       await reload();
     } catch (cause) {
       if (mounted.current) setNotice({ error: true, text: spaceError(cause, zh) });
@@ -128,129 +132,7 @@ export default function AgentAccessGrants({
           {notice.text}
         </p>
       )}
-      <form
-        className="space-y-3"
-        aria-label={`${t("授权成员使用", "Grant access")}: ${agentName}`}
-        onSubmit={(e) => {
-          e.preventDefault();
-          void run(async () => {
-            await teamSpacesApi.grantAccess(
-              spaceId,
-              agentId,
-              buildGrantInput({ userId: grantee, role, duration, workspacePath, commands }),
-            );
-            setGrantee("");
-            setWorkspacePath("");
-            setCommands("");
-          }, t("授权已创建。", "Access granted."));
-        }}
-      >
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="space-y-1.5 text-sm">
-            <span>{t("组织成员", "Member")}</span>
-            <select
-              className={input}
-              value={grantee}
-              onChange={(e) => setGrantee(e.target.value)}
-              disabled={busy || !candidates.length}
-              required
-            >
-              <option value="">
-                {candidates.length
-                  ? t("请选择成员", "Select a member")
-                  : t("暂无其他成员", "No other members")}
-              </option>
-              {candidates.map((u) => (
-                <option key={u.user_id} value={u.user_id}>
-                  {u.display_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1.5 text-sm">
-            <span>{t("角色", "Role")}</span>
-            <select
-              className={input}
-              value={role}
-              onChange={(e) => setRole(e.target.value as AgentAccessRole)}
-              disabled={busy}
-            >
-              <option value="consultant">
-                {t("咨询者（只读：提问、读代码）", "Consultant (read-only: ask, read code)")}
-              </option>
-              <option value="collaborator">
-                {t("协作者（可在独立副本改代码）", "Collaborator (edits in an isolated copy)")}
-              </option>
-            </select>
-          </label>
-          <label className="space-y-1.5 text-sm">
-            <span>{t("有效期", "Duration")}</span>
-            <select
-              className={input}
-              value={duration}
-              onChange={(e) => setDuration(e.target.value as GrantDuration)}
-              disabled={busy}
-            >
-              {GRANT_DURATIONS.map((value) => (
-                <option key={value} value={value}>
-                  {durationLabel(value)}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {role === "collaborator" && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1.5 text-sm">
-              <span>{t("项目仓库路径（可选）", "Repository path (optional)")}</span>
-              <input
-                className={input}
-                value={workspacePath}
-                onChange={(e) => setWorkspacePath(e.target.value)}
-                maxLength={1024}
-                placeholder="~/projects/my-repo"
-                disabled={busy}
-                aria-invalid={!pathValid}
-              />
-              <span className={`block text-xs ${pathValid ? "text-text-secondary" : "text-red-500"}`}>
-                {pathValid
-                  ? t(
-                      "你机器上的 git 仓库，绝对路径或 ~/ 开头；留空则使用临时目录。",
-                      "A git repository on your machine (absolute or ~/). Leave empty for a temporary directory.",
-                    )
-                  : t("路径必须以 / 或 ~/ 开头。", "The path must start with / or ~/.")}
-              </span>
-            </label>
-            <label className="space-y-1.5 text-sm">
-              <span>{t("允许执行的命令（可选）", "Allowed commands (optional)")}</span>
-              <textarea
-                className={`${input} min-h-[76px] resize-y`}
-                value={commands}
-                onChange={(e) => setCommands(e.target.value)}
-                placeholder={"npm test\nnpm run lint"}
-                disabled={busy}
-                aria-invalid={commandCount > MAX_ALLOWED_COMMANDS}
-              />
-              <span
-                className={`block text-xs ${commandCount > MAX_ALLOWED_COMMANDS ? "text-red-500" : "text-text-secondary"}`}
-              >
-                {t(
-                  `逗号或换行分隔，最多 ${MAX_ALLOWED_COMMANDS} 条（当前 ${commandCount}）。`,
-                  `Separate with commas or new lines, up to ${MAX_ALLOWED_COMMANDS} (${commandCount} now).`,
-                )}
-              </span>
-            </label>
-          </div>
-        )}
-        <button
-          className={primary}
-          disabled={busy || !grantee || !pathValid || commandCount > MAX_ALLOWED_COMMANDS}
-        >
-          {busy ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
-          {t("授权", "Grant access")}
-        </button>
-      </form>
-      <div className="border-t border-glass-border pt-3">
+      <div>
         <h4 className="mb-2 text-sm font-medium">{t("已授权成员", "Members with access")}</h4>
         {loading ? (
           <p role="status" className="flex items-center gap-2 text-xs text-text-secondary">
@@ -307,6 +189,131 @@ export default function AgentAccessGrants({
             ))}
           </ul>
         )}
+      </div>
+      <div className="border-t border-glass-border pt-3">
+        <h4 className="mb-2 text-sm font-medium">{t("授权新成员", "Give someone access")}</h4>
+        <form
+          className="space-y-3"
+          aria-label={`${t("授权成员使用", "Grant access")}: ${agentName}`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(async () => {
+              await teamSpacesApi.grantAccess(
+                spaceId,
+                agentId,
+                buildGrantInput({ userId: grantee, role, duration, workspacePath, commands }),
+              );
+              setGrantee("");
+              setWorkspacePath("");
+              setCommands("");
+            }, t("授权已创建。", "Access granted."));
+          }}
+        >
+          <div className="grid gap-3">
+            <label className="space-y-1.5 text-sm">
+              <span>{t("组织成员", "Member")}</span>
+              <select
+                className={input}
+                value={grantee}
+                onChange={(e) => setGrantee(e.target.value)}
+                disabled={busy || !candidates.length}
+                required
+              >
+                <option value="">
+                  {candidates.length
+                    ? t("请选择成员", "Select a member")
+                    : t("暂无其他成员", "No other members")}
+                </option>
+                {candidates.map((u) => (
+                  <option key={u.user_id} value={u.user_id}>
+                    {u.display_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1.5 text-sm">
+              <span>{t("角色", "Role")}</span>
+              <select
+                className={input}
+                value={role}
+                onChange={(e) => setRole(e.target.value as AgentAccessRole)}
+                disabled={busy}
+              >
+                <option value="consultant">
+                  {t("咨询者（只读：提问、读代码）", "Consultant (read-only: ask, read code)")}
+                </option>
+                <option value="collaborator">
+                  {t("协作者（可在独立副本改代码）", "Collaborator (edits in an isolated copy)")}
+                </option>
+              </select>
+            </label>
+            <label className="space-y-1.5 text-sm">
+              <span>{t("有效期", "Duration")}</span>
+              <select
+                className={input}
+                value={duration}
+                onChange={(e) => setDuration(e.target.value as GrantDuration)}
+                disabled={busy}
+              >
+                {GRANT_DURATIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {durationLabel(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {role === "collaborator" && (
+            <div className="grid gap-3">
+              <label className="space-y-1.5 text-sm">
+                <span>{t("项目仓库路径（可选）", "Repository path (optional)")}</span>
+                <input
+                  className={input}
+                  value={workspacePath}
+                  onChange={(e) => setWorkspacePath(e.target.value)}
+                  maxLength={1024}
+                  placeholder="~/projects/my-repo"
+                  disabled={busy}
+                  aria-invalid={!pathValid}
+                />
+                <span className={`block text-xs ${pathValid ? "text-text-secondary" : "text-red-500"}`}>
+                  {pathValid
+                    ? t(
+                        "你机器上的 git 仓库，绝对路径或 ~/ 开头；留空则使用临时目录。",
+                        "A git repository on your machine (absolute or ~/). Leave empty for a temporary directory.",
+                      )
+                    : t("路径必须以 / 或 ~/ 开头。", "The path must start with / or ~/.")}
+                </span>
+              </label>
+              <label className="space-y-1.5 text-sm">
+                <span>{t("允许执行的命令（可选）", "Allowed commands (optional)")}</span>
+                <textarea
+                  className={`${input} min-h-[76px] resize-y`}
+                  value={commands}
+                  onChange={(e) => setCommands(e.target.value)}
+                  placeholder={"npm test\nnpm run lint"}
+                  disabled={busy}
+                  aria-invalid={commandCount > MAX_ALLOWED_COMMANDS}
+                />
+                <span
+                  className={`block text-xs ${commandCount > MAX_ALLOWED_COMMANDS ? "text-red-500" : "text-text-secondary"}`}
+                >
+                  {t(
+                    `逗号或换行分隔，最多 ${MAX_ALLOWED_COMMANDS} 条（当前 ${commandCount}）。`,
+                    `Separate with commas or new lines, up to ${MAX_ALLOWED_COMMANDS} (${commandCount} now).`,
+                  )}
+                </span>
+              </label>
+            </div>
+          )}
+          <button
+            className={primary}
+            disabled={busy || !grantee || !pathValid || commandCount > MAX_ALLOWED_COMMANDS}
+          >
+            {busy ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+            {t("授权", "Grant access")}
+          </button>
+        </form>
       </div>
     </div>
   );

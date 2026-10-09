@@ -12,6 +12,7 @@ export type MyAgentAccess = "owner" | "collaborator" | "consultant" | "none";
 export type AgentCapability = "full" | "collaborator" | "consult";
 export type ReplyMode = "always" | "mention_only" | "keyword" | "allowed_senders" | "muted";
 export type AccessRequestStatus = "pending" | "approved" | "rejected" | "cancelled";
+export type AgentStatus = "online" | "working" | "busy" | "away" | "offline";
 
 export interface DirectoryAgent {
   agent_id: string;
@@ -23,6 +24,16 @@ export interface DirectoryAgent {
   grant_id: string | null;
   pending_request: { id: string; requested_role: AgentAccessRole } | null;
   default_reply_mode: ReplyMode;
+  avatar_url: string | null;
+  runtime: string | null;
+  hosting_kind: string | null;
+  status: AgentStatus;
+  /** Organization rooms the Agent is in. */
+  room_count: number;
+  /** People with an active grant; owner only, else null. */
+  grant_count: number | null;
+  /** Pending access requests; owner only, else null. */
+  pending_request_count: number | null;
 }
 export interface AccessRequest {
   id: string;
@@ -319,4 +330,140 @@ export function buildApproveInput(form: {
     body.allowed_commands = parseAllowedCommands(form.commands);
   }
   return body;
+}
+
+// ---- Team Agent page -------------------------------------------------------
+
+export type AgentTab = "all" | "mine" | "available" | "action";
+export const AGENT_TABS: AgentTab[] = ["all", "mine", "available", "action"];
+
+/** Pending requests on an owned Agent: live store list when loaded, else the directory count. */
+export function pendingCountFor(
+  agent: Pick<DirectoryAgent, "agent_id" | "my_access" | "pending_request_count">,
+  toDecide: AccessRequest[] | null,
+): number {
+  if (agent.my_access !== "owner") return 0;
+  if (toDecide) return toDecide.filter((r) => r.agent_id === agent.agent_id).length;
+  return agent.pending_request_count ?? 0;
+}
+
+export function agentInTab(agent: DirectoryAgent, tab: AgentTab, pending: number): boolean {
+  switch (tab) {
+    case "mine":
+      return agent.my_access === "owner";
+    case "available":
+      return agent.my_access === "collaborator" || agent.my_access === "consultant";
+    case "action":
+      return pending > 0;
+    default:
+      return true;
+  }
+}
+
+export function agentTabCounts(
+  agents: DirectoryAgent[],
+  toDecide: AccessRequest[] | null,
+): Record<AgentTab, number> {
+  const counts: Record<AgentTab, number> = { all: 0, mine: 0, available: 0, action: 0 };
+  for (const agent of agents) {
+    const pending = pendingCountFor(agent, toDecide);
+    for (const tab of AGENT_TABS) if (agentInTab(agent, tab, pending)) counts[tab] += 1;
+  }
+  return counts;
+}
+
+/** Owned Agents first, then usable ones, then the rest; by name within each group. */
+export function filterAgents(
+  agents: DirectoryAgent[],
+  tab: AgentTab,
+  toDecide: AccessRequest[] | null,
+): DirectoryAgent[] {
+  const rank: Record<MyAgentAccess, number> = { owner: 0, collaborator: 1, consultant: 2, none: 3 };
+  return agents
+    .filter((a) => agentInTab(a, tab, pendingCountFor(a, toDecide)))
+    .sort(
+      (a, b) =>
+        rank[a.my_access] - rank[b.my_access] || a.display_name.localeCompare(b.display_name),
+    );
+}
+
+export type AgentRowAction = "chat" | "manage" | "request" | "upgrade" | "cancel";
+
+/** Row buttons for the viewer, in display order (secondary first, primary last). */
+export function agentRowActions(agent: Pick<DirectoryAgent, "my_access" | "pending_request">): AgentRowAction[] {
+  if (agent.my_access === "owner") return ["chat", "manage"];
+  const out: AgentRowAction[] = [];
+  if (agent.pending_request) out.push("cancel");
+  else if (agent.my_access === "none") out.push("request");
+  else if (agent.my_access === "consultant") out.push("upgrade");
+  if (canChatWith(agent)) out.push("chat");
+  return out;
+}
+
+export function agentStatusLabel(status: AgentStatus, zh: boolean): string {
+  const labels: Record<AgentStatus, [string, string]> = {
+    online: ["在线", "Online"],
+    working: ["工作中", "Working"],
+    busy: ["忙碌", "Busy"],
+    away: ["暂离", "Away"],
+    offline: ["离线", "Offline"],
+  };
+  return (labels[status] ?? labels.offline)[zh ? 0 : 1];
+}
+
+export const AGENT_STATUS_DOT: Record<AgentStatus, string> = {
+  online: "bg-neon-green",
+  working: "bg-neon-cyan animate-pulse",
+  busy: "bg-red-500",
+  away: "bg-amber-400",
+  offline: "bg-text-secondary/40",
+};
+
+const RUNTIME_NAMES: Record<string, string> = {
+  "claude-code": "Claude Code",
+  codex: "Codex",
+  gemini: "Gemini CLI",
+  "deepseek-tui": "DeepSeek TUI",
+  "kimi-cli": "Kimi CLI",
+  "openclaw-acp": "OpenClaw",
+  qclaw: "QClaw",
+  "hermes-agent": "Hermes",
+};
+const HOSTING_NAMES: Record<string, string> = { cloud: "Cloud", openclaw: "OpenClaw", cli: "CLI" };
+
+/** Human runtime name ("Claude Code"); falls back to the hosting kind, else null. */
+export function runtimeLabel(runtime: string | null | undefined, hostingKind?: string | null): string | null {
+  if (runtime) return RUNTIME_NAMES[runtime] ?? runtime;
+  if (hostingKind) return HOSTING_NAMES[hostingKind] ?? null;
+  return null;
+}
+
+/** Owner row summary: "2 人可用 · 在 3 个房间 · 只在被 @ 时". */
+export function ownerAgentSummary(
+  agent: Pick<DirectoryAgent, "grant_count" | "room_count" | "default_reply_mode">,
+  zh: boolean,
+): string {
+  const people = agent.grant_count ?? 0;
+  const rooms = agent.room_count ?? 0;
+  return [
+    zh ? `${people} 人可用` : `${people} ${people === 1 ? "person has" : "people have"} access`,
+    zh ? `在 ${rooms} 个房间` : `in ${rooms} room${rooms === 1 ? "" : "s"}`,
+    replyModeLabel(agent.default_reply_mode, zh),
+  ].join(" · ");
+}
+
+/** Plain-language "what I can do" for a non-owned Agent. */
+export function accessSummary(access: MyAgentAccess, zh: boolean): string {
+  switch (access) {
+    case "collaborator":
+      return zh
+        ? "你可以：回答问题、读取文件、在单独分支改代码"
+        : "You can: ask questions, read files, edit code in a separate branch";
+    case "consultant":
+      return zh ? "你可以：回答问题、读取文件" : "You can: ask questions, read files";
+    case "owner":
+      return zh ? "你可以：使用和管理它" : "You can: use and manage it";
+    default:
+      return zh ? "你还不能使用，可以向所有者申请" : "You can't use it yet. Ask the owner for access";
+  }
 }

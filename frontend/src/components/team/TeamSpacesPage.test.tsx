@@ -59,11 +59,11 @@ describe("Team governance rendering", () => {
     // A separately created page store would still be loading.
     fixture.snapshot = null;
     fixture.loading = true;
-    for (const section of ["members", "agents", "settings"] as const) {
+    for (const section of ["members", "settings"] as const) {
       const html = renderToStaticMarkup(<TeamSpacesPage teamMode section={section} sharedStore={sharedStore} />);
       expect(html).not.toContain("正在加载团队空间");
       expect(html).not.toContain('aria-busy="true"');
-      expect(html).toContain({ members: "邀请用户", agents: "组织 Agent", settings: "管理员访问组织私聊" }[section]);
+      expect(html).toContain({ members: "邀请用户", settings: "管理员访问组织私聊" }[section]);
     }
   });
 
@@ -116,7 +116,7 @@ describe("Team governance rendering", () => {
     expect(html.match(/<button[^>]*role="switch"[^>]*>/)?.[0]).toContain(
       ' disabled=""',
     );
-    expect(html).toContain("申请加入");
+    expect(html).toContain("在 Agent 页面管理");
   });
   it("shows policy scope before accepting an invitation and hides member tools", () => {
     fixture.snapshot!.selected.membership.status = "invited";
@@ -124,7 +124,7 @@ describe("Team governance rendering", () => {
     const html = renderToStaticMarkup(<TeamSpacesPage />);
     expect(html).toContain("接受邀请");
     expect(html).toContain("全部组织私聊历史");
-    expect(html).not.toContain("申请加入");
+    expect(html).not.toContain("在 Agent 页面管理");
     expect(html).not.toContain("邀请用户");
   });
   it("hides the previous organization's contents as soon as the URL changes", () => {
@@ -140,15 +140,6 @@ describe("Team governance rendering", () => {
     expect(html).not.toContain("管理员访问组织私聊");
     expect(html).not.toContain("当前空间");
     expect(html).not.toContain("创建组织");
-  });
-  it("offers direct admission only when the Hub supports it", () => {
-    fixture.snapshot!.selected.agent_direct_admission_available = true;
-    const current = renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />);
-    expect(current).toContain("添加 Agent");
-    fixture.snapshot!.selected.agent_direct_admission_available = false;
-    const legacy = renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />);
-    expect(legacy).toContain("申请加入");
-    expect(legacy).not.toContain(">添加 Agent<");
   });
   it("leads managers with invite links and keeps user-ID invites as a fallback", () => {
     const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="members" />);
@@ -168,27 +159,16 @@ describe("Team governance rendering", () => {
     expect(html).toContain("请联系管理员获取邀请链接");
     expect(html).not.toContain("生成邀请链接");
   });
-  it("offers creating a new Agent next to adding an existing one", () => {
-    fixture.snapshot!.selected.agent_direct_admission_available = true;
-    const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />);
-    expect(html).toContain("添加 Agent");
-    expect(html).toContain("新建 Agent");
-    fixture.snapshot!.selected.roles = ["member"];
-    expect(renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />)).toContain("新建 Agent");
-  });
-  it("offers access sharing only for the caller's own active organization Agents", () => {
+  it("links to the Agent page instead of listing organization Agents", () => {
     fixture.snapshot!.members = {
-      users: [
-        { id: "m", user_id: "me", display_name: "Danny", roles: ["owner"], status: "active" },
-        { id: "m2", user_id: "bob", display_name: "Bob", roles: ["member"], status: "active" },
-      ],
-      agents: [
-        { id: "a1", agent_id: "ag_mine", display_name: "Mine", status: "active", sponsor_user_membership_id: "m" },
-        { id: "a2", agent_id: "ag_bob", display_name: "Bobs", status: "active", sponsor_user_membership_id: "m2" },
-        { id: "a3", agent_id: "ag_new", display_name: "Pending", status: "invited", sponsor_user_membership_id: "m" },
-      ],
+      users: [{ id: "m", user_id: "me", display_name: "Danny", roles: ["owner"], status: "active" }],
+      agents: [{ id: "a1", agent_id: "ag_mine", display_name: "Mine", status: "active", sponsor_user_membership_id: "m" }],
     } as unknown as TeamSnapshot["members"];
-    const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="agents" />);
-    expect(html.match(/权限与回复/g)).toHaveLength(1);
+    const html = renderToStaticMarkup(<TeamSpacesPage />);
+    expect(html).toContain("在 Agent 页面管理");
+    expect(html).toContain('href="/chats/team?space=a&amp;view=agents"');
+    expect(html).not.toContain("权限与回复");
+    expect(html).not.toContain("选择自己的 Agent");
+    expect(renderToStaticMarkup(<TeamSpacesPage teamMode section="settings" />)).not.toContain("在 Agent 页面管理");
   });
 });

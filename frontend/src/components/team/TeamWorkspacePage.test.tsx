@@ -3,6 +3,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import { createTeamSpaceStore, type TeamSnapshot, type TeamSpaceStore } from "@/store/team-space-store";
 const route = vi.hoisted(() => ({ query: new URLSearchParams() }));
+const access = vi.hoisted(() => ({ toDecide: [] as { id: string; agent_id: string }[] }));
+vi.mock("@/store/useTeamAccessStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/store/useTeamAccessStore")>()),
+  useToDecide: () => access.toDecide,
+}));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   useSearchParams: () => route.query,
@@ -13,8 +18,10 @@ vi.mock("./TeamSpacesPage", () => ({
     <div data-management={section} data-shared={Boolean(sharedStore)}>Management</div>
   ),
 }));
-vi.mock("./SharedAgentsPanel", () => ({
-  default: ({ spaceId }: { spaceId: string }) => <div data-shared-agents={spaceId}>Shared</div>,
+vi.mock("./TeamAgentsPage", () => ({
+  default: ({ snapshot }: { snapshot: TeamSnapshot }) => (
+    <div data-agents-page={snapshot.selected.id}>Agents</div>
+  ),
 }));
 import { TeamWorkspace, listTime, previewSender, teamHref, teamView } from "./TeamWorkspacePage";
 const snapshot = {
@@ -53,7 +60,7 @@ it("opens a messages workspace rather than management forms", () => {
   expect(html).not.toContain("管理员访问组织私聊");
 });
 it("keeps members, agents and settings in separate navigable views", () => {
-  for (const view of ["members", "agents", "settings"]) {
+  for (const view of ["members", "settings"]) {
     route.query.set("view", view);
     const html = renderToStaticMarkup(
       <TeamWorkspace snapshot={snapshot} onMembershipChanged={() => {}} />
@@ -62,10 +69,19 @@ it("keeps members, agents and settings in separate navigable views", () => {
     expect(html).toContain("返回消息");
     expect(html).not.toContain('aria-label="会话列表"');
   }
+  route.query.set("view", "agents");
+  const agents = renderToStaticMarkup(
+    <TeamWorkspace snapshot={snapshot} onMembershipChanged={() => {}} />
+  );
+  expect(agents).toContain('data-agents-page="org-a"');
+  // The Agent page has its own header: no duplicated title bar.
+  expect(agents).not.toContain("data-management");
+  expect(agents).not.toContain("组织 Agent");
+  expect(agents).not.toContain('aria-label="会话列表"');
 });
 it("passes the page store to every management tab instead of loading a second snapshot", () => {
   const sharedStore = createTeamSpaceStore(true);
-  for (const view of ["members", "agents", "settings"]) {
+  for (const view of ["members", "settings"]) {
     route.query.set("view", view);
     const html = renderToStaticMarkup(
       <TeamWorkspace snapshot={snapshot} sharedStore={sharedStore} onMembershipChanged={() => {}} />
@@ -91,18 +107,47 @@ it("does not enable conversation creation against an older Hub", () => {
     'disabled=""'
   );
 });
-it("lists Agents shared with the member in their own view", () => {
+it("has one Agent entry and sends old directory links to the Agent page", () => {
   const html = renderToStaticMarkup(
     <TeamWorkspace snapshot={snapshot} onMembershipChanged={() => {}} />
   );
-  expect(html).toContain('href="/chats/team?space=org-a&amp;view=shared"');
+  expect(html).not.toContain("view=shared");
+  expect(html).not.toContain("Agent 目录");
+  expect(html.match(/href="\/chats\/team\?space=org-a&amp;view=agents"/g)).toHaveLength(2);
   route.query.set("view", "shared");
   const shared = renderToStaticMarkup(
     <TeamWorkspace snapshot={snapshot} onMembershipChanged={() => {}} />
   );
-  expect(shared).toContain('data-shared-agents="org-a"');
-  expect(shared).not.toContain("data-management");
-  expect(teamView("shared")).toBe("shared");
+  expect(shared).toContain('data-agents-page="org-a"');
+  expect(teamView("shared")).toBe("agents");
+});
+it("badges the Agent entry only with requests that need my action", () => {
+  const withAgents = {
+    ...snapshot,
+    members: {
+      users: [],
+      agents: [
+        { agent_id: "ag_1", status: "active" },
+        { agent_id: "ag_2", status: "active" },
+        { agent_id: "ag_3", status: "active" },
+      ],
+    },
+  } as unknown as TeamSnapshot;
+  access.toDecide = [];
+  const quiet = renderToStaticMarkup(
+    <TeamWorkspace snapshot={withAgents} onMembershipChanged={() => {}} />
+  );
+  const agentLink = (html: string) =>
+    html.match(/<a[^>]*view=agents"[^>]*>[\s\S]*?<\/a>/)?.[0] ?? "";
+  // No plain Agent count next to the label.
+  expect(agentLink(quiet)).not.toContain(">3<");
+  expect(agentLink(quiet)).not.toContain("权限申请待处理");
+  access.toDecide = [{ id: "r1", agent_id: "ag_1" }];
+  const busy = renderToStaticMarkup(
+    <TeamWorkspace snapshot={withAgents} onMembershipChanged={() => {}} />
+  );
+  expect(agentLink(busy)).toContain('aria-label="1 个权限申请待处理"');
+  access.toDecide = [];
 });
 it("keeps the organization in every destination and normalizes unknown views", () => {
   expect(teamView("bad")).toBe("messages");

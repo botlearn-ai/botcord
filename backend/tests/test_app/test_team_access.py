@@ -25,6 +25,10 @@ async def test_directory_and_request_lifecycle(client, org):  # noqa: F811
     d = by_agent((await client.get(f"{base(org)}/agent-directory", headers=org["alice"])).json()["agents"])
     assert d["ag_barry"]["my_access"] == "none" and d["ag_rex"]["my_access"] == "owner"
     assert d["ag_barry"]["owner_name"] == "Danny"
+    # Owner-only usage numbers; everyone gets status and room count.
+    assert d["ag_rex"]["grant_count"] == 0 and d["ag_rex"]["pending_request_count"] == 0
+    assert d["ag_barry"]["grant_count"] is None and d["ag_barry"]["pending_request_count"] is None
+    assert d["ag_barry"]["status"] == "offline" and d["ag_barry"]["room_count"] == 0
 
     # Outsiders cannot ask; owners cannot ask for their own agent.
     assert (await client.post(f"{base(org)}/agents/ag_barry/access-requests", headers=org["eve"],
@@ -63,6 +67,8 @@ async def test_directory_and_request_lifecycle(client, org):  # noqa: F811
     assert (await client.post(f"{base(org)}/agents/ag_barry/access-requests", headers=org["alice"],
                               json={"role": "consultant"})).status_code == 409
 
+    danny_dir = by_agent((await client.get(f"{base(org)}/agent-directory", headers=org["danny"])).json()["agents"])
+    assert danny_dir["ag_barry"]["grant_count"] == 1 and danny_dir["ag_barry"]["pending_request_count"] == 0
     overview = (await client.get(f"{base(org)}/access-overview", headers=org["danny"])).json()
     assert overview["counts"]["collaborator"] == 1
     assert overview["grants"][0]["grantee_name"] == "Alice" and overview["grants"][0]["agent_name"] == "Barry"

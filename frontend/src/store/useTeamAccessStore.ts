@@ -1,8 +1,8 @@
 /**
  * [INPUT]: zustand; lib/team-access requests endpoint; `access_request_changed` realtime hints (human channel)
  * [OUTPUT]: useTeamAccessStore — pending access requests the viewer must decide, per organization, plus a
- *           per-organization change counter that the directory watches to refetch
- * [POS]: feeds the Team nav badge and inbox; DashboardApp forwards realtime hints, TeamWorkspacePage marks
+ *           per-organization change counter that the Agent page watches to refetch its directory
+ * [POS]: feeds the Team nav badge, the Agent page banner/rows and the inbox; DashboardApp forwards realtime hints, TeamWorkspacePage marks
  *        which organization is open so hints for other organizations (or outside Team) are ignored
  * [PROTOCOL]: update header on changes
  */
@@ -89,6 +89,11 @@ export const useTeamAccessStore = create<TeamAccessState>((set, get) => {
 const EMPTY: AccessRequest[] = [];
 export function useToDecide(spaceId: string): AccessRequest[] {
   return useTeamAccessStore((s) => s.toDecideBySpace[spaceId] ?? EMPTY);
+}
+
+/** Like useToDecide, but null until the first load for the organization finished. */
+export function useLoadedToDecide(spaceId: string): AccessRequest[] | null {
+  return useTeamAccessStore((s) => s.toDecideBySpace[spaceId] ?? null);
 }
 
 export function useAccessChanges(spaceId: string): number {
