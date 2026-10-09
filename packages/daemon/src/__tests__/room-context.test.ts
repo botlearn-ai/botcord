@@ -36,6 +36,14 @@ describe("shouldInjectRoomContext", () => {
     ).toBe(false);
   });
 
+  it("skips organization DMs even when marked as a group", () => {
+    expect(
+      shouldInjectRoomContext(
+        makeMessage({ conversation: { id: "rm_sdm_4e232f38c2d98e6b31b3", kind: "group" } }),
+      ),
+    ).toBe(false);
+  });
+
   it("skips owner-chat rooms", () => {
     expect(
       shouldInjectRoomContext(

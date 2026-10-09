@@ -230,7 +230,9 @@ async def _dispatch_policy_updated(
 
 
 def _is_dm_room(room_id: str) -> bool:
-    return room_id.startswith("rm_dm_")
+    from hub.policy import is_direct_room_id
+
+    return is_direct_room_id(room_id)
 
 
 async def _ensure_room_exists(db: AsyncSession, room_id: str) -> Room:

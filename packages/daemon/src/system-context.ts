@@ -43,6 +43,7 @@ import { buildSoftSkillIndexPrompt } from "./skill-index.js";
 import type { SkillIndexOptions } from "./skill-index.js";
 import { effectiveMention } from "./mention-scan.js";
 import { buildSessionProfilePrompt } from "./session-profile.js";
+import { isDirectRoomId } from "./gateway/direct-room.js";
 
 /**
  * Async per-turn room-context builder (see `room-context.ts`). Returns the
@@ -100,7 +101,7 @@ function buildRoomAwarenessContext(message: GatewayInboundMessage): string {
       ? "scheduler"
       : message.conversation.kind === "group"
       ? "team_room"
-      : message.conversation.id.startsWith("rm_dm_")
+      : isDirectRoomId(message.conversation.id)
       ? "user_dm"
       : "cross_room_or_external";
 
