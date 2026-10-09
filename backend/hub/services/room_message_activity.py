@@ -5,6 +5,7 @@ from sqlalchemy import JSON, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hub.models import Agent, MessageRecord
+from hub.policy import is_direct_room_id
 
 
 async def load_room_message_activity(db: AsyncSession, room_id: str, msg_ids: list[str]) -> dict:
@@ -53,7 +54,7 @@ async def load_room_message_activity(db: AsyncSession, room_id: str, msg_ids: li
             continue
         if record.source_type not in ("dashboard_human_room", "dashboard_user_chat", "human"):
             continue
-        if not (room_id.startswith(("rm_oc_", "rm_dm_")) or record.mentioned):
+        if not (room_id.startswith("rm_oc_") or is_direct_room_id(room_id) or record.mentioned):
             continue
         state = record.state.value
         if (record.msg_id, record.receiver_id) in replied or state == "done":

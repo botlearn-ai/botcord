@@ -92,3 +92,20 @@ async def test_trace_takes_precedence_over_quote_and_keeps_other_agent_pending(d
     assert activity["m_old"][0]["status"] == "processing"
     states = {a["agent_id"]: a["status"] for a in activity["m_new"]}
     assert states == {seed["agent1"]: "completed", seed["agent2"]: "processing"}
+
+
+@pytest.mark.asyncio
+async def test_team_agent_dm_tracks_unmentioned_agent(db_session, seed):
+    from hub.models import Room, RoomVisibility
+    from hub.services.room_message_activity import load_room_message_activity
+    room_id = "rm_sdm_feedback"
+    db_session.add(Room(room_id=room_id, name="Team DM", owner_id=seed["agent1"], visibility=RoomVisibility.private))
+    await db_session.flush()
+    db_session.add(MessageRecord(
+        hub_msg_id="h_team_dm", msg_id="m_team_dm", sender_id="hu_test", receiver_id=seed["agent1"],
+        room_id=room_id, envelope_json='{}', state=MessageState.processing,
+        ttl_sec=3600, mentioned=False, source_type="dashboard_human_room",
+    ))
+    await db_session.commit()
+    activity = await load_room_message_activity(db_session, room_id, ["m_team_dm"])
+    assert activity["m_team_dm"][0]["status"] == "processing"
