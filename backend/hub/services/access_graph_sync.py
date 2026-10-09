@@ -29,6 +29,7 @@ from hub.models import (
     AccessEdge,
     AccessEdgeDep,
     AccessEdgeEvent,
+    AccessGraphSetting,
     AccessPrincipal,
     Agent,
     AgentAccessGrant,
@@ -38,6 +39,7 @@ from hub.models import (
     Contact,
     ContactRequest,
     Organization,
+    Room,
     RoomMember,
     Space,
     SpaceAgentMembership,
@@ -79,6 +81,8 @@ class _Edge:
     version: int | None = None
     # (source, version) of edges this edge depends on.
     deps: list[tuple[str, int]] = field(default_factory=list)
+    # Initial capability; applied only when the edge is created.
+    capability: str | None = None
 
 
 @dataclass
@@ -107,6 +111,20 @@ def _aware(ts: datetime.datetime | None) -> datetime.datetime | None:
     if ts is not None and ts.tzinfo is None:
         return ts.replace(tzinfo=datetime.timezone.utc)
     return ts
+
+
+LEGACY_FULL_BEFORE_KEY = "legacy_full_before"
+
+
+async def legacy_full_before(db: AsyncSession) -> datetime.datetime | None:
+    """Relations older than this keep full capability (set by migration 009)."""
+    raw = await db.scalar(select(AccessGraphSetting.value).where(AccessGraphSetting.key == LEGACY_FULL_BEFORE_KEY))
+    return _aware(datetime.datetime.fromisoformat(raw)) if raw else None
+
+
+def _initial_capability(created_at, cutoff) -> str:
+    created_at = _aware(created_at)
+    return "full" if cutoff is not None and created_at is not None and created_at < cutoff else "consult"
 
 
 def _lifecycle(expires_at, revoked_at, now) -> str:
@@ -140,6 +158,7 @@ async def _desired_edges(db: AsyncSession, now: datetime.datetime, kinds: set[st
     def want(kind: str) -> bool:
         return kinds is None or kind in kinds
 
+    cutoff = await legacy_full_before(db)
     human_by_user = {r.id: r.human_id for r in (await db.execute(select(User.id, User.human_id))).all()}
     org_by_space = {r.space_id: r.principal_id
                     for r in (await db.execute(select(Organization.space_id, Organization.principal_id))).all()}
@@ -166,7 +185,7 @@ async def _desired_edges(db: AsyncSession, now: datetime.datetime, kinds: set[st
         if (direct or room_invite) and want("offer"):
             edges.append(_Edge(
                 f"offer:{agent.agent_id}", "offer", PUBLIC_PRINCIPAL_ID, "public", agent.agent_id, "agent",
-                role="consult", issued_by=owner_id,
+                role="consult", issued_by=owner_id, capability=_initial_capability(agent.created_at, cutoff),
                 terms={"direct": direct, "room_invite": room_invite, "price": 0,
                        "audience": {"human": bool(agent.allow_human_sender), "agent": bool(agent.allow_agent_sender)}},
             ))
@@ -206,6 +225,8 @@ async def _desired_rest(db, now, kinds, human_by_user, org_by_space) -> list[_Ed
     def want(kind: str) -> bool:
         return kinds is None or kind in kinds
 
+    cutoff = await legacy_full_before(db)
+
     edges: list[_Edge] = []
     # grants
     for g in (await db.scalars(select(AgentAccessGrant))).all() if want("grant") else ():
@@ -242,7 +263,7 @@ async def _desired_rest(db, now, kinds, human_by_user, org_by_space) -> list[_Ed
         edges.append(_Edge(
             f"contact:{c.id}", "connection", c.contact_agent_id, _participant_kind(c.peer_type),
             c.owner_id, _participant_kind(c.owner_type), role="consult", issued_by=c.owner_id,
-            terms={"alias": c.alias} if c.alias else {},
+            terms={"alias": c.alias} if c.alias else {}, capability=_initial_capability(c.created_at, cutoff),
         ))
     pending = select(ContactRequest).where(ContactRequest.state == ContactRequestState.pending)
     for r in (await db.scalars(pending)).all() if want("connection") else ():
@@ -251,7 +272,7 @@ async def _desired_rest(db, now, kinds, human_by_user, org_by_space) -> list[_Ed
         edges.append(_Edge(
             f"contact_request:{r.id}", "connection", r.from_agent_id, _participant_kind(r.from_type),
             r.to_agent_id, _participant_kind(r.to_type), role="consult", status="pending",
-            issued_by=r.from_agent_id, terms={"message": r.message} if r.message else {},
+            issued_by=r.from_agent_id, terms={"message": r.message} if r.message else {}, capability="consult",
         ))
     for b in (await db.scalars(select(Block))).all() if want("block") else ():
         edges.append(_Edge(
@@ -259,13 +280,19 @@ async def _desired_rest(db, now, kinds, human_by_user, org_by_space) -> list[_Ed
             b.blocked_agent_id, _participant_kind(b.blocked_type), issued_by=b.owner_id,
         ))
 
-    # conversation membership
+    # conversation membership; an agent's member edge carries what non-owners
+    # may make it do in that room (organization rooms: always 'consult').
+    org_rooms = set((await db.scalars(select(Room.room_id).where(Room.space_id.is_not(None)))).all()) if want("member") else set()
     for m in (await db.scalars(select(RoomMember))).all() if want("member") else ():
         terms = {k: v for k, v in (("can_send", m.can_send), ("can_invite", m.can_invite)) if v is not None}
         role = m.role.value if hasattr(m.role, "value") else str(m.role)
+        kind = _participant_kind(m.participant_type)
+        capability = None
+        if kind == "agent":
+            capability = "consult" if m.room_id in org_rooms else _initial_capability(m.joined_at, cutoff)
         edges.append(_Edge(
-            f"room_member:{m.id}", "member", m.agent_id, _participant_kind(m.participant_type),
-            m.room_id, "conversation", role=role, terms=terms,
+            f"room_member:{m.id}", "member", m.agent_id, kind,
+            m.room_id, "conversation", role=role, terms=terms, capability=capability,
         ))
     return edges
 
@@ -276,6 +303,7 @@ def _snapshot(edge: AccessEdge) -> dict[str, Any]:
         if out[k] is not None:
             out[k] = _aware(out[k]).isoformat()
     out["version"] = edge.version
+    out["capability"] = edge.capability
     return out
 
 
@@ -351,7 +379,7 @@ async def sync_access_graph(
         edge = have.get(source)
         values = {f: getattr(want, f) for f in _FIELDS}
         if edge is None:
-            edge = AccessEdge(source=source, version=want.version or 1, **values)
+            edge = AccessEdge(source=source, version=want.version or 1, capability=want.capability, **values)
             db.add(edge)
             await db.flush()
             db.add(AccessEdgeEvent(edge_id=edge.id, event="created", version=edge.version, after=_snapshot(edge)))

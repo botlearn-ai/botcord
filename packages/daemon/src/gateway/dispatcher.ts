@@ -62,6 +62,7 @@ import {
   isRestrictedTurn,
   resolveTurnExecution,
   restrictionUnsupported,
+  type RefusalReason,
 } from "./execution-policy.js";
 import { commitGuestChanges, ensureGuestWorkspace, type GuestWorkspace } from "./guest-workspace.js";
 
@@ -3568,8 +3569,9 @@ function userTurnContext(
   return { restricted: execution.profile !== "default" };
 }
 
-const REFUSAL_TEXT: Record<"grant_inactive" | "runtime_unsupported", string> = {
+const REFUSAL_TEXT: Record<RefusalReason, string> = {
   grant_inactive: "你对这个 Agent 的使用授权已被撤销或已过期，请联系它的 owner 重新授权。",
+  hub_denied: "你目前没有使用这个 Agent 的权限，请联系它的 owner。",
   runtime_unsupported:
     "这个 Agent 当前使用的 runtime 不支持共享调用的权限约束，暂时无法为你执行任务。请联系它的 owner。",
 };
@@ -3577,7 +3579,7 @@ const REFUSAL_TEXT: Record<"grant_inactive" | "runtime_unsupported", string> = {
 /** Stand-in runtime for refused agent-sharing turns: never spawns a CLI. */
 function refusalRuntime(
   id: string,
-  reason: "grant_inactive" | "runtime_unsupported"
+  reason: RefusalReason
 ): RuntimeAdapter {
   return {
     id,

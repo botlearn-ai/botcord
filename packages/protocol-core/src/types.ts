@@ -114,6 +114,19 @@ export type InboxMessage = {
   access_context?: AccessContext | null;
   /** Hub-computed Team (organization) room context. */
   space_context?: SpaceContext | null;
+  /** Hub-computed wake + execution decision; when present the daemon executes it (local config may only tighten). */
+  hub_decision?: HubDecision | null;
+};
+
+/** How far a message may make the agent act, as decided by the Hub. */
+export type HubExecutionProfile = "full" | "collaborator" | "consult" | "deny";
+
+/** Hub-computed per-message decision (docs/access-graph-model.md §8 PR 4). */
+export type HubDecision = {
+  wake: boolean;
+  wake_reason: string;
+  profile: HubExecutionProfile;
+  basis: string;
 };
 
 /** Organization room context: non-owner requests there must run restricted. */

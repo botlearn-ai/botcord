@@ -15,6 +15,7 @@ import sentry_sdk
 from cachetools import TTLCache
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from hub import config as hub_config
 from hub import owner_chat_cache
 from hub import stage_diagnostics as send_diagnostics
 from hub.request_observability import request_id_for
@@ -2204,6 +2205,21 @@ async def poll_inbox(
         current_agent,
         {rec.sender_id for rec in rows if rec.sender_id not in same_owner_senders},
     )
+    hub_decisions: dict[str, dict] = {}
+    if hub_config.HUB_DECISION_ENABLED and rows:
+        from hub.services.access_inbox import InboxItem, decide_inbox
+
+        receiver_agent = await db.scalar(select(Agent).where(Agent.agent_id == current_agent))
+        if receiver_agent is not None:
+            items = []
+            for rec in rows:
+                try:
+                    body = _inbox_body_text(MessageEnvelope(**json.loads(rec.envelope_json)))
+                except Exception:
+                    body = ""
+                items.append(InboxItem(hub_msg_id=rec.hub_msg_id, sender_id=rec.sender_id, room_id=rec.room_id,
+                                       source_type=rec.source_type, mentioned=bool(rec.mentioned), text=body or ""))
+            hub_decisions = await decide_inbox(db, agent=receiver_agent, items=items, access_contexts=access_contexts)
     from hub.services.access_decide import shadow_inbox
 
     await shadow_inbox(
@@ -2248,6 +2264,7 @@ async def poll_inbox(
                 source_session_kind=rec.source_session_kind,
                 sender_same_owner=rec.sender_id in same_owner_senders,
                 access_context=access_contexts.get(rec.sender_id),
+                hub_decision=hub_decisions.get(rec.hub_msg_id),
                 space_context=(
                     {
                         "space_id": ri["space_id"],

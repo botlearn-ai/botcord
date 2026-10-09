@@ -371,6 +371,10 @@ class InboxMessage(BaseModel):
     # ``restricted`` is true the daemon runs the turn with the read-only
     # profile regardless of its local route policy.
     space_context: dict | None = None
+    # Hub-computed wake + execution decision (docs/access-graph-model.md §8 PR 4):
+    # {"wake": bool, "wake_reason": str, "profile": "full|collaborator|consult|deny", "basis": str}.
+    # Daemons that understand it execute it; local config may only tighten.
+    hub_decision: dict | None = None
 
 
 class InboxPollResponse(BaseModel):

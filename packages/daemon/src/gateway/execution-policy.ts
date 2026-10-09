@@ -127,7 +127,46 @@ export type TurnExecution =
   | { profile: "default" }
   | { profile: "restricted"; grant?: TurnAccessGrant }
   | { profile: "collaborator"; grant: TurnAccessGrant }
-  | { profile: "refused"; reason: "grant_inactive" | "runtime_unsupported"; grant?: TurnAccessGrant };
+  | { profile: "refused"; reason: RefusalReason; grant?: TurnAccessGrant };
+
+export type RefusalReason = "grant_inactive" | "runtime_unsupported" | "hub_denied";
+
+const HUB_PROFILE_RANK: Record<string, number> = { deny: 0, consult: 1, collaborator: 2, full: 3 };
+
+interface EntryHubDecision {
+  wake: boolean;
+  profile: "full" | "collaborator" | "consult" | "deny";
+  basis: string;
+}
+
+function inboundEntries(msg: GatewayInboundMessage): unknown[] {
+  const batch = (msg.raw as { batch?: unknown } | null | undefined)?.batch;
+  return Array.isArray(batch) && batch.length > 0 ? batch : [msg.raw];
+}
+
+function readHubDecision(entry: unknown): EntryHubDecision | null {
+  if (!entry || typeof entry !== "object") return null;
+  const d = (entry as { hub_decision?: unknown }).hub_decision;
+  if (!d || typeof d !== "object") return null;
+  const { wake, profile, basis } = d as { wake?: unknown; profile?: unknown; basis?: unknown };
+  if (typeof wake !== "boolean" || typeof profile !== "string" || !(profile in HUB_PROFILE_RANK)) return null;
+  return { wake, profile: profile as EntryHubDecision["profile"], basis: typeof basis === "string" ? basis : "" };
+}
+
+/**
+ * Hub decisions for every entry of the inbound, or null when any entry lacks
+ * one (older Hub, non-BotCord channel) — callers then use the legacy logic.
+ */
+export function hubDecisions(msg: GatewayInboundMessage): EntryHubDecision[] | null {
+  const out = inboundEntries(msg).map(readHubDecision);
+  return out.every((d): d is EntryHubDecision => d !== null) ? out : null;
+}
+
+/** Hub wake decision for the inbound (any entry waking wakes the turn), or null. */
+export function hubWake(msg: GatewayInboundMessage): boolean | null {
+  const decisions = hubDecisions(msg);
+  return decisions ? decisions.some((d) => d.wake) : null;
+}
 
 function readAccessContext(entry: unknown): { grant: TurnAccessGrant; active: boolean } | null {
   if (!entry || typeof entry !== "object") return null;
@@ -161,9 +200,11 @@ export function resolveTurnExecution(
   route: Pick<GatewayRoute, "nonOwnerExecution" | "runtime">,
   opts: { botcordChannel: boolean },
 ): TurnExecution {
+  if (!opts.botcordChannel) return { profile: "default" };
+  const decisions = hubDecisions(msg);
+  if (decisions) return fromHubDecisions(msg, decisions, route, opts);
   if (isOwnerTrustedInbound(msg, opts)) return { profile: "default" };
-  const batch = (msg.raw as { batch?: unknown } | null | undefined)?.batch;
-  const entries = Array.isArray(batch) && batch.length > 0 ? batch : [msg.raw];
+  const entries = inboundEntries(msg);
   const contexts = entries.map(readAccessContext);
   const withGrant = contexts.filter((c): c is NonNullable<typeof c> => c !== null);
   if (withGrant.length > 0) {
@@ -197,6 +238,49 @@ export function resolveTurnExecution(
       : { profile: "refused", reason: "runtime_unsupported" };
   }
   return isRestrictedTurn(msg, route, opts) ? { profile: "restricted" } : { profile: "default" };
+}
+
+/**
+ * Execute the Hub's decision: the most restrictive profile across a batch
+ * wins; local config may only tighten (`nonOwnerExecution: "restricted"`).
+ */
+function fromHubDecisions(
+  msg: GatewayInboundMessage,
+  decisions: EntryHubDecision[],
+  route: Pick<GatewayRoute, "nonOwnerExecution" | "runtime">,
+  opts: { botcordChannel: boolean },
+): TurnExecution {
+  const weakest = decisions.reduce((a, b) => (HUB_PROFILE_RANK[b.profile]! < HUB_PROFILE_RANK[a.profile]! ? b : a));
+  const contexts = inboundEntries(msg).map(readAccessContext);
+  const latest = [...contexts].reverse().find((c) => c !== null) ?? null;
+  const grant = latest?.grant;
+  const restricted = (): TurnExecution =>
+    RESTRICTION_CAPABLE_RUNTIMES.has(route.runtime)
+      ? { profile: "restricted", ...(grant ? { grant } : {}) }
+      : { profile: "refused", reason: "runtime_unsupported", ...(grant ? { grant } : {}) };
+  switch (weakest.profile) {
+    case "deny":
+      return {
+        profile: "refused",
+        reason: weakest.basis === "grant_inactive" ? "grant_inactive" : "hub_denied",
+        ...(grant ? { grant } : {}),
+      };
+    case "consult":
+      return restricted();
+    case "collaborator": {
+      const sameActiveGrant =
+        !!latest && latest.active && contexts.every((c) => c !== null && c.grant.grantId === latest.grant.grantId);
+      if (sameActiveGrant && COLLABORATOR_CAPABLE_RUNTIMES.has(route.runtime)) {
+        return { profile: "collaborator", grant: latest.grant };
+      }
+      return restricted();
+    }
+    default: {
+      const ownerBasis = decisions.every((d) => d.basis === "owner" || d.basis === "owner_channel");
+      if (!ownerBasis && route.nonOwnerExecution === "restricted") return restricted();
+      return { profile: "default" };
+    }
+  }
 }
 
 const GUEST_ENV_DROP_EXACT = new Set([
