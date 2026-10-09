@@ -184,10 +184,13 @@ async def _legacy_grant_is_valid(db: AsyncSession, grant: AgentAccessGrant) -> b
 
 async def latest_grant_for_pair(db: AsyncSession, agent_id: str, grantee_user_id: UUID) -> AgentAccessGrant | None:
     """Most recent grant (live or not) between this agent and grantee."""
+    # Unrevoked grants first: a replacement grant can share its creation
+    # timestamp with the one it revoked.
     return await db.scalar(
         select(AgentAccessGrant)
         .where(AgentAccessGrant.agent_id == agent_id, AgentAccessGrant.grantee_user_id == grantee_user_id)
-        .order_by(AgentAccessGrant.created_at.desc(), AgentAccessGrant.id.desc())
+        .order_by(AgentAccessGrant.revoked_at.is_(None).desc(), AgentAccessGrant.created_at.desc(),
+                  AgentAccessGrant.id.desc())
         .limit(1)
     )
 

@@ -382,7 +382,11 @@ async def sync_access_graph(
             stats.edges_revoked += 1
     await db.flush()
 
-    for source, want in wanted.items():
+    # Edges leaving the live states go first: a relation replaced in the same
+    # transaction (e.g. a grant upgraded from consultant to collaborator) must
+    # free the live-edge unique key before its successor is inserted.
+    ordered = sorted(wanted.items(), key=lambda kv: kv[1].status in ("pending", "active"))
+    for source, want in ordered:
         edge = have.get(source)
         values = {f: getattr(want, f) for f in _FIELDS}
         if edge is None:
