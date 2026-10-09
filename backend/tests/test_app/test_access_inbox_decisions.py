@@ -117,6 +117,10 @@ async def test_owner_raises_and_org_room_stays_fixed(db, setup):  # noqa: F811
     out = await decide_inbox(db, agent=barry, items=[item(1, setup["zed"], f"rm_dm_{setup['zed']}_ag_barry")],
                              access_contexts={})
     assert out["h1"]["profile"] == "full"
+    # The change is audited with the owner's principal id (fits the 32-char column).
+    from hub.models import AccessEdgeEvent
+    actors = set((await db.scalars(select(AccessEdgeEvent.actor_id).where(AccessEdgeEvent.event == "capability"))).all())
+    assert actors == {setup["hu"]["Danny"]}
     # The projection never overwrites the owner's choice.
     await sync_access_graph(db)
     await db.commit()
