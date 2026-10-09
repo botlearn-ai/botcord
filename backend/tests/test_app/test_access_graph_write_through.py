@@ -80,3 +80,17 @@ async def test_grant_needs_owner_active_parties(db, world, change):  # noqa: F81
         space.status = "suspended"
     await db.commit()
     assert not await agent_access.grant_is_valid(db, grant)
+
+
+@pytest.mark.asyncio
+async def test_replacing_a_grant_in_one_transaction(db, world):  # noqa: F811
+    """Upgrade = revoke the old grant + create a new one; order must not matter."""
+    users, acme = world["users"], world["acme"]
+    for role in ("consultant", "collaborator", "consultant", "collaborator"):
+        await agent_access.create_grant(db, acme.space_id, users["Danny"].id, "ag_barry", users["Alice"].id, role)
+        await db.commit()
+        live = (await db.scalars(select(AccessEdge).where(
+            AccessEdge.kind == "grant", AccessEdge.status == "active"))).all()
+        assert [e.role for e in live] == [role]
+    await assert_projection_current(db)
+
