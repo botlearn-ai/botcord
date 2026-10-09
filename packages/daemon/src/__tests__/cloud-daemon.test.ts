@@ -22,6 +22,13 @@ import type { DaemonConfig } from "../config.js";
 import type { Gateway, GatewayChannelConfig } from "../gateway/index.js";
 import type { OnAgentInstalledHook } from "../provision.js";
 
+// Wiring tests must not launch locally installed CLIs to probe their versions.
+// Runtime probing is covered separately by the runtime and provisioner tests.
+vi.mock("../adapters/runtimes.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../adapters/runtimes.js")>(),
+  detectRuntimes: vi.fn(() => []),
+}));
+
 class FakeWebSocket extends EventEmitter {
   public readyState = 0;
   public sent: string[] = [];
@@ -122,6 +129,10 @@ describe("startCloudDaemon", () => {
       const ws = FakeWebSocket.instances[0]!;
       expect(ws.url).toBe("ws://localhost:9000/cloud/daemon/ws?label=cloud%3Acloud_dm_abc123");
       expect(ws.opts.headers?.Authorization).toBe("Bearer tok_jwt_42");
+      expect(sentFrames(ws)).toContainEqual(expect.objectContaining({
+        type: "runtime_snapshot",
+        params: expect.objectContaining({ runtimes: [] }),
+      }));
     } finally {
       await handle.stop("test");
     }
