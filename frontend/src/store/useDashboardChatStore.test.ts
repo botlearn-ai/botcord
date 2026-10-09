@@ -106,6 +106,17 @@ function makeMessage(overrides: Partial<DashboardMessage> = {}): DashboardMessag
 }
 
 describe("useDashboardChatStore message polling", () => {
+  it("refreshes agent activity even when no new messages arrive", async () => {
+    const waiting = [{ agent_id: "ag_1", agent_name: "Assistant", status: "waiting" as const }];
+    useDashboardChatStore.setState({ messages: { rm_empty: [makeMessage({ sender_kind: "human", reply_activity: waiting })] } });
+    mocks.getRoomMessages.mockResolvedValue({ messages: [], has_more: false, activity_updates: {
+      msg_1: [{ ...waiting[0], status: "processing" }],
+    } });
+    await useDashboardChatStore.getState().pollNewMessages("rm_empty");
+    expect(mocks.getRoomMessages).toHaveBeenCalledWith("rm_empty", expect.objectContaining({ activityFor: ["msg_1"] }));
+    expect(useDashboardChatStore.getState().messages.rm_empty[0].reply_activity?.[0].status).toBe("processing");
+  });
+
   beforeEach(() => {
     mocks.getRoomMessages.mockReset();
     mocks.leaveRoom.mockReset();

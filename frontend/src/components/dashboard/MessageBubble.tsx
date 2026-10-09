@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
@@ -30,6 +30,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useConfirm } from "@/store/useConfirmStore";
 import BotAvatar from "./BotAvatar";
+import TeamMessageFeedback, { TeamMessageFeedbackContext } from "@/components/team/TeamMessageFeedback";
 import ParticipantAvatar from "./ParticipantAvatar";
 import { PresenceDot } from "./PresenceDot";
 
@@ -374,6 +375,7 @@ function MessageBubble({
   mentionCandidates,
   onPreviewAttachment,
 }: MessageBubbleProps) {
+  const teamFeedback = useContext(TeamMessageFeedbackContext);
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null);
@@ -977,7 +979,7 @@ function MessageBubble({
               <span className="max-w-[96px] truncate">{reaction.actor_name || reaction.actor_id}</span>
             </span>
           ))}
-          {showMessageStatus && (
+          {showMessageStatus && !(teamFeedback && message.sender_kind === "human") && (
             <>
               {message.state_counts && Object.keys(message.state_counts).length > 0 ? (
                 <StateCountsBadges counts={message.state_counts} />
@@ -992,6 +994,7 @@ function MessageBubble({
             </>
           )}
         </div>
+        <TeamMessageFeedback message={message} />
       </div>
       {isOwn && sideAvatar}
       {/* For others' messages: button right of bubble */}

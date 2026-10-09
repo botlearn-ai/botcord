@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import { useLanguage, chatPane } from "@/lib/i18n";
 import { transferDialog } from "@/lib/i18n/translations/dashboard";
@@ -10,6 +10,8 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useShallow } from "zustand/react/shallow";
 import MessageComposer from "./MessageComposer";
+import { sendDashboardRoomMessage } from "@/lib/room-message-send";
+import { TeamMessageFeedbackContext } from "@/components/team/TeamMessageFeedback";
 import { dashboardReplyTargetId } from "@/lib/dashboard-message-actions";
 import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 import { CornerUpLeft, Loader2, X } from "lucide-react";
@@ -250,6 +252,7 @@ export async function uploadRoomAttachments(
 }
 
 export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanComposerProps) {
+  const teamFeedback = useContext(TeamMessageFeedbackContext);
   const locale = useLanguage();
   const { user, activeAgentId, activeIdentity, ownedAgents, human, viewMode } = useDashboardSessionStore(useShallow((s) => ({
     user: s.user,
@@ -259,14 +262,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
     human: s.human,
     viewMode: s.viewMode,
   })));
-  const { insertMessage, patchMessageIdentity, markMessageFailed, patchRoom, pollNewMessages, refreshOverview } = useDashboardChatStore(useShallow((s) => ({
-    insertMessage: s.insertMessage,
-    patchMessageIdentity: s.patchMessageIdentity,
-    markMessageFailed: s.markMessageFailed,
-    patchRoom: s.patchRoom,
-    pollNewMessages: s.pollNewMessages,
-    refreshOverview: s.refreshOverview,
-  })));
+  const refreshOverview = useDashboardChatStore((s) => s.refreshOverview);
   const replyingTo = useDashboardChatStore((s) => s.replyingTo[roomId] ?? null);
   const setReplyingTo = useDashboardChatStore((s) => s.setReplyingTo);
   const hasRoomInOverview = useDashboardChatStore(
@@ -405,28 +401,17 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
       source_user_name: displayName,
       is_mine: true,
       reply_preview: optimisticReplyPreview,
+      retry_reply_to: replyTargetMsgId,
+      send_status: "sending",
     };
 
-    insertMessage(roomId, optimistic);
+    useDashboardChatStore.getState().insertMessage(roomId, optimistic);
     // Clear the quote bar as soon as the message is in flight — server-side
     // validation is mirrored in the optimistic preview already.
     if (replyTargetMsgId) setReplyingTo(roomId, null);
 
     try {
-      const result = await api.sendRoomHumanMessage(
-        roomId, text, mentions, topicId, attachments, replyTargetMsgId,
-      );
-      patchMessageIdentity(roomId, clientTempId, {
-        hub_msg_id: result.hub_msg_id,
-        msg_id: result.msg_id,
-        topic_id: result.topic_id ?? topicId,
-      });
-      patchRoom(roomId, {
-        last_message_preview: displayText,
-        last_message_at: now,
-        last_sender_name: displayName,
-      });
-      await pollNewMessages(roomId, { expectedHubMsgId: result.hub_msg_id, retries: 4 });
+      await sendDashboardRoomMessage(optimistic);
       // First send into a brand-new DM room (auto-created server-side) won't
       // show up in the sidebar until overview/humanRooms is re-fetched.
       if (roomId.startsWith("rm_dm_")) {
@@ -437,16 +422,14 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
         }
       }
     } catch (err: unknown) {
-      // The Hub never accepted the message: keep it visible but flagged so it
-      // does not look queued forever.
-      markMessageFailed(roomId, clientTempId);
-      setError(
+      // Keep the failed bubble and its original payload available for retry.
+      setError(teamFeedback ? null : (
         err instanceof ApiError && err.message === "agent_access_revoked"
           ? chatPane[locale].agentAccessRevoked
-          : err instanceof Error ? err.message : "Failed to send",
-      );
+          : err instanceof Error ? err.message : "Failed to send"
+      ));
     }
-  }, [locale, uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, insertMessage, patchMessageIdentity, markMessageFailed, patchRoom, pollNewMessages, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms, replyingTo, setReplyingTo, human?.avatar_url, user?.avatar_url]);
+  }, [teamFeedback, locale, uploadAgentId, senderId, displayName, user?.id, roomId, topicId, viewMode, refreshOverview, refreshHumanRooms, hasRoomInOverview, hasRoomInHumanRooms, replyingTo, setReplyingTo, human?.avatar_url, user?.avatar_url]);
 
   if (sendDenied) {
     return (

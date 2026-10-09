@@ -8,6 +8,7 @@
  * personal 5s poll is off in Team mode).
  */
 import { useEffect } from "react";
+import { TeamMessageFeedbackContext } from "./TeamMessageFeedback";
 import { useLanguage } from "@/lib/i18n";
 import RoomHeader from "@/components/dashboard/RoomHeader";
 import MessageList from "@/components/dashboard/MessageList";
@@ -59,6 +60,7 @@ export default function TeamRoomPane({
   }, [roomId]);
 
   return (
+    <TeamMessageFeedbackContext.Provider value={true}>
     <div className="dashboard-main flex h-full min-h-0 flex-col overflow-hidden bg-deep-black" data-team-room={roomId}>
       <RoomHeader
         onBack={onBack}
@@ -83,5 +85,6 @@ export default function TeamRoomPane({
         )}
       </div>
     </div>
+    </TeamMessageFeedbackContext.Provider>
   );
 }
