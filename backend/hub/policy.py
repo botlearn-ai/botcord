@@ -348,6 +348,25 @@ async def resolve_effective_attention(
       * ``muted_until`` only applies if it's in the future. Past timestamps
         are treated as expired and dropped from the result.
     """
+    override: AgentRoomPolicyOverride | None = None
+    if room_id is not None and not _is_dm_room(room_id):
+        result = await db.execute(
+            select(AgentRoomPolicyOverride).where(
+                AgentRoomPolicyOverride.agent_id == agent.agent_id,
+                AgentRoomPolicyOverride.room_id == room_id,
+            )
+        )
+        override = result.scalar_one_or_none()
+    return effective_attention_from(agent, room_id, override)
+
+
+def effective_attention_from(
+    agent: Agent,
+    room_id: str | None,
+    override: AgentRoomPolicyOverride | None,
+) -> EffectiveAttention:
+    """Pure part of :func:`resolve_effective_attention` for a pre-loaded override row
+    (lets callers batch-load overrides for many agents)."""
     if _is_dm_room(room_id):
         return EffectiveAttention(
             mode=AttentionMode.always,
@@ -359,16 +378,6 @@ async def resolve_effective_attention(
 
     default_mode = _agent_default_attention(agent)
     default_keywords = _decode_keywords(getattr(agent, "attention_keywords", None))
-
-    override: AgentRoomPolicyOverride | None = None
-    if room_id is not None:
-        result = await db.execute(
-            select(AgentRoomPolicyOverride).where(
-                AgentRoomPolicyOverride.agent_id == agent.agent_id,
-                AgentRoomPolicyOverride.room_id == room_id,
-            )
-        )
-        override = result.scalar_one_or_none()
 
     if override is None:
         return EffectiveAttention(

@@ -24,6 +24,7 @@ from hub.models import (
     Agent,
     AgentAccessGrant,
     AgentAccessRequest,
+    AgentRoomPolicyOverride,
     AgentSenderReplyRule,
     Room,
     RoomMember,
@@ -32,7 +33,7 @@ from hub.models import (
     SpaceUserMembership,
     User,
 )
-from hub.policy import resolve_effective_attention
+from hub.policy import _agent_default_attention, effective_attention_from, resolve_effective_attention
 from hub.services import agent_access, spaces
 
 _ROLE_RANK = {"consultant": 1, "collaborator": 2}
@@ -77,12 +78,14 @@ async def agent_directory(db: AsyncSession, space_id: UUID, user_id: UUID) -> li
     pending = {r.agent_id: r for r in (await db.scalars(select(AgentAccessRequest).where(
         AgentAccessRequest.space_id == space_id, AgentAccessRequest.requester_user_id == user_id,
         AgentAccessRequest.status == "pending"))).all()}
+    grants = await agent_access.active_grants_for_grantee(
+        db, [a.agent_id for _, a, _, owner in agents if owner != user_id], user_id)
     out = []
-    for membership, agent, display_name, owner_id in agents:
+    for _membership, agent, display_name, owner_id in agents:
         if owner_id == user_id:
             access, grant_id = "owner", None
         else:
-            grant = await agent_access.active_grant_for_pair(db, agent.agent_id, user_id)
+            grant = grants.get(agent.agent_id)
             access, grant_id = (grant.role, grant.id) if grant is not None else ("none", None)
         req = pending.get(agent.agent_id)
         out.append({
@@ -94,7 +97,7 @@ async def agent_directory(db: AsyncSession, space_id: UUID, user_id: UUID) -> li
             "my_access": access,
             "grant_id": grant_id,
             "pending_request": {"id": req.id, "requested_role": req.requested_role} if req else None,
-            "default_reply_mode": (await _attention_mode(db, agent, None))["mode"],
+            "default_reply_mode": _agent_default_attention(agent).value,
         })
     return out
 
@@ -210,22 +213,32 @@ async def room_agent_access(db: AsyncSession, space_id: UUID, room_id: str, user
     org_agents = await _org_agents(db, space_id)
     owners = {a.agent_id: owner for _, a, _, owner in org_agents}
     org_names = {a.agent_id: name for _, a, name, _ in org_agents}
+    agents = (await db.scalars(select(Agent).where(Agent.agent_id.in_(agent_ids)))).all()
+    ids = [a.agent_id for a in agents]
+    grants = await agent_access.active_grants_for_grantee(
+        db, [a.agent_id for a in agents if not (owners.get(a.agent_id) == user_id or a.user_id == user_id)], user_id)
+    room_caps: dict[str, str | None] = {}
+    for from_id, cap in (await db.execute(select(AccessEdge.from_id, AccessEdge.capability).where(
+            AccessEdge.kind == "member", AccessEdge.status == "active",
+            AccessEdge.from_id.in_(ids), AccessEdge.to_id == room_id))).all():
+        room_caps.setdefault(from_id, cap)
+    overrides = {o.agent_id: o for o in (await db.scalars(select(AgentRoomPolicyOverride).where(
+        AgentRoomPolicyOverride.agent_id.in_(ids), AgentRoomPolicyOverride.room_id == room_id))).all()}
+    rules_by_agent: dict[str, dict] = {}
+    for r in (await db.scalars(select(AgentSenderReplyRule).where(
+            AgentSenderReplyRule.agent_id.in_(ids), AgentSenderReplyRule.sender_id == me))).all():
+        rules_by_agent.setdefault(r.agent_id, {})[(r.sender_id, r.room_scope)] = r
     out = []
-    for agent in (await db.scalars(select(Agent).where(Agent.agent_id.in_(agent_ids)))).all():
+    for agent in agents:
         if owners.get(agent.agent_id) == user_id or agent.user_id == user_id:
             capability, basis = "full", "owner"
+        elif (grant := grants.get(agent.agent_id)) is not None:
+            capability, basis = ("collaborator" if grant.role == "collaborator" else "consult"), "grant"
         else:
-            grant = await agent_access.active_grant_for_pair(db, agent.agent_id, user_id)
-            if grant is not None:
-                capability, basis = ("collaborator" if grant.role == "collaborator" else "consult"), "grant"
-            else:
-                cap = await db.scalar(select(AccessEdge.capability).where(
-                    AccessEdge.kind == "member", AccessEdge.status == "active",
-                    AccessEdge.from_id == agent.agent_id, AccessEdge.to_id == room_id))
-                capability, basis = (cap or "consult"), "room"
-        rules = {(r.sender_id, r.room_scope): r for r in (await db.scalars(select(AgentSenderReplyRule).where(
-            AgentSenderReplyRule.agent_id == agent.agent_id, AgentSenderReplyRule.sender_id == me))).all()}
-        eff = await _attention_for(db, agent, room_id, me, rules, {})
+            capability, basis = (room_caps.get(agent.agent_id) or "consult"), "room"
+        # Pre-filled cache: _attention_for then needs no queries.
+        cache = {room_id: effective_attention_from(agent, room_id, overrides.get(agent.agent_id))}
+        eff = await _attention_for(db, agent, room_id, me, rules_by_agent.get(agent.agent_id, {}), cache)
         mode = eff.mode.value if hasattr(eff.mode, "value") else str(eff.mode)
         out.append({"agent_id": agent.agent_id, "display_name": org_names.get(agent.agent_id, agent.display_name),
                     "my_capability": capability, "basis": basis,
@@ -260,9 +273,11 @@ async def access_overview(db: AsyncSession, space_id: UUID, user_id: UUID) -> di
     """Managers: live grants across org agents and pending requests."""
     await spaces.require_manager(db, space_id, user_id)
     agents = {a.agent_id: (name, owner) for _, a, name, owner in await _org_agents(db, space_id)}
-    grants = [g for g in (await db.scalars(select(AgentAccessGrant).where(
+    candidates = [g for g in (await db.scalars(select(AgentAccessGrant).where(
         AgentAccessGrant.space_id == space_id, AgentAccessGrant.revoked_at.is_(None)))).all()
-        if g.agent_id in agents and await agent_access.grant_is_valid(db, g)]
+        if g.agent_id in agents]
+    valid = await agent_access.valid_grant_ids(db, candidates)
+    grants = [g for g in candidates if g.id in valid]
     pending = (await db.scalars(select(AgentAccessRequest).where(
         AgentAccessRequest.space_id == space_id, AgentAccessRequest.status == "pending"))).all()
     names = await _names(db, {g.grantee_user_id for g in grants} | {o for _, o in agents.values()}
