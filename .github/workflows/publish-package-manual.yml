@@ -76,16 +76,6 @@ jobs:
         working-directory: .
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        if: env.PKG == 'cli' || env.PKG == 'protocol-core' || env.PKG == 'daemon'
-        working-directory: .
-        run: pnpm --filter "${{ steps.meta.outputs.npm_name }}..." build
-
-      - name: Run tests
-        if: env.PKG == 'daemon'
-        working-directory: .
-        run: pnpm --filter "${{ steps.meta.outputs.npm_name }}" test
-
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
@@ -164,6 +154,11 @@ jobs:
             NEW_VERSION="v${BETA_VERSION}"
           fi
           printf 'new_version=%s\n' "$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      # Validate the bumped versions and their workspace dependencies before publishing.
+      - name: Build and test packages
+        working-directory: .
+        run: pnpm check:packages
 
       - name: Publish to npm
         run: |

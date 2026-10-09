@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BotCordClient,
@@ -6,6 +7,7 @@ import {
 } from "../client.js";
 
 const privateKey = Buffer.alloc(32, 2).toString("base64");
+const packageVersion = (createRequire(import.meta.url)("../../package.json") as { version: string }).version;
 
 afterEach(() => {
   vi.useRealTimers();
@@ -77,7 +79,7 @@ describe("BotCordClient token refresh", () => {
     expect(inboxRequests[1].headers.Authorization).toBe("Bearer new-token");
     expect(inboxRequests[0].headers).toMatchObject({
       "X-BotCord-Caller": "protocol-core",
-      "X-BotCord-Caller-Version": "0.2.18",
+      "X-BotCord-Caller-Version": packageVersion,
       "X-BotCord-Agent-ID": "ag_test",
       "X-BotCord-Credential-Key-ID": "k_test",
     });
@@ -91,7 +93,7 @@ describe("BotCordClient token refresh", () => {
     expect(refreshRequest?.headers["X-BotCord-Request-ID"]).toBe(
       inboxRequests[0].headers["X-BotCord-Request-ID"],
     );
-    expect(refreshRequest?.headers["X-BotCord-Caller-Version"]).toBe("0.2.18");
+    expect(refreshRequest?.headers["X-BotCord-Caller-Version"]).toBe(packageVersion);
   });
 
   it("single-flights concurrent refreshes and shares the new generation across clients", async () => {

@@ -47,6 +47,8 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'package.json'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/release-packages.yml'
+              - '.github/workflows/publish-package-manual.yml'
             gateway_ingress:
               - 'packages/gateway-ingress/**'
               - 'packages/protocol-core/**'
@@ -113,10 +115,8 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - name: Build
-        run: pnpm -r --filter "./packages/protocol-core" --filter "./cli" --filter "./packages/daemon" build
-      - name: Test
-        run: pnpm -r --filter "./packages/protocol-core" --filter "./packages/daemon" test
+      - name: Build and test packages
+        run: pnpm check:packages
 
   # ── Gateway ingress: vitest ──────────────────────────────────────────────────
   gateway-ingress-ci:
