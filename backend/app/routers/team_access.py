@@ -3,7 +3,7 @@
 import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,12 @@ from hub.services import team_access as service
 router = APIRouter(prefix="/api/spaces/{space_id}", tags=["app-team-access"])
 
 _COMMAND_PATTERN = r"^[A-Za-z0-9_./:@=+-][A-Za-z0-9_./:@=+ -]{0,63}$"
+
+
+async def _notify(background: BackgroundTasks, db: AsyncSession, req) -> None:
+    # Background tasks run after the response, i.e. after ``transaction`` committed,
+    # so clients refetching on the event see the change.
+    background.add_task(service.publish_realtime_events, await service.access_request_events(db, req))
 
 
 def _request_out(req) -> dict:
@@ -35,10 +41,11 @@ class RequestIn(BaseModel):
 
 
 @router.post("/agents/{agent_id}/access-requests", status_code=201)
-async def request_access(space_id: UUID, agent_id: str, body: RequestIn,
+async def request_access(space_id: UUID, agent_id: str, body: RequestIn, background: BackgroundTasks,
                          ctx: RequestContext = Depends(require_user),
                          db: AsyncSession = Depends(transaction, scope="function")):
     req = await service.request_access(db, space_id, ctx.user_id, agent_id, body.role, body.message or None)
+    await _notify(background, db, req)
     return _request_out(req)
 
 
@@ -57,7 +64,7 @@ class ApproveIn(BaseModel):
 
 
 @router.post("/access-requests/{request_id}/approve")
-async def approve(space_id: UUID, request_id: UUID, body: ApproveIn, ctx: RequestContext = Depends(require_user),
+async def approve(space_id: UUID, request_id: UUID, body: ApproveIn, background: BackgroundTasks, ctx: RequestContext = Depends(require_user),
                   db: AsyncSession = Depends(transaction, scope="function")):
     import re
 
@@ -67,19 +74,26 @@ async def approve(space_id: UUID, request_id: UUID, body: ApproveIn, ctx: Reques
     req, grant = await service.approve_request(
         db, space_id, ctx.user_id, request_id, role=body.role, workspace_path=body.workspace_path,
         allowed_commands=body.allowed_commands, expires_at=body.expires_at)
+    await _notify(background, db, req)
     return {**_request_out(req), "grant_role": grant.role}
 
 
 @router.post("/access-requests/{request_id}/reject")
-async def reject(space_id: UUID, request_id: UUID, ctx: RequestContext = Depends(require_user),
+async def reject(space_id: UUID, request_id: UUID, background: BackgroundTasks,
+                 ctx: RequestContext = Depends(require_user),
                  db: AsyncSession = Depends(transaction, scope="function")):
-    return _request_out(await service.reject_request(db, space_id, ctx.user_id, request_id))
+    req = await service.reject_request(db, space_id, ctx.user_id, request_id)
+    await _notify(background, db, req)
+    return _request_out(req)
 
 
 @router.post("/access-requests/{request_id}/cancel")
-async def cancel(space_id: UUID, request_id: UUID, ctx: RequestContext = Depends(require_user),
+async def cancel(space_id: UUID, request_id: UUID, background: BackgroundTasks,
+                 ctx: RequestContext = Depends(require_user),
                  db: AsyncSession = Depends(transaction, scope="function")):
-    return _request_out(await service.cancel_request(db, space_id, ctx.user_id, request_id))
+    req = await service.cancel_request(db, space_id, ctx.user_id, request_id)
+    await _notify(background, db, req)
+    return _request_out(req)
 
 
 @router.get("/rooms/{room_id}/agent-access")

@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 from uuid import UUID
 
 from sqlalchemy import select
@@ -37,6 +38,10 @@ from hub.policy import _agent_default_attention, effective_attention_from, resol
 from hub.services import agent_access, spaces
 
 _ROLE_RANK = {"consultant": 1, "collaborator": 2}
+
+ACCESS_REQUEST_EVENT = "access_request_changed"
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime.datetime:
@@ -194,6 +199,40 @@ async def cancel_request(db: AsyncSession, space_id: UUID, user_id: UUID, reques
         spaces.reject("request_not_found", 404)
     req.status, req.decided_at = "cancelled", _now()
     return req
+
+
+async def access_request_events(db: AsyncSession, req: AgentAccessRequest) -> list[dict]:
+    """Realtime hints for a created / updated / decided request.
+
+    Recipients: the agent's owner and the requester, on their ``human:<hu_id>``
+    channels. The payload only says *which* request changed; clients refetch
+    through the authorized endpoints, so nothing about the request leaks.
+    """
+    from hub.routers.hub import build_agent_realtime_event
+
+    owner = (select(SpaceUserMembership.user_id)
+             .join(SpaceAgentMembership, SpaceAgentMembership.sponsor_user_membership_id == SpaceUserMembership.id)
+             .where(SpaceAgentMembership.space_id == req.space_id, SpaceAgentMembership.agent_id == req.agent_id))
+    human_ids = set((await db.scalars(select(User.human_id).where(
+        User.id.in_(owner) | (User.id == req.requester_user_id)))).all())
+    ext = {"space_id": str(req.space_id), "request_id": str(req.id), "status": req.status}
+    return [build_agent_realtime_event(type=ACCESS_REQUEST_EVENT, agent_id=hu, ext=dict(ext))
+            for hu in sorted(h for h in human_ids if h)]
+
+
+async def publish_realtime_events(events: list[dict]) -> None:
+    """Send events on a fresh session; run after the request transaction committed."""
+    if not events:
+        return
+    from hub.database import async_session
+    from hub.routers import hub as hub_router
+
+    try:
+        async with async_session() as db:
+            for event in events:
+                await hub_router._publish_agent_realtime_event(db, event)
+    except Exception:  # notification must never surface as a request error
+        logger.exception("access request realtime publish failed")
 
 
 async def room_agent_access(db: AsyncSession, space_id: UUID, room_id: str, user_id: UUID) -> list[dict]:

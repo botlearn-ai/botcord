@@ -469,7 +469,8 @@ export type RealtimeMetaEventType =
   | "system"
   | "typing"
   | "message_status_reaction"
-  | "agent_status_changed";
+  | "agent_status_changed"
+  | "access_request_changed";
 
 export interface RealtimeMetaEvent {
   type: RealtimeMetaEventType;
