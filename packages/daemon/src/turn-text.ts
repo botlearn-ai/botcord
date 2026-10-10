@@ -72,7 +72,7 @@ const DIRECT_HINT =
 const NON_OWNER_REPLY_HINT =
   "[This room is NOT owner-chat. Plain text output WILL NOT be sent. " +
   "To reply, call the `botcord_send` tool, or run " +
-  '`botcord send --room <room_id> --text "..."` via Bash.]';
+  '`botcord send --to <room_id> --text "..."` via Bash.]';
 /**
  * Replaces {@link NON_OWNER_REPLY_HINT} on restricted turns (non-owner
  * requester, see gateway/execution-policy.ts): the runtime has no shell, so
@@ -148,7 +148,7 @@ function appendConversationFields(
 interface BatchedEntry {
   hub_msg_id?: unknown;
   text?: unknown;
-  envelope?: { from?: unknown; type?: unknown; payload?: { text?: unknown } };
+  envelope?: { msg_id?: unknown; from?: unknown; type?: unknown; payload?: { text?: unknown } };
   source_type?: unknown;
   source_user_name?: unknown;
   mentioned?: unknown;
@@ -350,6 +350,10 @@ export function composeBotCordUserTurn(
   // replying to a prior message, preserve that lightweight quote context so
   // short prompts like "this one?" still carry the referenced text.
   if (sender.kind === "owner") {
+    const batch = readBatch(msg.raw);
+    if (batch) return batch.map((entry) =>
+      `[message_id: ${String(entry.envelope?.msg_id ?? "unknown")}]\n${formatReplyQuoteLine(entry) ?? ""}\n${entryText(entry)}`
+    ).join("\n\n");
     const quoteLine = formatReplyQuoteLine(msg.raw);
     return quoteLine ? `${quoteLine}\n${trimmed}` : trimmed;
   }
@@ -373,6 +377,7 @@ export function composeBotCordUserTurn(
     "[BotCord Message]",
     `from: ${sanitizedSenderLabel}`,
     `to: ${msg.accountId}`,
+    `message_id: ${sanitizeSenderName(String((msg.raw as BatchedEntry | undefined)?.envelope?.msg_id ?? "unknown"))}`,
   ];
   appendConversationFields(headerFields, msg);
   if (isGroup && roomTitle) {
@@ -408,7 +413,7 @@ export function composeBotCordUserTurn(
     ...(isGroup
       ? formatRoomContext(msg.raw, { id: conversation.id, title: roomTitle })
       : []),
-    `<${tag} sender="${sanitizedSenderLabel}" sender_kind="${senderKindAttr}">`,
+    `<${tag} message_id="${sanitizeSenderName(String((msg.raw as BatchedEntry | undefined)?.envelope?.msg_id ?? "unknown"))}" sender="${sanitizedSenderLabel}" sender_kind="${senderKindAttr}">`,
     ...(quoteLine ? [quoteLine] : []),
     trimmed,
     `</${tag}>`,
@@ -466,7 +471,7 @@ function composeBatchedTurn(
     const quoteLine = formatReplyQuoteLine(entry);
     const inner = quoteLine ? `${quoteLine}\n${safeBody}` : safeBody;
     blocks.push(
-      `<${tag} sender="${safeLabel}" sender_kind="${kind}">\n${inner}\n</${tag}>`
+      `<${tag} message_id="${sanitizeSenderName(String(entry.envelope?.msg_id ?? "unknown"))}" sender="${safeLabel}" sender_kind="${kind}">\n${inner}\n</${tag}>`
     );
     if (envelopeType === "contact_request") {
       contactRequestSenders.push(safeLabel);

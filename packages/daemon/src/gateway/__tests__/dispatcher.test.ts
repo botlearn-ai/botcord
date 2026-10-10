@@ -64,6 +64,7 @@ class FakeChannel implements ChannelAdapter {
   readonly id: string;
   readonly type: string;
   readonly sends: ChannelSendContext[] = [];
+  responseRun?: ChannelAdapter["responseRun"];
   readonly streams: ChannelStreamBlockContext[] = [];
   readonly typings: ChannelTypingContext[] = [];
   readonly messageStatuses: ChannelMessageStatusContext[] = [];
@@ -439,6 +440,80 @@ describe("Dispatcher", () => {
     });
     return { dispatcher, channel, store };
   }
+
+  it("registers input before execution and associates the final reply", async () => {
+    const channel = new FakeChannel();
+    const updates: any[] = [];
+    channel.responseRun = async (body) => { updates.push(body); };
+    const runtime = new FakeRuntime({ reply: "answer", observeRun: (opts) => {
+      expect(updates[0].action).toBe("register");
+      expect(opts.text).toContain("input message IDs: m1");
+    } });
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    await dispatcher.handle(makeEnvelope({ raw: { envelope: { type: "message", msg_id: "m1" } } }));
+    expect(channel.sends[0].message.response).toMatchObject({ run_id: updates[0].run_id, kind: "final" });
+    expect(updates.at(-1).action).toBe("finish");
+  });
+
+  it("resolves bare NO_REPLY only for a single input", async () => {
+    for (const ids of [["m1"], ["m1", "m2"]]) {
+      const channel = new FakeChannel();
+      const updates: any[] = [];
+      channel.responseRun = async (body) => { updates.push(body); };
+      const { dispatcher } = await scaffold({ channel, runtimeFactory: () => new FakeRuntime({ reply: "NO_REPLY" }) });
+      await dispatcher.handle(makeEnvelope({ raw: { batch: ids.map((msg_id) => ({ envelope: { type: "message", msg_id } })) } }));
+      expect(updates.filter((u) => u.action === "no_reply")).toHaveLength(ids.length === 1 ? 1 : 0);
+      expect(channel.sends).toHaveLength(0);
+      expect(updates.at(-1).outcome).toBe("unconfirmed");
+    }
+  });
+
+  it("reports selected no_reply and reply targets for restricted batch output", async () => {
+    const channel = new FakeChannel();
+    const updates: any[] = [];
+    channel.responseRun = async (body) => { updates.push(body); };
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => new FakeRuntime({
+      reply: '<botcord-response>{"responds_to":["m1"],"no_reply":["m2"],"text":"answer"}</botcord-response>',
+    }) });
+    await dispatcher.handle(makeEnvelope({ raw: { batch: ["m1", "m2"].map((msg_id) => ({ envelope: { type: "message", msg_id } })) } }));
+    expect(updates.find((u) => u.action === "no_reply").message_ids).toEqual(["m2"]);
+    expect(channel.sends[0].message.text).toBe("answer");
+    expect(channel.sends[0].message.response?.responds_to).toEqual(["m1"]);
+  });
+
+  it("does not stream batch decision JSON into the user message", async () => {
+    const channel = new FakeChannel();
+    channel.responseRun = async () => {};
+    const raw = '<botcord-response>{"responds_to":["m1"],"no_reply":["m2"],"text":"answer"}</botcord-response>';
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => new FakeRuntime({
+      reply: raw, blocks: [{ kind: "assistant_text", seq: 1, raw: { text: raw } }],
+    }) });
+    await dispatcher.handle(makeEnvelope({ trace: { id: "h1", streamable: true }, raw: {
+      batch: ["m1", "m2"].map((msg_id) => ({ envelope: { type: "message", msg_id } })),
+    } }));
+    expect(channel.streams.some((s) => (s.block as StreamBlock).kind === "assistant_text")).toBe(false);
+    expect(channel.sends[0].message.text).toBe("answer");
+  });
+
+  it("reports policy-skipped input as no_reply without starting the runtime", async () => {
+    const channel = new FakeChannel();
+    const updates: any[] = [];
+    channel.responseRun = async (body) => { updates.push(body); };
+    const runtime = new FakeRuntime();
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime, attentionGate: () => false });
+    await dispatcher.handle(makeEnvelope({ raw: { envelope: { type: "message", msg_id: "m1" } } }));
+    expect(runtime.calls).toHaveLength(0);
+    expect(updates.map((u) => u.action)).toEqual(["register", "no_reply", "finish"]);
+  });
+
+  it("marks send failures and execution errors without claiming completion", async () => {
+    const channel = new FakeChannel({ sendImpl: () => { throw new Error("offline"); } });
+    const updates: any[] = [];
+    channel.responseRun = async (body) => { updates.push(body); };
+    const { dispatcher } = await scaffold({ channel });
+    await dispatcher.handle(makeEnvelope({ raw: { envelope: { type: "message", msg_id: "m1" } } }));
+    expect(updates.at(-1)).toMatchObject({ action: "finish", outcome: "failed" });
+  });
 
   it("skips empty text and still acks", async () => {
     const { dispatcher, channel } = await scaffold({});

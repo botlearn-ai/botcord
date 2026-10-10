@@ -4,7 +4,8 @@ import json
 from sqlalchemy import JSON, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.models import Agent, MessageRecord
+from hub.models import Agent, MessageRecord, MessageResponseRun
+from hub.services.message_responses import expired
 from hub.policy import is_direct_room_id
 
 
@@ -19,6 +20,10 @@ async def load_room_message_activity(db: AsyncSession, room_id: str, msg_ids: li
     )).all()
     if not rows:
         return activity
+    run_ids = {record.response_run_id for record, _, _ in rows if record.response_run_id}
+    runs = {run.run_id: run for run in (await db.execute(
+        select(MessageResponseRun).where(MessageResponseRun.run_id.in_(run_ids))
+    )).scalars().all()} if run_ids else {}
     # A quote can point at an older message. Prefer the runtime's trace_id,
     # which identifies the actual trigger, over the visible quote pointer.
     triggers = {record.hub_msg_id: record.msg_id for record, _, _ in rows}
@@ -42,6 +47,10 @@ async def load_room_message_activity(db: AsyncSession, room_id: str, msg_ids: li
             envelope = json.loads(reply.envelope_json)
         except (ValueError, TypeError):
             continue
+        # Explicit response metadata is authoritative; its quote pointer is
+        # presentation only and must never complete a different legacy input.
+        if isinstance(envelope.get("payload"), dict) and envelope["payload"].get("response") is not None:
+            continue
         target = triggers.get(envelope["trace_id"]) if envelope.get("trace_id") else reply.reply_to_msg_id
         if target is None:
             continue
@@ -54,15 +63,25 @@ async def load_room_message_activity(db: AsyncSession, room_id: str, msg_ids: li
             continue
         if record.source_type not in ("dashboard_human_room", "dashboard_user_chat", "human"):
             continue
-        if not (room_id.startswith("rm_oc_") or is_direct_room_id(room_id) or record.mentioned):
+        if not (room_id.startswith("rm_oc_") or is_direct_room_id(room_id) or record.mentioned or record.response_status in ("processing", "completed", "failed", "interrupted", "unconfirmed")):
             continue
         state = record.state.value
-        if (record.msg_id, record.receiver_id) in replied or state == "done":
+        if record.response_status:
+            status = record.response_status
+            run = runs.get(record.response_run_id)
+            if status in ("waiting", "processing") and (run is None or expired(run)):
+                status = "interrupted"
+            elif status in ("waiting", "processing") and run.status != "running":
+                status = "unconfirmed"
+        elif (record.msg_id, record.receiver_id) in replied or state == "done":
             status = "completed"
         elif state == "failed" or (record.msg_id, record.receiver_id) in failed:
             status = "failed"
-        elif state in ("processing", "delivered", "acked"):
-            status = "processing"
+        elif state == "processing":
+            # An inbox lease says nothing about the agent's response decision.
+            status = "waiting"
+        elif state in ("delivered", "acked"):
+            status = "unconfirmed"
         else:
             status = "waiting"
         activity[record.msg_id].append({
@@ -70,6 +89,8 @@ async def load_room_message_activity(db: AsyncSession, room_id: str, msg_ids: li
             "agent_name": name or record.receiver_id,
             "avatar_url": avatar,
             "status": status,
+            "reply_msg_id": record.response_reply_msg_id,
+            "run_id": record.response_run_id,
             # Do not expose internal exception strings or credentials to room members.
             "error": ("delivery_expired" if record.last_error == "TTL_EXPIRED" else "agent_execution_failed")
             if status == "failed" else None,

@@ -157,7 +157,9 @@ export interface RoomReplyActivity {
   agent_id: string;
   agent_name: string;
   avatar_url?: string | null;
-  status: "waiting" | "processing" | "completed" | "failed";
+  status: "waiting" | "processing" | "completed" | "failed" | "no_reply" | "interrupted" | "unconfirmed";
+  reply_msg_id?: string | null;
+  run_id?: string | null;
   error?: string | null;
 }
 

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import type { DashboardMessage } from "@/lib/types";
+import { emitJumpToMessage } from "@/components/dashboard/messageNavigation";
 import { sendDashboardRoomMessage } from "@/lib/room-message-send";
 
 export const TeamMessageFeedbackContext = createContext(false);
@@ -20,7 +21,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [retried, setRetried] = useState(false);
-  const activity = message.reply_activity?.filter((a) => a.status !== "completed") ?? [];
+  const activity = message.reply_activity ?? [];
   const pending = activity.some((a) => a.status === "waiting" || a.status === "processing");
   const sending = message.send_status === "sending" || (message.hub_msg_id.startsWith("tmp_") && message.state !== "failed");
   const failedSend = message.send_status === "failed" || (message.hub_msg_id.startsWith("tmp_") && message.state === "failed");
@@ -37,7 +38,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
     setRetrying(true);
     setRetryError(null);
     try {
-      const failedAgents = activity.filter((a) => a.status === "failed").map((a) => a.agent_id);
+      const failedAgents = activity.filter((a) => ["failed", "interrupted", "unconfirmed"].includes(a.status)).map((a) => a.agent_id);
       await sendDashboardRoomMessage(failedSend ? message : {
         ...message,
         hub_msg_id: `tmp_${crypto.randomUUID()}`,
@@ -54,7 +55,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
       setRetrying(false);
     }
   };
-  const canRetry = message.is_mine && (failedSend || activity.some((a) => a.status === "failed"));
+  const canRetry = message.is_mine && (failedSend || activity.some((a) => ["failed", "interrupted", "unconfirmed"].includes(a.status)));
   return (
     <div className="mt-1 space-y-1 text-xs text-text-secondary" aria-live="polite" aria-atomic="true">
       {message.is_mine && <div className="flex items-center gap-1">
@@ -66,8 +67,14 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
         {agent.avatar_url ? <img src={agent.avatar_url} alt="" className="h-4 w-4 rounded-full" /> : <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center rounded-full bg-neon-cyan/10 text-[10px] text-neon-cyan">{agent.agent_name.slice(0, 1)}</span>}
         <span className="max-w-32 truncate" title={agent.agent_name}>{agent.agent_name}</span>
         <span className={agent.status === "failed" ? "text-red-400" : ""}>
-          {agent.status === "failed" ? (agent.error === "delivery_expired" ? (zh ? "消息投递已过期，请重试" : "Delivery expired. Please retry") : (zh ? "处理失败，请重试" : "Processing failed. Please retry")) : agent.status === "processing" ? (zh ? "正在处理…" : "Working…") : (zh ? "等待响应…" : "Waiting for a response…")}
+          {agent.status === "failed" ? (agent.error === "delivery_expired" ? (zh ? "消息投递已过期，请重试" : "Delivery expired. Please retry") : (zh ? "处理失败，请重试" : "Processing failed. Please retry")) : agent.status === "processing" ? (zh ? "正在处理…" : "Working…")
+          : agent.status === "completed" ? (zh ? "已回复" : "Replied")
+          : agent.status === "no_reply" ? (zh ? "已处理 · 无需回复" : "Handled · No reply needed")
+          : agent.status === "interrupted" ? (zh ? "处理已中断" : "Processing interrupted")
+          : agent.status === "unconfirmed" ? (zh ? "回复状态未确认" : "Reply status unconfirmed")
+          : (zh ? "等待处理…" : "Waiting for handling…")}
         </span>
+        {agent.status === "completed" && agent.reply_msg_id && <button type="button" className="text-neon-cyan hover:underline" onClick={() => emitJumpToMessage({ msgId: agent.reply_msg_id!, roomId: message.room_id ?? undefined })}>{zh ? "查看回复" : "View reply"}</button>}
         {agent.status === "processing" && <span aria-hidden="true" className="motion-safe:animate-pulse text-neon-cyan">•••</span>}
       </div>)}
       {(pending || waitingForStatus) && longWait && <div>{zh ? "还在等待回复，你可以继续发送消息" : "Still waiting for a reply. You can send another message."}</div>}

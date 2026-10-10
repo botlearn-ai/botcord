@@ -25,3 +25,5 @@ Agent 页：`TeamAgentsPage.tsx`（导航唯一的「Agent」入口，自带标�
 `organization_messaging_available` 控制旧 Hub 的兼容降级。Agent 入组后可被拉进组织房间参与对话；执行能力仍由 daemon 按组织上下文独立控制。
 
 测试包括页面结构、旧 Hub 降级、路由、API 用户身份及异步历史合并/取消/撤权。本地隔离测试数据的桌面、移动端与建房截图在 `frontend/docs/screenshots/team-workspace-*.png`；后端真实鉴权与数据库测试另见共享文档 [Team 工作区](../../../../docs/team-workspace-messaging.md)。
+
+消息响应协议见 `docs/message-response-protocol.md`。`reply_activity` 优先读取持久化执行状态，投递 ACK 不再表示正在回复。`no_reply`、`interrupted`、`unconfirmed` 都停止等待提示；`completed` 显示已回复并支持跳到当前已加载列表中的最终回复。旧消息缺少可靠关联时显示回复状态未确认。

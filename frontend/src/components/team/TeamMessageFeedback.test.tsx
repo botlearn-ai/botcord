@@ -12,12 +12,12 @@ describe("team message feedback", () => {
     expect(render({ send_status: "sending" })).toContain("正在发送");
     const html = render({ send_status: "sent", reply_activity: [{ agent_id: "a", agent_name: "助手 A", status: "waiting" }] });
     expect(html).toContain("已发送");
-    expect(html).toContain("等待响应");
+    expect(html).toContain("等待处理");
     expect(html).not.toContain("正在处理");
     expect(html).toContain("你可以继续发送消息");
     expect(html).not.toContain("处理失败");
   });
-  it("shows per-agent status and removes completed progress", () => {
+  it("shows per-agent terminal status without a spinner", () => {
     const html = render({ reply_activity: [
       { agent_id: "a", agent_name: "助手 A", status: "processing" },
       { agent_id: "b", agent_name: "助手 B", status: "completed" },
@@ -25,9 +25,17 @@ describe("team message feedback", () => {
     ] });
     expect(html).toContain("助手 A");
     expect(html).toContain("正在处理");
-    expect(html).not.toContain("助手 B");
+    expect(html).toContain("助手 B");
+    expect(html).toContain("已回复");
     expect(html).toContain("助手 C");
     expect(html).toContain("重试");
+  });
+  it("ends waiting for no_reply, interrupted and unconfirmed outcomes", () => {
+    for (const status of ["no_reply", "interrupted", "unconfirmed"] as const) {
+      const html = render({ reply_activity: [{ agent_id: "a", agent_name: "A", status }] });
+      expect(html).not.toContain("还在等待回复");
+      expect(html).not.toContain("正在处理");
+    }
   });
   it("keeps retry available only for the sender and hides recalled feedback", () => {
     expect(render({ is_mine: false, send_status: "failed" })).not.toContain("<button");

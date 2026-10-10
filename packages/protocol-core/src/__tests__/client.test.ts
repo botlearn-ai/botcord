@@ -653,3 +653,19 @@ describe("BotCordClient inbox leases", () => {
     );
   });
 });
+
+describe("explicit response decisions", () => {
+  it("signs response targets inside the payload and keeps retry message IDs", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({ queued: true, hub_msg_id: "h_reply" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({ hubUrl: "https://hub.example", agentId: "ag_test", keyId: "k_test", privateKey,
+      token: "cached-token", tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600 });
+    await client.sendMessage("rm_test", "answer", { messageId: "stable-id", response: { run_id: "run1", responds_to: ["m1", "m2"], kind: "final" } });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    expect(body.msg_id).toBe("stable-id");
+    expect(body.payload.response).toEqual({ run_id: "run1", responds_to: ["m1", "m2"], kind: "final" });
+    expect(body.payload_hash).toBeTruthy();
+    await client.updateResponseRun({ run_id: "run1", room_id: "rm_test", action: "no_reply", message_ids: ["m3"] });
+    expect(fetchMock.mock.calls[1]![0]).toBe("https://hub.example/hub/response-runs");
+  });
+});

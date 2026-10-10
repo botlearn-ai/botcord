@@ -26,8 +26,8 @@ describe("composeBotCordUserTurn", () => {
   it("tells restricted turns that the daemon delivers the final reply", () => {
     const restricted = composeBotCordUserTurn(makeMessage(), { restricted: true });
     expect(restricted).toContain("restricted mode");
-    expect(restricted).not.toContain("botcord send --room");
-    expect(composeBotCordUserTurn(makeMessage())).toContain("botcord send --room");
+    expect(restricted).not.toContain("botcord send --to");
+    expect(composeBotCordUserTurn(makeMessage())).toContain("botcord send --to");
   });
 
   it("wraps a group agent message with header + tagged body + group NO_REPLY hint", () => {
@@ -43,7 +43,7 @@ describe("composeBotCordUserTurn", () => {
     expect(out).toContain("to: ag_me");
     expect(out).toContain("room: Ouraca Team");
     expect(out).toContain(
-      '<agent-message sender="ag_alice" sender_kind="agent">'
+      '<agent-message message_id="unknown" sender="ag_alice" sender_kind="agent">'
     );
     expect(out).toContain("hey everyone");
     expect(out).toContain("</agent-message>");
@@ -74,7 +74,7 @@ describe("composeBotCordUserTurn", () => {
         text: "真的吗",
       })
     );
-    expect(out).toContain('<human-message sender="Alice" sender_kind="human">');
+    expect(out).toContain('<human-message message_id="unknown" sender="Alice" sender_kind="human">');
     expect(out).toContain("from: Alice");
     expect(out).toContain("真的吗");
   });
@@ -123,7 +123,7 @@ describe("composeBotCordUserTurn", () => {
     );
     const roomIdx = out.indexOf("[BotCord Room]");
     const tagIdx = out.indexOf(
-      '<human-message sender="Alice" sender_kind="human">'
+      '<human-message message_id="unknown" sender="Alice" sender_kind="human">'
     );
     const closeIdx = out.indexOf("</human-message>");
     expect(roomIdx).toBeGreaterThan(-1);
@@ -377,11 +377,11 @@ describe("composeBotCordUserTurn", () => {
     expect(out).toContain("room: Ouraca");
     expect(out).toContain("mentioned: true");
     expect(out).toContain(
-      '<agent-message sender="ag_alice" sender_kind="agent">'
+      '<agent-message message_id="unknown" sender="ag_alice" sender_kind="agent">'
     );
     expect(out).toContain("first message");
     expect(out).toContain(
-      '<agent-message sender="ag_bob" sender_kind="agent">'
+      '<agent-message message_id="unknown" sender="ag_bob" sender_kind="agent">'
     );
     expect(out).toContain("second message");
     // Single-message header must NOT appear in batch mode.
@@ -416,10 +416,10 @@ describe("composeBotCordUserTurn", () => {
         raw: { batch, envelope: { type: "message", from: "ag_peer" } },
       })
     );
-    expect(out).toContain('<human-message sender="Alice" sender_kind="human">');
+    expect(out).toContain('<human-message message_id="unknown" sender="Alice" sender_kind="human">');
     expect(out).toContain("hi bot");
     expect(out).toContain(
-      '<agent-message sender="ag_peer" sender_kind="agent">'
+      '<agent-message message_id="unknown" sender="ag_peer" sender_kind="agent">'
     );
   });
 
@@ -511,7 +511,7 @@ describe("composeBotCordUserTurn quote-reply", () => {
       })
     );
     expect(out).toContain(
-      '<agent-message sender="ag_alice" sender_kind="agent">'
+      '<agent-message message_id="unknown" sender="ag_alice" sender_kind="agent">'
     );
     expect(out).toContain(
       '[quoting Bob: "We should ship the feature next sprint"]'

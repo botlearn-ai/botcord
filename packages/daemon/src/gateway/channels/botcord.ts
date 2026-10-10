@@ -89,7 +89,7 @@ export interface BotCordChannelClient {
   sendMessage(
     to: string,
     text: string,
-    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[]; traceId?: string | null },
+    options?: { replyTo?: string; topic?: string; attachments?: MessageAttachment[]; traceId?: string | null; messageId?: string; response?: { run_id: string; responds_to?: string[]; kind: "progress" | "final" } },
   ): Promise<{ hub_msg_id?: string; message_id?: string } & Record<string, unknown>>;
   sendTypedMessage?(
     to: string,
@@ -1332,6 +1332,22 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
       }
     },
 
+    async responseRun(body, log): Promise<void> {
+      const client = ensureClient(log);
+      const hubUrl = options.hubBaseUrl ?? client.getHubUrl();
+      // Idempotent decisions can be retried after a lost HTTP response.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const resp = await postControlWithRefresh(client, hubUrl, "/hub/response-runs", body);
+          if (resp.ok) return;
+          if (resp.status < 500) throw new Error(`Response protocol rejected (${resp.status})`);
+          if (attempt === 2) throw new Error(`Response protocol unavailable (${resp.status})`);
+        } catch (error) {
+          if (attempt === 2 || String(error).includes("rejected")) throw error;
+        }
+      }
+    },
+
     async send(ctx: ChannelSendContext): Promise<ChannelSendResult> {
       const client = ensureClient(ctx.log);
       const { message } = ctx;
@@ -1341,7 +1357,11 @@ export function createBotCordChannel(options: BotCordChannelOptions): ChannelAda
         attachments?: MessageAttachment[];
         errorRef?: string;
         traceId?: string | null;
+        messageId?: string;
+        response?: { run_id: string; responds_to?: string[]; kind: "progress" | "final" };
       } = {};
+      if (message.response && message.type !== "error") options.response = message.response;
+      if (message.messageId) options.messageId = message.messageId;
       if (message.replyTo) options.replyTo = message.replyTo;
       if (message.threadId) options.topic = message.threadId;
       if (message.errorRef) options.errorRef = message.errorRef;

@@ -112,6 +112,7 @@ export function buildSignedEnvelope(params: {
   payload: Record<string, unknown>;
   privateKey: string; // base64 Ed25519 seed
   keyId: string;
+  msgId?: string;
   replyTo?: string | null;
   ttlSec?: number;
   topic?: string | null;
@@ -130,7 +131,7 @@ export function buildSignedEnvelope(params: {
     goal = null,
   } = params;
 
-  const msgId = randomUUID();
+  const msgId = params.msgId ?? randomUUID();
   const ts = Math.floor(Date.now() / 1000);
   const payloadHash = computePayloadHash(payload);
 

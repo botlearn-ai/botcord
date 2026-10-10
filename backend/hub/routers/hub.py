@@ -50,6 +50,7 @@ from hub.services.cloud_agent_activity import (
     maybe_bump_for_inbound,
     maybe_bump_for_inbound_many,
 )
+from hub.services.message_responses import ResponseRunUpdate, update_run, record_response
 from hub.enums import TopicStatus
 from hub.id_generators import generate_hub_msg_id, generate_topic_id
 from hub.models import (
@@ -1222,6 +1223,8 @@ async def _send_direct_message(
             db, room_id, topic, envelope.from_, envelope.type, goal=goal,
         )
 
+    await record_response(db, envelope, room_id)
+
     # Create message record (dedup via unique (msg_id, receiver_id))
     hub_msg_id = generate_hub_msg_id()
     envelope_json = json.dumps(envelope.model_dump(by_alias=True))
@@ -1453,7 +1456,7 @@ async def _send_room_message(
 
     # Duplicate content check. Owner-chat rooms are a private dashboard control
     # surface; repeated runtime error fallbacks should still be visible there.
-    if not room_id.startswith("rm_oc_"):
+    if not room_id.startswith("rm_oc_") and envelope.payload.get("response") is None:
         _check_duplicate_content(room_id, envelope.from_, envelope.payload, request)
 
     # All anti-spam checks passed — record timestamp for slow mode
@@ -1544,6 +1547,8 @@ async def _send_room_message(
 
     # Parse mention set for per-receiver tagging
     mentioned_set = set(envelope.mentions) if envelope.mentions else set()
+
+    await record_response(db, envelope, room_id)
 
     with send_diagnostics.stage("room.fanout_write_and_attention"):
         for receiver_id in receivers:
@@ -1772,6 +1777,21 @@ async def send_message(
 
         # Verify envelope
         await _verify_envelope(envelope, db)
+
+        # Signed response retries bypass content/slow-mode checks only when
+        # the already committed message has exactly the same immutable body.
+        if envelope.payload.get("response") is not None:
+            existing = (await db.execute(select(MessageRecord).where(
+                MessageRecord.msg_id == envelope.msg_id,
+            ).limit(1))).scalar_one_or_none()
+            if existing:
+                original = json.loads(existing.envelope_json)
+                incoming = envelope.model_dump(by_alias=True)
+                if existing.sender_id != current_agent or any(original.get(key) != incoming.get(key) for key in
+                       ("to", "type", "payload", "reply_to", "topic", "goal", "mentions")):
+                    raise HTTPException(409, "Message ID already used with a different body")
+                return SendResponse(queued=True, hub_msg_id=existing.hub_msg_id,
+                                    status=existing.state.value, topic_id=existing.topic_id)
 
         # Scan for prompt injection patterns (log-only, never block).
         # Check payload text (same fallback order as to_text()), plus topic/goal
@@ -3011,3 +3031,14 @@ async def websocket_inbox(ws: WebSocket):
                         "mark_disconnected failed agent=%s err=%s",
                         agent_id, exc,
                     )
+
+
+@router.post("/response-runs")
+async def update_response_run(
+    body: ResponseRunUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_agent: str = Depends(get_current_claimed_agent),
+):
+    run = await update_run(db, current_agent, body)
+    await db.commit()
+    return {"run_id": run.run_id, "status": run.status}
