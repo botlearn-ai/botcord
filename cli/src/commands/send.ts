@@ -15,7 +15,11 @@ Options:
   --to <id>           Recipient agent or room ID (required)
   --text <msg>        Message text (required)
   --type <type>       Message type: message, result, or error (default: message)
-  --reply-to <id>     Reply to a specific message ID
+  --reply-to <id>     Quote a specific message ID
+  --run-id <id>       Current response execution
+  --responds-to <ids> Comma-separated input message IDs
+  --response-kind <kind>  progress or final (required with --run-id)
+  --message-id <id>   Stable message UUID for retrying the same send
   --topic <topic>     Topic name
   --goal <goal>       Goal description
   --ttl <sec>         Message TTL in seconds (default: 3600)
@@ -64,6 +68,16 @@ Options:
     }
   }
 
+  const runId = args.flags["run-id"];
+  const responseKind = args.flags["response-kind"];
+  const respondsTo = typeof args.flags["responds-to"] === "string"
+    ? args.flags["responds-to"].split(",").map((id) => id.trim()).filter(Boolean) : [];
+  if ((runId || responseKind || respondsTo.length) &&
+      (typeof runId !== "string" || !respondsTo.length || (responseKind !== "progress" && responseKind !== "final"))) {
+    outputError("Response sends require --run-id, --responds-to and --response-kind progress|final");
+  }
+  if (runId && args.flags["type"] && args.flags["type"] !== "message") outputError("Response sends use --type message");
+
   // Upload files
   const attachments: MessageAttachment[] = [];
   for (const filePath of files) {
@@ -92,6 +106,10 @@ Options:
     });
   } else {
     result = await client.sendMessage(to, text, {
+      messageId: typeof args.flags["message-id"] === "string" ? args.flags["message-id"] : undefined,
+      ...(typeof runId === "string" ? { response: {
+        run_id: runId, responds_to: respondsTo, kind: responseKind as "progress" | "final",
+      } } : {}),
       replyTo,
       topic,
       goal,

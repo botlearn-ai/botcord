@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "./args.js";
 import { outputError } from "./output.js";
+import { responseCommand } from "./commands/response.js";
 import { sendCommand } from "./commands/send.js";
 import { waitCommand } from "./commands/wait.js";
 import { refreshCommand } from "./commands/refresh.js";
@@ -37,6 +38,7 @@ Usage: botcord <command> [options]
 
 Commands:
   send              Send a signed message
+  response          Start processing messages or mark them no_reply
   wait              Defer a group-room turn (re-wake later)
   upload            Upload files to the hub
   inbox             Poll inbox for new messages
@@ -94,6 +96,9 @@ async function main(): Promise<void> {
 
   try {
     switch (args.command) {
+      case "response":
+        await responseCommand(args, globalHub, globalAgent);
+        break;
       case "send":
         await sendCommand(args, globalHub, globalAgent);
         break;

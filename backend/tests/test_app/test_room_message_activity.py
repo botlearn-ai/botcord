@@ -23,7 +23,7 @@ async def test_room_activity_refresh_without_new_messages(client, db_session, se
     response = await client.get(path, headers=headers)
     message = next(m for m in response.json()["messages"] if m["msg_id"] == "m_activity")
     assert message["reply_activity"][0]["status"] == "waiting"
-    for state, status in [(MessageState.processing, "processing"), (MessageState.failed, "failed")]:
+    for state, status in [(MessageState.processing, "waiting"), (MessageState.failed, "failed")]:
         record.state = state
         record.last_error = "private internal exception"
         await db_session.commit()
@@ -89,9 +89,9 @@ async def test_trace_takes_precedence_over_quote_and_keeps_other_agent_pending(d
     ))
     await db_session.commit()
     activity = await load_room_message_activity(db_session, "rm_pubopen01", ["m_old", "m_new"])
-    assert activity["m_old"][0]["status"] == "processing"
+    assert activity["m_old"][0]["status"] == "waiting"
     states = {a["agent_id"]: a["status"] for a in activity["m_new"]}
-    assert states == {seed["agent1"]: "completed", seed["agent2"]: "processing"}
+    assert states == {seed["agent1"]: "completed", seed["agent2"]: "waiting"}
 
 
 @pytest.mark.asyncio
@@ -108,4 +108,4 @@ async def test_team_agent_dm_tracks_unmentioned_agent(db_session, seed):
     ))
     await db_session.commit()
     activity = await load_room_message_activity(db_session, room_id, ["m_team_dm"])
-    assert activity["m_team_dm"][0]["status"] == "processing"
+    assert activity["m_team_dm"][0]["status"] == "waiting"

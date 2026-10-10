@@ -403,6 +403,19 @@ export class BotCordClient {
 
   // ── Messaging ─────────────────────────────────────────────────
 
+  async updateResponseRun(body: {
+    run_id: string;
+    room_id: string;
+    action: "register" | "start" | "no_reply" | "heartbeat" | "finish";
+    message_ids?: string[];
+    outcome?: "unconfirmed" | "failed" | "interrupted";
+  }): Promise<{ run_id: string; status: string }> {
+    const resp = await this.hubFetch("/hub/response-runs", {
+      method: "POST", body: JSON.stringify(body),
+    });
+    return await resp.json() as { run_id: string; status: string };
+  }
+
   async sendMessage(
     to: string,
     text: string,
@@ -414,9 +427,12 @@ export class BotCordClient {
       attachments?: MessageAttachment[];
       mentions?: string[];
       traceId?: string | null;
+      messageId?: string;
+      response?: { run_id: string; responds_to?: string[]; kind: "progress" | "final" };
     },
   ): Promise<SendResponse> {
     const payload: Record<string, unknown> = { text };
+    if (options?.response) payload.response = options.response;
     if (options?.attachments && options.attachments.length > 0) {
       payload.attachments = options.attachments;
     }
@@ -428,6 +444,7 @@ export class BotCordClient {
       payload,
       privateKey: this.privateKey,
       keyId: this.keyId,
+      msgId: options?.messageId,
       replyTo: options?.replyTo,
       ttlSec: options?.ttlSec,
       topic: options?.topic,

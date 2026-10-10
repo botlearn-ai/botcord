@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 SQLAlchemy Base、枚举与关系定义，承载 Hub 与 dashboard 的持久化真相源
-[OUTPUT]: 对外提供 Agent、Invite、ShortCode、Space/Organization 身份及隔离的团队会话模型
+[OUTPUT]: 对外提供 Agent、Invite、ShortCode、Space/Organization 身份、团队会话及消息响应执行与关联模型
 [POS]: backend 数据模型中枢，负责把身份、社交、支付、绑定等状态收敛到统一 schema
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
@@ -1032,6 +1032,33 @@ class MessageRecord(Base):
     source_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     source_user_agent: Mapped[str | None] = mapped_column(String(256), nullable=True)
     reply_to_msg_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Response progress is independent from inbox delivery/retry state.
+    response_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    response_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    response_reply_msg_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+
+class MessageResponseRun(Base):
+    __tablename__ = "message_response_runs"
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    room_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    message_ids: Mapped[list] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="running")
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MessageResponseLink(Base):
+    __tablename__ = "message_response_links"
+    __table_args__ = (UniqueConstraint("reply_msg_id", "target_msg_id", "agent_id"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    agent_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    reply_msg_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_msg_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
 
 
 class Contact(Base):

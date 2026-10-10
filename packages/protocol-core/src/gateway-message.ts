@@ -73,6 +73,8 @@ export interface GatewayOutboundMessage {
   attachments?: GatewayOutboundAttachment[];
   replyTo?: string | null;
   traceId?: string | null;
+  response?: { run_id: string; responds_to?: string[]; kind: "progress" | "final" };
+  messageId?: string;
 }
 
 /**

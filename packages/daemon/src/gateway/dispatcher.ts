@@ -1,3 +1,4 @@
+import { responseInputIds, responseInstructions, parseResponseDecision } from "./response-protocol.js";
 import { randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
@@ -1060,6 +1061,7 @@ export class Dispatcher {
           topicId: dispatchMsg.conversation.threadId ?? null,
           reason: "attention_gate_false",
         });
+        await this.settleSkippedResponse(dispatchMsg, dispatchChannel, dispatchTurnId, "no_reply");
         await this.safeAck(envelope);
         return;
       }
@@ -1140,6 +1142,21 @@ export class Dispatcher {
       );
     }
     await this.safeAck(envelope);
+  }
+
+  private async settleSkippedResponse(msg: GatewayInboundMessage, channel: ChannelAdapter, runId: string, outcome: "no_reply" | "failed" | "interrupted"): Promise<void> {
+    const ids = responseInputIds(msg);
+    if (!channel.responseRun || !ids.length) return;
+    const base = { run_id: runId, room_id: msg.conversation.id };
+    try {
+      await channel.responseRun({ ...base, action: "register", message_ids: ids }, this.log);
+      if (outcome === "no_reply") {
+        await channel.responseRun({ ...base, action: "no_reply", message_ids: ids }, this.log);
+      }
+      await channel.responseRun({ ...base, action: "finish", outcome: outcome === "no_reply" ? "unconfirmed" : outcome }, this.log);
+    } catch (error) {
+      this.log.warn("skipped response reporting failed", { runId, error: String(error) });
+    }
   }
 
   /** Snapshot of currently running turns keyed by queue key. */
@@ -1473,6 +1490,7 @@ export class Dispatcher {
         reason: "queue_cancel_previous",
         supersededBy: null,
       });
+      await this.settleSkippedResponse(msg, channel, turnId, "interrupted");
       return;
     }
     await this.runTurn(
@@ -1551,6 +1569,7 @@ export class Dispatcher {
         reason: "queue_overflow",
         supersededBy: null,
       });
+      await this.settleSkippedResponse(dropped.msg, dropped.channel, dropped.turnId, "failed");
       dropped.completion?.resolve();
     }
     if (!q.serialWorkerActive) {
@@ -1921,6 +1940,7 @@ export class Dispatcher {
     let runtimeText = text;
     const trustLevel: TrustLevel = restricted ? "public" : route.trustLevel ?? "trusted";
 
+    const responseIds = channel.responseRun ? responseInputIds(msg) : [];
     const streamable = msg.trace?.streamable === true;
     const traceId = msg.trace?.id;
     const canType =
@@ -2192,6 +2212,9 @@ export class Dispatcher {
           recordBlock(block);
           if (controller.signal.aborted) return;
           if (!canStream) return;
+          // Batch decisions may contain protocol JSON. Publish the parsed
+          // final body only; never stream control fields as user-facing text.
+          if (responseIds.length > 1 && (block.kind === "assistant_text" || block.kind === "other")) return;
           // Synthesize thinking.started before non-assistant blocks. After
           // we've seen any assistant_text, only `tool_use` may re-enter
           // thinking — terminal markers like `system`/`other` (codex
@@ -2301,8 +2324,28 @@ export class Dispatcher {
     let activeSessionId: string | null = sessionId;
     const turnStartedAt = Date.now();
     const hubUrl = this.resolveHubUrl?.(msg.accountId);
+    let responseRegistered = false;
+    let responseTargets: string[] | undefined;
+    let responseFailed = false;
+    let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+    let heartbeatPending: Promise<void> | undefined;
+    const reportResponse = async (action: "register" | "start" | "no_reply" | "heartbeat" | "finish", ids?: string[], outcome?: "unconfirmed" | "failed" | "interrupted") => {
+      await channel.responseRun?.({ run_id: turnId, room_id: msg.conversation.id, action, message_ids: ids, outcome }, this.log);
+    };
     try {
       try {
+        if (responseIds.length) {
+          await reportResponse("register", responseIds);
+          responseRegistered = true;
+          runtimeText = responseInstructions(turnId, msg.conversation.id, responseIds, restricted) + runtimeText;
+          heartbeatTimer = setInterval(() => {
+            if (heartbeatPending) return;
+            heartbeatPending = reportResponse("heartbeat").catch((error) => {
+              this.log.warn("response heartbeat failed", { turnId, error: String(error) });
+            }).finally(() => { heartbeatPending = undefined; });
+          }, 45_000);
+          heartbeatTimer.unref?.();
+        }
         const runRuntime = (
           textForRun: string,
           sessionIdForRun: string | null
@@ -2548,7 +2591,7 @@ export class Dispatcher {
       // Hub already queues an owner approval for them.
       const restrictedDelivery =
         restricted && isBotCordChannel(channel) && !isContactRequest(msg);
-      const canDeliverRuntimeText =
+      let canDeliverRuntimeText =
         isOwnerChat || !isBotCordChannel(channel) || restrictedDelivery;
       const canDeliverRuntimeDiagnostics =
         canDeliverRuntimeText || isBotCordChannel(channel);
@@ -2656,6 +2699,25 @@ export class Dispatcher {
       const replyLooksLikeAuthFailure =
         looksLikeRuntimeAuthFailure(rawReplyText);
       let replyText = replyLooksLikeAuthFailure ? "" : rawReplyText;
+      if (responseRegistered && !result.error && !replyLooksLikeAuthFailure) {
+        try {
+          const decision = parseResponseDecision(replyText, responseIds);
+          if (decision) {
+            if (decision.noReply.length) await reportResponse("no_reply", decision.noReply);
+            if (decision.respondsTo.length) await reportResponse("start", decision.respondsTo);
+            responseTargets = decision.respondsTo;
+            if (responseTargets.length) canDeliverRuntimeText = true;
+            replyText = decision.text;
+          } else if (replyText === "NO_REPLY" && responseIds.length === 1) {
+            await reportResponse("no_reply", responseIds);
+          }
+          if (replyText === "NO_REPLY") replyText = "";
+        } catch (error) {
+          responseFailed = true;
+          this.log.warn("response decision failed", { turnId, error: String(error) });
+          return;
+        }
+      }
       const effectiveError =
         result.error ?? (replyLooksLikeAuthFailure ? rawReplyText : undefined);
       if (guestWorkspace && grant && !effectiveError && !controller.signal.aborted) {
@@ -2928,11 +2990,14 @@ export class Dispatcher {
           threadId: msg.conversation.threadId ?? null,
           text: replyText,
           attachments: attachments.length > 0 ? attachments : undefined,
+          ...(responseRegistered ? { response: { run_id: turnId, responds_to: responseTargets ?? (responseIds.length === 1 ? responseIds : undefined), kind: "final" as const } } : {}),
+          messageId: randomUUID(),
           replyTo: this.providerReplyTo(msg),
           traceId: msg.trace?.id ?? null,
         },
         turnId
       );
+      if (!sendResult.ok) responseFailed = true;
       this.emitOutbound({
         turnId,
         msg,
@@ -2946,6 +3011,17 @@ export class Dispatcher {
         blocks: slot.blocks,
       });
     } finally {
+      clearInterval(heartbeatTimer);
+      await heartbeatPending;
+      if (responseRegistered) {
+        try {
+          await reportResponse("finish", undefined,
+            controller.signal.aborted && !slot.timedOut ? "interrupted" :
+            threw || result?.error || slot.timedOut || slot.budgetExceeded || responseFailed ? "failed" : "unconfirmed");
+        } catch (error) {
+          this.log.warn("response completion failed; Hub lease will expire", { turnId, error: String(error) });
+        }
+      }
       stopTypingRefresh();
       // Emit a final thinking.stopped on terminal paths so the frontend
       // never sticks at "Thinking..." when no assistant_text ever landed
