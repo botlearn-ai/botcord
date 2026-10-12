@@ -251,11 +251,11 @@ export default function ContactRequestsInbox({
                               <p className="truncate text-sm font-semibold text-text-primary">
                                 {group.displayName}
                               </p>
-                              <p className="truncate font-mono text-[11px] text-text-secondary/60">
+                              <p className="truncate font-mono text-xs text-text-secondary/60">
                                 {group.agentId}
                               </p>
                             </div>
-                            <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-[var(--color-on-accent)]">
+                            <span className="rounded-full bg-neon-cyan px-1.5 text-xs font-bold text-[var(--color-on-accent)]">
                               {group.approvals.length}
                             </span>
                             <ChevronDown
@@ -343,7 +343,7 @@ function RequestStartedAt({
   const formatted = formatRequestStartedAt(value, locale);
   if (!formatted) return null;
   return (
-    <p className="mt-3 text-[10px] text-text-secondary/50">
+    <p className="mt-3 text-xs text-text-secondary/50">
       {label} {formatted}
     </p>
   );
@@ -372,7 +372,7 @@ function ReceivedRequestCard({
     <div className="liquid-card rounded-2xl border border-glass-border p-4">
       <div className="flex items-start gap-3">
         {isHuman ? (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neon-purple/15 text-sm font-semibold text-neon-purple">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neon-cyan/15 text-sm font-semibold text-neon-cyan">
             {initial || "?"}
           </div>
         ) : (
@@ -385,7 +385,7 @@ function ReceivedRequestCard({
             </p>
             <TypeBadge isHuman={isHuman} locale={locale} />
           </div>
-          <p className="mt-0.5 truncate font-mono text-[11px] text-text-secondary/60">
+          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/60">
             {req.from_agent_id}
           </p>
         </div>
@@ -443,7 +443,7 @@ function BotApprovalCard({
     <div className="rounded-xl border border-glass-border bg-deep-black p-4">
       <div className="flex items-start gap-3">
         {isHuman ? (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neon-purple/15 text-sm font-semibold text-neon-purple">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neon-cyan/15 text-sm font-semibold text-neon-cyan">
             {initial || "?"}
           </div>
         ) : (
@@ -454,7 +454,7 @@ function BotApprovalCard({
             <p className="truncate text-sm font-semibold text-text-primary">{fromName}</p>
             <TypeBadge isHuman={isHuman} locale={locale} />
           </div>
-          <p className="mt-0.5 truncate font-mono text-[11px] text-text-secondary/60">
+          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/60">
             {fromId}
           </p>
         </div>
@@ -515,7 +515,7 @@ function SentRequestCard({
     <div className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
       <div className="flex items-start gap-3">
         {toIsHuman ? (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neon-purple/15 text-sm font-semibold text-neon-purple">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neon-cyan/15 text-sm font-semibold text-neon-cyan">
             {toInitial || "?"}
           </div>
         ) : (
@@ -528,11 +528,11 @@ function SentRequestCard({
             </p>
             <TypeBadge isHuman={toIsHuman} locale={locale} />
           </div>
-          <p className="mt-0.5 truncate font-mono text-[11px] text-text-secondary/60">
+          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/60">
             {req.to_agent_id}
           </p>
         </div>
-        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${stateClass}`}>
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${stateClass}`}>
           {stateLabel}
         </span>
       </div>
@@ -547,9 +547,9 @@ function SentRequestCard({
 function TypeBadge({ isHuman, locale }: { isHuman: boolean; locale: Locale }) {
   return (
     <span
-      className={`shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium uppercase tracking-wider ${
+      className={`shrink-0 rounded-full border px-1.5 py-px text-xs font-medium uppercase tracking-wider ${
         isHuman
-          ? "border-neon-purple/30 bg-neon-purple/10 text-neon-purple"
+          ? "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan"
           : "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan"
       }`}
     >
@@ -574,7 +574,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
         active
           ? "bg-text-primary text-deep-black"
           : "text-text-secondary hover:text-text-primary"
@@ -584,7 +584,7 @@ function TabButton({
       {label}
       {count > 0 ? (
         <span
-          className={`rounded-full px-1.5 text-[10px] font-semibold ${
+          className={`rounded-full px-1.5 text-xs font-semibold ${
             active ? "bg-deep-black/15 text-deep-black" : "bg-text-secondary/15 text-text-secondary/80"
           }`}
         >

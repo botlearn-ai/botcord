@@ -220,12 +220,12 @@ function DeviceDetailDrawer() {
                 {device.label || (isCloud ? "BotCord Cloud Device" : device.id)}
               </h2>
               {isCloud ? (
-                <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-[10px] text-neon-cyan">
+                <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-xs text-neon-cyan">
                   Cloud
                 </span>
               ) : null}
               <span
-                className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-[10px] ${
+                className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-xs ${
                   online
                     ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
                     : "border-glass-border bg-glass-bg text-text-secondary/70"
@@ -235,7 +235,7 @@ function DeviceDetailDrawer() {
               {online ? "Online" : "Offline"}
             </span>
           </div>
-          <p className="mt-1 font-mono text-[11px] text-text-secondary/55">{device.id}</p>
+          <p className="mt-1 font-mono text-xs text-text-secondary/55">{device.id}</p>
         </div>
         <button
           onClick={() => void handleRefresh()}
@@ -268,7 +268,7 @@ function DeviceDetailDrawer() {
       ) : (<>
       {/* Hosted bots */}
       <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
           托管的 Bots · {hostedBots.length}
         </h3>
         {hostedBots.length === 0 ? (
@@ -289,7 +289,7 @@ function DeviceDetailDrawer() {
                 />
                 <span className="flex-1 truncate text-sm text-text-primary">{bot.display_name}</span>
                 {bot.is_default ? (
-                  <span className="rounded-full border border-neon-purple/30 bg-neon-purple/10 px-1.5 py-px text-[9px] text-neon-purple">
+                  <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-xs text-neon-cyan">
                     默认
                   </span>
                 ) : null}
@@ -302,7 +302,7 @@ function DeviceDetailDrawer() {
 
       {/* Device info */}
       <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
           设备信息
         </h3>
         <div className="space-y-3 text-xs">
@@ -321,14 +321,14 @@ function DeviceDetailDrawer() {
           </Row>
           {device.last_seen_at ? (
             <Row label="最后在线">
-              <span className="font-mono text-[11px] text-text-secondary/55">
+              <span className="font-mono text-xs text-text-secondary/55">
                 {new Date(device.last_seen_at).toLocaleString()}
               </span>
             </Row>
           ) : null}
           {device.created_at ? (
             <Row label="添加时间">
-              <span className="font-mono text-[11px] text-text-secondary/55">
+              <span className="font-mono text-xs text-text-secondary/55">
                 {new Date(device.created_at).toLocaleDateString()}
               </span>
             </Row>
@@ -342,11 +342,11 @@ function DeviceDetailDrawer() {
       </section>
 
       <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
           {isCloud ? "云设备操作" : "设备操作"}
         </h3>
         <div className="space-y-3">
-          <p className="text-[11px] leading-relaxed text-text-secondary/65">
+          <p className="text-xs leading-relaxed text-text-secondary/65">
             {isCloud
               ? "重启会重新启动这台云设备上的 daemon，并重新连接所有托管 Bot。"
               : "重启会让在线 daemon 拉取最新版本，然后重新连接所有托管 Bot。"}
@@ -368,7 +368,7 @@ function DeviceDetailDrawer() {
                 : "更新并重启 daemon"}
           </button>
           {!isCloud && !online ? (
-            <p className="text-[11px] text-text-secondary/55">
+            <p className="text-xs text-text-secondary/55">
               设备离线时，请在该设备终端运行下方重新启动命令。
             </p>
           ) : null}
@@ -377,7 +377,7 @@ function DeviceDetailDrawer() {
 
       {/* Rename */}
       <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
           设备名称
         </h3>
         <div className="flex gap-2">
@@ -411,7 +411,7 @@ function DeviceDetailDrawer() {
           onClick={() => setShowInstall((v) => !v)}
           className="flex w-full items-center justify-between"
         >
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+          <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
             重新启动命令
           </span>
           <ChevronDown
@@ -443,7 +443,7 @@ function DeviceDetailDrawer() {
           onClick={() => setShowLogs((v) => !v)}
           className="flex w-full items-center justify-between"
         >
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+          <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
             <Terminal className="h-3.5 w-3.5" />
             排障日志
           </span>
@@ -453,19 +453,19 @@ function DeviceDetailDrawer() {
         </button>
         {showLogs ? (
           <div className="mt-3 space-y-1.5">
-            <p className="text-[11px] leading-relaxed text-text-secondary/65">
+            <p className="text-xs leading-relaxed text-text-secondary/65">
               从真实 daemon API 收集诊断包。完整日志由后端生成并返回下载信息。
             </p>
             {diagnosticResult ? (
               <div className="flex items-center gap-2 rounded-lg border border-neon-green/20 bg-neon-green/10 px-2 py-2">
                 <FileArchive className="h-4 w-4 shrink-0 text-neon-green" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[11px] font-medium text-neon-green">{diagnosticResult.filename}</p>
-                  <p className="text-[10px] text-neon-green/70">
+                  <p className="truncate text-xs font-medium text-neon-green">{diagnosticResult.filename}</p>
+                  <p className="text-xs text-neon-green/70">
                     日志文件已准备好 · {diagnosticResult.size_bytes} bytes
                   </p>
                   {diagnosticResult.local_path ? (
-                    <p className="mt-1 truncate font-mono text-[10px] text-neon-green/55">
+                    <p className="mt-1 truncate font-mono text-xs text-neon-green/55">
                       {diagnosticResult.local_path}
                     </p>
                   ) : null}
@@ -497,7 +497,7 @@ function DeviceDetailDrawer() {
               <button
                 onClick={() => void collectDiagnostics(device.id)}
                 disabled={collectingDiagnosticsId === device.id}
-                className="text-[11px] text-text-secondary/60 transition-colors hover:text-neon-cyan"
+                className="text-xs text-text-secondary/60 transition-colors hover:text-neon-cyan"
               >
                 {collectingDiagnosticsId === device.id ? "收集中..." : "收集诊断包 →"}
               </button>
@@ -510,7 +510,7 @@ function DeviceDetailDrawer() {
       {/* Danger zone */}
       {!isCloud ? (
       <section className="rounded-2xl border border-red-500/25 bg-red-500/5 p-5">
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-red-300/85">
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-red-300/85">
           危险操作
         </h3>
         {!confirmRemove ? (
@@ -529,31 +529,31 @@ function DeviceDetailDrawer() {
         ) : (
           <div className="space-y-3">
             <p className="text-xs font-semibold text-red-300">确认移除此设备？</p>
-            <p className="text-[11px] leading-relaxed text-text-secondary/70">
+            <p className="text-xs leading-relaxed text-text-secondary/70">
               {hostedBots.length > 0
                 ? `${hostedBots.length} 个 Bot 将移到「未关联设备」分组，云端身份和聊天记录都会保留。`
                 : "此设备没有托管的 Bot。移除后云端记录会保留。"}
             </p>
             {online ? (
-              <p className="text-[11px] leading-relaxed text-text-secondary/55">
+              <p className="text-xs leading-relaxed text-text-secondary/55">
                 设备在线 — 本地凭据将立即清理。
               </p>
             ) : (
-              <p className="text-[11px] leading-relaxed text-yellow-400/80">
+              <p className="text-xs leading-relaxed text-yellow-400/80">
                 设备当前离线。本地凭据需等设备重新启动后才能清理。
               </p>
             )}
             <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 onClick={() => setConfirmRemove(false)}
-                className="liquid-action rounded-lg border border-glass-border px-3 py-1.5 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg"
+                className="liquid-action rounded-lg border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg"
               >
                 取消
               </button>
               <button
                 onClick={() => void handleRemoveDevice()}
                 disabled={removingId === device.id}
-                className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/15 px-3 py-1.5 text-[11px] font-medium text-red-200 transition-colors hover:bg-red-500/25"
+                className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-500/25"
               >
                 {removingId === device.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                 {removingId === device.id ? "移除中..." : "移除设备"}
@@ -622,14 +622,14 @@ function BotDetailNested({
         <BotAvatar agentId={bot.agent_id} avatarUrl={bot.avatar_url} size={80} alt={bot.display_name} />
         <div className="mt-3 flex items-center gap-2">
           <h2 className="text-lg font-semibold text-text-primary">{bot.display_name}</h2>
-          <span className="rounded-full border border-neon-cyan/40 bg-neon-cyan/10 px-1.5 py-px text-[10px] font-medium text-neon-cyan">
+          <span className="rounded-full border border-neon-cyan/40 bg-neon-cyan/10 px-1.5 py-px text-xs font-medium text-neon-cyan">
             {bot.is_default ? "My Bot · 默认" : "My Bot"}
           </span>
         </div>
         <p className={`mt-1 text-xs ${online ? "text-neon-green" : "text-text-secondary/60"}`}>
           ● {online ? "Online" : "Offline"}
         </p>
-        <p className="mt-1 font-mono text-[11px] text-text-secondary/55">{bot.agent_id}</p>
+        <p className="mt-1 font-mono text-xs text-text-secondary/55">{bot.agent_id}</p>
         {bot.bio ? (
           <p className="mt-3 max-w-xs text-xs text-text-secondary/80">{bot.bio}</p>
         ) : null}
@@ -645,10 +645,10 @@ function BotDetailNested({
 function Stat({ label, value, delta }: { label: string; value: number | string; delta?: string }) {
   return (
     <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
-      <div className="text-[9px] uppercase tracking-wider text-text-secondary/55">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-text-secondary/55">{label}</div>
       <div className="flex items-baseline justify-center gap-1">
         <span className="text-sm font-semibold text-text-primary">{value}</span>
-        {delta ? <span className="text-[9px] font-medium text-neon-green">{delta}</span> : null}
+        {delta ? <span className="text-xs font-medium text-neon-green">{delta}</span> : null}
       </div>
     </div>
   );

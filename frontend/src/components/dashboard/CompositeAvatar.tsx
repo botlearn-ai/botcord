@@ -56,7 +56,7 @@ export function CompositeAvatar({
           return (
             <div
               key={i}
-              className={`flex items-center justify-center rounded-md text-[9px] font-semibold leading-none ${tone}`}
+              className={`flex items-center justify-center rounded-md text-xs font-semibold leading-none ${tone}`}
               title={slot.member.display_name}
             >
               {(slot.member.display_name || "?").charAt(0).toUpperCase()}
@@ -67,7 +67,7 @@ export function CompositeAvatar({
           return (
             <div
               key={i}
-              className="flex items-center justify-center rounded-md bg-glass-bg text-[9px] font-semibold text-text-secondary"
+              className="flex items-center justify-center rounded-md bg-glass-bg text-xs font-semibold text-text-secondary"
             >
               +{slot.count}
             </div>
@@ -81,7 +81,7 @@ export function CompositeAvatar({
 
 const tonePalette = [
   "bg-neon-cyan/15 text-neon-cyan",
-  "bg-neon-purple/15 text-neon-purple",
+  "bg-neon-cyan/15 text-neon-cyan",
   "bg-neon-green/15 text-neon-green",
   "bg-orange-400/15 text-orange-300",
 ];

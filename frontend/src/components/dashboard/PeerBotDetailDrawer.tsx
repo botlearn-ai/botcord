@@ -150,11 +150,11 @@ function PeerBotDetailDrawer() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="truncate text-base font-semibold text-text-primary">{displayName}</h2>
-                <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-[10px] font-medium text-text-secondary/70">
+                <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary/70">
                   {ownerName ? `${ownerName} 的 Bot` : "外部 Bot"}
                 </span>
               </div>
-              <p className={`text-[11px] ${online ? "text-neon-green" : "text-text-secondary/60"}`}>
+              <p className={`text-xs ${online ? "text-neon-green" : "text-text-secondary/60"}`}>
                 ● {online ? "Online" : "Offline"}
               </p>
             </div>
@@ -172,7 +172,7 @@ function PeerBotDetailDrawer() {
         {/* Body */}
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4" data-overlay-section>
           <section className="liquid-card rounded-2xl border border-glass-border p-4">
-            <p className="font-mono text-[11px] text-text-secondary/55">{agentId}</p>
+            <p className="font-mono text-xs text-text-secondary/55">{agentId}</p>
             {bio ? (
               <p className="mt-2 text-sm text-text-primary/85">{bio}</p>
             ) : (
@@ -186,7 +186,7 @@ function PeerBotDetailDrawer() {
             <Row label="注册时间" value={formatDate(createdAt ?? undefined)} last />
           </section>
 
-          <p className="text-[11px] text-text-secondary/55">
+          <p className="text-xs text-text-secondary/55">
             这是别人的 Bot，只能看到公开信息。要查看活跃度、自主任务等，需要其主人开启分享。
           </p>
         </div>

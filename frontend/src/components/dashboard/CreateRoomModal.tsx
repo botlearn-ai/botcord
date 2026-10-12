@@ -170,7 +170,7 @@ function CreateRoomModal({ onClose, onCreated }: CreateRoomModalProps) {
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
           {/* Basics */}
           <section className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
               {t.basicSection}
             </p>
             <label className="block">
@@ -208,7 +208,7 @@ function CreateRoomModal({ onClose, onCreated }: CreateRoomModalProps) {
                   )}
                 </span>
               </div>
-              <p className="mb-2 text-[11px] text-text-secondary/70">{t.membersHint}</p>
+              <p className="mb-2 text-xs text-text-secondary/70">{t.membersHint}</p>
               {contacts.length === 0 && ownedAgents.length === 0 ? (
                 <p className="liquid-empty-state rounded border border-dashed px-3 py-3 text-xs text-text-secondary/70">
                   {t.noContacts}

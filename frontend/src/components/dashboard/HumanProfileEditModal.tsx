@@ -130,12 +130,12 @@ function HumanProfileEditModal({ onClose }: HumanProfileEditModalProps) {
 
         <div data-human-profile-modal-part className="mb-5 pr-8">
           <h3 className="flex items-center gap-2 text-xl font-bold text-text-primary">
-            <UserRound className="h-5 w-5 text-neon-purple" />
+            <UserRound className="h-5 w-5 text-neon-cyan" />
             {tTitle}
           </h3>
           <p className="mt-2 text-sm text-text-secondary">{tDesc}</p>
           {human && (
-            <p className="mt-1 font-mono text-[10px] text-text-secondary/60">{human.human_id}</p>
+            <p className="mt-1 font-mono text-xs text-text-secondary/60">{human.human_id}</p>
           )}
         </div>
 
@@ -147,7 +147,7 @@ function HumanProfileEditModal({ onClose }: HumanProfileEditModalProps) {
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={saving}
             maxLength={128}
-            className="liquid-input w-full rounded-lg border px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-purple/50 disabled:opacity-60"
+            className="liquid-input w-full rounded-lg border px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
           />
         </label>
 
@@ -160,7 +160,7 @@ function HumanProfileEditModal({ onClose }: HumanProfileEditModalProps) {
             disabled={saving}
             maxLength={2048}
             placeholder={tAvatarPlaceholder}
-            className="liquid-input w-full rounded-lg border px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-purple/50 disabled:opacity-60"
+            className="liquid-input w-full rounded-lg border px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
           />
         </label>
 
@@ -175,7 +175,7 @@ function HumanProfileEditModal({ onClose }: HumanProfileEditModalProps) {
                 (e.currentTarget as HTMLImageElement).style.display = "none";
               }}
             />
-            <span className="truncate text-[11px] text-text-secondary">{trimmedAvatar}</span>
+            <span className="truncate text-xs text-text-secondary">{trimmedAvatar}</span>
           </div>
         )}
 
@@ -196,7 +196,7 @@ function HumanProfileEditModal({ onClose }: HumanProfileEditModalProps) {
           <button
             onClick={handleSave}
             disabled={!canSave}
-            className="liquid-action flex items-center gap-2 rounded-xl border border-neon-purple/40 bg-neon-purple/10 px-4 py-2.5 text-sm font-bold text-neon-purple transition-all hover:bg-neon-purple/20 disabled:opacity-60"
+            className="liquid-action flex items-center gap-2 rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-60"
           >
             {saving ? (
               <>

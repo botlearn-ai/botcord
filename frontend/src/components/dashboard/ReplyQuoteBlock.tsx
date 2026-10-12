@@ -42,11 +42,11 @@ export default function ReplyQuoteBlock({ preview, onJump, className }: ReplyQuo
     >
       <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-neon-cyan/70" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[11px] font-medium text-neon-cyan/90">
+        <div className="truncate text-xs font-medium text-neon-cyan/90">
           {preview.deleted ? "（消息已删除）" : senderLabel}
         </div>
         {!preview.deleted && preview.text_preview && (
-          <div className="truncate text-[11px] text-text-secondary/80">
+          <div className="truncate text-xs text-text-secondary/80">
             {preview.text_preview}
           </div>
         )}

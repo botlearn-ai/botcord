@@ -131,7 +131,7 @@ function RuntimeChip({ runtime }: { runtime: DaemonRuntime }) {
   return (
     <span
       title={title}
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10px] ${cls}`}
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs ${cls}`}
     >
       {label}
     </span>
@@ -143,7 +143,7 @@ function DaemonVersionChip({ version }: { version?: string | null }) {
   return (
     <span
       title="Running botcord-daemon version"
-      className="inline-flex items-center rounded-full border border-glass-border bg-glass-bg px-2 py-0.5 font-mono text-[10px] text-text-secondary"
+      className="inline-flex items-center rounded-full border border-glass-border bg-glass-bg px-2 py-0.5 font-mono text-xs text-text-secondary"
     >
       daemon {label}
     </span>
@@ -192,11 +192,11 @@ function RuntimesBlock({
     <div className="mt-2 flex flex-col gap-2 rounded-xl border border-glass-border/60 bg-glass-bg/40 p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+          <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
             Runtimes
           </span>
           {daemon.runtimes_probed_at ? (
-            <span className="text-[11px] text-text-tertiary">
+            <span className="text-xs text-text-tertiary">
               Last probed {relativeTime(daemon.runtimes_probed_at)}
             </span>
           ) : null}
@@ -206,7 +206,7 @@ function RuntimesBlock({
           type="button"
           onClick={onRefresh}
           disabled={disabled}
-          className="inline-flex items-center gap-1 rounded-lg border border-glass-border px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-lg border border-glass-border px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
         >
           {refreshing ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -218,11 +218,11 @@ function RuntimesBlock({
       </div>
 
       {runtimes === null || runtimes === undefined ? (
-        <span className="text-[11px] text-text-tertiary">
+        <span className="text-xs text-text-tertiary">
           No runtime data yet (runs once per daemon connect)
         </span>
       ) : runtimes.length === 0 ? (
-        <span className="text-[11px] text-text-tertiary">
+        <span className="text-xs text-text-tertiary">
           No runtimes detected
         </span>
       ) : (
@@ -234,7 +234,7 @@ function RuntimesBlock({
       )}
 
       {circuitBreakers.length > 0 ? (
-        <div className="rounded-md border border-yellow-400/20 bg-yellow-400/10 px-2 py-1 text-[11px] text-yellow-200">
+        <div className="rounded-md border border-yellow-400/20 bg-yellow-400/10 px-2 py-1 text-xs text-yellow-200">
           <div className="flex items-center gap-1 font-medium">
             <AlertTriangle className="h-3 w-3" />
             Runtime dispatch paused
@@ -252,17 +252,17 @@ function RuntimesBlock({
       ) : null}
 
       {errorMsg ? (
-        <span className="rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-[11px] text-red-300">
+        <span className="rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-xs text-red-300">
           {errorMsg}
         </span>
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-glass-border/40 pt-2">
         <div className="flex flex-col">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+          <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
             Troubleshooting logs
           </span>
-          <span className="text-[11px] text-text-tertiary">
+          <span className="text-xs text-text-tertiary">
             Recent device logs for support.
           </span>
         </div>
@@ -270,7 +270,7 @@ function RuntimesBlock({
           type="button"
           onClick={onCollectDiagnostics}
           disabled={diagnosticsDisabled}
-          className="inline-flex items-center gap-1 rounded-lg border border-glass-border px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-lg border border-glass-border px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
           title={
             daemon.status === "online"
               ? "Collect logs from this device"
@@ -286,7 +286,7 @@ function RuntimesBlock({
         </button>
       </div>
       {diagnosticResult ? (
-        <span className="rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-1 text-[11px] text-neon-green">
+        <span className="rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-1 text-xs text-neon-green">
           Log file ready: {diagnosticResult.filename} ({diagnosticResult.size_bytes} bytes)
           {diagnosticResult.expires_at
             ? `, expires ${compactDateTime(diagnosticResult.expires_at)}`
@@ -305,7 +305,7 @@ function RuntimesBlock({
         </span>
       ) : null}
       {diagnosticError ? (
-        <span className="rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-[11px] text-red-300">
+        <span className="rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-xs text-red-300">
           {diagnosticError}
         </span>
       ) : null}
@@ -356,7 +356,7 @@ function LabelCell({
           </button>
         )}
         {errorMsg ? (
-          <span className="text-[11px] text-red-300">{errorMsg}</span>
+          <span className="text-xs text-red-300">{errorMsg}</span>
         ) : null}
       </div>
     );
@@ -401,7 +401,7 @@ function LabelCell({
         <X className="h-3.5 w-3.5" />
       </button>
       {errorMsg ? (
-        <span className="text-[11px] text-red-300">{errorMsg}</span>
+        <span className="text-xs text-red-300">{errorMsg}</span>
       ) : null}
     </div>
   );

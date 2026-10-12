@@ -82,7 +82,7 @@ export function OrgInviteCard({
   return (
     <div className="mx-auto w-full max-w-lg px-4 pb-10 pt-20 sm:pt-28">
       <div className="rounded-2xl border border-glass-border bg-glass-bg p-5 sm:p-8">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neon-cyan/80">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neon-cyan/80">
           {t("组织邀请", "Organization invite")}
         </p>
         <div className="mt-4 flex items-center gap-3">

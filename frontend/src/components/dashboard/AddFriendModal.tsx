@@ -117,10 +117,10 @@ function PeerKindBadge({ kind }: { kind: PeerKind }) {
   const label = kind === "human" ? t.kindHuman : t.kindBot;
   const cls =
     kind === "human"
-      ? "border-neon-purple/50 bg-neon-purple/10 text-neon-purple"
+      ? "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan"
       : "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan";
   return (
-    <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${cls}`}>
+    <span className={`shrink-0 rounded border px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide ${cls}`}>
       {label}
     </span>
   );
@@ -282,7 +282,7 @@ function SearchPane({ onClose }: { onClose: () => void }) {
             <p className="text-sm font-semibold text-text-primary">{selected.display_name}</p>
             <PeerKindBadge kind={selected.kind} />
           </div>
-          <p className="mt-0.5 font-mono text-[11px] text-text-secondary">{selected.id}</p>
+          <p className="mt-0.5 font-mono text-xs text-text-secondary">{selected.id}</p>
           {selected.bio && (
             <p className="mt-2 text-xs text-text-secondary">{selected.bio}</p>
           )}
@@ -376,16 +376,16 @@ function SearchPane({ onClose }: { onClose: () => void }) {
                     <p className="truncate text-sm text-text-primary">{a.display_name}</p>
                     <PeerKindBadge kind={a.kind} />
                   </div>
-                  <p className="truncate font-mono text-[10px] text-text-secondary/70">
+                  <p className="truncate font-mono text-xs text-text-secondary/70">
                     {a.id}
                   </p>
                 </div>
                 {isContact ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] text-text-secondary">
+                  <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
                     <Check className="h-3 w-3" /> {t.alreadyContact}
                   </span>
                 ) : (
-                  <span className="text-[11px] text-neon-cyan">{t.applyLabel}</span>
+                  <span className="text-xs text-neon-cyan">{t.applyLabel}</span>
                 )}
               </button>
             );
@@ -468,7 +468,7 @@ function InvitePane() {
       ) : (
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
               {t.invitePrompt}
             </span>
             <button

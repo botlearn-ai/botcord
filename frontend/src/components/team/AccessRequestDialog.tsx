@@ -133,7 +133,7 @@ export default function AccessRequestDialog({
             onChange={(e) => setMessage(e.target.value)}
             placeholder={t("说明你想用它做什么", "Tell the owner what you need it for")}
           />
-          <span className="block text-right text-[11px] text-text-secondary">{message.length}/500</span>
+          <span className="block text-right text-xs text-text-secondary">{message.length}/500</span>
         </label>
         {error != null && (
           <p role="alert" className="rounded-xl border border-red-500/30 p-3 text-sm text-red-500">

@@ -55,7 +55,7 @@ export default function AccountMenu({
       <DropdownMenu.Root open={open} onOpenChange={setOpen}>
         <DropdownMenu.Trigger asChild>
           <button
-            className="liquid-menu relative flex h-10 w-10 max-md:h-12 max-md:w-12 max-md:flex-col max-md:border-0 max-md:shadow-none items-center justify-center rounded-2xl border border-glass-border/80 bg-deep-black-light text-sm font-bold text-neon-cyan shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition-all hover:-translate-y-0.5 hover:border-neon-cyan/35 hover:shadow-[0_14px_34px_rgba(34,211,238,0.18)] focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
+            className="liquid-menu relative flex h-10 w-10 max-md:h-12 max-md:w-12 max-md:flex-col max-md:border-0 max-md:shadow-none items-center justify-center rounded-2xl border border-glass-border/80 bg-deep-black-light text-sm font-bold text-neon-cyan shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition-all hover:-translate-y-0.5 hover:border-neon-cyan/35 focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
             title={t.account}
             aria-label={locale === "zh" ? "账户与更多" : "Account and more"}
           >
@@ -74,10 +74,10 @@ export default function AccountMenu({
               )}
             </span>
             <MoreHorizontal className="hidden h-5 w-5 max-md:block" />
-            <span className="hidden mt-0.5 text-[11px] font-medium max-md:block">{locale === "zh" ? "更多" : "More"}</span>
-            <span className="max-md:hidden absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-deep-black-light bg-neon-purple" />
+            <span className="hidden mt-0.5 text-xs font-medium max-md:block">{locale === "zh" ? "更多" : "More"}</span>
+            <span className="max-md:hidden absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-deep-black-light bg-neon-cyan" />
             {pendingRequests > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-purple px-1 text-[9px] font-bold text-[var(--color-on-accent)]">
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[11px] font-bold text-[var(--color-on-accent)]">
                 {pendingRequests > 9 ? "9+" : pendingRequests}
               </span>
             )}
@@ -89,7 +89,7 @@ export default function AccountMenu({
             sideOffset={12}
             side="top"
             align="start"
-            className="liquid-menu z-[70] w-[300px] max-w-[calc(100vw-1rem)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-[24px] border border-glass-border/80 bg-deep-black-light p-1.5 shadow-[0_28px_90px_rgba(0,0,0,0.55)] backdrop-blur-xl animate-in fade-in-80 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-100 data-[state=closed]:zoom-out-95"
+            className="liquid-menu z-[70] w-[300px] max-w-[calc(100vw-1rem)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-3xl border border-glass-border/80 bg-deep-black-light p-1.5 shadow-[0_28px_90px_rgba(0,0,0,0.55)] backdrop-blur-xl animate-in fade-in-80 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-100 data-[state=closed]:zoom-out-95"
           >
             <div className="md:hidden border-b border-glass-border mb-1 pb-1">
               <DropdownMenu.Item asChild className="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm outline-none focus:bg-glass-bg">
@@ -109,7 +109,7 @@ export default function AccountMenu({
             {onLogin ? (
               <DropdownMenu.Item onSelect={onLogin} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 text-sm outline-none focus:bg-glass-bg"><LogIn size={18} />{tc.login}</DropdownMenu.Item>
             ) : <>
-            <div className="relative mb-1 overflow-hidden rounded-[20px] border border-glass-border bg-glass-bg px-3 py-3.5">
+            <div className="relative mb-1 overflow-hidden rounded-2xl border border-glass-border bg-glass-bg px-3 py-3.5">
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/14 to-transparent" />
               <div className="flex items-center gap-3">
                 {user?.avatar_url ? (
@@ -130,7 +130,7 @@ export default function AccountMenu({
                       {user?.display_name || user?.email || t.user}
                     </p>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <span className="inline-flex items-center rounded-full bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple/75">
+                      <span className="inline-flex items-center rounded-full bg-neon-cyan/10 px-2 py-0.5 text-xs font-medium text-neon-cyan/75">
                         Human
                       </span>
                       {human && (
@@ -138,7 +138,7 @@ export default function AccountMenu({
                           type="button"
                           onClick={() => { setOpen(false); setEditProfileOpen(true); }}
                           title={locale === "zh" ? "编辑个人资料" : "Edit profile"}
-                          className="flex h-5 w-5 items-center justify-center rounded-md text-text-secondary/50 transition-colors hover:bg-white/8 hover:text-neon-purple"
+                          className="flex h-5 w-5 items-center justify-center rounded-md text-text-secondary/50 transition-colors hover:bg-white/8 hover:text-neon-cyan"
                         >
                           <Pencil className="h-3 w-3" />
                         </button>
@@ -151,7 +151,7 @@ export default function AccountMenu({
                 </div>
               </div>
               {human ? (
-                <div className="mt-3 inline-flex max-w-full items-center rounded-full border border-glass-border bg-glass-bg px-2.5 py-1 text-[11px] text-text-secondary/68">
+                <div className="mt-3 inline-flex max-w-full items-center rounded-full border border-glass-border bg-glass-bg px-2.5 py-1 text-xs text-text-secondary/68">
                   <span className="truncate" title={human.human_id}>
                     {human.human_id}
                   </span>
@@ -169,7 +169,7 @@ export default function AccountMenu({
                 <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
                 <DropdownMenu.Item
                   onClick={() => { window.location.href = "/admin"; }}
-                  className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-neon-purple focus:bg-neon-purple/10 focus:text-neon-purple"
+                  className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-neon-cyan focus:bg-neon-cyan/10 focus:text-neon-cyan"
                 >
                   <Settings className="mr-2 h-4 w-4" />
                   <span>{locale === "zh" ? "管理后台" : "Admin"}</span>

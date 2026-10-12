@@ -19,7 +19,6 @@ export interface PrimaryNavButtonProps {
 
 export function PrimaryNavButton({
   active,
-  activeTone,
   mobileHidden = false,
   mobileLabel,
   badge,
@@ -29,10 +28,9 @@ export function PrimaryNavButton({
   onClick,
   title,
 }: PrimaryNavButtonProps) {
-  const activeClass = activeTone === "purple"
-    ? "bg-neon-purple/15 text-neon-purple"
-    : "bg-neon-cyan/15 text-neon-cyan";
-  const indicatorClass = activeTone === "purple" ? "bg-neon-purple" : "bg-neon-cyan";
+  // VI v1.0 has a single accent, so every tone renders the same active state.
+  const activeClass = "bg-neon-cyan/15 text-neon-cyan";
+  const indicatorClass = "bg-neon-cyan";
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const previousActiveRef = useRef(active);
   const previousBadgeTextRef = useRef("");
@@ -82,7 +80,7 @@ export function PrimaryNavButton({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       aria-label={label}
-      className={`${mobileHidden ? "max-md:hidden" : ""} liquid-nav-button group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 max-md:h-12 max-md:min-w-0 max-md:flex-1 max-md:px-1 ${
+      className={`${mobileHidden ? "max-md:hidden" : ""} liquid-nav-button group relative flex h-12 w-14 flex-col items-center justify-center rounded-xl transition-all duration-200 max-md:h-12 max-md:min-w-0 max-md:flex-1 max-md:px-1 ${
         disabled
           ? "text-text-secondary/45 hover:bg-neon-cyan/10 hover:text-neon-cyan"
           : active
@@ -99,7 +97,7 @@ export function PrimaryNavButton({
       />
       {badge}
       {icon}
-      <span className="mt-0.5 max-w-full truncate text-[9px] max-md:text-[11px] font-medium leading-none">{mobileLabel ? <><span className="max-md:hidden">{label}</span><span className="hidden max-md:inline">{mobileLabel}</span></> : label}</span>
+      <span className="mt-0.5 max-w-full truncate text-[11px] font-medium leading-none">{mobileLabel ? <><span className="max-md:hidden">{label}</span><span className="hidden max-md:inline">{mobileLabel}</span></> : label}</span>
     </button>
   );
 }
@@ -122,7 +120,7 @@ export function SecondaryNavButton({
   tone,
 }: SecondaryNavButtonProps) {
   const activeClass = tone === "purple"
-    ? "border-neon-purple/60 bg-neon-purple/10 text-neon-purple"
+    ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
     : "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan";
 
   return (

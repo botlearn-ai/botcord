@@ -87,7 +87,7 @@ export default function PendingApprovalsPanel() {
   return (
     <section
       aria-label="Pending approvals on agents you own"
-      className="liquid-card mb-4 rounded-2xl border border-neon-purple/40 bg-neon-purple/5 p-4"
+      className="liquid-card mb-4 rounded-2xl border border-neon-cyan/40 bg-neon-cyan/5 p-4"
     >
       <header className="mb-3 flex items-center justify-between gap-2">
         <div>
@@ -101,7 +101,7 @@ export default function PendingApprovalsPanel() {
         <button
           type="button"
           onClick={() => void refresh()}
-          className="rounded border border-glass-border px-2 py-1 text-[11px] text-text-secondary hover:bg-glass-bg"
+          className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:bg-glass-bg"
         >
           {t.refresh}
         </button>
@@ -135,10 +135,10 @@ export default function PendingApprovalsPanel() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-xs text-text-secondary">
-                    <span className="rounded border border-neon-purple/40 bg-neon-purple/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neon-purple">
+                    <span className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-1.5 py-0.5 text-xs uppercase tracking-wide text-neon-cyan">
                       {entry.kind.replace(/_/g, " ")}
                     </span>
-                    <span className="truncate font-mono text-[11px]">
+                    <span className="truncate font-mono text-xs">
                       {t.forAgent} {entry.agent_id}
                     </span>
                   </p>
@@ -146,7 +146,7 @@ export default function PendingApprovalsPanel() {
                     {fromLabel}
                   </p>
                   {payload.from_participant_id ? (
-                    <p className="mt-0.5 truncate font-mono text-[11px] text-text-secondary/60">
+                    <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/60">
                       {payload.from_participant_id}
                     </p>
                   ) : null}

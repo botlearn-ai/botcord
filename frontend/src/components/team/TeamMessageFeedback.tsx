@@ -64,7 +64,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
       </div>}
       {waitingForStatus && <div>{zh ? "正在确认 AI 接收状态…" : "Checking AI delivery…"}</div>}
       {activity.map((agent) => <div key={agent.agent_id} className="flex items-center gap-1.5">
-        {agent.avatar_url ? <img src={agent.avatar_url} alt="" className="h-4 w-4 rounded-full" /> : <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center rounded-full bg-neon-cyan/10 text-[10px] text-neon-cyan">{agent.agent_name.slice(0, 1)}</span>}
+        {agent.avatar_url ? <img src={agent.avatar_url} alt="" className="h-4 w-4 rounded-full" /> : <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center rounded-full bg-neon-cyan/10 text-xs text-neon-cyan">{agent.agent_name.slice(0, 1)}</span>}
         <span className="max-w-32 truncate" title={agent.agent_name}>{agent.agent_name}</span>
         <span className={agent.status === "failed" ? "text-red-400" : ""}>
           {agent.status === "failed" ? (agent.error === "delivery_expired" ? (zh ? "消息投递已过期，请重试" : "Delivery expired. Please retry") : (zh ? "处理失败，请重试" : "Processing failed. Please retry")) : agent.status === "processing" ? (zh ? "正在处理…" : "Working…")

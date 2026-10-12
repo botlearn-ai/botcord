@@ -79,7 +79,7 @@ function JsonHighlight({ text }: { text: string }) {
   }, [text]);
 
   return (
-    <pre className="text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-words">
+    <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap break-words">
       {parts.map((el, i) => (
         <div key={i}>{el}</div>
       ))}
@@ -252,7 +252,7 @@ function ResultRenderer({
 
   // Plain text
   return (
-    <pre className="liquid-tool-surface overflow-x-auto rounded-md px-3 py-2 font-mono text-[11px] whitespace-pre-wrap break-words text-text-primary">
+    <pre className="liquid-tool-surface overflow-x-auto rounded-md px-3 py-2 font-mono text-xs whitespace-pre-wrap break-words text-text-primary">
       {text}
     </pre>
   );
@@ -308,7 +308,7 @@ export default function ToolResultContent({
     <div className="liquid-tool-surface mt-1 ml-5 rounded-lg p-1.5">
       {/* Toolbar */}
       <div className="flex items-center gap-1 mb-1">
-        <span className="liquid-card rounded px-1.5 py-0.5 text-[10px] text-text-secondary">
+        <span className="liquid-card rounded px-1.5 py-0.5 text-xs text-text-secondary">
           {contentType === "json" ? "JSON" : contentType === "markdown" ? "Markdown" : "Text"}
         </span>
         <CopyButton text={rawText} />
@@ -331,7 +331,7 @@ export default function ToolResultContent({
       {truncated && (
         <button
           onClick={() => setFullScreen(true)}
-          className="mt-1 text-[10px] text-cyan-500 hover:text-cyan-400 transition-colors"
+          className="mt-1 text-xs text-cyan-500 hover:text-cyan-400 transition-colors"
         >
           内容过长，点击查看全文（{rawText.length.toLocaleString()} 字符）
         </button>

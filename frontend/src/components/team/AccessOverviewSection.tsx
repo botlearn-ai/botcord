@@ -84,7 +84,7 @@ export default function AccessOverviewSection({ spaceId }: { spaceId: string }) 
       <dl className="grid grid-cols-3 gap-2">
         {tiles.map((tile) => (
           <div key={tile.label} className="rounded-xl border border-glass-border bg-deep-black/40 p-3">
-            <dt className="text-[11px] text-text-secondary">{tile.label}</dt>
+            <dt className="text-xs text-text-secondary">{tile.label}</dt>
             <dd className="mt-1 text-xl font-semibold tabular-nums">{tile.value ?? "—"}</dd>
           </div>
         ))}

@@ -728,7 +728,7 @@ function RoomSettingsModal({
                 {canEditBasics ? (
                   <>
                     <div>
-                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                         {t.nameLabel}
                       </label>
                       <input
@@ -740,7 +740,7 @@ function RoomSettingsModal({
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                         {t.descriptionLabel}
                       </label>
                       <textarea
@@ -752,10 +752,10 @@ function RoomSettingsModal({
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                         {t.ruleLabel}
                       </label>
-                      <p className="mb-1 text-[11px] text-text-secondary/60">{t.ruleHint}</p>
+                      <p className="mb-1 text-xs text-text-secondary/60">{t.ruleHint}</p>
                       <textarea
                         value={rule}
                         onChange={(e) => setRule(e.target.value)}
@@ -768,7 +768,7 @@ function RoomSettingsModal({
                 ) : (
                   <>
                     <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                         {t.descriptionLabel}
                       </p>
                       {description ? (
@@ -778,7 +778,7 @@ function RoomSettingsModal({
                       )}
                     </div>
                     <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                         {t.ruleLabel}
                       </p>
                       {rule ? (
@@ -850,7 +850,7 @@ function RoomSettingsModal({
                                   {member.display_name}
                                 </span>
                                 <span
-                                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                  className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${
                                     participantType === "human"
                                       ? "bg-neon-green/10 text-neon-green"
                                       : "bg-neon-cyan/10 text-neon-cyan"
@@ -858,17 +858,17 @@ function RoomSettingsModal({
                                 >
                                   {participantType === "human" ? "H" : "A"}
                                 </span>
-                                <span className={`shrink-0 rounded border px-1.5 py-px text-[9px] font-medium ${
+                                <span className={`shrink-0 rounded border px-1.5 py-px text-xs font-medium ${
                                   member.role === "owner"
                                     ? "border-neon-cyan/30 text-neon-cyan"
                                     : member.role === "admin"
-                                      ? "border-neon-purple/30 text-neon-purple"
+                                      ? "border-neon-cyan/30 text-neon-cyan"
                                       : "border-glass-border text-text-secondary"
                                 }`}>
                                   {member.role}
                                 </span>
                               </div>
-                              <div className="mt-1 text-[11px] text-text-secondary/70">
+                              <div className="mt-1 text-xs text-text-secondary/70">
                                 <CopyableId value={member.agent_id} />
                               </div>
                             </div>
@@ -879,7 +879,7 @@ function RoomSettingsModal({
                                     <button
                                       type="button"
                                       onClick={() => setConfirmRemoveId(null)}
-                                      className="liquid-action rounded px-2 py-1 text-[11px] text-text-secondary transition-colors"
+                                      className="liquid-action rounded px-2 py-1 text-xs text-text-secondary transition-colors"
                                     >
                                       取消
                                     </button>
@@ -887,7 +887,7 @@ function RoomSettingsModal({
                                       type="button"
                                       disabled={removingId === member.agent_id}
                                       onClick={() => void handleRemoveMember(member.agent_id)}
-                                      className="liquid-action rounded border border-red-500/25 bg-red-500/15 px-2 py-1 text-[11px] text-red-400 hover:bg-red-500/25 disabled:opacity-50 transition-colors"
+                                      className="liquid-action rounded border border-red-500/25 bg-red-500/15 px-2 py-1 text-xs text-red-400 hover:bg-red-500/25 disabled:opacity-50 transition-colors"
                                     >
                                       {removingId === member.agent_id ? "…" : "确认移除"}
                                     </button>
@@ -989,7 +989,7 @@ function RoomSettingsModal({
               {advancedOpen && (
                 <div className="mt-4 space-y-4 border-t border-glass-border pt-4">
                   {!isOwner && (
-                    <p className="text-[11px] text-text-secondary/70">{ta.ownerOnly}</p>
+                    <p className="text-xs text-text-secondary/70">{ta.ownerOnly}</p>
                   )}
                   <div className="grid gap-4">
                     <label className="block">
@@ -1080,7 +1080,7 @@ function RoomSettingsModal({
               {subscriptionOpen && (
                 <div className="mt-4 space-y-3 border-t border-glass-border pt-4">
                   {!isOwner && (
-                    <p className="text-[11px] text-text-secondary/70">{ta.ownerOnly}</p>
+                    <p className="text-xs text-text-secondary/70">{ta.ownerOnly}</p>
                   )}
                   <div className="liquid-card flex items-center justify-between gap-4 rounded-xl border px-4 py-3">
                     <div className="min-w-0">
@@ -1239,7 +1239,7 @@ function RoomSettingsModal({
                     </div>
                     <button
                       onClick={() => setTransferDialogOpen(true)}
-                      className="liquid-action shrink-0 rounded-lg border border-neon-purple/30 px-3 py-1.5 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/10"
+                      className="liquid-action shrink-0 rounded-lg border border-neon-cyan/30 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
                     >
                       {tm.transferOwnership}
                     </button>

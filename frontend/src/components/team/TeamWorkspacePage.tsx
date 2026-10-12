@@ -156,12 +156,12 @@ export function TeamRoomRow({
         <div className="flex items-center gap-2">
           {name}
           {agentDm && (
-            <span className="shrink-0 rounded bg-neon-cyan/10 px-1.5 text-[10px] font-medium text-neon-cyan">
+            <span className="shrink-0 rounded bg-neon-cyan/10 px-1.5 text-xs font-medium text-neon-cyan">
               Agent
             </span>
           )}
           {at && (
-            <span className="ml-auto shrink-0 text-[11px] text-text-secondary tabular-nums">
+            <span className="ml-auto shrink-0 text-xs text-text-secondary tabular-nums">
               {listTime(at, zh)}
             </span>
           )}
@@ -485,7 +485,7 @@ export function TeamWorkspace({
             <Building2 size={22} />
           </div>
           <label className="min-w-0 flex-1">
-            <span className="mb-1 block text-[11px] text-text-secondary">
+            <span className="mb-1 block text-xs text-text-secondary">
               {t("当前组织", "Organization")}
             </span>
             <select
@@ -538,7 +538,7 @@ export function TeamWorkspace({
                 (isUnread ? (
                   <UnreadBadge count={count} />
                 ) : (
-                  <span className="rounded-full bg-glass-bg px-1.5 text-[11px] tabular-nums">
+                  <span className="rounded-full bg-glass-bg px-1.5 text-xs tabular-nums">
                     {count > 99 ? "99+" : count}
                   </span>
                 ))}
@@ -573,7 +573,7 @@ export function TeamWorkspace({
               <p className="truncate text-xs font-medium">
                 {user.display_name}
               </p>
-              <p className="mt-0.5 text-[11px] text-text-secondary">
+              <p className="mt-0.5 text-xs text-text-secondary">
                 {space.roles.includes("owner")
                   ? t("组织所有者", "Organization owner")
                   : canManage(space)
@@ -902,7 +902,7 @@ export function TeamWorkspace({
               href={teamHref(space.id, id)}
               aria-label={label}
               aria-current={view === id ? "page" : undefined}
-              className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] ${
+              className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-xs ${
                 view === id ? "text-neon-cyan" : "text-text-secondary"
               }`}
             >

@@ -233,7 +233,7 @@ export function roleBadge(role: AgentAccessRole, zh: boolean): AccessBadgeInfo {
 
 export const BADGE_TONE_CLASS: Record<BadgeTone, string> = {
   owner: "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan",
-  collaborator: "border-neon-purple/30 bg-neon-purple/10 text-neon-purple",
+  collaborator: "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan",
   consult: "border-neon-green/30 bg-neon-green/10 text-neon-green",
   full: "border-red-500/30 bg-red-500/10 text-red-500",
   none: "border-glass-border bg-glass-bg text-text-secondary",

@@ -156,7 +156,7 @@ function SharedRoomContent({ shareId }: { shareId: string }) {
               </span>
             </div>
             <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
-              <MessageSquareText className="h-4 w-4 shrink-0 text-neon-purple" aria-hidden="true" />
+              <MessageSquareText className="h-4 w-4 shrink-0 text-neon-cyan" aria-hidden="true" />
               <span className="min-w-0 truncate">{t.latestMessages.replace("{count}", String(messageCount))}</span>
             </div>
             <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
@@ -204,7 +204,7 @@ function SharedRoomContent({ shareId }: { shareId: string }) {
                           <span className="max-w-full truncate text-sm font-semibold text-text-primary">
                             {msg.sender_name}
                           </span>
-                          <span className="font-mono text-[10px] text-text-secondary/50">
+                          <span className="font-mono text-xs text-text-secondary/50">
                             {formatMessageTimestamp(msg.created_at)}
                           </span>
                         </div>

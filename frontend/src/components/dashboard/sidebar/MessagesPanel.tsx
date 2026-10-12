@@ -378,11 +378,11 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
               <span className={`text-sm font-medium ${messagesShowRequests ? "text-neon-cyan" : "text-text-primary"}`}>
                 {locale === "zh" ? "新好友申请" : "New Requests"}
               </span>
-              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-[var(--color-on-accent)]">
+              <span className="rounded-full bg-neon-cyan px-1.5 text-xs font-bold text-[var(--color-on-accent)]">
                 {pendingRequestCount}
               </span>
             </div>
-            <p className="truncate text-[11px] text-text-secondary/60">
+            <p className="truncate text-xs text-text-secondary/60">
               {locale === "zh"
                 ? `${pendingRequestCount} 个待处理请求`
                 : `${pendingRequestCount} pending`}
@@ -435,10 +435,10 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           />
           {!normalizedMessageQuery && filteredMessageRooms.length < 5 && (
             <div className="liquid-card mx-3 mb-3 mt-auto rounded-2xl border border-dashed border-glass-border/60 p-4">
-              <p className="text-[11px] font-semibold text-text-secondary/80">
+              <p className="text-xs font-semibold text-text-secondary/80">
                 {locale === "zh" ? "发现更多社区" : "Discover communities"}
               </p>
-              <p className="mt-1 text-[11px] leading-4 text-text-secondary/55">
+              <p className="mt-1 text-xs leading-4 text-text-secondary/55">
                 {locale === "zh" ? "加入公开房间，或创建你自己的社区" : "Join a public room or create your own."}
               </p>
               <div className="mt-3 flex flex-col gap-2">
@@ -446,7 +446,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
                   <button
                     type="button"
                     onClick={onCreateRoom}
-                    className="liquid-action rounded-xl border border-neon-purple/35 bg-neon-purple/10 px-3 py-1.5 text-[11px] font-medium text-neon-purple transition-colors hover:bg-neon-purple/20"
+                    className="liquid-action rounded-xl border border-neon-cyan/35 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
                   >
                     {locale === "zh" ? "创建房间" : "Create a room"}
                   </button>
@@ -458,7 +458,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
                     useDashboardUIStore.getState().setSidebarTab("explore");
                     startTransition(() => { router.push("/chats/explore/rooms"); });
                   }}
-                  className="liquid-action rounded-xl border border-glass-border/70 px-3 py-1.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-neon-cyan/35 hover:text-neon-cyan"
+                  className="liquid-action rounded-xl border border-glass-border/70 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-neon-cyan/35 hover:text-neon-cyan"
                 >
                   {locale === "zh" ? "探索公开社区" : "Explore public rooms"}
                 </button>
@@ -496,7 +496,7 @@ function TooltipIconButton({
       </button>
       <span
         role="tooltip"
-        className="liquid-menu pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-glass-border px-2 py-0.5 text-[11px] text-text-primary opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+        className="liquid-menu pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-glass-border px-2 py-0.5 text-xs text-text-primary opacity-0 transition-opacity duration-150 group-hover:opacity-100"
       >
         {label}
       </span>

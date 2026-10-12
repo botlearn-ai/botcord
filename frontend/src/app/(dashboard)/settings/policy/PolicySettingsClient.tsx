@@ -552,7 +552,7 @@ function SummaryTile({
           : "border-neon-cyan/30 bg-neon-cyan/5 text-neon-cyan";
   return (
     <div className={`rounded-xl border px-3 py-3 ${toneClass}`}>
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-normal opacity-80">
+      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-normal opacity-80">
         {icon}
         {label}
       </div>

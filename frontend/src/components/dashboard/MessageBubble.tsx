@@ -205,9 +205,9 @@ function MessageStateBadge({
   return (
     <span
       ref={badgeRef}
-      className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[10px] font-medium ${color}`}
+      className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-xs font-medium ${color}`}
     >
-      <span className="text-[8px]">{icon}</span>
+      <span className="text-xs">{icon}</span>
       {label}
     </span>
   );
@@ -251,9 +251,9 @@ function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
         return (
           <span
             key={state}
-            className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-[10px] font-medium ${sc.color}`}
+            className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-xs font-medium ${sc.color}`}
           >
-            <span className="text-[8px]">{sc.icon}</span>
+            <span className="text-xs">{sc.icon}</span>
             {count}/{total} {sc.label}
           </span>
         );
@@ -311,13 +311,13 @@ function ReplyingAvatarStack({ reactions }: { reactions: MessageStatusReaction[]
           );
         })}
         {extra > 0 && (
-          <span className="z-0 -ml-1.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-yellow-400/40 bg-[#1a1a24] text-[9px] font-medium text-yellow-200">
+          <span className="z-0 -ml-1.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-yellow-400/40 bg-deep-black-light text-[11px] font-medium text-yellow-200">
             +{extra}
           </span>
         )}
       </span>
       {reactions.length === 1 && (
-        <span className="max-w-[96px] truncate text-[10px] font-medium text-yellow-200/90">
+        <span className="max-w-[96px] truncate text-xs font-medium text-yellow-200/90">
           {reactions[0].actor_name || reactions[0].actor_id}
         </span>
       )}
@@ -855,7 +855,7 @@ function MessageBubble({
             type="button"
             data-sender-name
             onClick={(event) => { event.stopPropagation(); handleSelectSender(); }}
-            className="mb-1 block max-w-full truncate px-1 text-left text-[11px] leading-4 text-text-secondary hover:text-text-primary hover:underline"
+            className="mb-1 block max-w-full truncate px-1 text-left text-xs leading-4 text-text-secondary hover:text-text-primary hover:underline"
           >
             {senderDisplayName}
           </button>
@@ -876,9 +876,9 @@ function MessageBubble({
 
           {/* Goal badge */}
           {!isRecalled && message.goal && (
-            <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-neon-purple/20 bg-neon-purple/5 px-2 py-1.5">
-              <span className="mt-px text-xs text-neon-purple/70">🎯</span>
-              <span className="text-xs leading-relaxed text-neon-purple/90">{message.goal}</span>
+            <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-neon-cyan/20 bg-neon-cyan/5 px-2 py-1.5">
+              <span className="mt-px text-xs text-neon-cyan/70">🎯</span>
+              <span className="text-xs leading-relaxed text-neon-cyan/90">{message.goal}</span>
             </div>
           )}
 
@@ -917,7 +917,7 @@ function MessageBubble({
                 <span className="mt-0.5 block truncate text-zinc-500">
                   {displayText || "Runtime error"}
                 </span>
-                <span className="mt-1 block text-[11px] text-zinc-600">{errorDetailsLabel}</span>
+                <span className="mt-1 block text-xs text-zinc-600">{errorDetailsLabel}</span>
               </span>
             </button>
           ) : transferInfo ? (
@@ -949,11 +949,11 @@ function MessageBubble({
 
           {/* Footer: time + type + state */}
           <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${isOwn ? "justify-end" : ""}`}>
-            <span className="font-mono text-[10px] text-text-secondary/50">
+            <span className="font-mono text-xs text-text-secondary/50">
               {timestampLabel}
             </span>
             {message.type !== "message" && (
-              <span className="rounded bg-glass-bg px-1 font-mono text-[10px] text-text-secondary/70">
+              <span className="rounded bg-glass-bg px-1 font-mono text-xs text-text-secondary/70">
                 {message.type}
               </span>
             )}
@@ -961,10 +961,10 @@ function MessageBubble({
             {activeStatusReactions.filter((reaction) => reaction.kind !== "replying").map((reaction) => (
               <span
                 key={`${reaction.actor_id}:${reaction.kind}`}
-                className="inline-flex items-center gap-1 rounded border border-yellow-400/25 bg-yellow-400/10 px-1 py-px text-[10px] font-medium text-yellow-200"
+                className="inline-flex items-center gap-1 rounded border border-yellow-400/25 bg-yellow-400/10 px-1 py-px text-xs font-medium text-yellow-200"
                 title={`${reaction.actor_name || reaction.actor_id} replying`}
               >
-                <span className="text-[11px] leading-none">{reaction.emoji}</span>
+                <span className="text-xs leading-none">{reaction.emoji}</span>
                 <span className="max-w-[96px] truncate">{reaction.actor_name || reaction.actor_id}</span>
               </span>
             ))}

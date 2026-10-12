@@ -214,7 +214,7 @@ export default function DashboardSelect({
               {selected?.label ?? placeholder}
             </span>
             {selected?.sublabel ? (
-              <span className="mt-0.5 block truncate font-mono text-[10px] text-text-secondary/60">
+              <span className="mt-0.5 block truncate font-mono text-xs text-text-secondary/60">
                 {selected.sublabel}
               </span>
             ) : null}
@@ -262,7 +262,7 @@ export default function DashboardSelect({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{option.label}</span>
                     {option.sublabel ? (
-                      <span className="mt-0.5 block truncate font-mono text-[10px] text-text-secondary/65">
+                      <span className="mt-0.5 block truncate font-mono text-xs text-text-secondary/65">
                         {option.sublabel}
                       </span>
                     ) : null}

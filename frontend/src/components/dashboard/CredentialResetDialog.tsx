@@ -133,7 +133,7 @@ function CredentialResetDialog({
 
         <div className="liquid-card rounded-xl p-4">
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-text-secondary opacity-60">
+            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary opacity-60">
               {t.prompt}
             </p>
             <button
@@ -165,12 +165,12 @@ function CredentialResetDialog({
               readOnly
               value={promptText}
               rows={9}
-              className="liquid-input w-full resize-none rounded-lg border p-3 font-mono text-[11px] leading-relaxed text-text-primary outline-none"
+              className="liquid-input w-full resize-none rounded-lg border p-3 font-mono text-xs leading-relaxed text-text-primary outline-none"
             />
           )}
 
           {expiresAt && (
-            <p className="mt-2 text-[10px] text-text-secondary/50">
+            <p className="mt-2 text-xs text-text-secondary/50">
               {t.ticketExpiresAt}{new Date(expiresAt * 1000).toLocaleString()}
             </p>
           )}

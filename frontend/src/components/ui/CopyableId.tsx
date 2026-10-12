@@ -18,11 +18,11 @@ export default function CopyableId({ value, className }: CopyableIdProps) {
   return (
     <button
       onClick={handleCopy}
-      className={`group inline-flex items-center gap-1 font-mono text-[10px] text-text-secondary/50 hover:text-text-secondary transition-colors ${className || ""}`}
+      className={`group inline-flex items-center gap-1 font-mono text-xs text-text-secondary/50 hover:text-text-secondary transition-colors ${className || ""}`}
       title="Click to copy"
     >
       {value}
-      <span className="text-[9px] opacity-0 group-hover:opacity-100 transition-opacity">
+      <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity">
         {copied ? "Copied!" : "Copy"}
       </span>
     </button>

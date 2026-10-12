@@ -214,12 +214,12 @@ function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: Withdr
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
-              className="liquid-input w-full rounded-lg border p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-purple/50"
+              className="liquid-input w-full rounded-lg border p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
             />
             <button
               type="button"
               onClick={() => setAmount(String(availableMajor))}
-              className="mt-1 text-[10px] text-neon-purple hover:underline"
+              className="mt-1 text-xs text-neon-cyan hover:underline"
             >
               {t.withdrawAll}
             </button>
@@ -235,7 +235,7 @@ function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: Withdr
                 if (value) setDestinationType(value as "bank" | "usdt_trc20" | "paypal");
               }}
               placeholder={t.destinationType}
-              buttonClassName="liquid-input min-h-11 p-3 focus:border-neon-purple/50 focus:ring-neon-purple/40"
+              buttonClassName="liquid-input min-h-11 p-3 focus:border-neon-cyan/50 focus:ring-neon-cyan/40"
               options={[
                 { value: "bank", label: t.destinationTypeBank },
                 { value: "usdt_trc20", label: t.destinationTypeUsdt },
@@ -337,7 +337,7 @@ function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: Withdr
             form="withdrawForm"
             type="submit"
             disabled={submitting}
-            className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-purple/30 bg-neon-purple/10 py-2.5 font-medium text-neon-purple transition-colors hover:bg-neon-purple/20 disabled:opacity-40"
+            className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 py-2.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-40"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {submitting ? t.submitting : t.submitWithdraw}
@@ -370,7 +370,7 @@ function FormField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="liquid-input w-full rounded-lg border p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-purple/50 disabled:opacity-60"
+        className="liquid-input w-full rounded-lg border p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50 disabled:opacity-60"
       />
     </div>
   );

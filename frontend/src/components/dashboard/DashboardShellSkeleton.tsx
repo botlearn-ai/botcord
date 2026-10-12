@@ -64,7 +64,7 @@ function SecondaryPanelSkeleton({ variant }: { variant: ShellSkeletonVariant }) 
     return (
       <div className="liquid-panel flex h-full w-[200px] shrink-0 flex-col border-r border-glass-border">
         <div className="flex h-14 items-center justify-between border-b border-glass-border px-3">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">分组</span>
+          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">分组</span>
           <SkeletonLine className="h-3.5 w-3.5 bg-glass-border/50" />
         </div>
         <div className="flex-1 py-2">
@@ -159,7 +159,7 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
                     }`}
                   >
                     {item.icon}
-                    <span className="mt-0.5 max-w-full truncate text-[9px] font-medium leading-none">{item.label}</span>
+                    <span className="mt-0.5 max-w-full truncate text-xs font-medium leading-none">{item.label}</span>
                   </div>
                 ))}
               </div>

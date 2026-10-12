@@ -115,14 +115,14 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         >
           <div className="absolute left-3 top-2 flex items-center gap-2">
             <div
-              className="flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-bold text-text-primary backdrop-blur-sm"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-text-primary backdrop-blur-sm"
               style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}55` }}
             >
               {roomInitials}
             </div>
           </div>
           <span
-            className="absolute right-2 top-2 rounded-full border border-glass-border bg-glass-bg/70 px-2 py-0.5 text-[10px] font-medium text-text-primary backdrop-blur-sm"
+            className="absolute right-2 top-2 rounded-full border border-glass-border bg-glass-bg/70 px-2 py-0.5 text-xs font-medium text-text-primary backdrop-blur-sm"
             style={{ boxShadow: `0 0 0 1px ${theme.accent}55` }}
           >
             {room.member_count} {memberWord}
@@ -135,11 +135,11 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
               <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
             )}
           </div>
-          <p className="mt-0.5 truncate font-mono text-[10px] text-text-secondary/60">{room.room_id}</p>
-          <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-text-secondary">
+          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/60">{room.room_id}</p>
+          <p className="mt-1 line-clamp-2 text-xs leading-4 text-text-secondary">
             {room.description || t.noDescriptionYet}
           </p>
-          <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-text-secondary/70">
+          <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-text-secondary/70">
             <span className="truncate">
               {room.join_policy === "invite_only" && (
                 <span className="font-medium text-amber-400">{t.inviteOnly}</span>
@@ -170,10 +170,10 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         tabIndex={0}
         onClick={() => props.onAgentOpen?.(agent)}
         onKeyDown={(event) => handleKeyActivate(event, () => props.onAgentOpen?.(agent))}
-        className={`liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg ${className}`}
+        className={`liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg ${className}`}
       >
         <div className="flex items-start gap-2.5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-purple/30 bg-neon-purple/10 text-xs font-semibold text-neon-purple">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-cyan/30 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
             {agent.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={agent.avatar_url} alt={agent.display_name} className="h-full w-full object-cover" />
@@ -185,7 +185,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
             <div className="flex items-center justify-between gap-2">
               <p className="min-w-0 truncate text-sm font-semibold text-text-primary">{agent.display_name}</p>
               <span
-                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-medium leading-3 ${
+                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs font-medium leading-3 ${
                   online
                     ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
                     : "border-glass-border bg-glass-bg/60 text-text-secondary/60"
@@ -195,14 +195,14 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
                 {online ? t.online : t.offline}
               </span>
             </div>
-            <p className="mt-0.5 text-[10px] text-neon-purple/90">{t.personaAgent} · {persona}</p>
+            <p className="mt-0.5 text-xs text-neon-cyan/90">{t.personaAgent} · {persona}</p>
           </div>
         </div>
-        <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-text-secondary">
+        <p className="mt-1.5 line-clamp-2 text-xs leading-4 text-text-secondary">
           {agent.bio || t.personaFallbackBio}
         </p>
         {hasOwner ? (
-          <div className="mt-2 text-[11px] leading-4 text-text-secondary">
+          <div className="mt-2 text-xs leading-4 text-text-secondary">
             <span className="text-text-secondary/70">Human owner: </span>
             <button
               type="button"
@@ -250,7 +250,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-text-primary">{human.display_name}</p>
-          <p className="mt-0.5 text-[10px] text-neon-green/90">{t.personaHuman}</p>
+          <p className="mt-0.5 text-xs text-neon-green/90">{t.personaHuman}</p>
         </div>
       </div>
       <div className="mt-2">

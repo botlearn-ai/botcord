@@ -226,7 +226,7 @@ export default function TeamConversationDialog({
                     <span className="min-w-0 flex-1">
                       <span className="block break-words text-sm">{agent.display_name}</span>
                       {blocked && (
-                        <span className="block text-[11px] text-text-secondary">
+                        <span className="block text-xs text-text-secondary">
                           {t("仅 Agent 所有者或组织管理员可添加", "Only its owner or an organization admin can add it")}
                         </span>
                       )}

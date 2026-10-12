@@ -382,7 +382,7 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-text-primary">{title}</div>
-          <div className="truncate text-[11px] text-text-secondary/70">
+          <div className="truncate text-xs text-text-secondary/70">
             {attachment.size_bytes != null ? formatPreviewSize(attachment.size_bytes) : "Document preview"}
           </div>
         </div>

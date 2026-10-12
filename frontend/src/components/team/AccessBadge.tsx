@@ -29,14 +29,14 @@ export default function AccessBadge({
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4 focus-visible:outline-2 focus-visible:outline-neon-cyan ${BADGE_TONE_CLASS[info.tone]}`}
+        className={`shrink-0 rounded-md border px-1.5 py-0.5 text-xs font-medium leading-4 focus-visible:outline-2 focus-visible:outline-neon-cyan ${BADGE_TONE_CLASS[info.tone]}`}
       >
         {prefix ? `${prefix}${info.label}` : info.label}
       </button>
       <span
         id={id}
         role="note"
-        className={open ? "mt-1 block text-[11px] leading-4 text-text-secondary" : "sr-only"}
+        className={open ? "mt-1 block text-xs leading-4 text-text-secondary" : "sr-only"}
       >
         {info.explanation}
       </span>

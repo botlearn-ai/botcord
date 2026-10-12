@@ -107,7 +107,7 @@ export default function MessagesGroupingSidebar({
   return (
     <div className={`liquid-rail flex h-full ${fullWidth ? "w-full" : "w-[200px]"} shrink-0 flex-col border-r border-glass-border`}>
       <div className="liquid-toolbar flex h-14 items-center justify-between border-b border-glass-border px-3">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">{t.header}</span>
+        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">{t.header}</span>
         <button
           type="button"
           onClick={() => (onCollapse ? onCollapse() : setMessagesGroupingOpen(false))}
@@ -200,12 +200,12 @@ function GroupHeader({
       )}
       <Icon className="h-3.5 w-3.5 shrink-0 text-text-secondary/70" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-text-secondary/85">
+        <div className="truncate text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary/85">
           {title}
         </div>
-        <div className="truncate text-[10px] text-text-secondary/45">{subtitle}</div>
+        <div className="truncate text-xs text-text-secondary/45">{subtitle}</div>
       </div>
-      <span className="shrink-0 text-[10px] text-text-secondary/55">{count}</span>
+      <span className="shrink-0 text-xs text-text-secondary/55">{count}</span>
     </button>
   );
 }
@@ -236,7 +236,7 @@ function FilterButton({
         <Icon className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{row.label}</span>
       </span>
-      <span className={`shrink-0 rounded-full px-1.5 text-[10px] ${
+      <span className={`shrink-0 rounded-full px-1.5 text-xs ${
         active ? "bg-neon-cyan/20 text-neon-cyan" : "bg-text-secondary/15 text-text-secondary/70"
       }`}>
         {count}

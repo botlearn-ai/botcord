@@ -158,13 +158,13 @@ export function TopicCard({
           {group.topicName}
         </span>
         {sc && (
-          <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-px text-[10px] font-medium ${sc.color}`}>
-            <span className="text-[8px]">{sc.icon}</span>
+          <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-px text-xs font-medium ${sc.color}`}>
+            <span className="text-xs">{sc.icon}</span>
             {sc.label}
           </span>
         )}
         {group.topicInfo?.goal && (
-          <span className="hidden sm:inline-flex items-center gap-1 truncate text-[10px] text-neon-purple/70 max-w-[260px]">
+          <span className="hidden sm:inline-flex items-center gap-1 truncate text-xs text-neon-cyan/70 max-w-[260px]">
             🎯 {group.topicInfo.goal}
           </span>
         )}
@@ -206,7 +206,7 @@ export function TopicCard({
           group.messages[0]?.sender_id === currentAgentId ? "mr-3 ml-auto max-w-[70%]" : "max-w-[70%]"
         }`}
       >
-        <div className="flex items-center gap-1 text-[11px] text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
+        <div className="flex items-center gap-1 text-xs text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
           <span>💬</span>
           <span>{t.viewThread}</span>
           <span className="text-text-secondary/50">
@@ -282,7 +282,7 @@ function EmptyRoomGuide({
         )}
 
         <div className="mt-5">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-secondary/70">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary/70">
             {t.emptyPromptLabel}
           </p>
           <div className="grid gap-2">
@@ -296,7 +296,7 @@ function EmptyRoomGuide({
                 <span className="min-w-0 text-sm leading-5 text-text-secondary group-hover:text-text-primary">
                   {prompt}
                 </span>
-                <span className="shrink-0 rounded border border-neon-cyan/30 px-2 py-1 text-[11px] font-medium text-neon-cyan">
+                <span className="shrink-0 rounded border border-neon-cyan/30 px-2 py-1 text-xs font-medium text-neon-cyan">
                   {t.emptyTryPrompt}
                 </span>
               </button>
@@ -786,7 +786,7 @@ export default function MessageList({
       <div className="relative flex min-h-0 flex-1">
         <EmptyRoomGuide room={currentRoom} />
         {roomMessageError ? (
-          <div className="absolute inset-x-0 top-0 z-20 flex min-h-7 items-center justify-center gap-2 border-b border-amber-300/15 bg-amber-300/[0.06] px-3 text-[11px] text-text-secondary" role="status">
+          <div className="absolute inset-x-0 top-0 z-20 flex min-h-7 items-center justify-center gap-2 border-b border-amber-300/15 bg-amber-300/[0.06] px-3 text-xs text-text-secondary" role="status">
             <span>{t.loadMessagesFailed}</span>
             <button
               type="button"
@@ -819,7 +819,7 @@ export default function MessageList({
   return (
     <div className="relative flex-1" aria-busy={isRoomMessagesLoading}>
       {roomMessageError ? (
-        <div className="absolute inset-x-0 top-0 z-20 flex min-h-7 items-center justify-center gap-2 border-b border-amber-300/15 bg-amber-300/[0.06] px-3 text-[11px] text-text-secondary" role="status">
+        <div className="absolute inset-x-0 top-0 z-20 flex min-h-7 items-center justify-center gap-2 border-b border-amber-300/15 bg-amber-300/[0.06] px-3 text-xs text-text-secondary" role="status">
           <span>{t.loadMessagesFailed}</span>
           <button
             type="button"

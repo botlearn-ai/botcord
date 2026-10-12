@@ -51,7 +51,7 @@ function AgentRow({ bot, isSelected, locale, onSelect, onOpenSettings }: AgentRo
           <span className="block truncate text-xs font-medium">
             {bot.display_name || bot.agent_id}
           </span>
-          <span className="block truncate font-mono text-[10px] text-text-secondary/60">
+          <span className="block truncate font-mono text-xs text-text-secondary/60">
             {bot.agent_id}
           </span>
         </span>
@@ -173,7 +173,7 @@ export default function BotsPanel({
               <button
                 type="button"
                 onClick={() => setDeviceSettingsId(did)}
-                className="min-w-0 flex-1 truncate text-left text-[11px] font-semibold text-text-secondary/80 hover:text-text-primary transition-colors"
+                className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-text-secondary/80 hover:text-text-primary transition-colors"
               >
                 {label}
               </button>
@@ -209,7 +209,7 @@ export default function BotsPanel({
                 ))}
               </div>
             ) : (
-              <p className="px-3 pb-2.5 text-[10px] text-text-secondary/40">
+              <p className="px-3 pb-2.5 text-xs text-text-secondary/40">
                 {locale === "zh" ? "暂无 Agent" : "No agents yet"}
               </p>
             )}
@@ -222,7 +222,7 @@ export default function BotsPanel({
         <div className="liquid-card rounded-xl border border-glass-border/50">
           <div className="flex items-center gap-2 px-3 py-2">
             <Bot className="h-3.5 w-3.5 flex-shrink-0 text-text-secondary/60" />
-            <span className="flex-1 text-[11px] font-semibold text-text-secondary/80">
+            <span className="flex-1 text-xs font-semibold text-text-secondary/80">
               {locale === "zh" ? "未关联设备" : "No Device"}
             </span>
           </div>

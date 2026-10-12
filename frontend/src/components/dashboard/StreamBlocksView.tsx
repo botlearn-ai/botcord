@@ -732,7 +732,7 @@ function StreamBlockItem({
           )}
         </button>
         {view.paramHint && !resultExpanded && (
-          <p className="mt-0.5 ml-5 max-w-[400px] truncate text-[10px] text-text-secondary">
+          <p className="mt-0.5 ml-5 max-w-[400px] truncate text-xs text-text-secondary">
             {view.paramHint}
           </p>
         )}
@@ -754,7 +754,7 @@ function StreamBlockItem({
         >
           <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
           <span className="text-xs font-mono text-emerald-400">{name}</span>
-          <span className="text-[10px] text-text-secondary">returned</span>
+          <span className="text-xs text-text-secondary">returned</span>
           {resultStr && (
             resultExpanded
               ? <ChevronDown className="h-2.5 w-2.5 text-text-secondary" />
@@ -762,7 +762,7 @@ function StreamBlockItem({
           )}
         </button>
         {resultStr && !resultExpanded && (
-          <p className="mt-0.5 ml-5 max-w-[400px] truncate text-[10px] text-text-secondary">
+          <p className="mt-0.5 ml-5 max-w-[400px] truncate text-xs text-text-secondary">
             {summarizeResult(resultStr)}
           </p>
         )}
@@ -790,7 +790,7 @@ function StreamBlockItem({
           )}
         </button>
         {text && !resultExpanded && (
-          <p className="mt-0.5 ml-5 text-[10px] text-purple-300/60 italic leading-relaxed line-clamp-2">
+          <p className="mt-0.5 ml-5 text-xs text-purple-300/60 italic leading-relaxed line-clamp-2">
             {summarizeResult(text)}
           </p>
         )}
@@ -820,13 +820,13 @@ function StreamBlockItem({
           <ListTodo className="w-3 h-3 text-amber-400 shrink-0" />
           <span className="text-xs font-mono text-amber-400">todo_list</span>
           {items.length > 0 && (
-            <span className="text-[10px] text-text-secondary">{items.length} item{items.length !== 1 ? "s" : ""}</span>
+            <span className="text-xs text-text-secondary">{items.length} item{items.length !== 1 ? "s" : ""}</span>
           )}
         </div>
         {items.length > 0 && (
           <ul className="mt-0.5 ml-5 space-y-0.5">
             {items.slice(0, 6).map((it, idx) => (
-              <li key={idx} className="truncate text-[10px] text-text-primary/80">
+              <li key={idx} className="truncate text-xs text-text-primary/80">
                 <span className="mr-1 text-text-secondary/70">
                   {it.status === "completed" ? "✓" : it.status === "in_progress" ? "→" : "○"}
                 </span>
@@ -834,7 +834,7 @@ function StreamBlockItem({
               </li>
             ))}
             {items.length > 6 && (
-              <li className="text-[10px] text-text-secondary/70">… {items.length - 6} more</li>
+              <li className="text-xs text-text-secondary/70">… {items.length - 6} more</li>
             )}
           </ul>
         )}
@@ -859,7 +859,7 @@ function StreamBlockItem({
           )}
         </button>
         {details && !resultExpanded && (
-          <p className="mt-0.5 ml-5 max-w-[400px] truncate text-[10px] text-text-secondary">
+          <p className="mt-0.5 ml-5 max-w-[400px] truncate text-xs text-text-secondary">
             {summarizeResult(details)}
           </p>
         )}
@@ -1142,7 +1142,7 @@ export default function StreamBlocksView({
                 <Wrench className="w-3 h-3 shrink-0" />
                 <span className="truncate">{summaryParts.join(", ")}</span>
               </button>
-              <label className="flex shrink-0 items-center gap-1.5 text-[10px] text-text-secondary">
+              <label className="flex shrink-0 items-center gap-1.5 text-xs text-text-secondary">
                 <span>Max</span>
                 <select
                   value={visibleBlockMax}
@@ -1150,7 +1150,7 @@ export default function StreamBlocksView({
                     setVisibleBlockMax(Number(event.target.value));
                     setOlderBlocksExpanded(false);
                   }}
-                  className="liquid-input h-6 rounded border border-glass-border px-1.5 text-[10px] text-text-primary outline-none"
+                  className="liquid-input h-6 rounded border border-glass-border px-1.5 text-xs text-text-primary outline-none"
                   aria-label="Maximum visible reasoning steps"
                 >
                   {VISIBLE_BLOCK_MAX_OPTIONS.map((option) => (
@@ -1176,10 +1176,10 @@ export default function StreamBlocksView({
                       {olderBlocksExpanded
                         ? <ChevronDown className="h-2.5 w-2.5 text-text-secondary" />
                         : <ChevronRight className="h-2.5 w-2.5 text-text-secondary" />}
-                      <span className="text-[10px] font-medium text-text-secondary">
+                      <span className="text-xs font-medium text-text-secondary">
                         {olderBlocks.length} older step{olderBlocks.length !== 1 ? "s" : ""}
                       </span>
-                      <span className="text-[10px] text-text-secondary/70">
+                      <span className="text-xs text-text-secondary/70">
                         {visibleBlockMax} newest shown
                       </span>
                     </button>

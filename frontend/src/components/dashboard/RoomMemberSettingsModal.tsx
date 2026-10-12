@@ -132,7 +132,7 @@ function RoomMemberSettingsModal({
           )}
 
           <div className="liquid-card rounded-xl border p-3">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
               {t.name}
             </p>
             <p className="text-sm text-text-primary">{roomName}</p>
@@ -140,7 +140,7 @@ function RoomMemberSettingsModal({
 
           {roomDescription && (
             <div className="liquid-card rounded-xl border p-3">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                 {t.description}
               </p>
               <p className="text-sm text-text-primary leading-relaxed">{roomDescription}</p>
@@ -149,7 +149,7 @@ function RoomMemberSettingsModal({
 
           {roomRule && (
             <div className="liquid-card rounded-xl border p-3">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                 {t.rule}
               </p>
               <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">{roomRule}</p>

@@ -113,7 +113,7 @@ function TransferOwnershipDialog({
         ) : (
           <>
             <label className="mb-3 block">
-              <span className="mb-1 block text-[11px] text-text-secondary">
+              <span className="mb-1 block text-xs text-text-secondary">
                 {t.transferSelectLabel}
               </span>
               <DashboardSelect
@@ -132,7 +132,7 @@ function TransferOwnershipDialog({
             </label>
 
             <label className="mb-3 block">
-              <span className="mb-1 block text-[11px] text-text-secondary">
+              <span className="mb-1 block text-xs text-text-secondary">
                 {t.transferConfirmLabel.replace("{room}", roomName)}
               </span>
               <input
@@ -144,7 +144,7 @@ function TransferOwnershipDialog({
               />
             </label>
 
-            <p className="mb-3 text-[11px] leading-5 text-yellow-300/80">
+            <p className="mb-3 text-xs leading-5 text-yellow-300/80">
               {t.transferWarning}
             </p>
           </>
@@ -154,7 +154,7 @@ function TransferOwnershipDialog({
           <button
             onClick={closeWithMotion}
             disabled={submitting}
-            className="liquid-action rounded-lg px-3 py-1.5 text-[11px] text-text-secondary"
+            className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-secondary"
           >
             {t.permCancel}
           </button>
@@ -162,7 +162,7 @@ function TransferOwnershipDialog({
             <button
               onClick={submit}
               disabled={!confirmArmed || !selected || submitting}
-              className="liquid-action rounded-lg border border-neon-purple/40 bg-neon-purple/10 px-3 py-1.5 text-[11px] text-neon-purple hover:bg-neon-purple/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="liquid-action rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {submitting ? "…" : t.transferOwnership}
             </button>

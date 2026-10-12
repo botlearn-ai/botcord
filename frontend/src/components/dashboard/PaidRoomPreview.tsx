@@ -75,7 +75,7 @@ export default function PaidRoomPreview({
         <div className="mt-6 text-left">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-medium text-text-primary">{t.previewMessages}</p>
-            <p className="text-[11px] text-text-secondary/70">{t.previewMessagesHint}</p>
+            <p className="text-xs text-text-secondary/70">{t.previewMessagesHint}</p>
           </div>
 
           {loading ? (
@@ -100,8 +100,8 @@ export default function PaidRoomPreview({
                   key={message.hub_msg_id}
                   className="liquid-card rounded-lg border border-glass-border px-3 py-2.5"
                 >
-                  <div className="mb-1 flex min-w-0 items-center gap-2 text-[11px] text-text-secondary/70">
-                    <span className="truncate font-medium text-neon-purple/90">{senderName(message)}</span>
+                  <div className="mb-1 flex min-w-0 items-center gap-2 text-xs text-text-secondary/70">
+                    <span className="truncate font-medium text-neon-cyan/90">{senderName(message)}</span>
                     <span className="shrink-0 text-text-secondary/40">/</span>
                     <span className="shrink-0">{timeLabel(message.created_at)}</span>
                   </div>

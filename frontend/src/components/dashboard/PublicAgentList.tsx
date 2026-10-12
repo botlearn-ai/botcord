@@ -60,7 +60,7 @@ export default function PublicAgentList() {
           )}
           <div className="mt-0.5 flex items-center gap-2">
             <CopyableId value={agent.agent_id} />
-            <span className="rounded border border-glass-border px-1 py-0 text-[9px] text-text-secondary">
+            <span className="rounded border border-glass-border px-1 py-0 text-xs text-text-secondary">
               {agent.message_policy}
             </span>
           </div>

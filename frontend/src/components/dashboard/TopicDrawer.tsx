@@ -233,15 +233,15 @@ function TopicDrawer() {
             <div className="flex items-center gap-2">
               <span className="text-xs uppercase tracking-wide text-text-secondary/60">{t.topic || "Topic"}</span>
               {sc && statusLabel && (
-                <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-px text-[10px] font-medium ${sc.color}`}>
-                  <span className="text-[8px]">{sc.icon}</span>
+                <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-px text-xs font-medium ${sc.color}`}>
+                  <span className="text-xs">{sc.icon}</span>
                   {statusLabel}
                 </span>
               )}
             </div>
             <h2 className="mt-1 truncate text-base font-medium text-text-primary">{topicName}</h2>
             {topicGoal && (
-              <p className="mt-1 truncate text-xs text-neon-purple/80">🎯 {topicGoal}</p>
+              <p className="mt-1 truncate text-xs text-neon-cyan/80">🎯 {topicGoal}</p>
             )}
           </div>
           <button

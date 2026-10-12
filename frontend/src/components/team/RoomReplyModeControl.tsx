@@ -87,7 +87,7 @@ export default function RoomReplyModeControl({
 
   if (!state)
     return error ? (
-      <p className="text-[11px] text-red-500">{t("回复设置加载失败", "Couldn't load reply settings")}</p>
+      <p className="text-xs text-red-500">{t("回复设置加载失败", "Couldn't load reply settings")}</p>
     ) : (
       <Loader2 size={13} className="animate-spin text-text-secondary" aria-label={t("正在加载", "Loading")} />
     );
@@ -121,7 +121,7 @@ export default function RoomReplyModeControl({
           ))}
         </select>
         {busy && <Loader2 size={13} className="animate-spin text-text-secondary" />}
-        {error && <span className="text-[11px] text-red-500">{t("保存失败，请重试", "Save failed. Try again.")}</span>}
+        {error && <span className="text-xs text-red-500">{t("保存失败，请重试", "Save failed. Try again.")}</span>}
       </div>
       {value === "keyword" && (
         <form

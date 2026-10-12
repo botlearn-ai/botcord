@@ -134,7 +134,7 @@ function FriendInviteModal({ onClose }: { onClose: () => void }) {
           <div className="space-y-4">
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                   {t.invitePrompt}
                 </p>
                 <button

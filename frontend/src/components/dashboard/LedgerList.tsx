@@ -118,7 +118,7 @@ export default function LedgerList() {
                   <span className="text-xs font-medium text-text-primary capitalize">
                     {isCredit ? "Credit" : "Debit"}
                   </span>
-                  <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-text-secondary/60">
+                  <span className="ml-2 text-xs uppercase tracking-[0.18em] text-text-secondary/60">
                     {sourceLabel}
                   </span>
                 </div>
@@ -131,14 +131,14 @@ export default function LedgerList() {
                 </span>
               </div>
               <div className="flex items-baseline justify-between">
-                <span className="truncate font-mono text-[10px] text-text-secondary/60">
+                <span className="truncate font-mono text-xs text-text-secondary/60">
                   {entry.tx_id}
                 </span>
-                <span className="ml-2 shrink-0 text-[10px] text-text-secondary/60">
+                <span className="ml-2 shrink-0 text-xs text-text-secondary/60">
                   Bal: {formatCoinAmount(entry.balance_after_minor)}
                 </span>
               </div>
-              <div className="mt-0.5 text-[10px] text-text-secondary/50">
+              <div className="mt-0.5 text-xs text-text-secondary/50">
                 {formatTime(entry.created_at)}
               </div>
             </div>

@@ -31,7 +31,7 @@ function Section({
     <div className="border-b border-glass-border/50">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="liquid-list-row flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70 transition-colors hover:text-text-primary"
+        className="liquid-list-row flex w-full items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary/70 transition-colors hover:text-text-primary"
       >
         <span className="flex items-center gap-1.5">
           <ChevronDown
@@ -39,7 +39,7 @@ function Section({
           />
           {title}
         </span>
-        <span className="text-[10px] font-medium text-text-secondary/50">{count}</span>
+        <span className="text-xs font-medium text-text-secondary/50">{count}</span>
       </button>
       {open ? <div className="overflow-hidden pb-2">{children}</div> : null}
     </div>
@@ -48,7 +48,7 @@ function Section({
 
 function SubGroupHeader({ title, count }: { title: string; count: number }) {
   return (
-    <div data-contact-section-item className="flex items-center justify-between px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-text-secondary/45">
+    <div data-contact-section-item className="flex items-center justify-between px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-[0.14em] text-text-secondary/45">
       <span>{title}</span>
       <span>{count}</span>
     </div>
@@ -93,7 +93,7 @@ function ListRow({
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm text-text-primary">{name}</div>
         {subtitle ? (
-          <div className="truncate text-[11px] text-text-secondary/60">{subtitle}</div>
+          <div className="truncate text-xs text-text-secondary/60">{subtitle}</div>
         ) : null}
       </div>
     </button>
@@ -102,7 +102,7 @@ function ListRow({
 
 function Avatar({ seed, tone = "cyan" }: { seed: string; tone?: "cyan" | "purple" }) {
   const bg = tone === "purple"
-    ? "border-neon-purple/25 bg-neon-purple/10 text-neon-purple"
+    ? "border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan"
     : "border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan";
   return (
     <div className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold ${bg}`}>
@@ -207,12 +207,12 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-text-primary">{t.newRequests}</span>
             {totalPendingRequests > 0 ? (
-              <span className="rounded-full bg-neon-cyan px-1.5 text-[10px] font-bold text-[var(--color-on-accent)]">
+              <span className="rounded-full bg-neon-cyan px-1.5 text-xs font-bold text-[var(--color-on-accent)]">
                 {totalPendingRequests > 99 ? "99+" : totalPendingRequests}
               </span>
             ) : null}
           </div>
-          <p className="truncate text-[11px] text-text-secondary/60">
+          <p className="truncate text-xs text-text-secondary/60">
             {totalPendingRequests > 0
               ? t.pendingRequests(totalPendingRequests)
               : overview ? t.noPendingRequests : "…"}

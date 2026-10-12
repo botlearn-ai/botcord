@@ -122,7 +122,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
             <button
               type="button"
               onClick={() => setShowCreateRoom(true)}
-              className="rounded-xl border border-neon-purple/40 bg-neon-purple/10 px-4 py-2 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/20"
+              className="rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
               {locale === "zh" ? "创建房间" : "Create a room"}
             </button>
@@ -159,7 +159,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
             <button
               type="button"
               onClick={() => setShowCreateRoom(true)}
-              className="rounded-xl border border-neon-purple/40 bg-neon-purple/10 px-4 py-2 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/20"
+              className="rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
             >
               {locale === "zh" ? "创建房间" : "Create a room"}
             </button>
@@ -183,7 +183,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
             <button
               type="button"
               onClick={() => router.push("/chats/explore/rooms")}
-              className="text-xs text-neon-purple transition-colors hover:text-neon-purple/80"
+              className="text-xs text-neon-cyan transition-colors hover:text-neon-cyan/80"
             >
               {t.viewAllRooms}
             </button>
@@ -211,14 +211,14 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                   >
                     <div className="absolute left-3 top-2">
                       <div
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-bold text-white/90 backdrop-blur-sm"
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-white/90 backdrop-blur-sm"
                         style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}55` }}
                       >
                         {initials}
                       </div>
                     </div>
                     <span
-                      className="absolute right-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-medium text-[#ffffff]/90 backdrop-blur-sm"
+                      className="absolute right-2 top-2 rounded-full bg-black/40 px-2 py-0.5 text-xs font-medium text-[#ffffff]/90 backdrop-blur-sm"
                       style={{ boxShadow: `0 0 0 1px ${theme.accent}55` }}
                     >
                       {room.member_count} {memberWord}
@@ -226,7 +226,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                   </div>
                   <div className="px-3 py-2">
                     <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
-                    <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-text-secondary">
+                    <p className="mt-1 line-clamp-2 text-xs leading-4 text-text-secondary">
                       {room.description || (locale === "zh" ? "暂无描述" : "No description yet.")}
                     </p>
                   </div>
@@ -257,10 +257,10 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                   key={agent.agent_id}
                   type="button"
                   onClick={() => selectAgent(agent.agent_id)}
-                  className="liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-purple/60 hover:bg-glass-bg"
+                  className="liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
                 >
                   <div className="mb-2 flex items-center gap-2">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-purple/30 bg-neon-purple/10 text-xs font-semibold text-neon-purple">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-cyan/30 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
                       {agent.avatar_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={agent.avatar_url} alt={agent.display_name} className="h-full w-full object-cover" />
@@ -271,7 +271,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                     <p className="line-clamp-1 text-sm font-semibold text-text-primary">{agent.display_name}</p>
                   </div>
                   {agent.bio && (
-                    <p className="line-clamp-2 text-[11px] leading-4 text-text-secondary">{agent.bio}</p>
+                    <p className="line-clamp-2 text-xs leading-4 text-text-secondary">{agent.bio}</p>
                   )}
                 </button>
               );
@@ -317,7 +317,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                     )}
                     <p className="line-clamp-1 text-sm font-semibold text-text-primary">{human.display_name}</p>
                   </div>
-                  <p className="text-[10px] text-neon-green/80">{locale === "zh" ? "Human 用户" : "Human"}</p>
+                  <p className="text-xs text-neon-green/80">{locale === "zh" ? "Human 用户" : "Human"}</p>
                 </button>
               );
             })}

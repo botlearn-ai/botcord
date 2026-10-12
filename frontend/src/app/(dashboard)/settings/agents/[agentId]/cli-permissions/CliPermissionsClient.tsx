@@ -251,11 +251,11 @@ function ScopeList({
               <span className="text-sm font-medium text-text-primary">
                 {scopeLabel(scope)}
               </span>
-              <span className="rounded border border-glass-border bg-glass-bg px-1.5 py-0.5 font-mono text-[11px] text-text-secondary">
+              <span className="rounded border border-glass-border bg-glass-bg px-1.5 py-0.5 font-mono text-xs text-text-secondary">
                 {scope}
               </span>
               {active ? (
-                <span className="rounded-full bg-neon-green/10 px-2 py-0.5 text-[11px] text-neon-green">
+                <span className="rounded-full bg-neon-green/10 px-2 py-0.5 text-xs text-neon-green">
                   Active
                 </span>
               ) : null}
@@ -264,7 +264,7 @@ function ScopeList({
               {scopeDescription(scope)}
             </p>
             {isDaemonScope && daemonInstanceId ? (
-              <p className="mt-2 font-mono text-[11px] text-text-tertiary">
+              <p className="mt-2 font-mono text-xs text-text-tertiary">
                 daemon_instance_id: {daemonInstanceId}
               </p>
             ) : null}

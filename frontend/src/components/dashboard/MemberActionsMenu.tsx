@@ -105,7 +105,7 @@ export default function MemberActionsMenu({
           {canPromoteDemote && (
             <button
               onClick={toggleRole}
-              className="block w-full rounded px-2 py-1.5 text-left text-[11px] text-text-primary hover:bg-glass-bg"
+              className="block w-full rounded px-2 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg"
             >
               {member.role === "admin" ? t.demoteToMember : t.promoteToAdmin}
             </button>
@@ -113,7 +113,7 @@ export default function MemberActionsMenu({
           {canEditPerms && (
             <button
               onClick={() => { setPermOpen(true); setOpen(false); }}
-              className="block w-full rounded px-2 py-1.5 text-left text-[11px] text-text-primary hover:bg-glass-bg"
+              className="block w-full rounded px-2 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg"
             >
               {t.editPermissions}
             </button>
@@ -121,7 +121,7 @@ export default function MemberActionsMenu({
           {canRemove && (
             <button
               onClick={doRemove}
-              className="block w-full rounded px-2 py-1.5 text-left text-[11px] text-red-300 hover:bg-red-500/10"
+              className="block w-full rounded px-2 py-1.5 text-left text-xs text-red-300 hover:bg-red-500/10"
             >
               {t.removeMember}
             </button>
@@ -226,14 +226,14 @@ function PermissionsDialog({
           <button
             onClick={closeWithMotion}
             disabled={saving}
-            className="rounded border border-glass-border px-3 py-1.5 text-[11px] text-text-secondary hover:bg-glass-bg"
+            className="rounded border border-glass-border px-3 py-1.5 text-xs text-text-secondary hover:bg-glass-bg"
           >
             {t.permCancel}
           </button>
           <button
             onClick={save}
             disabled={saving}
-            className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-[11px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+            className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
           >
             {saving ? "…" : t.permSave}
           </button>
@@ -253,12 +253,12 @@ function TriToggle({
   onChange: (v: boolean | null) => void;
   t: { permUseDefault: string; permAllow: string; permDeny: string };
 }) {
-  const base = "px-2 py-1 text-[10px] rounded border transition-colors";
+  const base = "px-2 py-1 text-xs rounded border transition-colors";
   const sel = "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan";
   const off = "border-glass-border text-text-secondary hover:bg-glass-bg";
   return (
     <div className="mb-3">
-      <p className="mb-1 text-[11px] text-text-secondary">{label}</p>
+      <p className="mb-1 text-xs text-text-secondary">{label}</p>
       <div className="flex gap-1">
         <button className={`${base} ${value === null ? sel : off}`} onClick={() => onChange(null)}>
           {t.permUseDefault}
