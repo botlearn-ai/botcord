@@ -152,14 +152,14 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
                 {primaryNav.map((item) => (
                   <div
                     key={item.key}
-                    className={`${["explore", "wallet", "activity"].includes(item.key) ? "max-md:hidden" : ""} group relative flex h-12 w-12 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
+                    className={`${["explore", "wallet", "activity"].includes(item.key) ? "max-md:hidden" : ""} group relative flex h-12 w-14 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
                       item.key === variant
                         ? "bg-neon-cyan/15 text-neon-cyan"
                         : "text-text-secondary"
                     }`}
                   >
                     {item.icon}
-                    <span className="mt-0.5 max-w-full truncate text-xs font-medium leading-none">{item.label}</span>
+                    <span className="mt-0.5 max-w-full truncate text-[11px] font-medium leading-none">{item.label}</span>
                   </div>
                 ))}
               </div>

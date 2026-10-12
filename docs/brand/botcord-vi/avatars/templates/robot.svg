@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <defs>
+    <clipPath id="c">
+      <circle cx="48" cy="48" r="48"/>
+    </clipPath>
+  </defs>
+  <circle cx="48" cy="48" r="48" fill="{{BASE}}"/>
+  <g clip-path="url(#c)">
+    <rect x="26" y="72" width="44" height="40" rx="13" fill="{{SOFT}}"/>
+    <circle cx="48" cy="85" r="5" fill="{{DEEP}}"/>
+    <rect x="42" y="64" width="12" height="10" fill="{{DEEP}}"/>
+    <path d="M48 33 C48 22, 61 27, 61 17" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="61" cy="16" r="6" fill="#FFFFFF"/>
+    <rect x="17" y="43" width="10" height="16" rx="4" fill="{{SOFT}}"/>
+    <rect x="69" y="43" width="10" height="16" rx="4" fill="{{SOFT}}"/>
+    <rect x="23" y="31" width="50" height="38" rx="15" fill="#FFFFFF"/>
+    <circle cx="41" cy="48" r="3.5" fill="#13161A"/>
+    <circle cx="55" cy="48" r="3.5" fill="#13161A"/>
+    <path d="M43 53 Q48 57.5 53 53" fill="none" stroke="#13161A" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="33" cy="53" r="3" fill="{{SOFT}}"/>
+    <circle cx="63" cy="53" r="3" fill="{{SOFT}}"/>
+  </g>
+</svg>

@@ -21,7 +21,7 @@ it("uses a human profile photo, falls back on errors, and retries a changed phot
     await render();
     expect(host.textContent).toBe("张");
     await act(() => root.render(<ParticipantAvatar id="ag_bot" name="Helper" isHuman={false} />));
-    expect(host.querySelector("img")?.getAttribute("src")).toMatch(/^\/avatars\/bots\//);
+    expect(host.querySelector("img")?.getAttribute("src")).toMatch(/^\/agent-avatars\/[a-z]+-[a-z]+\.svg$/);
   } finally {
     await act(() => root.unmount());
   }
