@@ -50,7 +50,7 @@ export const MenuItem = forwardRef<ComponentRef<typeof DropdownMenu.Item>, MenuI
     <DropdownMenu.Item
       ref={ref}
       className={clsx(
-        "flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none",
+        "bc-touch-target flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none",
         "transition-colors duration-[var(--bc-duration-fast)] motion-reduce:transition-none",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         danger

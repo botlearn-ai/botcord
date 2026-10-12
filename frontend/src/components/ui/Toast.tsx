@@ -62,7 +62,7 @@ function ToastCard({ item, closeLabel, onDismiss }: { item: ToastItem; closeLabe
         aria-label={closeLabel}
         onClick={onDismiss}
         className={clsx(
-          "-m-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-text-tertiary",
+          "bc-touch-target -m-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-text-tertiary",
           "transition-colors duration-[var(--bc-duration-fast)] hover:bg-surface-sunken hover:text-text-primary motion-reduce:transition-none",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/60",
         )}
@@ -82,7 +82,7 @@ export default function Toaster({ className }: { className?: string }) {
   return (
     <div
       className={clsx(
-        "pointer-events-none fixed inset-x-4 bottom-4 z-[90] mx-auto flex max-w-sm flex-col gap-2",
+        "pointer-events-none fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-[90] mx-auto flex max-w-sm flex-col gap-2",
         "sm:inset-x-auto sm:right-4 sm:mx-0 sm:w-96",
         className,
       )}

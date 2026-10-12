@@ -162,12 +162,12 @@ export default function DialogShell({
           tabIndex={-1}
           className={clsx(
             "liquid-dialog relative flex w-full flex-col outline-none",
-            placement === "right" ? "h-dvh border-l border-border" : "max-h-[90vh] rounded-2xl",
+            placement === "right" ? "h-dvh border-l border-border pb-[env(safe-area-inset-bottom)]" : "max-h-[90dvh] rounded-2xl",
             hasUtility(className, "max-w-") ? null : SIZE[size],
             className,
           )}
         >
-          <div className={clsx("px-5 pt-5", hideCloseButton ? "" : "pr-12")}>
+          <div className={clsx("px-5 pt-5", hideCloseButton ? "" : "pr-16")}>
             <h3 id={titleId} className="flex items-center gap-2 text-lg font-semibold tracking-[-0.01em] text-text-primary">
               {icon}
               {title}
@@ -186,12 +186,12 @@ export default function DialogShell({
             </IconButton>
           )}
           {hasBody ? (
-            <div className={clsx("min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-4", bodyClassName)}>{children}</div>
+            <div className={clsx("min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5 pt-4", bodyClassName)}>{children}</div>
           ) : (
             <div className="pb-4" />
           )}
           {footer ? (
-            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3.5">
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3.5">
               {typeof footer === "function" ? footer(close) : footer}
             </div>
           ) : null}

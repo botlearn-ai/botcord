@@ -7,7 +7,7 @@
 import type { HTMLAttributes, TableHTMLAttributes, ThHTMLAttributes, TdHTMLAttributes } from "react";
 import { clsx } from "clsx";
 export default function Table({ className, ...props }: TableHTMLAttributes<HTMLTableElement>) {
-  return <table {...props} className={clsx("w-full border-collapse text-sm leading-relaxed text-text-primary", className)} />;
+  return <div className="max-w-full overflow-x-auto overscroll-x-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring" tabIndex={0} role="region" aria-label={props["aria-label"] ?? "Table"}><table {...props} className={clsx("w-full border-collapse text-sm leading-relaxed text-text-primary", className)} /></div>;
 }
 export function TableHead({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return <thead {...props} className={clsx("border-b border-border bg-surface-sunken", className)} />;

@@ -8,6 +8,7 @@
  */
 
 import { moveListboxFocus } from "./listbox-keyboard";
+import { useMobilePickerStyle } from "./use-mobile-picker-style";
 import { type ButtonHTMLAttributes, type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { animatePop, animateIfMotion, animeStagger, cleanupAnime, prefersReducedMotion } from "@/lib/anime";
@@ -53,6 +54,7 @@ export default function SingleSelect({
   const checkAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
   const selectCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [open, setOpen] = useState(false);
+  const mobilePickerStyle = useMobilePickerStyle(open);
 
   useEffect(() => {
     if (!open) return;
@@ -242,6 +244,7 @@ export default function SingleSelect({
       {open ? (
         <div
           ref={panelRef}
+          style={mobilePickerStyle}
           id={`${id}-panel`}
           role="listbox"
           aria-labelledby={controlProps.id ?? `${id}-trigger`}

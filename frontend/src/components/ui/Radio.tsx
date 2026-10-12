@@ -8,6 +8,6 @@ import { forwardRef } from "react";
 import type { InputHTMLAttributes } from "react";
 import { clsx } from "clsx";
 const Radio = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HTMLInputElement>, "type">>(function Radio({ className, ...props }, ref) {
-  return <input {...props} ref={ref} type="radio" className={clsx("h-4 w-4 shrink-0 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-50", className)} />;
+  return <input {...props} ref={ref} type="radio" className={clsx("bc-radio h-4 w-4 shrink-0 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-50", className)} />;
 });
 export default Radio;
