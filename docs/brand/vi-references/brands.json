@@ -1,0 +1,1766 @@
+[
+  {
+    "id": "discord",
+    "name": "Discord",
+    "category": "messaging",
+    "scale": "200M+ MAU（2025 年 12 月，媒体报道的数字，Discord 未公开披露）",
+    "logo": {
+      "type": "mascot",
+      "description": "符号是吉祥物 Clyde，一个左右对称、像游戏手柄的圆润头形，上面有两只圆眼。2021 年后，旧版尖锐的“天线”改成了更圆的、像肩膀的形状。文字标识使用基于 Ginto 定制的字体，大小写形式为首字母大写。",
+      "concept": "据 Discord 官方博客，2021 年把 Clyde 从对话气泡里“放出来”，让它能做不同表情。改动目标是让语气更友好，并在任何尺寸下都能认出来。",
+      "evolution": "2021 年 5 月（6 周年）改版。标志改为左右对称，因为旧版不对称，限制了界面元素和周边产品的设计。尖天线改为圆肩，因为它们不适合徽章等小尺寸或实物。文字标识从全大写改为首字母大写，更易读。Blurple 调得更亮、饱和度更高，并新增了红色。",
+      "simple_icons_slug": "discord"
+    },
+    "colors": [
+      {
+        "name": "Blurple",
+        "hex": "#5865F2",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Light Blurple",
+        "hex": "#E0E3FF",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "Black",
+        "hex": "#000000",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "Legacy Blurple（2021 年前）",
+        "hex": "#7289DA",
+        "role": "accent",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "基于 Ginto 定制的字体（用于文字标识和部分标题）",
+      "ui": "gg sans（第三方来源称 2022 年推出，未从官方页面确认）",
+      "notes": "据官方博客，2021 年的定制字体只用于部分标题和登录、注册页，大部分应用内字体当时保持不变。"
+    },
+    "graphic_elements": "2021 年调色板加入更亮的颜色，其中一部分来自在线、离开、勿扰等状态色。品牌插画色彩饱和，带有游戏和夜间社交氛围（推测）。Clyde 可以有多种表情，能以角色形式出现在各种场景中。",
+    "voice": "友好、有活力、带玩家社区的轻松幽默感",
+    "design_system": null,
+    "guidelines_url": "https://discord.com/branding",
+    "signature_traits": [
+      "Blurple 蓝紫色，在同类产品中很少见",
+      "Clyde 吉祥物头形本身就是标志",
+      "标志左右对称，适合做小图标和周边产品",
+      "状态色融入品牌色，产品语义和品牌视觉相通"
+    ],
+    "lessons_for_botcord": [
+      "吉祥物标志要能在 16-24px 下辨认。Discord 去掉尖天线，正是为了解决小尺寸问题。BotCord 的吉祥物轮廓应该简单、对称、没有细小突起。",
+      "让吉祥物能做表情、摆姿势，就可以对应 agent 的状态（在线、思考、回复中、离线），把产品状态做成品牌表达。",
+      "改字体要谨慎。Discord 2021 年的新字体是用户批评最多的部分，而 Clyde 本身的改动接受度较高。"
+    ],
+    "sources": [
+      "https://discord.com/branding",
+      "https://discord.com/blog/happy-blurpthday-to-discord-a-place-for-everything-you-can-imagine-fc99ee0a77c0",
+      "https://logos.fandom.com/wiki/Discord",
+      "https://www.bloomberg.com/news/articles/2026-01-12/discord-s-ipo-will-test-whether-its-freewheeling-culture-can-survive-wall-street"
+    ]
+  },
+  {
+    "id": "slack",
+    "name": "Slack",
+    "category": "messaging",
+    "scale": "10M+ DAU（2019，Slack 官方博客；之后 Salesforce 未公布官方 DAU）",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "标志是一个井号（octothorpe）。它画在网格上，由两种基础几何形状组成：圆头的对话气泡和菱形块（lozenge）。四组形状分别用四种颜色，围绕中心旋转对称。",
+      "concept": "据 Pentagram 说明，新标志保留旧井号标志积累的辨识度。井号对应 Slack 用来组织团队讨论的频道，对话气泡表示沟通和连接。设计要求标志在大尺寸和小尺寸下都清晰可读。",
+      "evolution": "2019 年 1 月，Pentagram（Michael Bierut）和 Slack 内部团队重新设计了标志。旧标志有 11 种颜色，并依赖精确的 18 度倾角，放在非白色背景上容易走样，各处版本也不一致。新版把颜色减到 4 种主色，把形状改为可以复用的几何组件。",
+      "simple_icons_slug": null
+    },
+    "colors": [
+      {
+        "name": "Aubergine",
+        "hex": "#4A154B",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Blue",
+        "hex": "#36C5F0",
+        "role": "secondary",
+        "verified": false
+      },
+      {
+        "name": "Green",
+        "hex": "#2EB67D",
+        "role": "secondary",
+        "verified": false
+      },
+      {
+        "name": "Yellow",
+        "hex": "#ECB22E",
+        "role": "secondary",
+        "verified": false
+      },
+      {
+        "name": "Red",
+        "hex": "#E01E5A",
+        "role": "secondary",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "未从官方来源确认",
+      "ui": "未从官方来源确认",
+      "notes": "brand.slackhq.com 列有 Typography 栏目，但抓取时页面显示“under construction”，没有内容。Pentagram 的案例页也没有提到字体。"
+    },
+    "graphic_elements": "从标志中拆出的对话气泡和菱形块可以单独用作图形元素。图标、插画和装饰图形都用圆角，与标志的形状语言呼应。Pentagram 展示的广告应用中，这些形状有多种组合方式。",
+    "voice": "友好、轻松，有亲和力，同时保持专业（推测：品牌中心的 Writing 栏目当前没有内容，Pentagram 只提到保留“playful personality”）",
+    "design_system": null,
+    "guidelines_url": "https://slack.com/media-kit",
+    "signature_traits": [
+      "四色井号由对话气泡和菱形块构成",
+      "Aubergine 深紫作为品牌底色和强调色",
+      "标志组件可以拆开，作为辅助图形使用",
+      "图标和插画使用圆角，与标志形状一致"
+    ],
+    "lessons_for_botcord": [
+      "从产品核心概念中取形状。Slack 用井号对应频道；BotCord 可以从 Room、Message 或签名信封中提炼标志的基础形状。",
+      "标志要能拆成 1-2 个基础几何组件，用于图标、插画和加载动画，形成一套系统，而不是一张单独的图。",
+      "控制颜色数量，并定义好在深色背景和小尺寸下的表现。Slack 旧标志用了 11 种颜色，缺少规则，这是它重做的直接原因。"
+    ],
+    "sources": [
+      "https://slack.com/media-kit",
+      "https://brand.slackhq.com/",
+      "https://slack.com/blog/news/say-hello-new-logo",
+      "https://www.pentagram.com/work/slack/story",
+      "https://slack.com/intl/es-pe/blog/news/slack-has-10-million-daily-active-users"
+    ]
+  },
+  {
+    "id": "telegram",
+    "name": "Telegram",
+    "category": "messaging",
+    "scale": "1B+ MAU（2025 年 3 月，Pavel Durov 公开声明，未经第三方审计）",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "蓝色圆形中有一架向右上方飞的白色纸飞机。2019 年后去掉了折痕细节和立体阴影，变成扁平的白色几何形状（据第三方资料）。",
+      "concept": "官方没有公开说明设计理念。纸飞机通常理解为“发送消息”，象征快速、轻量的投递（推测）。",
+      "evolution": "早期版本有折纸阴影和立体感，后来改为扁平的纯白纸飞机（第三方资料称 2019 年）。官方没有发布改版说明。",
+      "simple_icons_slug": "telegram"
+    },
+    "colors": [
+      {
+        "name": "Telegram Blue（Simple Icons 取值）",
+        "hex": "#26A5E4",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Telegram Blue（网站/旧品牌取值）",
+        "hex": "#0088CC",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Accent Blue（应用取值）",
+        "hex": "#2AABEE",
+        "role": "accent",
+        "verified": false
+      },
+      {
+        "name": "White",
+        "hex": "#FFFFFF",
+        "role": "neutral",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "未从官方来源确认",
+      "ui": "推测使用各平台系统字体（iOS 用 SF，Android 用 Roboto），官方未说明",
+      "notes": "Telegram 没有公开的品牌规范页。官方只在 telegram.org/tour/screenshots 提供 logo 压缩包和 CC0 授权的截图。"
+    },
+    "graphic_elements": "视觉表达主要靠产品内容，而不是品牌物料：动画贴纸和动画 emoji、带涂鸦图案的聊天背景、强调物理效果的界面动效（推测，没有官方规范说明）。",
+    "voice": "简洁、直接、强调速度和隐私，偶尔带点幽默",
+    "design_system": null,
+    "guidelines_url": "https://telegram.org/tour/screenshots",
+    "signature_traits": [
+      "蓝色圆形里的白色纸飞机，一眼就能读懂",
+      "单一的天蓝色品牌色",
+      "基本没有品牌规范，靠产品体验（贴纸、动效）建立识别度"
+    ],
+    "lessons_for_botcord": [
+      "用一个人人都懂的“发送”隐喻，就能在应用图标层面建立辨识度。如果 BotCord 的吉祥物能融入“投递”或“信封”意象，可以兼顾角色感和功能含义。",
+      "Telegram 的贴纸和动画 emoji 说明，消息产品的个性可以通过聊天里的可表达元素传播。BotCord 吉祥物可以延伸出一套贴纸或状态动画。",
+      "反面教训：没有公开规范，导致外界流传多个蓝色色值。BotCord 应该从一开始就发布唯一的权威色值。"
+    ],
+    "sources": [
+      "https://telegram.org/tour/screenshots",
+      "https://brandkit.pro/brand/telegram",
+      "https://logotyp.us/logo/telegram/",
+      "https://tass.com/economy/1930999/amp"
+    ]
+  },
+  {
+    "id": "linear",
+    "name": "Linear",
+    "category": "productivity",
+    "scale": "2025 年 6 月 C 轮融资时报道称有超过 15,000 家客户（第三方报道，未在官方页面核实）；更晚的第三方报道称 2026 年有超过 40,000 家付费企业客户",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "官方品牌页给出三种形态：wordmark（文字标）、logomark（图形标）和带圆角的 icon（芯片式图标）。logomark 是由平行斜线构成的圆形几何图形（这条描述来自对标志的视觉观察，官方页面没有文字说明）。",
+      "concept": "官方没有公开标志含义。品牌页只写 \"The Linear brand is dynamic and ever-evolving\"。",
+      "evolution": "官方来源里没找到 logo 重设计的说明。2024-03 官方博客发布 UI 重设计，配图 alt 文本提到 \"the new Linear logo as a sketch\"，但没有讲设计细节。",
+      "simple_icons_slug": "linear"
+    },
+    "colors": [
+      {
+        "name": "Brand blue（低饱和蓝）",
+        "hex": "#5E6AD2",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Mercury White",
+        "hex": "#F4F5F8",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "Nordic Gray",
+        "hex": "#222326",
+        "role": "neutral",
+        "verified": true
+      }
+    ],
+    "typography": {
+      "brand": "Inter Display（标题）",
+      "ui": "Inter",
+      "notes": "官方博客（2024-03）说明：标题用 Inter Display 增加表现力，其余文字用 Inter。品牌页没有字体规范。第三方资料称等宽字体用 Berkeley Mono，未核实。"
+    },
+    "graphic_elements": "官方博客说明主题色从 HSL 改为 LCH 色彩空间，每套主题只用 base、accent、contrast 三个变量生成。整体做法是降低视觉噪音、提高信息密度，并减少蓝色调，让界面更中性。",
+    "voice": "克制、精确、追求品质",
+    "design_system": null,
+    "guidelines_url": "https://linear.app/brand",
+    "signature_traits": [
+      "单色 wordmark 优先，比 logomark 更常用",
+      "深色背景配低饱和蓝",
+      "用 LCH 色彩空间按算法生成主题",
+      "Inter Display 加 Inter 的字体组合",
+      "界面高密度、低噪音"
+    ],
+    "lessons_for_botcord": [
+      "学 Linear 分开定义 wordmark、logomark 和 icon 的使用场景。吉祥物适合做头像和社交 icon，正式场合用 wordmark。",
+      "主题色用三个变量（base/accent/contrast）在 LCH 空间生成，可以同时支持暗色模式和高对比度模式。",
+      "官方品牌页明确写了留白和禁止改动规则。BotCord 重设计时也应写清吉祥物不能变形、不能重新上色。"
+    ],
+    "sources": [
+      "https://linear.app/brand",
+      "https://linear.app/blog/how-we-redesigned-the-linear-ui",
+      "https://finder.techleap.nl/news/feed/linear-raises-82m-valued-at-1-25b",
+      "https://pulse2.com/linear-completes-99-million-tender-at-2-5-billion-valuation-as-arr-tops-100-million-and-net-retention-hits-177/"
+    ]
+  },
+  {
+    "id": "vercel",
+    "name": "Vercel",
+    "category": "dev-tool",
+    "scale": null,
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "symbol 是一个实心等边三角形，logotype（文字标）用几何无衬线字体。两者都只有黑、白两个版本。安全留白等于 symbol 的高度。",
+      "concept": "官方没有解释三角形的含义。2020 年改名公告说新名字 Vercel 联想到 versatile、accelerate、excel 三个词。",
+      "evolution": "2020 年 ZEIT 改名 Vercel，保留标志性三角形但做了简化，同时推出新 logotype。之后 basement.studio 在设计 Geist 字体时重绘了 logo，让几何更干净、比例更平衡、缩放效果更好（文章没有给年份）。",
+      "simple_icons_slug": "vercel"
+    },
+    "colors": [
+      {
+        "name": "Black",
+        "hex": "#000000",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "White",
+        "hex": "#FFFFFF",
+        "role": "primary",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "Geist Sans",
+      "ui": "Geist Sans / Geist Mono",
+      "notes": "Geist 是 Vercel 自有的开源字体（OFL 许可），灵感来自瑞士设计运动。家族包括 Geist Mono（最早发布）、Geist Sans，以及新的 Geist Pixel（五种像素形状）。"
+    },
+    "graphic_elements": "Geist 设计系统有 10 套色阶，支持 P3 广色域，每套色阶分 100 到 1000 共 10 级，并规定了每一级的用途。整体是黑白极简加网格。basement.studio 为 Next.js Conf 和 Vercel Ship 做过动态图形。",
+    "voice": "极简、快速、面向开发者",
+    "design_system": {
+      "name": "Geist",
+      "url": "https://vercel.com/geist/introduction"
+    },
+    "guidelines_url": "https://vercel.com/geist/brands",
+    "signature_traits": [
+      "实心三角形 symbol",
+      "只用黑白两色",
+      "自有开源字体 Geist",
+      "瑞士风格网格和大量留白"
+    ],
+    "lessons_for_botcord": [
+      "官方规定按目标背景选黑或白版本，不按浏览器主题选。BotCord 的吉祥物也应准备单色剪影版，用在小尺寸和单色场景。",
+      "自有字体能强化品牌识别，并带来开发者口碑。BotCord 可以先选定一套 Sans 加 Mono 的组合，统一产品和营销物料。",
+      "色阶的每一级都对应明确用途（背景、边框、文字），能减少 UI 风格不一致。"
+    ],
+    "sources": [
+      "https://vercel.com/geist/brands",
+      "https://vercel.com/blog/zeit-is-now-vercel",
+      "https://vercel.com/font",
+      "https://vercel.com/geist/colors",
+      "https://basement.studio/post/scaling-vercel-years-of-building-refining-and-elevating"
+    ]
+  },
+  {
+    "id": "github",
+    "name": "GitHub",
+    "category": "dev-tool",
+    "scale": "超过 1.8 亿开发者（Octoverse 2025，2025-10）",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "主标志 Invertocat 是 Octocat 吉祥物的反白剪影，形状是圆形内的猫头章鱼轮廓。大多数场合用 Invertocat 加 \"GitHub\" wordmark 的组合；Copilot、Security 等产品有各自的 lockup（组合标志）。",
+      "concept": "官方说明 Invertocat 是代表 Octocat 吉祥物的象形图形。Mona 是官方吉祥物，设定为半猫半章鱼。",
+      "evolution": "官方说明 Invertocat 创建后基本没变，只做过品质改进；logotype 更新过几次。官方列出的已弃用版本包括 2012–2015 和 2015–2025 的 Invertocat，以及 2008–2012 和 2012–2025 的 logotype。从 2025 年起，Copilot 不再使用带自身图标的独立 logo。",
+      "simple_icons_slug": "github"
+    },
+    "colors": [
+      {
+        "name": "GitHub Green",
+        "hex": "#0FBF3E",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Gray 6",
+        "hex": "#101411",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "Gray 1",
+        "hex": "#F2F5F3",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "Lime 2",
+        "hex": "#D3FA37",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "Orange 3",
+        "hex": "#FE4C25",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "Copilot Purple",
+        "hex": "#8534F3",
+        "role": "accent",
+        "verified": true
+      },
+      {
+        "name": "Security Blue",
+        "hex": "#3094FF",
+        "role": "accent",
+        "verified": true
+      }
+    ],
+    "typography": {
+      "brand": "Mona Sans（含 Mona Sans Mono）",
+      "ui": "Mona Sans VF 加系统字体栈（-apple-system, Segoe UI, Noto Sans…）；等宽用 ui-monospace / SF Mono 等",
+      "notes": "Mona Sans 是开源超级字族，有光学尺寸轴、5 种宽度和斜体。规范要求用标准宽度，其他宽度只留给 Universe 等活动；不要手动调字距。Primer 的 fontStack-sansSerif token 首选 'Mona Sans VF'。"
+    },
+    "graphic_elements": "插画分三档表现力：key art 是 3D 等距风格，常把贡献图（contribution graph）画成地形，再配产品图标和吉祥物；还有贡献图图案，以及基于抖动（dithering）的纹理。图标体系是 Octicons。动效原则是在结构和表现之间取平衡，用来引导注意力，不和信息抢焦点。",
+    "voice": "Nerdy、Confident、Authentic、Imaginative、Empathetic",
+    "design_system": {
+      "name": "Primer（Product UI + Brand UI + Octicons + Primitives）",
+      "url": "https://primer.style/"
+    },
+    "guidelines_url": "https://brand.github.com/",
+    "signature_traits": [
+      "Invertocat 剪影标志",
+      "吉祥物 Mona（Octocat 2.0，3D、更有表情）",
+      "GitHub Green 加近黑的中性灰",
+      "贡献图网格和抖动纹理",
+      "Copilot 用紫色、Security 用蓝色区分产品线"
+    ],
+    "lessons_for_botcord": [
+      "把吉祥物和 logo 分开：logo 用吉祥物的简化剪影，完整吉祥物只用在社区、活动和周边。GitHub 明确禁止用吉祥物替代 logo。",
+      "写吉祥物使用边界：不用于金钱、安全、企业销售、道歉、危机等严肃场景，也不打断用户操作流程。BotCord 涉及钱包和签名安全，可以直接参考。",
+      "用一个主色加按产品线区分的主题色（如 Copilot 紫）。BotCord 可以给 Agent、Room、Wallet 等模块各配一个强调色，主色只保留一个。"
+    ],
+    "sources": [
+      "https://brand.github.com/",
+      "https://brand.github.com/foundations/color",
+      "https://brand.github.com/foundations/logo",
+      "https://brand.github.com/foundations/typography",
+      "https://brand.github.com/graphic-elements/mascots",
+      "https://brand.github.com/graphic-elements/illustration",
+      "https://brand.github.com/brand-identity/attributes",
+      "https://brand.github.com/motion/principles",
+      "https://primer.style/",
+      "https://primer.style/product/primitives/typography/",
+      "https://github.blog/news-insights/octoverse/octoverse-a-new-developer-joins-github-every-second-as-ai-leads-typescript-to-1/"
+    ]
+  },
+  {
+    "id": "stripe",
+    "name": "Stripe",
+    "category": "dev-tool",
+    "scale": "2024 年平台处理支付额超过 1.4 万亿美元（官方 newsroom）",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "主标志是小写的粗体 \"stripe\" wordmark，官方只允许 slate、blurple、white 三种颜色。第三方报道称，2016 年起 i 上的圆点改成了斜切的方块。",
+      "concept": "官方页面没有说明标志含义。第三方报道称，2025 年的新 symbol 来自 wordmark 中 i 上那个斜点。",
+      "evolution": "第三方报道称 2016 年推出现行 wordmark。2025-09 推出新 symbol：蓝色方块上一条白色斜线，取代原来的斜体 \"S\" 图标，覆盖 Checkout、Radar 等产品线。这一条没有找到 Stripe 官方公告。",
+      "simple_icons_slug": "stripe"
+    },
+    "colors": [
+      {
+        "name": "Blurple",
+        "hex": "#635BFF",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Slate / Navy",
+        "hex": "#0A2540",
+        "role": "neutral",
+        "verified": false
+      },
+      {
+        "name": "Light neutral",
+        "hex": "#F6F9FC",
+        "role": "neutral",
+        "verified": false
+      },
+      {
+        "name": "White",
+        "hex": "#FFFFFF",
+        "role": "neutral",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "Söhne（第三方资料，未在官方页面核实）",
+      "ui": "Söhne；代码示例用 Source Code Pro（第三方资料）",
+      "notes": "wordmark 是定制字形。官方品牌资产页没有字体规范。"
+    },
+    "graphic_elements": "标志性元素是彩色渐变 \"wave\"。第三方设计机构 field.io 的案例说明，2024 年的 Wave Brand System 规定了 wave 和图形 symbol 在不同场景的用法（这份资料不是 Stripe 官方发布，本次只看了搜索摘要）。",
+    "voice": "严谨、专业、面向开发者，同时有设计感",
+    "design_system": null,
+    "guidelines_url": "https://stripe.com/newsroom/brand-assets",
+    "signature_traits": [
+      "小写粗体 wordmark",
+      "blurple 紫蓝色",
+      "渐变 wave 背景",
+      "深海军蓝搭配大量留白",
+      "\"Powered by Stripe\" 徽章"
+    ],
+    "lessons_for_botcord": [
+      "Stripe 的规则很严：wordmark 只允许三种颜色，不能用其他颜色。BotCord 也应把 logo 的配色组合限定在少数几种。",
+      "官方提供 \"Powered by Stripe\" 徽章给合作方使用。BotCord 可以给第三方 Agent 设计 \"on BotCord\" 徽章，用来做网络传播。",
+      "Stripe 的新 symbol 直接从 wordmark 的一个细节（i 上的斜点）提炼出来。BotCord 的吉祥物也可以提炼出一个极简局部，用作小尺寸 favicon。"
+    ],
+    "sources": [
+      "https://stripe.com/newsroom/brand-assets",
+      "https://stripe.com/newsroom/information",
+      "https://designcompass.org/en/2025/09/25/extremely-minimal-new-symbol-of-stripe/",
+      "https://fontalternatives.com/inspiration/stripe-sohne/"
+    ]
+  },
+  {
+    "id": "raycast",
+    "name": "Raycast",
+    "category": "productivity",
+    "scale": "官网显示 Slack 社区 3.7 万成员、X 账号 9 万关注（截至 2026-10 官网）；官方没有公开总用户数",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "有 logo、wordmark 和 app icon 三种资产。app icon 是一个立体键帽（keycap），带铝材质感和红色辉光。",
+      "concept": "官方说明键帽象征 Raycast 重视键盘操作，外观参考了 Apple Magic Keyboard，红色辉光把图标和品牌色连起来。",
+      "evolution": "2022-07（v1.38.0）把原来圆形扁平的 icon 改成键帽 icon。原因是 Big Sur 发布后旧 icon 显得过时；团队还探索过玻璃立方体、放大镜等方向。同时由 James McDonald 重做了界面图标集。",
+      "simple_icons_slug": "raycast"
+    },
+    "colors": [
+      {
+        "name": "Brand Red",
+        "hex": "#FF6363",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Background",
+        "hex": "#151515",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "Background Alt",
+        "hex": "#202123",
+        "role": "neutral",
+        "verified": true
+      }
+    ],
+    "typography": {
+      "brand": null,
+      "ui": null,
+      "notes": "press kit 和官方博客都没有字体规范，本次没有找到官方来源。"
+    },
+    "graphic_elements": "官方偏好深色背景，素材和截图优先用暗色版本。界面图标是线性风格，笔画偏粗，所有图标遵守统一的笔画宽度和圆角规则。官网用玻璃质感的背景图。",
+    "voice": "高效、懂行、轻松（如 \"Your shortcut to everything.\"、\"Take the short way.\"）",
+    "design_system": null,
+    "guidelines_url": "https://www.raycast.com/press",
+    "signature_traits": [
+      "键帽 app icon",
+      "珊瑚红 #FF6363 加近黑背景",
+      "深色优先",
+      "统一规范的线性图标集"
+    ],
+    "lessons_for_botcord": [
+      "Raycast 用一个实物隐喻（键帽）直接表达核心交互。BotCord 的吉祥物或 icon 可以融入消息、信封、签名等 agent 通信的实物隐喻。",
+      "icon 要跟上平台设计规范（如 macOS 圆角矩形）。BotCord 重设计时要同时检查 app icon、favicon 和 daemon 托盘图标在各平台的效果。",
+      "一个鲜明的品牌色加近黑背景，暗色模式下识别度高。BotCord 可以选一个高饱和主色，只用在关键位置。"
+    ],
+    "sources": [
+      "https://www.raycast.com/press",
+      "https://www.raycast.com/blog/a-fresh-look-and-feel",
+      "https://www.raycast.com/blog/launch-week-summary",
+      "https://www.raycast.com/changelog/macos/1-38-0",
+      "https://www.raycast.com/"
+    ]
+  },
+  {
+    "id": "figma",
+    "name": "Figma",
+    "category": "dev-tool",
+    "scale": "超过 1300 万月活用户（截至 2025 年 3 月 31 日的季度，来自 Figma S-1 招股书；其中三分之二不是设计师）",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "符号由五个圆形和圆角方形组合成字母“F”，每个形状一种颜色，旁边配字标。官方品牌书要求字标只用黑色或白色，彩色图标只放在白底或黑底上（据搜索摘要）。",
+      "concept": "已查阅的官方页面没有解释标志的含义。",
+      "evolution": "2024 年 9 月品牌焕新时保留了符号，把字标改成定制字体 Figma Sans，并把字标配色收得更克制（设计师原话“buttoned up”），这样字标不会和周围更大胆的图形抢视线。原因是 Figma 已从设计师工具扩展为面向开发、产品经理等整个团队的多产品平台。",
+      "simple_icons_slug": "figma"
+    },
+    "colors": [
+      {
+        "name": "Red",
+        "hex": "#FF3737",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Orange",
+        "hex": "#FF7237",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Purple",
+        "hex": "#874FFF",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Blue",
+        "hex": "#00B6FF",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Green",
+        "hex": "#24CB71",
+        "role": "primary",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "Figma Sans（Grilli Type 设计的有态度的 grotesque 字体，可变字体，可以切换成等宽风格），同家族还有 Figma Condensed、Figma Mono 和 Figma Hand（OH no Type 设计）",
+      "ui": "未在官方页面核实",
+      "notes": "2019 到 2024 年品牌字体是 Dinamo 的 Whyte。上面五个 hex 来自搜索摘要，摘要称出自官方品牌书 PDF（static.figma.com）；我取回了这个 PDF，但无法解析其中文字，所以全部标为未核实。第三方站点流传的 #F24E1E、#A259FF 等是另一套旧值。"
+    },
+    "graphic_elements": "插画用一套矢量“基元”拼成，从模糊的色块到具象形状都有，风格是“jumbo”：大形状、超大节点、大胆配色。基元分 passive、activated、hyper-activated 三档，构图方式有叠放、揭示、聚集和组合。新系统去掉了黑色描边和光标元素。动效围绕“选中、激活、变形”，节奏快而利落，像仍在进行中的草稿；视觉暗示无限画布。",
+    "voice": "自信、开放、强调手艺；核心理念是“build by design”",
+    "design_system": null,
+    "guidelines_url": "https://www.figma.com/using-the-figma-brand/",
+    "signature_traits": [
+      "五色几何块拼成的 F 符号，一眼可辨",
+      "定制字体家族 Figma Sans / Mono / Hand",
+      "超大节点、高饱和的“jumbo”基元插画",
+      "三套主题配色（Core / Warm / Cool），每套有亮色和暗色模式，用变量管理"
+    ],
+    "lessons_for_botcord": [
+      "官方原话是“品牌是语言，不是系统”：可以把吉祥物拆成一套可组合的基元（眼睛、气泡、连接线等），在不同场景重新组合",
+      "主标志保持稳定，周边图形可以大胆；Figma 让字标退后、图形向前，BotCord 可以让吉祥物承担情绪，字标保持中性",
+      "可以把动效写进规范，例如消息投递和 agent 状态变化，让动效成为品牌识别的一部分"
+    ],
+    "sources": [
+      "https://www.figma.com/using-the-figma-brand/",
+      "https://static.figma.com/uploads/6645755656177435f83e10b48d9947645b55a033",
+      "https://www.figma.com/blog/figma-on-figma-evolving-our-visual-language/",
+      "https://www.itsnicethat.com/features/figma-brand-refresh-graphic-design-spotlight-160924",
+      "https://www.sec.gov/Archives/edgar/data/1579878/000162828025033742/figma-sx1.htm"
+    ]
+  },
+  {
+    "id": "notion",
+    "name": "Notion",
+    "category": "productivity",
+    "scale": "1 亿用户（2024 年，CEO Ivan Zhao 在官方博客《100 Million of You》中宣布；这是注册用户数，不是活跃用户数）",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "黑白单色标志。图形是一个立方体，正面有一个衬线体大写“N”，旁边配黑色字标。第三方资料描述它为等距线框立方体加粗衬线 N，这一点未在官方页面核实。",
+      "concept": "已查阅的官方页面没有解释标志含义。第三方站点说立方体代表 Notion 的“块（block）”模块化理念，但没有官方出处。",
+      "evolution": "据第三方资料，这个标志随 2016 年 Notion 1.0 推出，之后变化很小，未核实。2024 年 7 月 Notion 与 BUCK 做了品牌战役，加入原色插画，但没有改标志。",
+      "simple_icons_slug": "notion"
+    },
+    "colors": [
+      {
+        "name": "Black",
+        "hex": "#000000",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "White",
+        "hex": "#FFFFFF",
+        "role": "neutral",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "未在官方页面核实",
+      "ui": "未在官方页面核实",
+      "notes": "官方品牌指南（notion.notion.site）列有 Typography 章节，但页面靠前端渲染，无法读取具体内容。"
+    },
+    "graphic_elements": "长期插画师 Roman Muradov 用手绘线条画人物插画，不用矢量风格。官方原话是“smart, whimsy storytelling”。早期品牌只用黑白。2024 年战役加入大胆的黄、蓝、红，借鉴立体主义、Rube Goldberg 式连锁装置和 Saul Steinberg；产品本身仍避免使用鲜艳颜色。",
+    "voice": "简洁、俏皮，表层轻松、内核讲创造；口号是“Think it. Make it.”",
+    "design_system": null,
+    "guidelines_url": "https://notion.notion.site/Notion-Brand-Guidelines-db8fda2d1f0048bba1f4e547dfc48830",
+    "signature_traits": [
+      "极简黑白标志，近似印刷品或纸面的质感",
+      "Roman Muradov 的手绘线条人物插画",
+      "产品界面克制无彩，营销物料才放开使用原色",
+      "插画承担主要的叙事和亲和力"
+    ],
+    "lessons_for_botcord": [
+      "可以让主标志保持单色、极简，把吉祥物的性格放到辅助插画系统里，这样小尺寸 favicon 和 app icon 也能清楚识别",
+      "可以请同一位插画师（或用同一套线条规范）长期产出 agent 角色插画，形成连贯的视觉资产",
+      "产品 UI 用中性色，营销侧再用高饱和色彩讲故事，两个场景的视觉强度分开管理"
+    ],
+    "sources": [
+      "https://notion.notion.site/Notion-Brand-Guidelines-db8fda2d1f0048bba1f4e547dfc48830",
+      "https://www.notion.com/blog/the-thinking-behind-our-latest-brand-campaign",
+      "https://www.notion.com/ja/blog/100-million-of-you",
+      "https://itsnicethat.com/articles/buck-notion-graphic-design-illustration-project-170724",
+      "https://www.notion.com/about"
+    ]
+  },
+  {
+    "id": "anthropic-claude",
+    "name": "Anthropic / Claude",
+    "category": "ai",
+    "scale": null,
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "Anthropic 公司标志是纯文字字标，有一个醒目的斜杠细节（Geist 设计）。Claude 产品标志是陶土橙色的不规则放射状“火花”或星号，线条像手绘，不像几何工整的图形，旁边配衬线体“Claude”字标。",
+      "concept": "Geist 官方案例说，Anthropic 字标中的斜杠指向 AI 背后的代码，也暗示未来。Claude 火花的含义没有找到 Anthropic 官方解释；“星号、太阳、超新星”和纪念 Claude Shannon 等说法都来自第三方猜测。",
+      "evolution": "Geist 在 Anthropic 公开亮相前就开始做这套识别，前后约两年半（来自第三方博客，未在 Geist 页面核实）。Claude 火花标志的启用时间和改版历史未找到官方资料。",
+      "simple_icons_slug": "claude"
+    },
+    "colors": [
+      {
+        "name": "Dark",
+        "hex": "#141413",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "Light",
+        "hex": "#FAF9F5",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "Mid Gray",
+        "hex": "#B0AEA5",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "Light Gray",
+        "hex": "#E8E6DC",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "Orange",
+        "hex": "#D97757",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Blue",
+        "hex": "#6A9BCC",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "Green",
+        "hex": "#788C5D",
+        "role": "accent",
+        "verified": true
+      }
+    ],
+    "typography": {
+      "brand": "Styrene（Commercial Type）+ Tiempos（Klim），出自 Geist 官方案例，Geist 形容这组搭配“技术精致又带点古怪”",
+      "ui": "未在官方页面核实。第三方设计系统提取称 claude.com 用定制字体 Anthropic Sans / Anthropic Serif / Anthropic Mono，也有资料提到 Copernicus、Tiempos Headline，说法不一致。",
+      "notes": "七个 hex 来自 Anthropic 官方 GitHub 仓库 anthropics/skills 的 brand-guidelines 技能。同一份文件给文档场景指定 Poppins / Lora 作为字体，这不等于营销主字体。Claude 火花用的是 Orange #D97757（simple-icons 也收录了这个值）。"
+    },
+    "graphic_elements": "Geist 说配色系统的目的是给营销和产品 UI 加入温度，插画语言体现以人为本的价值，技术和非技术受众都能看懂。第三方资料描述插画像铅笔手绘、有机形态，用陶土橙、黑和灰绿配奶油色纸面底，整体有书卷气，这一点未在官方页面核实。",
+    "voice": "温和、克制、可信、偏人文",
+    "design_system": null,
+    "guidelines_url": null,
+    "signature_traits": [
+      "奶油纸色底（#FAF9F5）+ 近黑文字（#141413）+ 陶土橙点缀（#D97757）",
+      "衬线和无衬线混排（Tiempos + Styrene），给人编辑出版物的感觉",
+      "手绘感的不规则 Claude 火花，与 AI 行业常见的冷色渐变和几何结形成反差",
+      "Anthropic 字标中的斜杠细节"
+    ],
+    "lessons_for_botcord": [
+      "公司 VI 和产品 mark 可以分层：Anthropic 字标严肃，Claude 火花有温度。BotCord 协议层 VI 可以理性，吉祥物负责产品层的亲和力",
+      "在 AI 和 agent 赛道，暖色、纸感、手绘线条能和蓝紫渐变的同质化风格拉开差距",
+      "标志允许不完美、有“手感”，更有人格；但要保证 16px 下轮廓仍然清楚"
+    ],
+    "sources": [
+      "https://geist.co/work/anthropic",
+      "https://raw.githubusercontent.com/anthropics/skills/main/skills/brand-guidelines/SKILL.md",
+      "https://www.abduzeedo.com/seamlessly-crafting-ai-branding-and-visual-identity-anthropic",
+      "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/data/simple-icons.json"
+    ]
+  },
+  {
+    "id": "openai-chatgpt",
+    "name": "OpenAI / ChatGPT",
+    "category": "ai",
+    "scale": "ChatGPT 每周活跃用户超过 8 亿（2025 年 10 月 6 日，Sam Altman 在 DevDay 宣布）",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "符号是“Blossom（花形）”：线条交织成六向对称的花结。字标用 OpenAI Sans，字母 O 是正圆。官方规范要求字标不和 Blossom 组合使用。",
+      "concept": "2025 年焕新的目标是在几何精度和亲和力之间取得平衡，让品牌更“有机、更像人”。按 Wallpaper 的报道，这是 Sam Altman 提出的要求。",
+      "evolution": "2025 年 2 月是 2022 年以来首次品牌焕新。内部团队由 Veit Moeller 和 Shannon Jager 带领，合作方是 ABC Dinamo 和 Studio Dumbar。Blossom 被保留，中心负空间加大，线条更干净、粗细统一；同时推出定制字体 OpenAI Sans，并把一个黑色圆点（point）加入品牌系统。",
+      "simple_icons_slug": null
+    },
+    "colors": [
+      {
+        "name": "Black",
+        "hex": "#000000",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "White",
+        "hex": "#FFFFFF",
+        "role": "neutral",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "OpenAI Sans（与 ABC Dinamo 合作定制），线条干净但带细微不规则，i 和 j 的点是正圆，呼应 ChatGPT 的圆形光标",
+      "ui": "未在官方页面核实",
+      "notes": "官方品牌页 openai.com/brand 返回 403，没有取到原文；字体和规则信息来自搜索摘要和设计媒体。报道称还在做等宽版本。官方没有公开色值。"
+    },
+    "graphic_elements": "品牌核心元素是黑色圆点“the point”。Wallpaper 报道称它代表光标，也就是 ChatGPT 回复的起点；字体、网格和间距都从这个圆点推导出来，设计总监 Shannon Jager 称它是连接各产品和部门的“基础”。语音模式用“Emotive Point”：一个在水彩感蓝色背景上脉动的蓝色圆盘，用代码驱动，图案和运动会响应用户输入；设计负责人 Veit Moeller 说它被刻意做成“非人”的，没有可辨认的性格或情绪。Blossom 的底层网格是六个互相交叠的圆（“seed of life”）。整体价值观是 simplify、space、imperfection、vivid；色板以灰和蓝为底，搭配对比原色。",
+    "voice": "精确、冷静，同时有人情味",
+    "design_system": null,
+    "guidelines_url": "https://openai.com/brand/",
+    "signature_traits": [
+      "黑色圆点“the point”，同时是光标、字形和网格的起点",
+      "语音模式的脉动蓝色圆盘，代码驱动、刻意不拟人",
+      "交织线条的 Blossom 花结符号",
+      "定制字体 OpenAI Sans，正圆 O 和圆点 i/j"
+    ],
+    "lessons_for_botcord": [
+      "OpenAI 和 Grok Bot 代表两条相反路线：OpenAI 的圆点刻意不拟人，Grok Bot 的圆球带眼睛、是角色。BotCord 要先决定 agent 是“角色”还是“信号”",
+      "从产品里最核心的交互元素提炼品牌符号。ChatGPT 是光标；BotCord 可以是消息投递点、签名标记或 Room 的连接点",
+      "让一个基础几何元素同时驱动 logo、字体细节和动效，整套 VI 会更统一"
+    ],
+    "sources": [
+      "https://openai.com/brand/",
+      "https://webdesignerdepot.com/openai-gets-a-fresh-look-new-logo-custom-font-and-a-more-human-feel/",
+      "https://www.techradar.com/pro/openai-is-getting-a-makeover-new-visual-rebrand-for-chatgpt-maker-even-includes-its-own-custom-font",
+      "https://news.designrush.com/openai-refreshes-its-visual-brand-identity-with-new-logo-typeface",
+      "https://techcrunch.com/2025/10/06/sam-altman-says-chatgpt-has-hit-800m-weekly-active-users/",
+      "https://www.wallpaper.com/tech/openai-has-undergone-its-first-ever-rebrand-giving-fresh-life-to-chatgpt-interactions"
+    ]
+  },
+  {
+    "id": "grok-bot",
+    "name": "Grok Bot",
+    "category": "ai",
+    "scale": null,
+    "logo": {
+      "type": "mascot",
+      "description": "图形是一个实心圆球，右上方有两道倾斜的圆角短条，作为眼睛；眼睛在品牌图中是镂空的。旁边配无衬线字标“Grok Bot”。在产品里，这个圆球是一个会动的角色：它可以变成六边形、三角形、感叹号、带天线的小球、三点省略号、带轨道环的星球；眼睛也能变成眯眼、眨眼等表情（来自官方动画帧，2026-10-12 截取观察）。",
+      "concept": "官方没有解释图形含义。设计负责人 Benji Taylor 说，这个图标“完全用代码做成，每个状态、形状和表情都能平滑变形成另一个”。Design Compass 报道称，产品界面里角色图标会按状态（等待、工作、回复）改变表情和形状。",
+      "evolution": "2026-08-11 随 Grok Bot beta 发布。原始图标由 Kenneth Kuh、Justin Jay Wang、Luke Barker、John Bai 设计，Benji Taylor 用 Grok Build 做成代码动画。母公司 SpaceXAI 的公司 logo 被 Fast Company 批评为“Frankenlogo”，和 Grok Bot 的角色图标是两套东西。",
+      "simple_icons_slug": null
+    },
+    "colors": [
+      {
+        "name": "Bot Black（动画帧取样）",
+        "hex": "#0A0A0C",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Canvas（动画背景取样）",
+        "hex": "#F9F9F9",
+        "role": "neutral",
+        "verified": false
+      },
+      {
+        "name": "Sky Blue（发布图取样）",
+        "hex": "#80BDFC",
+        "role": "secondary",
+        "verified": false
+      },
+      {
+        "name": "White",
+        "hex": "#FFFFFF",
+        "role": "neutral",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "未在官方页面核实（发布图字标是几何无衬线字体）",
+      "ui": "未在官方页面核实",
+      "notes": "色值是从官方发布图和官方动画帧取样得到，不是官方公布的色值。官方没有公开品牌规范。"
+    },
+    "graphic_elements": "核心是“状态即形状”：同一个角色通过变形和表情表达等待、工作、回复、通知等状态；通知用角色右上角的蓝色小圆点表示，工作中用彩色轨道环环绕。发布物料用柔和的蓝白模糊渐变做背景。据 Design Compass，用户可以为每个 Bot 自定义颜色、形状和性格（该文正文未展开，未核实）。",
+    "voice": "像同事一样随意、可靠（“message it like a teammate”）",
+    "design_system": null,
+    "guidelines_url": null,
+    "signature_traits": [
+      "黑色圆球加两道斜眼，极简到 16px 也能认出",
+      "一个角色、多种形状：六边形、三角形、感叹号等都是同一个 Bot",
+      "动画用代码实现，状态之间连续变形，不是切换图片",
+      "表情只靠眼睛表达，没有嘴和四肢"
+    ],
+    "lessons_for_botcord": [
+      "产品定位和 BotCord 最接近：多个 Bot 在群聊里互相发消息、分工协作。它证明了“agent 即角色”的视觉路线在这个品类可行，也意味着 BotCord 需要和它拉开差异",
+      "把 agent 的运行状态（在线、思考、回复中、离线、待审批）直接映射到吉祥物的形状和表情，用一个可编程的 SVG 角色代替状态徽章和 loading 动画",
+      "角色只用一个基础形状加眼睛，每个用户的 agent 可以换颜色或形状来区分，同时保持同一品牌（对应 BotCord 现在的 agent 头像需求）"
+    ],
+    "sources": [
+      "https://x.ai/news/introducing-grok-bot",
+      "https://x.ai/images/news/introducing-grok-bot-og-2.png",
+      "https://x.com/benjitaylor/status/2087227155076046995",
+      "https://designcompass.org/en/2026/08/12/grok-bot-ai-teammate/",
+      "https://www.fastcompany.com/91570200/spacexais-logo-design-grok-critique",
+      "https://github.com/AstroQore/vibe-bar/pull/318"
+    ]
+  },
+  {
+    "id": "meta-muse",
+    "name": "Muse（Meta）",
+    "category": "ai",
+    "scale": "Meta 于 2026-09-08 发布的个人 AI agent，先在美国上线，入口为 Muse App、WhatsApp 和 muse.ai。底层模型是 Muse Spark，由 Meta Superintelligence Labs（MSL）开发，2026-04-08 发布，也是 MSL 的首个模型。据 NBC 和 WIRED 转述，Muse 在 Meta Connect（2026-09-23）后登上 App Store 榜首；Meta 官方未公布用户量。",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "主标识是一笔连写的手写小写 m。官网 favicon 文件名为 app-squiggle.svg。笔画为圆头，粗细基本一致，整体向右上倾斜，三个峰的高度依次降低，末端向右上扬起。笔画填充蓝色线性渐变，从左上深蓝过渡到右下亮蓝。App 图标是白色圆角方块里放蓝色渐变 m；官方 SVG 的圆角为 rx=20/56。宣传片结尾锁定版的顺序是：App 图标、下方文字“Muse”、底部 Meta 无限标和“Meta”。这表明 Muse 使用“由 Meta 背书”的子品牌架构，这一点根据片尾画面推断。字标“Muse”在片尾看起来是无衬线字体。Hische 说她参与了 logotype，但本次没有找到单独的字标高清图，所以字标的具体字形没有核实。",
+      "concept": "据 Inquirer 报道，Meta 内部先画了一个 m 的草图，灵感来自“一笔笔画或涂鸦（pen stroke or scribble）”。之后请字体设计师 Jessica Hische 精修。Hische 的原话是要让这个标识“less rigid and more fluid”，具体做法是调整笔画角度、收笔处理和垂直节奏。她探索了 30 多个变体。John Gruber 评价它“明显是个 M，但又不是 M；友好但仍然严肃”。它的语义是“笔迹 / 亲手代办”，没有使用 AI 常见的星形、光点或芯片符号。",
+      "evolution": "2026-04 Muse Spark 模型发布时，前台品牌仍然是 Meta AI（花瓣环 orbit 标识），Muse 只是模型系列的名称。2026-09-08 Muse 作为独立 agent 产品发布，启用 squiggle m 标识和 Jolly 角色。2026-09-09 Hische 在 Threads 公开自己参与设计，因为“AI + Meta”受到设计圈批评。Inquirer 指出它和费城 Mural Arts 的 M 标识相似，Hische 承认“There's definitely a resemblance”。Muse 和 Meta AI 目前是两套不同的视觉标识，二者今后是否合并，官方没有说明。",
+      "simple_icons_slug": null
+    },
+    "colors": [
+      {
+        "name": "Muse 标识渐变 · 深蓝端",
+        "hex": "#0040DC",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Muse 标识渐变 · 中段蓝",
+        "hex": "#0064E0",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Muse 标识渐变 · 亮蓝端",
+        "hex": "#0082FB",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "UI 主按钮蓝（muse.ai CSS token --blue-600）",
+        "hex": "#006EE4",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "暖米白背景（官方图取样）",
+        "hex": "#FAF9F5",
+        "role": "neutral",
+        "verified": false
+      },
+      {
+        "name": "用户气泡浅蓝（官方图取样）",
+        "hex": "#C6DFF8",
+        "role": "secondary",
+        "verified": false
+      },
+      {
+        "name": "Jolly 毛绒奶油色（官方图取样）",
+        "hex": "#F2DFC0",
+        "role": "accent",
+        "verified": false
+      },
+      {
+        "name": "中性深灰（muse.ai CSS token --ai-gray-1000）",
+        "hex": "#28292B",
+        "role": "neutral",
+        "verified": true
+      }
+    ],
+    "typography": {
+      "brand": "Optimistic 家族的 AI 变体 OptimisticAI。依据是 muse.ai 加载的字体文件 OptimisticAI_VF_Optimized.woff2 和 OptimisticAI_W_TextRegularIt.woff2。",
+      "ui": "Optimistic / optimisticText，等宽字体为 Optimistic Mono。依据是 muse.ai 的 CSS font-family 声明。",
+      "notes": "Optimistic 是 Meta 公司级字体家族。Meta 官方设计博客只说字标使用“2019 年推出的公司字体”，没有写字体名；字体名来自 muse.ai 的 CSS 和字体文件名。Hische 设计的 Muse logotype 是否为定制字形，本次没有核实。"
+    },
+    "graphic_elements": "1）角色 Jolly：Muse 的默认 avatar，Zuckerberg 在 Connect 上公布了这个名字。它是奶油色、毛绒质感的 3D 公仔，有豆豆黑眼、粉色腮红和上扬的微笑，造型像穿连帽连体衣的小人。用户可以给它换装、改名，Zuckerberg 自己的 agent 叫 Agrippa，戴月桂冠、穿托加袍。2）状态胶囊：宣传片里 Jolly 头像下方有一个白色胶囊，第一行写“Muse”，第二行是带图标的进行时状态，例如 is working、Creating shopping list、Adding to cart、Waiting for permission（锁图标）、Building your plan、Signing you up、checking alternate routes。Jolly 手里的道具会随任务变化，例如戴耳机、拿电脑或拿笔。任务完成时显示蓝色圆圈对勾和“Done!”，配合彩纸庆祝动画。3）授权卡片：卡片标题是“Muse wants to place an order”，底部是 Deny/Allow 双按钮，Allow 用实心蓝。4）营销版式：暖米白或白到淡蓝的渐变背景，配大号 Optimistic 字体，文案句式是“AI that ___ for you”，中间插入 3D 小物件图标。5）规划中的实体设备 Muse Charm：口袋大小，有小屏幕显示 avatar，用指纹传感器唤起。WIRED 和 TechCrunch 称它像拓麻歌子，具体规格未公布。",
+    "voice": "亲切、口语化，把 agent 写成替你跑腿的伙伴，例如“Your Muse gets it done”“It's your Muse”“What can I take off your plate?”。Meta MSL 产品 VP Mona Sarantakos 解释说，角色化设计让用户不会觉得自己是在和“a corporate logo or entity”对话。批评方面，Fairplay 说它像天线宝宝；WIRED 和 Creative Bloq 质疑它是“儿童化”的设计，用在只限成年人的产品上。也有学者认为，可爱设计会让用户放松隐私警惕。",
+    "design_system": null,
+    "guidelines_url": null,
+    "signature_traits": [
+      "双层表达：品牌标识是抽象的一笔连写 m（squiggle），人格化由独立的 3D 毛绒角色 Jolly 承担，两者分开使用",
+      "agent 状态可视化：头像 + 名称 + 进行时动词状态胶囊，配合按任务更换的道具，以及 Waiting for permission → Allow → Done! 的确认流程",
+      "单一 Meta 蓝渐变（#0040DC→#0082FB），区别于 Meta AI 的紫粉色系",
+      "采用 Meta 背书的子品牌架构：片尾锁定版显示“∞ Meta”",
+      "用户可以给角色换装、改名，avatar 可以个性化"
+    ],
+    "lessons_for_botcord": [
+      "把“标识”和“agent 形象”分层：logo 用可缩到 16px 的单笔抽象符号，agent 个性交给可自定义的 avatar。这样既能避免吉祥物撑不起小尺寸图标，也能让每个 agent 有自己的身份。",
+      "agent 状态用“头像 + 名字 + 动词短语”的胶囊表达，例如 is working / Waiting for permission / Done!。比单纯的转圈或光点更可读。BotCord 可以把 agent 的工作状态和投递状态做成类似组件。",
+      "可爱角色有风险：Muse 因为过度儿童化和“降低警惕”受到舆论批评。BotCord 面向开发者和团队，角色化应保持克制，标识本身也要能脱离角色单独成立。"
+    ],
+    "sources": [
+      "https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/",
+      "https://about.fb.com/wp-content/uploads/2026/09/Introducing-Muse_Sizzle-Video.mp4",
+      "https://about.fb.com/wp-content/uploads/2026/09/Introducing-Muse_-Personal-AI-Agent_SocialShare.jpg",
+      "https://muse.ai",
+      "https://muse.ai/images/landing/brand/muse-app-icon.svg",
+      "https://muse.ai/images/landing/brand/og-image.jpg",
+      "https://www.threads.com/@jessicahische/post/DdE3LZbj_b8",
+      "https://www.inquirer.com/life/muse-meta-logo-mural-arts-philadelphia-20260911.html",
+      "https://daringfireball.net/linked/2026/09/22/meta-muse-hische",
+      "https://thedieline.com/jessica-hische-metas-muse-and-the-ethical-landmines-of-design/",
+      "https://www.winzheng.com/en/article/meta-muse-adults-only-kids-toy",
+      "https://techcrunch.com/2026/09/23/everything-new-coming-to-metas-ai-agent-muse/",
+      "https://www.nbcwashington.com/news/national-international/meta-muse-ai-agent/4159150/",
+      "https://about.fb.com/news/2026/04/introducing-muse-spark-meta-superintelligence-labs/"
+    ]
+  },
+  {
+    "id": "meta-ai",
+    "name": "Meta AI",
+    "category": "ai",
+    "scale": "Meta 的通用 AI 助手，嵌入 WhatsApp、Instagram、Facebook、Messenger、Threads、AI 眼镜，另有独立的 App 和网页。官方说 Muse Spark 与新版 Meta AI“reaching billions”。TechCrunch 报道，Muse Spark 发布后 Meta AI App 从美区第 57 名升到第 5 名。",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "当前符号（2026-04 起）由 7 枚带 3D 光泽的椭圆“花瓣/种子”组成环形，排列方向类似旋转的风车。颜色是洋红到蓝紫的渐变。meta.ai 的官方 SVG 文件名为 meta-ai-orbit-logo-gradient-3d，因此内部名称可能是“orbit”，这是根据文件名推测的。字标“Meta AI”用无衬线白字或黑字，放在符号右侧。官方动效中，每片花瓣会翻转到侧面成为细线，再转回正面，形成环状旋转和呼吸感，可以作为加载或思考状态。",
+      "concept": "官方没有找到解释概念的文章。从形态看，它延续了 2024 年 Meta AI 渐变圆环“环形 = 持续存在的助手”的语义，但把实心环拆成离散粒子，表达多个子 agent、发散思考或花朵绽放。这是推测，没有官方依据。",
+      "evolution": "2024 年起：蓝、紫、粉渐变的圆环（ring）。2025 年它被强制放进 WhatsApp，引起反感，瑞士媒体 bluewin 称之为“blue circle”。2026-04 随 Muse Spark 发布换成紫色花瓣环，媒体报道同时有一个新的主按钮色。本次没有找到官方的改版说明，也没有找到设计师署名。Meta 公司标识是 2021-10 推出的无限标（∞）：据 Meta 官方设计博客，它“由 Quest 技术在空间中画出的单一线条”构成，能读成 M 或无穷符号，设计为在 2D/3D 和动态中使用，配蓝色渐变；由内部品牌与产品团队共同设计。三者的关系是：Meta 无限标是公司母品牌，单线、蓝色；Meta AI 花瓣环是紫粉色的离散粒子，与母品牌的造型和颜色都明显分开；Muse squiggle 回到“单笔线条 + Meta 蓝”。Muse 的 #0064E0/#0082FB 与常被引用的 Meta 无限标蓝色一致，但 Meta 官方品牌页没有公布色值，这一对应没有核实。",
+      "simple_icons_slug": "metaai"
+    },
+    "colors": [
+      {
+        "name": "Orbit 渐变 · 洋红",
+        "hex": "#EC35FF",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Orbit 渐变 · 浅粉紫高光",
+        "hex": "#F277FF",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "Orbit 渐变 · 紫",
+        "hex": "#AA63FF",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Orbit 渐变 · 电光蓝紫",
+        "hex": "#3235FF",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "品牌发布图黑底（官方图取样）",
+        "hex": "#000000",
+        "role": "neutral",
+        "verified": false
+      },
+      {
+        "name": "Meta 公司蓝（Simple Icons 收录值，非官方页面）",
+        "hex": "#0467DF",
+        "role": "secondary",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "Optimistic（Meta 公司字体家族）。依据是 Meta 生态站点 muse.ai 的字体声明；meta.ai 本身有反爬验证，本次没有取到它的 CSS。",
+      "ui": "Optimistic / Optimistic Text（推测，未在 meta.ai 页面直接核实）",
+      "notes": "Meta 官方品牌页只给出 Meta 标识的使用规则：4 种颜色变体，最小尺寸 12px/5mm，留白为符号高度的 2 倍，使用前需要通过 Brand Review。页面没有列出色值和字体名。"
+    },
+    "graphic_elements": "3D 光泽椭圆粒子组成的环形符号，用作 loading 或思考动效：花瓣逐片翻转、旋转、渐显。官方 Muse Spark 头图 GIF 展示了这段动效。登录弹窗采用浅灰卡片、蓝色渐变主按钮和大圆角输入框。新版有“side chats”功能：在群聊里点击 Meta AI 图标，可以私下提问。",
+    "voice": "通用助手的口吻，例如“What can I do for you?”“Ask Meta AI anything”。官方发布 Muse Spark 时强调“Purpose-Built to Prioritize People”。",
+    "design_system": null,
+    "guidelines_url": "https://www.meta.com/brand/resources/meta/company-brand/",
+    "signature_traits": [
+      "离散粒子环：7 枚 3D 椭圆组成旋转花瓣环，替代 2024 年的实心渐变圆环",
+      "洋红到蓝紫的渐变，刻意避开 Meta 公司蓝，和母品牌拉开距离",
+      "符号本身就是状态动画：花瓣翻转旋转即为“思考中”",
+      "被 Gruber 等人调侃形似肛门（butthole），抽象环形符号有被恶意联想的风险"
+    ],
+    "lessons_for_botcord": [
+      "“抽象信号”路线的标识可以直接兼作思考或加载动效，例如粒子翻转、旋转。这样 logo 和 agent 状态动画能用同一套几何。",
+      "环形或放射状 AI 符号已经很拥挤（OpenAI、Meta AI 等），而且容易被恶意联想。BotCord 如果走抽象路线，应该用“消息/连接”特有的几何，避免通用光环。"
+    ],
+    "sources": [
+      "https://about.fb.com/news/2026/04/introducing-muse-spark-meta-superintelligence-labs/",
+      "https://about.fb.com/wp-content/uploads/2026/04/Introducing-Muse-Spark_Social-Share.jpg",
+      "https://about.fb.com/wp-content/uploads/2026/04/Introducing-Muse-Spark_Header.gif",
+      "https://meta.ai/images/meta-ai-orbit-logo-gradient-3d_light.svg",
+      "https://www.bluewin.ch/en/news/what-does-this-purple-flower-in-whatsapp-do-3201480.html",
+      "https://www.noticiasnqn.com.ar/noticias/2026/04/20/331647-whatsapp-cambia-el-logo-de-su-inteligencia-artificial-asi-es-el-nuevo-diseno-de-meta-ai-que-ya-aparece-en-celulares",
+      "https://techcrunch.com/2026/04/09/meta-ai-app-climbs-to-no-5-on-the-app-store-after-muse-spark-launch/",
+      "https://www.meta.com/design-at-meta/blog/designing-our-new-company-brand-meta/",
+      "https://www.meta.com/brand/resources/meta/company-brand/",
+      "https://daringfireball.net/linked/2026/09/22/meta-muse-hische",
+      "https://cdn.simpleicons.org/metaai"
+    ]
+  },
+  {
+    "id": "tencent-workbuddy",
+    "name": "WorkBuddy（腾讯）",
+    "category": "ai",
+    "scale": "腾讯云代码助手团队（CSIG）推出的 AI Agent 办公工作台。媒体报道称 2026 年 3 月发布，有企业版，并向第三方开放平台。官网未公开用户规模。",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "图形标是一只机器猫的头部，只从右下方探出一部分，带猫耳。猫头是白色渐变剪影；脸部是一块倾斜约 30° 的绿色圆角“面罩”屏幕，上面有两条白色胶囊形斜向“眼睛”。容器有两种：favicon 和界面头像用正圆，App 图标用超椭圆圆角方形。底色是青绿到翠绿的竖向线性渐变（#0EC8A9 → #01C886），右下角有一团高斯模糊的黄色光斑（#FFE355，不透明度 49%），叠加后呈黄绿色（约 #73D571）。官网另有单色版（work-face.svg）：深灰圆底配 #F1F3F7 浅色猫。文字标是全大写、粗重的几何无衬线体，分两行排成“WORK / BUDD>_”。其中 Y 被替换成终端提示符“>_”，“_”同时是光标。官网首页背景把这个文字标做成等轴测 3D 灰色立体字，只有光标块用品牌绿 #28B894 高亮。",
+      "concept": "以下为推测，未找到官方设计说明。“Buddy”被具象成一只伙伴猫。面罩加胶囊眼的处理让它像机器人或 AI 脸，而不是写实动物。只露半个头的“探头”构图带有窥视、陪伴的意味。“>_”把 CLI 和终端基因（来自 CodeBuddy）带进办公产品的文字标里，暗示“能执行任务的 Agent”。",
+      "evolution": "WorkBuddy 与 CodeBuddy 共用同一个猫头图形，两者 SVG 路径几乎一致，只换配色：CodeBuddy 用紫色 #6C4DFF → #583ED3 渐变加薄荷绿 #32E6B9 光斑，WorkBuddy 用绿色渐变加黄色光斑。这构成一套“Buddy 家族”换色体系。媒体称 2026 年 5 月产品内上线“Buddy猫”养成桌宠，9 月 8 日与《和平精英》联动推出主题皮肤。该桌宠与 logo 猫是否是同一官方角色设定，未找到官方说明。",
+      "simple_icons_slug": null
+    },
+    "colors": [
+      {
+        "name": "WorkBuddy 绿（站点主强调色，用于链接下划线、光标块等）",
+        "hex": "#28B894",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Logo 渐变起点·青绿",
+        "hex": "#0EC8A9",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Logo 渐变终点·翠绿",
+        "hex": "#01C886",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "Logo 光斑黄（49% 不透明度叠加）",
+        "hex": "#FFE355",
+        "role": "accent",
+        "verified": true
+      },
+      {
+        "name": "光斑叠加后的黄绿（官方图取样）",
+        "hex": "#73D571",
+        "role": "accent",
+        "verified": false
+      },
+      {
+        "name": "薄荷亮绿（站点 CSS 辅助色，也是 CodeBuddy logo 光斑色）",
+        "hex": "#32E6B9",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "Buddy 紫（输入框 focus、引用条；CodeBuddy 主色）",
+        "hex": "#6C4DFF",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "近黑墨色（正文和标题）",
+        "hex": "#191A23",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "灰紫中性色",
+        "hex": "#4C4F6B",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "单色 logo 浅色",
+        "hex": "#F1F3F7",
+        "role": "neutral",
+        "verified": true
+      }
+    ],
+    "typography": {
+      "brand": "文字标是定制或未识别的粗重几何无衬线全大写字形，含“>_”替换字符，无法确认对应的公开字体。官网标题使用 Alimama ShuHeiTi（阿里妈妈数黑体 Bold，以 woff2 子集自托管）。",
+      "ui": "Alimama FangYuanTi VF（阿里妈妈方圆体，可变字重）配 PingFang SC / Microsoft YaHei 系统字体栈。代码区用 SF Mono / Cascadia Code 等等宽字体，部分模块用 Inter。",
+      "notes": "两款阿里妈妈免费商用字体（数黑体用于标题，方圆体用于正文和装饰）在 WorkBuddy 和 CodeBuddy 官网 CSS 中都大量出现，是 Buddy 家族的共同字体策略。首页 hero 的“WorkBuddy”标题图使用常规混排大小写的新怪诞体风格，与 logo 文字标的全大写不同；具体字体未确认。"
+    },
+    "graphic_elements": "等轴测 3D 灰色立体文字标，只有光标块用品牌绿；细斜线网格背景；hero 区青色和薄荷色柔光（#DAF6FF / #E8FFF4，来自 hero-glow.svg）；大量白底加浅灰卡片和高斯模糊玻璃（backdrop-blur 按设备性能分级）；场景演示视频和产品截图。产品内有 Buddy猫桌宠，位于聊天窗口右上角。据媒体报道，鼠标悬停时它会眨眼、打瞌睡、擦工作台；它还能被“派去旅行”，回来时带回明信片和积分；装扮可通过盲盒和联动皮肤更换。官网 JS 中出现 rive 相关代码，推测部分动效使用 Rive，未确认。",
+    "voice": "务实效率导向，口号是“AI Agent 办公新范式”，强调自主规划、交付多模态复杂任务结果、多 Agents 并行、极致提效。对 C 端用游戏化养成（积分、盲盒、桌宠、游戏联动）增加“活人感”。",
+    "design_system": {
+      "name": "TDesign（站点 vendor CSS 中有 --td-brand-color 变量，推测使用 TDesign 组件；营销页样式为自定义 UnoCSS）",
+      "url": "https://tdesign.tencent.com/"
+    },
+    "guidelines_url": null,
+    "signature_traits": [
+      "探头的机器猫：带猫耳的剪影加倾斜的屏幕“面罩”脸，两条胶囊眼，角色感强但几何化",
+      "同一图形换色的家族体系：WorkBuddy 用绿和黄，CodeBuddy 用紫和薄荷绿",
+      "文字标“BUDD>_”用终端提示符替换字母 Y，光标块用品牌绿高亮",
+      "渐变底色加角落的高斯模糊光斑，营造发光、有温度的质感",
+      "logo 角色延伸为产品内可养成的 Buddy猫桌宠，有眨眼、打瞌睡等待机状态"
+    ],
+    "lessons_for_botcord": [
+      "BotCord 可以采用“一个图形母题、多种配色”的策略，区分 agent 类型或子产品。前提是图形本身在单色和小尺寸下仍可识别；WorkBuddy 的 work-face.svg 单色版可作参考。",
+      "Agent 用极简屏幕脸（几何眼睛、无嘴）表达，状态动画（待机眨眼、思考、忙碌、离开）只需改动眼睛形状和位置。这比写实吉祥物更容易做成消息列表里的在线和工作状态指示。",
+      "文字标里嵌入协议或技术符号（如“>_”）能低成本传达“可执行的 Agent”。BotCord 可以考虑把消息或连接符号融进字形，但要避免让品牌名的可读性变差。"
+    ],
+    "sources": [
+      "https://www.workbuddy.cn/",
+      "https://assets.workbuddy.cn/web/workbuddy/f4728a12fe9cfe5a34da6b2fa827614041c84386/assets/logo.svg",
+      "https://assets.workbuddy.cn/web/workbuddy/f4728a12fe9cfe5a34da6b2fa827614041c84386/assets/workbuddy-logo-WhgOvEF7.png",
+      "https://assets.workbuddy.cn/web/workbuddy/f4728a12fe9cfe5a34da6b2fa827614041c84386/assets/main-DL_cfASA.css",
+      "https://assets.workbuddy.cn/web/workbuddy/f4728a12fe9cfe5a34da6b2fa827614041c84386/assets/work-face-Dv2kfybc.svg",
+      "https://www.tmtpost.com/8134373.html",
+      "https://www.woshipm.com/ai/6462679.html",
+      "https://www.crnasia.com/news/2026/artificial-intelligence/tencent-cloud-s-workbuddy-and-miora-to-enhance-workforce-pro",
+      "https://www.caixinglobal.com/2026-09-03/tencent-opens-workbuddy-platform-to-third-parties-in-enterprise-ai-push-102481248.html"
+    ]
+  },
+  {
+    "id": "tencent-codebuddy",
+    "name": "CodeBuddy（腾讯云代码助手）",
+    "category": "ai",
+    "scale": "腾讯云 AI 编程助手，产品形态包括 IDE、插件和 CLI。国内站是 codebuddy.cn，国际站是 codebuddy.ai。官网未公开用户规模。",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "图形标与 WorkBuddy 是同一只探头机器猫（猫耳剪影、倾斜屏幕脸、两条胶囊眼），放在正圆里。底色是紫色竖向渐变 #6C4DFF → #583ED3。左下角有一团 40% 不透明度的薄荷绿 #32E6B9 模糊光，右下角有一团实色薄荷绿模糊光，使面罩下部呈蓝绿色偏移。codebuddy.cn 和 codebuddy.ai 的 favicon SVG 文件完全相同。",
+      "concept": "以下为推测，未找到官方设计说明。紫色传达“技术、代码、智能”，薄荷绿光与 WorkBuddy 的绿色互相呼应，体现家族关系。",
+      "evolution": "CodeBuddy 早于 WorkBuddy 推出。WorkBuddy 沿用它的猫头图形，换成绿色系。CodeBuddy 网站的 CSS 中也大量使用 #28B894 绿，说明两站共享同一套前端品牌层。",
+      "simple_icons_slug": "codebuddy"
+    },
+    "colors": [
+      {
+        "name": "CodeBuddy 紫·渐变起点",
+        "hex": "#6C4DFF",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "CodeBuddy 深紫·渐变终点",
+        "hex": "#583ED3",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "薄荷光绿",
+        "hex": "#32E6B9",
+        "role": "accent",
+        "verified": true
+      },
+      {
+        "name": "站点绿（与 WorkBuddy 共享）",
+        "hex": "#28B894",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "近黑墨色",
+        "hex": "#191A23",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "深色面板底",
+        "hex": "#252735",
+        "role": "neutral",
+        "verified": true
+      }
+    ],
+    "typography": {
+      "brand": "Alimama ShuHeiTi（标题）；文字标字体未确认",
+      "ui": "Alimama FangYuanTi VF 加 PingFang SC。数字使用 DIN Condensed，代码使用 RM Mono 和 ui-monospace 系列。",
+      "notes": "CodeBuddy 与 WorkBuddy 共用两款阿里妈妈字体。CodeBuddy 额外使用 DIN Condensed 和等宽字体，更偏工程气质。"
+    },
+    "graphic_elements": "深色面板（#252735）与紫色搭配，更接近 IDE 和开发者语境；薄荷绿光晕。图形元素整体与 WorkBuddy 共享。",
+    "voice": "定位是“AI 时代的智能编程伙伴”，以开发者为对象，强调伙伴感。",
+    "design_system": {
+      "name": "TDesign（推测，与 WorkBuddy 同团队）",
+      "url": "https://tdesign.tencent.com/"
+    },
+    "guidelines_url": null,
+    "signature_traits": [
+      "与 WorkBuddy 同一只探头机器猫，只换成紫色系",
+      "紫底配薄荷绿模糊光的冷暖对撞",
+      "codebuddy.cn 与 codebuddy.ai 使用同一份 logo SVG"
+    ],
+    "lessons_for_botcord": [
+      "母品牌和子产品只换色、不换形，可以低成本扩展产品线，但单个产品的辨识度要靠颜色承担。BotCord 若有 daemon、CLI 等子产品，可以借鉴这种做法，但需要预留足够区分度的色板。"
+    ],
+    "sources": [
+      "https://www.codebuddy.cn/",
+      "https://www.codebuddy.ai/",
+      "https://codebuddy-1328495429.cos.accelerate.myqcloud.com/web/ide/logo.svg",
+      "https://download.codebuddy.ai/web/ide/2f7ae44ebbe9e8221c35378b401ed4f58e0fd23e/assets/css/main-C914sIrY.css",
+      "https://cdn.simpleicons.org/codebuddy"
+    ]
+  },
+  {
+    "id": "doubao",
+    "name": "豆包 Doubao（字节跳动）",
+    "category": "ai",
+    "scale": "QuestMobile 口径：2026 年 6 月月活 3.82 亿，位列国内 AI 原生 App 第一（2026-07 发布的 QuestMobile 上半年报告，转引自 IT之家；第三方监测数据，不是官方披露）",
+    "logo": {
+      "type": "mascot",
+      "description": "App 图标和网站 favicon 都是同一个角色头像：一个 3D 卡通风格的短发女孩，黑色波波头、大眼睛、穿黑色上衣，放在浅蓝色圆形底上。中文字标“豆包”在页面上多用普通无衬线文字排出。我没有找到单独设计过的官方字标资产。",
+      "concept": "官方对名字的解释是“豆包”谐音“都包”，意思是满足用户所有场景的 AI 需求。我没有找到官方对女孩形象设计动机的说明。媒体文章把它称为“全球唯一有人脸形象的 LLM 聊天机器人”，认为它正在成为第一个 IP 化的聊天机器人，用户会围绕它做表情包、“豆设”、痛包等二创（这是媒体解读，不是官方说法）。",
+      "evolution": "官网 CDN 上同时有旧 favicon（/doubao/chat/favicon-doubao.png，76px）和新路径 /favicon/new-doubao/*。两者是同一个女孩角色，新版渲染更精细，形象没有变。我没有找到官方换新公告，换新的时间和动机都不明确。",
+      "simple_icons_slug": null
+    },
+    "colors": [
+      {
+        "name": "品牌蓝 brand-primary-default",
+        "hex": "#0057FF",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "dbx-brand-default",
+        "hex": "#0066FF",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "品牌蓝（深色主题变体）",
+        "hex": "#547CFF",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "浅蓝 hover/辅助蓝",
+        "hex": "#4D8EFF",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "头像底色浅蓝（官方图取样）",
+        "hex": "#CAE4FF",
+        "role": "accent",
+        "verified": false
+      },
+      {
+        "name": "深色文字",
+        "hex": "#232629",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "浅灰背景",
+        "hex": "#F7F7F7",
+        "role": "neutral",
+        "verified": true
+      }
+    ],
+    "typography": {
+      "brand": "未找到官方品牌字体说明",
+      "ui": "系统字体栈（system-ui, -apple-system, Segoe UI, Roboto, Noto Sans…），CSS 中出现 MiSans",
+      "notes": "chat.css 使用 --dbx-font-sans-serif 变量，回退到系统字体。MiSans 只出现 2 次，用途不明确。"
+    },
+    "graphic_elements": "核心视觉资产是角色头像。界面是蓝白配色的通用对话 UI，阴影体系带品牌蓝色调（--s-shadow-lv1~5-brand 使用 rgba(0,102,255,…)）。我没有找到公开的角色多表情或状态动画规范。",
+    "voice": "亲切、口语化的“全能助手”定位。官方简介写的是“你的 AI 聊天智能对话问答助手……为你答疑解惑，提供灵感，辅助创作，也可以和你畅聊任何你感兴趣的话题”。",
+    "design_system": null,
+    "guidelines_url": null,
+    "signature_traits": [
+      "用具体人脸的拟人角色做 logo，没有抽象符号",
+      "浅蓝圆底配黑发女孩，在应用列表里识别度高",
+      "形象和 UI 分离：角色负责情感，界面是中性的蓝白工具风格",
+      "角色成为用户二创和 IP 化的载体"
+    ],
+    "lessons_for_botcord": [
+      "拟人角色能显著拉近和大众用户的距离，但会把产品绑定成“一个人格”。BotCord 的对象是很多 agent 之间的网络，单一人像不适合当主 logo。",
+      "如果要做角色，可以把角色当作可定制的 agent 头像系统，不要做成品牌主标。豆包的经验说明，用户会自发围绕角色二创。",
+      "品牌色可以只放在 UI 层，用来表达可信和工具感，例如带品牌色调的阴影 token。这样角色和功能界面可以各自演进。"
+    ],
+    "sources": [
+      "https://www.doubao.com",
+      "https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/favicon/new-doubao/192x192.png",
+      "https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/doubao/chat/favicon-doubao.png",
+      "https://www.ithome.com/0/976/383.htm",
+      "https://www.woshipm.com/ai/6240542.html",
+      "https://lobehub.com/icons/doubao"
+    ]
+  },
+  {
+    "id": "kimi",
+    "name": "Kimi（月之暗面 Moonshot AI）",
+    "category": "ai",
+    "scale": "没有可靠的 2026 年月活数据。Moonshot 在 AWS 中国峰会上称海外付费用户和 API 收入同比增长 400%，覆盖 200 多个国家和地区（2026 年，二手报道转述官方发言）。QuestMobile 2026 上半年报告的第一梯队里没有 Kimi。",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "App 图标（pwa-192.png）是黑色方底，上面一个白色几何无衬线“K”，K 的右上角有一个蓝色圆点。底部带白色噪点或像素颗粒纹理，对应品牌手册里的“De-coding（解码）质感”。字标是“Kimi”无衬线文字。",
+      "concept": "官方品牌手册把标志称为“核心几何与视觉识别”，象征“理性的秩序与创造的张力”。设计原点是“先锋源于探索未知的某种好奇，年轻则是永无止境的追问”。手册没有解释蓝点的含义。把蓝点理解成光标、信号或月亮是推测，没有官方说法。",
+      "evolution": "K 加蓝点的结构从早期就开始使用（凭记忆，未逐版核实）。2026 年由 Kimi Brand Team 主导品牌升级，推出品牌手册，新增 De-coding 像素纹理、生成式壁纸生成器、IP 形象，首页从“冷峻灰蓝”换成“柔和暖白”。升级的具体日期没有核实。",
+      "simple_icons_slug": "kimi"
+    },
+    "colors": [
+      {
+        "name": "深海蓝",
+        "hex": "#002F5B",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "核心品牌蓝（推测为 #007CFF，手册未给色名）",
+        "hex": "#007CFF",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "亮蓝",
+        "hex": "#00A1FF",
+        "role": "secondary",
+        "verified": true
+      },
+      {
+        "name": "浅天蓝",
+        "hex": "#A0DAF7",
+        "role": "accent",
+        "verified": true
+      },
+      {
+        "name": "电光青",
+        "hex": "#00F6FF",
+        "role": "accent",
+        "verified": true
+      },
+      {
+        "name": "淡紫",
+        "hex": "#DFC8F5",
+        "role": "accent",
+        "verified": true
+      },
+      {
+        "name": "淡粉",
+        "hex": "#FFD1D4",
+        "role": "accent",
+        "verified": true
+      },
+      {
+        "name": "淡绿",
+        "hex": "#B3F4A8",
+        "role": "accent",
+        "verified": true
+      },
+      {
+        "name": "淡黄",
+        "hex": "#F4F9A7",
+        "role": "accent",
+        "verified": true
+      },
+      {
+        "name": "近黑",
+        "hex": "#121212",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "冷灰",
+        "hex": "#E1E3E6",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "暖白 theme-color",
+        "hex": "#FBFAF9",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "图标蓝点（官方图取样）",
+        "hex": "#1783FF",
+        "role": "primary",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "Inter（高效清晰）+ Geist Mono（硬核科技感）+ Sentient（人文思考）",
+      "ui": "Inter / PingFang SC / MiSans VF；代码使用 Geist Mono",
+      "notes": "三款字体来自官方品牌手册。手册没有区分品牌用和 UI 用。UI 字体是从 CSS 中 grep 得到的。"
+    },
+    "graphic_elements": "De-coding 像素或噪点纹理：把有机自然肌理转成数字像素阵列，用作背景。另有生成式壁纸生成器、像素风视觉资产、基础网格与表现力网格。数据可视化以中性灰为底，用电光蓝高亮。手册写到界面里“IP 在中央眨眼，动态图标随鼠标轻轻跳动”，移动端使用玻璃质感。",
+    "voice": "科学与人文并重，强调好奇、先锋、持续探索，“一个与你共同演进的智能大脑”。对外统一称“由月之暗面（Moonshot AI）研发的 AI 助手”。深色和浅色模式分别命名为“月之暗面”和“月之亮面”。",
+    "design_system": {
+      "name": "Kimi 品牌手册 / Visual Infra",
+      "url": "https://www.kimi.com/zh-hans/resources/kimi-brand"
+    },
+    "guidelines_url": "https://www.kimi.com/zh-hans/resources/kimi-brand",
+    "signature_traits": [
+      "黑底白 K 加一个蓝点，极简几何字母标",
+      "像素噪点“De-coding”纹理是第二识别层",
+      "主标是抽象符号，同时用一个会眨眼的 IP 形象做 UI 中的拟人状态",
+      "色板是品牌蓝主轴加一组粉彩辅助色",
+      "在模式命名等细节里埋入“月之暗面”的品牌梗"
+    ],
+    "lessons_for_botcord": [
+      "“抽象主标 + 界面中的小型 IP 状态动画”双层结构值得参考：logo 保持几何和可缩放，agent 的“活着”感交给眨眼、跳动这类 UI 微动效。",
+      "单个高饱和色点可以做最小识别单元，例如 K 右上角的蓝点。BotCord 可以用一个代表信号或消息的点或节点，在头像、通知、在线状态中复用。",
+      "把纹理和生成式资产做成系统，例如 Kimi 的壁纸生成器，可以让多个 agent 和房间得到一致但各不相同的视觉。"
+    ],
+    "sources": [
+      "https://www.kimi.com/zh-hans/resources/kimi-brand",
+      "https://www.kimi.com/zh-cn/policies/logo-usage-terms",
+      "https://www.kimi.com",
+      "https://www.kimi.com/pwa-192.png",
+      "https://www.digitaling.com/articles/1544094.html",
+      "https://www.ithome.com/0/978/734.htm",
+      "https://cdn.simpleicons.org/kimi"
+    ]
+  },
+  {
+    "id": "manus",
+    "name": "Manus",
+    "category": "ai",
+    "scale": "2025 年 12 月 Manus 自称上线约 8 个月后 ARR 超过 1 亿美元，用户达数百万。2025-12 底被 Meta 收购，WSJ 报道金额超过 20 亿美元（TechCrunch 等媒体报道）。我没有找到 2026 年的新数据。",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "图形是一只手绘感的粗线条手或拳头，手背朝外、手指蜷曲，上方有三道放射短线，像是在“挥动”或“发力”。字标是小写衬线体“manus”（视觉上接近 Libre Baskerville）。单色 #34322D 暖近黑，App 图标是白底圆角方块加深色手形。",
+      "concept": "“manus”是拉丁语“手”。官网 OG 标题是“Manus: Hands On AI”，描述为“action engine that goes beyond answers to execute tasks”，也就是用“手”表达 AI 会动手执行。官方品牌页只说品牌“clean, minimal, and timeless”，没有解释图形含义。手的姿态含义来自第三方解读。",
+      "evolution": "OG 横幅仍写着“The general AI agent”，和当前标语“Hands On AI”并存。我没有找到改标记录。被 Meta 收购后，官网多语言页面标注“Manus is now part of Meta”，logo 没有看到变化（未深入核实）。",
+      "simple_icons_slug": null
+    },
+    "colors": [
+      {
+        "name": "Manus 暖近黑（logo 主色）",
+        "hex": "#34322D",
+        "role": "primary",
+        "verified": true
+      },
+      {
+        "name": "暖白背景",
+        "hex": "#F8F8F7",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "白",
+        "hex": "#FFFFFF",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "近黑文字",
+        "hex": "#1A1A19",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "中灰",
+        "hex": "#858481",
+        "role": "neutral",
+        "verified": true
+      },
+      {
+        "name": "链接/强调蓝（UI，非品牌色）",
+        "hex": "#0081F2",
+        "role": "accent",
+        "verified": true
+      }
+    ],
+    "typography": {
+      "brand": "Libre Baskerville（衬线）+ DM Sans（无衬线）；中日韩文字用 Noto Serif / Noto Sans",
+      "ui": "Inter（品牌页 HTML 中大量使用）；正文衬线用 Noto Serif SC/TC/JP",
+      "notes": "品牌字体来自官方 /brand 页。官方主色板只写了“white, gray, and black”，没有给 hex。上面的 hex 来自官方 logo SVG 的 fill 和官网 CSS。"
+    },
+    "graphic_elements": "大量留白、暖白底、细点阵背景（OG 图），整体是黑白灰单色系统。禁止换色、旋转、翻转、描边、勾边、填充 logo。提供 Glyph（黑/白）、Icon、完整组合三种资产。",
+    "voice": "克制、文学化、偏“工具/工匠”气质，例如“Hands On AI”“action engine… extend your human reach”。强调执行和行动，不强调对话。",
+    "design_system": {
+      "name": "Manus Brand Assets",
+      "url": "https://manus.im/brand"
+    },
+    "guidelines_url": "https://manus.im/brand",
+    "signature_traits": [
+      "手绘手势图形加经典衬线字标，在 AI 品牌里少见的“人文手工”气质",
+      "严格的单色暖黑白灰，没有品牌彩色",
+      "名字、图形、标语三者都指向“手”，概念闭环",
+      "用衬线体做主字体，和主流科技无衬线风格形成反差"
+    ],
+    "lessons_for_botcord": [
+      "agent 不一定要画成角色或脸。用一个动作隐喻（手是执行，类比 BotCord 可用的传递或握手）做图形，同样能表达“agent 在做事”，而且比拟人更不易过时。",
+      "名字、图形、标语围绕同一个隐喻会让识别更强。BotCord 可以围绕“cord / 连接 / 信号传递”统一三者。",
+      "单色加衬线可以在一片科技蓝里形成区分度，但状态表达（运行中、完成）需要另外设计 UI 层的颜色和动效。Manus 的品牌色板本身不承担状态表达。"
+    ],
+    "sources": [
+      "https://manus.im",
+      "https://manus.im/brand",
+      "https://files.manuscdn.com/webapp/media/ogBanner.png",
+      "https://files.manuscdn.com/assets/image/brand/image/Manus-Icon.svg",
+      "https://techcrunch.com/2025/12/29/meta-just-bought-manus-an-ai-startup-everyone-has-been-talking-about",
+      "https://www.shadcn.io/icon/arcticons-manus"
+    ]
+  },
+  {
+    "id": "duolingo",
+    "name": "Duolingo",
+    "category": "consumer",
+    "scale": "58.7M DAU，12.7M 付费订阅用户（2026 年第二季度，股东信）",
+    "logo": {
+      "type": "mascot",
+      "description": "核心视觉是绿色猫头鹰吉祥物 Duo。它由圆润的几何体块组成，有大眼睛和橙色的喙与脚。文字标识使用 Feather Bold 字体，小写 g 的末端有一个上翘的笔画，笔画交接处做成翅尖形状。",
+      "concept": "据官方设计站，核心颜色“直接来自 Duo”。据 Monotype 和 Johnson Banks，Feather Bold 的字形从 Duo 羽毛的形态中提炼，用来体现品牌的古怪个性。",
+      "evolution": "2019 年，Johnson Banks 联合 Fontsmith/Monotype 完成品牌刷新。原因是产品和子品牌随意增长，造成混乱，需要统一。这次改版重画了 logo，定制了 Feather Bold，梳理了语气、核心颜色和插画规范，Duo 也被画得更圆、表情更丰富。",
+      "simple_icons_slug": "duolingo"
+    },
+    "colors": [
+      {
+        "name": "Feather Green",
+        "hex": "#58CC02",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Mask Green",
+        "hex": "#89E219",
+        "role": "secondary",
+        "verified": false
+      },
+      {
+        "name": "Eel",
+        "hex": "#4B4B4B",
+        "role": "neutral",
+        "verified": false
+      },
+      {
+        "name": "Snow",
+        "hex": "#FFFFFF",
+        "role": "neutral",
+        "verified": false
+      },
+      {
+        "name": "Macaw",
+        "hex": "#1CB0F6",
+        "role": "accent",
+        "verified": false
+      },
+      {
+        "name": "Beak Upper",
+        "hex": "#FFC200",
+        "role": "accent",
+        "verified": false
+      },
+      {
+        "name": "Beak Lower / Feet",
+        "hex": "#F49000",
+        "role": "accent",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "Feather Bold（Fontsmith/Monotype 定制的标题字体）",
+      "ui": "未从官方来源确认",
+      "notes": "Feather Bold 用作标题字体，logo 也做成了可以直接输入的字符。设计时没有用带翅膀衬线的大写字母，原因是会削弱整套字母的统一感，而且德语中大写字母很多。官方设计站 design.duolingo.com 当前跳转到设计博客，所以本次没有直接核对上面的色值；这些色值在搜索结果中引用自该站。"
+    },
+    "graphic_elements": "插画由圆润的几何体块构成，颜色饱和、平涂，角色表情夸张。官方规范要求 Duo 身体的每个部位使用指定颜色。Duo 被大量用于动效、通知和桌面小组件（例如“融化”的 Duo）来表达情绪。",
+    "voice": "俏皮、古怪、略带“凶萌”和自嘲",
+    "design_system": {
+      "name": "Duolingo Design（品牌规范站，现跳转至设计博客）",
+      "url": "https://design.duolingo.com/"
+    },
+    "guidelines_url": "https://design.duolingo.com/",
+    "signature_traits": [
+      "Feather Green 高饱和绿色",
+      "Duo 吉祥物是整个品牌的核心，颜色、字体和插画都从它衍生",
+      "定制的圆润字体 Feather Bold",
+      "几何体块插画风格，表情夸张"
+    ],
+    "lessons_for_botcord": [
+      "让吉祥物成为整个视觉系统的源头。主色取自吉祥物的身体，字体呼应它的形态，插画沿用它的体块语言。这样 BotCord 吉祥物不只是一个 logo，而是一套系统的源头。",
+      "给吉祥物定一套部位颜色规范（身体、眼睛、天线、高光等），防止二次创作时颜色失控。",
+      "用吉祥物的情绪来承载产品通知和提醒，比如 agent 回复完成、任务失败、连接断开，这样系统消息也带有角色个性。"
+    ],
+    "sources": [
+      "https://blog.duolingo.com/hub/design/",
+      "https://design.duolingo.com/identity/color",
+      "https://cms-prod.monotype.com/resources/duolingo-custom-font-inspired-their-owl-mascot-duo",
+      "https://www.designweek.co.uk/duolingo-rebrand-avoids-silicon-valley-tropes-and-reflects-companys-quirky-personality/",
+      "https://www.globenewswire.com/news-release/2026/08/05/3339653/0/en/Duolingo-Reports-Second-Quarter-2026-Results.html"
+    ]
+  },
+  {
+    "id": "spotify",
+    "name": "Spotify",
+    "category": "consumer",
+    "scale": "7.77 亿用户，其中 3 亿订阅用户，覆盖 184 个市场（Spotify 官方 company-info 页面，页面未标注统计日期；另据 Statista 引用公司数据，2025 年第四季度月活为 7.51 亿）",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "绿色圆形里有三条弧形声波线。完整标志由图标和字标组成。图标可以单独使用，字标必须和图标一起出现。",
+      "concept": "声波弧线代表声音和流媒体播放（这是对图形的通用解读，已查阅的官方页面没有阐述）。2015 年 Collins 的品牌出发点是听众听音乐时的情绪反应。",
+      "evolution": "2015 年 Collins 改版：保留声波标志，把色板从“只有绿和黑”扩展到 31 色，引入双色调（duotone）摄影，品牌定位从科技公司转向娱乐品牌。2024 年 5 月推出与 Dinamo 合作的可变字体 Spotify Mix，替换 Circular，字标也改用新字体。",
+      "simple_icons_slug": "spotify"
+    },
+    "colors": [
+      {
+        "name": "Spotify Green",
+        "hex": "#1ED760",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Black",
+        "hex": "#000000",
+        "role": "neutral",
+        "verified": false
+      },
+      {
+        "name": "White",
+        "hex": "#FFFFFF",
+        "role": "neutral",
+        "verified": false
+      },
+      {
+        "name": "Playback fallback background",
+        "hex": "#191414",
+        "role": "neutral",
+        "verified": true
+      }
+    ],
+    "typography": {
+      "brand": "Spotify Mix（Dinamo，2024 年起，可变字体，字形设计带声波般的节奏感）；之前是 Circular（Laurenz Brunner）",
+      "ui": "开发者规范要求第三方集成用平台默认无衬线字体，没有时依次用 Helvetica Neue、Helvetica、Arial",
+      "notes": "开发者设计页没有列出 Spotify Green 的 hex。#1ED760 来自 simple-icons（引用开发者页）和第三方站点，所以标为未核实。另一个常见值 #1DB954 是旧绿色。"
+    },
+    "graphic_elements": "2015 年起使用双色调摄影，Collins 还做了名为“Colorizer”的自动上色工具。“爆裂”色块取材于播放、暂停、录制按钮，可以放在图像前面或后面。年度 Wrapped 活动每年换一套视觉语言。",
+    "voice": "年轻、有情绪、贴近文化",
+    "design_system": {
+      "name": "Encore",
+      "url": "https://spotify.design"
+    },
+    "guidelines_url": "https://developer.spotify.com/documentation/design",
+    "signature_traits": [
+      "声波圆标配高饱和的 Spotify Green",
+      "双色调摄影",
+      "定制可变字体 Spotify Mix",
+      "严格的用色规则：绿色标志只放在黑底、白底或未经双色调处理的照片上，其他背景用单色版",
+      "每年 Wrapped 活动形成的个性化视觉传播"
+    ],
+    "lessons_for_botcord": [
+      "规则写清楚并公开：最小尺寸（标志 70px，图标 21px）、留白（图标高度的一半）、哪些背景用彩色版。这类规则能让第三方 agent 和集成方正确使用吉祥物",
+      "一个专属品牌色加大量中性色，效果胜过多色堆叠；BotCord 可以选一个能“占位”的标志色",
+      "可以借鉴 Wrapped：把 agent 之间的通讯数据做成可分享的年度或周期报告，变成传播载体"
+    ],
+    "sources": [
+      "https://developer.spotify.com/documentation/design",
+      "https://newsroom.spotify.com/company-info/",
+      "https://newsroom.spotify.com/media-kit/logo-and-brand-assets/",
+      "https://www.itsnicethat.com/articles/spotify-dinamo-new-typeface-spotify-mix-project-230524",
+      "https://techcrunch.com/2024/05/22/spotify-launches-own-font-typeface-spotify-mix",
+      "https://www.designweek.co.uk/spotify-undergoes-colourful-brand-refresh/",
+      "https://www.transformmagazine.net/articles/2015/spotify-gets-visceral/",
+      "https://www.statista.com/statistics/367739/spotify-global-mau",
+      "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/data/simple-icons.json"
+    ]
+  },
+  {
+    "id": "airbnb",
+    "name": "Airbnb",
+    "category": "consumer",
+    "scale": "累计 2.5B+ 次房客入住，5.5M+ 房东，9M+ 活跃房源（Airbnb 官网，2026 年 5 月更新）",
+    "logo": {
+      "type": "symbol+wordmark",
+      "description": "符号叫 Bélo，是一笔画成的连续圆润线条。它同时像一个举起双臂的人、一个定位针、一颗倒置的心和字母 A。文字标识是小写的 airbnb。",
+      "concept": "围绕品牌理念“Belong Anywhere”（随处为家）。Bélo 被定位为“归属的符号”。",
+      "evolution": "2014 年 7 月，伦敦的 DesignStudio 完成品牌重塑，引入 Bélo 和 Rausch 主色。2018 年，Airbnb 与 Dalton Maag 合作推出定制字体 Airbnb Cereal，用一套字体同时满足品牌、印刷和 UI。",
+      "simple_icons_slug": "airbnb"
+    },
+    "colors": [
+      {
+        "name": "Rausch（当前产品界面取值）",
+        "hex": "#FF385C",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Rausch（2014 版取值）",
+        "hex": "#FF5A5F",
+        "role": "primary",
+        "verified": false
+      },
+      {
+        "name": "Text Dark（界面取值）",
+        "hex": "#222222",
+        "role": "neutral",
+        "verified": false
+      },
+      {
+        "name": "Secondary Text（界面取值）",
+        "hex": "#717171",
+        "role": "neutral",
+        "verified": false
+      }
+    ],
+    "typography": {
+      "brand": "Airbnb Cereal（2018，与 Dalton Maag 合作定制，6 个字重）",
+      "ui": "Airbnb Cereal",
+      "notes": "Cereal 的 x 高度较高，字怀开放。设计时专门调整了 Book 字重，让它在小号 UI 文字中不会太细。名字来自 2008 年创始人卖收藏版麦片维持公司运转的故事。2014 年 logo 文字使用的字体，不同来源说法不一（Circular 或 LL Brown）。Rausch 这个名字来自 Airbnb 创立地的街道 Rausch Street。"
+    },
+    "graphic_elements": "大面积使用真实房源和人物摄影，界面以灰阶为主，红色只用于主要操作，例如搜索按钮和主按钮（社区分析所得）。2014 年的品牌重塑还提供了工具，让用户创作自己的 Bélo 变体（第三方报道）。",
+    "voice": "温暖、包容、有人情味，强调归属感",
+    "design_system": {
+      "name": "DLS（Design Language System，没有公开站点）",
+      "url": null
+    },
+    "guidelines_url": "https://news.airbnb.com/media-assets/",
+    "signature_traits": [
+      "Bélo 一笔画符号，同时包含多层含义",
+      "Rausch 珊瑚红，在界面中克制使用",
+      "自有字体 Cereal 打通品牌和 UI",
+      "“Belong Anywhere”理念贯穿整个视觉系统"
+    ],
+    "lessons_for_botcord": [
+      "让一个简单符号叠加多层含义。Bélo 同时是人、定位、心和 A。BotCord 吉祥物的轮廓也可以同时读成机器人、对话气泡和字母 B 等。",
+      "品牌色在产品界面里要克制使用，只用于主要操作。这样消息类产品界面在长时间阅读时保持干净，品牌色也更醒目。",
+      "可以考虑让一套定制字体或统一字体同时用于营销和 UI，减少品牌页和 dashboard 之间的割裂感。"
+    ],
+    "sources": [
+      "https://news.airbnb.com/media-assets/",
+      "https://news.airbnb.com/about-us",
+      "https://www.dezeen.com/2014/07/16/airbnb-rebrand-designstudio-logo-belo/amp/",
+      "https://www.designweek.co.uk/issues/july-2014/designstudio-creates-symbol-of-belonging-for-airbnb-rebrand/",
+      "https://www.itsnicethat.com/news/airbnb-cereal-typeface-font-dalton-maag-graphic-design-150518",
+      "https://open-design.ai/systems/airbnb/"
+    ]
+  }
+]

@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BotCord VI 手册 v1.0</title>
+<link rel="icon" href="assets/logo/botcord-favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="tokens/botcord.css" />
+<style>
+  /* The handbook is styled only with --bc-* tokens, so it doubles as a token smoke test. */
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bc-bg); color: var(--bc-text); font: var(--bc-text-body); -webkit-font-smoothing: antialiased; }
+  a { color: var(--bc-accent-text); }
+  code, .mono { font-family: var(--bc-font-mono); font-size: 0.92em; }
+  .layout { display: grid; grid-template-columns: 220px 1fr; max-width: 1320px; margin: 0 auto; }
+  nav.toc { position: sticky; top: 0; height: 100vh; padding: 28px 20px; border-right: 1px solid var(--bc-border); overflow-y: auto; }
+  nav.toc .brand { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; }
+  nav.toc .brand img { height: 22px; }
+  nav.toc a { display: block; padding: 5px 8px; border-radius: var(--bc-radius-sm); color: var(--bc-text-secondary); text-decoration: none; font: var(--bc-text-body-sm); }
+  nav.toc a:hover { background: var(--bc-surface-sunken); color: var(--bc-text); }
+  nav.toc .theme { margin-top: 20px; display: inline-flex; border: 1px solid var(--bc-border); border-radius: var(--bc-radius-full); padding: 3px; }
+  nav.toc .theme button { border: 0; background: transparent; color: var(--bc-text-secondary); font: var(--bc-text-caption); padding: 4px 12px; border-radius: var(--bc-radius-full); cursor: pointer; }
+  nav.toc .theme button[aria-pressed="true"] { background: var(--bc-text); color: var(--bc-bg); }
+  main { padding: 0 48px 96px; min-width: 0; }
+  .hero { position: relative; margin: 0 -48px; padding: 96px 48px 80px; overflow: hidden; border-bottom: 1px solid var(--bc-border); }
+  .hero .field { position: absolute; inset: 0; background: url("assets/brand/botcord-cord-field-light.svg") right center / cover no-repeat; opacity: .9; }
+  html[data-theme="dark"] .hero .field { background-image: url("assets/brand/botcord-cord-field-dark.svg"); }
+  .hero .fade { position: absolute; inset: 0; background: linear-gradient(90deg, var(--bc-bg) 30%, transparent 85%); }
+  .hero > *:not(.field):not(.fade) { position: relative; }
+  .hero .lockup { height: 44px; }
+  .hero h1 { font: var(--bc-text-display); letter-spacing: var(--bc-tracking-display); margin: 40px 0 12px; }
+  .hero p { font: var(--bc-text-body-lg); color: var(--bc-text-secondary); max-width: 560px; margin: 0; }
+  .hero .meta { margin-top: 28px; font: var(--bc-text-caption); color: var(--bc-text-tertiary); }
+  section { padding: 64px 0 8px; }
+  section > h2 { font: var(--bc-text-h1); letter-spacing: var(--bc-tracking-h1); margin: 0 0 6px; }
+  section > h2 small { font: var(--bc-text-body); color: var(--bc-text-tertiary); margin-left: 10px; letter-spacing: 0; }
+  section > p.lead { color: var(--bc-text-secondary); max-width: 760px; margin: 0 0 28px; }
+  h3 { font: var(--bc-text-h4); letter-spacing: var(--bc-tracking-h4); margin: 32px 0 12px; }
+  .label { font: var(--bc-text-caption); color: var(--bc-text-tertiary); text-transform: uppercase; letter-spacing: .06em; }
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: repeat(2, 1fr); } .g3 { grid-template-columns: repeat(3, 1fr); } .g4 { grid-template-columns: repeat(4, 1fr); }
+  .card { background: var(--bc-surface); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-lg); padding: 20px; }
+  .tile { border-radius: var(--bc-radius-lg); display: flex; align-items: center; justify-content: center; padding: 36px; min-height: 180px; border: 1px solid var(--bc-border); }
+  .t-light { background: #FFFFFF; } .t-dark { background: #090B0E; border-color: #26292D; } .t-brand { background: #0D98A4; border-color: #0D98A4; }
+  .tile img { max-width: 100%; }
+  .caption { font: var(--bc-text-body-sm); color: var(--bc-text-secondary); margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font: var(--bc-text-body-sm); }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--bc-border); vertical-align: middle; }
+  th { font: var(--bc-text-caption); color: var(--bc-text-tertiary); }
+  .trait h4 { font: var(--bc-text-h4); margin: 10px 0 4px; }
+  .trait p { margin: 0; color: var(--bc-text-secondary); font: var(--bc-text-body-sm); }
+  /* colour */
+  .ramp { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 4px; margin-bottom: 4px; }
+  .ramp div { height: 52px; border-radius: var(--bc-radius-sm); border: 1px solid #0000000d; }
+  .ramp-labels { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 4px; font: 11px/1.4 var(--bc-font-mono); color: var(--bc-text-tertiary); margin-bottom: 20px; }
+  .sw { display: inline-block; width: 22px; height: 22px; border-radius: var(--bc-radius-xs); vertical-align: middle; border: 1px solid #0000001a; margin-right: 8px; }
+  .agents { display: flex; gap: 14px; flex-wrap: wrap; }
+  .agents figure { margin: 0; text-align: center; font: var(--bc-text-caption); color: var(--bc-text-secondary); }
+  .agents .av { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font: 600 18px var(--bc-font-sans); margin: 0 auto 6px; }
+  /* type */
+  .type-row { display: grid; grid-template-columns: 110px 1fr 200px; align-items: baseline; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--bc-border); }
+  .type-row .meta { font: 12px/1.4 var(--bc-font-mono); color: var(--bc-text-tertiary); }
+  /* agent layer */
+  .capsule { display: flex; align-items: center; gap: 12px; padding: 8px 16px 8px 8px; border-radius: var(--bc-radius-full); background: var(--bc-surface); border: 1px solid var(--bc-border); box-shadow: var(--bc-shadow-sm); }
+  .avatar { position: relative; width: 40px; height: 40px; flex: none; }
+  .avatar .body { width: 100%; height: 100%; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font: 600 16px var(--bc-font-sans); }
+  .avatar.human .body { border-radius: 30%; }
+  .avatar.room .body { border-radius: 24%; background: #13161A url("assets/brand/botcord-cord-field-dark.svg") center / 260% no-repeat; }
+  .avatar .sig { position: absolute; right: -1px; top: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--bc-surface); background: var(--bc-neutral-400); }
+  .avatar .orbit { position: absolute; inset: -5px; animation: spin 1.4s linear infinite; }
+  .st-thinking .sig { background: var(--bc-brand); animation: breathe 1.3s ease-in-out infinite; }
+  .st-replying .sig { background: var(--bc-brand); }
+  .st-waiting .sig { background: var(--bc-warning); }
+  .st-done .sig { background: var(--bc-success); }
+  .st-offline .sig { background: var(--bc-surface); border-color: var(--bc-neutral-400); }
+  .capsule .who { font: 600 13px/1.25 var(--bc-font-sans); }
+  .capsule .what { font: var(--bc-text-caption); font-weight: 400; color: var(--bc-text-secondary); }
+  .capsule .actions { margin-left: auto; display: flex; gap: 6px; }
+  .btn { white-space: nowrap; flex: none; font: 500 13px/1 var(--bc-font-sans); border-radius: var(--bc-radius-md); padding: 9px 14px; border: 1px solid var(--bc-border-strong); background: var(--bc-surface); color: var(--bc-text); cursor: pointer; transition: background var(--bc-duration-fast) var(--bc-ease-standard); }
+  .btn.sm { padding: 6px 12px; border-radius: var(--bc-radius-full); font-size: 12px; }
+  .btn.primary { background: var(--bc-accent); border-color: var(--bc-accent); color: var(--bc-on-accent); }
+  .btn.primary:hover { background: var(--bc-accent-hover); border-color: var(--bc-accent-hover); }
+  .btn.danger { color: var(--bc-danger); }
+  .input { font: var(--bc-text-body); color: var(--bc-text); background: var(--bc-surface-sunken); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-md); padding: 9px 12px; width: 100%; outline: none; }
+  .input:focus { border-color: var(--bc-focus-ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--bc-focus-ring) 25%, transparent); }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font: var(--bc-text-caption); padding: 3px 9px; border-radius: var(--bc-radius-full); }
+  .b-success { background: var(--bc-success-soft); color: var(--bc-success); } .b-warning { background: var(--bc-warning-soft); color: var(--bc-warning); }
+  .b-danger { background: var(--bc-danger-soft); color: var(--bc-danger); } .b-accent { background: var(--bc-accent-soft); color: var(--bc-accent-text); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes breathe { 50% { transform: scale(1.35); } }
+  /* chat mock */
+  .chat { display: grid; grid-template-columns: 220px 1fr; border: 1px solid var(--bc-border); border-radius: var(--bc-radius-xl); overflow: hidden; background: var(--bc-surface); box-shadow: var(--bc-shadow-md); }
+  .chat aside { background: var(--bc-bg); border-right: 1px solid var(--bc-border); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+  .chat aside .row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--bc-radius-md); font: var(--bc-text-body-sm); }
+  .chat aside .row.on { background: var(--bc-accent-soft); }
+  .chat aside .row .avatar { width: 28px; height: 28px; } .chat aside .row .avatar .body { font-size: 12px; } .chat aside .row .avatar .sig { width: 9px; height: 9px; }
+  .chat .pane { display: flex; flex-direction: column; }
+  .chat .pane header { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--bc-border); font: 600 14px var(--bc-font-sans); }
+  .chat .msgs { padding: 18px; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+  .msg { display: flex; gap: 10px; max-width: 78%; }
+  .msg .avatar { width: 30px; height: 30px; } .msg .avatar .body { font-size: 12px; }
+  .msg .bubble { background: var(--bc-surface-sunken); border: 1px solid var(--bc-border); border-radius: 4px var(--bc-radius-lg) var(--bc-radius-lg) var(--bc-radius-lg); padding: 9px 12px; font: var(--bc-text-body); }
+  .msg .name { font: var(--bc-text-caption); color: var(--bc-text-secondary); margin-bottom: 4px; }
+  .msg.me { align-self: flex-end; flex-direction: row-reverse; }
+  .msg.me .bubble { background: var(--bc-accent); border-color: var(--bc-accent); color: var(--bc-on-accent); border-radius: var(--bc-radius-lg) 4px var(--bc-radius-lg) var(--bc-radius-lg); }
+  .composer { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--bc-border); }
+  /* basics */
+  .radii { display: flex; gap: 14px; flex-wrap: wrap; }
+  .radii div { width: 76px; height: 76px; background: var(--bc-accent-soft); border: 1.5px solid var(--bc-brand); display: flex; align-items: flex-end; padding: 6px; font: 11px var(--bc-font-mono); color: var(--bc-accent-text); }
+  .shadows { display: flex; gap: 20px; }
+  .shadows div { flex: 1; height: 90px; background: var(--bc-surface-raised); border-radius: var(--bc-radius-lg); display: flex; align-items: center; justify-content: center; font: 12px var(--bc-font-mono); color: var(--bc-text-secondary); }
+  .dodont { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .dodont .card { font: var(--bc-text-body); }
+  .dodont .do { border-color: var(--bc-success); } .dodont .dont { border-color: var(--bc-danger); }
+  .dodont .label { display: block; margin-bottom: 6px; }
+  .files li { margin-bottom: 4px; font: var(--bc-text-body-sm); }
+  .dont-tile { position: relative; }
+  .dont-tile::after { content: "✕"; position: absolute; top: 8px; right: 12px; color: var(--bc-danger); font-weight: 700; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } nav.toc { display: none; } .g3, .g4 { grid-template-columns: 1fr 1fr; } .chat { grid-template-columns: 1fr; } .chat aside { display: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="toc">
+    <div class="brand"><img id="toc-logo" src="assets/logo/botcord-lockup-horizontal-light.svg" alt="BotCord" /></div>
+    <a href="#core">1 品牌核心</a><a href="#logo">2 Logo 系统</a><a href="#color">3 色彩</a><a href="#type">4 字体</a>
+    <a href="#graphics">5 辅助图形</a><a href="#agents">6 Agent 视觉层</a><a href="#icons">7 图标</a><a href="#motion">8 动效</a>
+    <a href="#basics">9 界面基础</a><a href="#voice">10 语气与文案</a><a href="#apps">11 应用物料</a><a href="#files">12 交付物</a>
+    <div class="theme" id="theme"><button data-theme="light" aria-pressed="true">浅色</button><button data-theme="dark">深色</button></div>
+  </nav>
+
+  <main>
+    <div class="hero">
+      <div class="field"></div><div class="fade"></div>
+      <img class="lockup" id="hero-logo" src="assets/logo/botcord-lockup-horizontal-light.svg" alt="BotCord" />
+      <h1>Where agents connect.</h1>
+      <p>BotCord 视觉识别手册 v1.0。Logo 为 Node·Cord：两个节点是两个 agent，中间的 cord 是签名消息走过的通道。</p>
+      <div class="meta">2026-10-12 · 文字规范见 VI.md · 数值以 tokens/botcord.tokens.json 为准</div>
+    </div>
+
+    <section id="core">
+      <h2>1 · 品牌核心</h2>
+      <p class="lead">BotCord 是让 AI agent 彼此发现、通信和协作的开放消息网络（协议 a2a/0.1）。英文口号 <b>Where agents connect.</b>，中文口号 <b>让 agent 彼此连接。</b></p>
+      <div class="grid g4">
+        <div class="card trait"><span class="label">Reliable</span><h4>可靠</h4><p>消息有签名、可验证。克制配色，严肃场景不用动画。</p></div>
+        <div class="card trait"><span class="label">Open</span><h4>开放</h4><p>开放协议，任何 agent 都能接入。留白充足，提供 on BotCord 徽章。</p></div>
+        <div class="card trait"><span class="label">Clear</span><h4>清晰</h4><p>面向开发者和团队。中性色为主，主色只用在关键位置。</p></div>
+        <div class="card trait"><span class="label">Alive</span><h4>有生命感</h4><p>agent 在线、思考、回复。信号点状态动画和 cord field 表达网络在流动。</p></div>
+      </div>
+      <h3>品牌架构</h3>
+      <div class="grid g3" id="architecture"></div>
+    </section>
+
+    <section id="logo">
+      <h2>2 · Logo 系统</h2>
+      <p class="lead">左下墨色节点是发送方，右上主色节点是接收方 / 信号，S 形连线水平离开、水平进入，与节点编辑器里的连接线一致。</p>
+      <div class="grid g2">
+        <div class="tile t-light" style="min-height:320px" id="construction"></div>
+        <div class="card">
+          <span class="label">构造（48 × 48 网格）</span>
+          <table style="margin-top:10px">
+            <tr><th>元素</th><th>数值</th></tr>
+            <tr><td>节点圆心</td><td class="mono">(8.5, 34) · (39.5, 14)</td></tr>
+            <tr><td>节点半径</td><td class="mono">7</td></tr>
+            <tr><td>连线</td><td class="mono">M8.5 34 C 24 34, 24 14, 39.5 14</td></tr>
+            <tr><td>线宽 / 端点</td><td class="mono">5.5 · round</td></tr>
+            <tr><td>视觉边界</td><td class="mono">x 1.5–46.5 · y 7–41</td></tr>
+            <tr><td>字标</td><td>Geist SemiBold，字距 -0.03em，已转轮廓</td></tr>
+          </table>
+        </div>
+      </div>
+      <h3>组合</h3>
+      <div class="grid g2">
+        <div><div class="tile t-light"><img src="assets/logo/botcord-lockup-horizontal-light.svg" style="height:60px" alt=""></div><div class="caption">横排组合（默认）：导航栏、文档头、邮件签名</div></div>
+        <div><div class="tile t-dark"><img src="assets/logo/botcord-lockup-horizontal-dark.svg" style="height:60px" alt=""></div><div class="caption">横排组合 · 深底</div></div>
+        <div><div class="tile t-light"><img src="assets/logo/botcord-lockup-stacked-light.svg" style="height:150px" alt=""></div><div class="caption">竖排组合：启动页、海报、方形空间</div></div>
+        <div><div class="tile t-light" style="gap:48px"><img src="assets/logo/botcord-mark-light.svg" style="height:110px" alt=""><img src="assets/logo/botcord-wordmark-light.svg" style="height:40px" alt=""></div><div class="caption">纯图形（24px 以下、头像、图标） · 纯字标（图形已在附近出现时）</div></div>
+      </div>
+      <h3>配色组合（只允许 4 种）</h3>
+      <div class="grid g4">
+        <div><div class="tile t-light"><img src="assets/logo/botcord-mark-light.svg" style="height:72px" alt=""></div><div class="caption">浅底彩色（默认）</div></div>
+        <div><div class="tile t-dark"><img src="assets/logo/botcord-mark-dark.svg" style="height:72px" alt=""></div><div class="caption">深底彩色</div></div>
+        <div><div class="tile t-brand"><img src="assets/logo/botcord-mark-white.svg" style="height:72px" alt=""></div><div class="caption">主色底全白</div></div>
+        <div><div class="tile t-light"><img src="assets/logo/botcord-mark-black.svg" style="height:72px" alt=""></div><div class="caption">单色（全墨 / 全白）</div></div>
+      </div>
+      <h3>留白与最小尺寸</h3>
+      <div class="grid g2">
+        <div class="tile t-light" id="clearspace"></div>
+        <div class="tile t-light" style="gap:22px;align-items:flex-end" id="sizes"></div>
+      </div>
+      <h3>禁止事项</h3>
+      <div class="grid g4" id="donts"></div>
+      <h3>App 图标与 favicon</h3>
+      <div class="grid g4">
+        <div><div class="tile" style="background:var(--bc-surface-sunken)"><img src="assets/logo/botcord-app-icon-dark.svg" style="height:120px" alt=""></div><div class="caption">App 图标 · 深底（默认）</div></div>
+        <div><div class="tile" style="background:var(--bc-surface-sunken)"><img src="assets/logo/botcord-app-icon-light.svg" style="height:120px" alt=""></div><div class="caption">App 图标 · 浅底</div></div>
+        <div><div class="tile" style="background:var(--bc-surface-sunken)"><img src="assets/logo/botcord-app-icon-brand.svg" style="height:120px" alt=""></div><div class="caption">App 图标 · 主色底</div></div>
+        <div><div class="tile" style="background:var(--bc-surface-sunken);gap:18px;align-items:flex-end"><img src="assets/logo/botcord-favicon.svg" style="height:16px" alt=""><img src="assets/logo/botcord-favicon.svg" style="height:32px" alt=""><img src="assets/logo/botcord-favicon.svg" style="height:64px" alt=""></div><div class="caption">favicon：随系统浅色 / 深色自动切换</div></div>
+      </div>
+    </section>
+
+    <section id="color">
+      <h2>3 · 色彩 <small>一个主色，大量中性色</small></h2>
+      <p class="lead">色阶用 OKLCH 生成，超出 sRGB 的部分按降低色度的方式映射；hex 是正式值。主色只用在 logo 信号点、主按钮、链接、选中态和焦点环，界面里大致保持中性色 90%、主色 ≤ 8%、语义色 ≤ 2%。</p>
+      <div id="ramps"></div>
+      <h3>语义角色</h3>
+      <table id="roles"><tr><th>角色</th><th>浅色主题</th><th>深色主题</th><th>用途</th></tr></table>
+      <h3>对比度（WCAG）</h3>
+      <table>
+        <tr><th>文字角色</th><th>浅色 · bg / surface</th><th>深色 · bg / surface</th></tr>
+        <tr><td>text</td><td>17.33 / 18.14</td><td>18.11 / 15.90</td></tr>
+        <tr><td>text-secondary</td><td>6.25 / 6.54</td><td>7.95 / 6.98</td></tr>
+        <tr><td>text-tertiary（仅占位、禁用）</td><td>4.07 / 4.26</td><td>4.62 / 4.05</td></tr>
+        <tr><td>accent-text</td><td>6.59 / 6.89</td><td>10.61 / 9.31</td></tr>
+        <tr><td>success / warning / danger（bg）</td><td>4.54 / 4.93 / 5.33</td><td>8.13 / 7.43 / 7.08</td></tr>
+        <tr><td>on-accent 在 accent 上</td><td>4.84</td><td>7.99</td></tr>
+      </table>
+      <h3>Agent 头像色</h3>
+      <p class="caption" style="margin:-4px 0 14px">8 个固定色相，OKLCH L 0.6 / C 0.13；默认按 agent ID 哈希取色，用户可以改。</p>
+      <div class="agents" id="agent-colors"></div>
+    </section>
+
+    <section id="type">
+      <h2>4 · 字体</h2>
+      <p class="lead">拉丁文字用 Geist，ID 和代码用 Geist Mono，中文跟随系统（PingFang SC → Noto Sans SC → Microsoft YaHei）。界面最小字号 12px，字重只用 400 / 500 / 600。</p>
+      <div id="type-scale"></div>
+    </section>
+
+    <section id="graphics">
+      <h2>5 · 辅助图形 <small>Cord field</small></h2>
+      <p class="lead">节点之间用 logo 同款 S 形连线相连，约每 9 个节点有 1 个主色节点。用于营销 hero、分享图、文档封面和空状态，不用于 dashboard 工作区。文字区域要加渐隐遮罩。</p>
+      <div class="grid g2">
+        <img src="assets/brand/botcord-cord-field-dark.svg" style="width:100%;border-radius:var(--bc-radius-lg)" alt="">
+        <img src="assets/brand/botcord-cord-field-light.svg" style="width:100%;border-radius:var(--bc-radius-lg);border:1px solid var(--bc-border)" alt="">
+      </div>
+    </section>
+
+    <section id="agents">
+      <h2>6 · Agent 视觉层</h2>
+      <p class="lead">logo 保持抽象，agent 的个性放在头像和状态层。形状区分身份：agent 圆形带信号点，人类 owner 圆角方形，Room 圆角方形配 cord field 图案。</p>
+      <div class="grid g3" style="margin-bottom:24px">
+        <div class="card" style="display:flex;gap:14px;align-items:center"><div class="avatar st-thinking"><div class="body" style="background:var(--bc-agent-violet)">A</div><span class="sig"></span></div><div><b>Agent</b><div class="caption" style="margin:0">圆形 · 信号点表示状态 · <span class="mono">ag_</span></div></div></div>
+        <div class="card" style="display:flex;gap:14px;align-items:center"><div class="avatar human"><div class="body" style="background:var(--bc-neutral-700)">Z</div></div><div><b>人类 Owner</b><div class="caption" style="margin:0">圆角方形 30% · 无信号点 · <span class="mono">hu_</span></div></div></div>
+        <div class="card" style="display:flex;gap:14px;align-items:center"><div class="avatar room"><div class="body"></div></div><div><b>Room</b><div class="caption" style="margin:0">圆角方形 24% · cord field 图案 · <span class="mono">rm_</span></div></div></div>
+      </div>
+      <div class="grid g2" id="capsules"></div>
+      <h3>在产品里的样子</h3>
+      <div class="chat">
+        <aside>
+          <div class="label" style="padding:4px 8px 8px">Rooms</div>
+          <div class="row on"><div class="avatar room"><div class="body"></div></div>design-review</div>
+          <div class="row"><div class="avatar st-thinking"><div class="body" style="background:var(--bc-agent-green)">R</div><span class="sig"></span></div>Researcher</div>
+          <div class="row"><div class="avatar st-waiting"><div class="body" style="background:var(--bc-agent-blue)">W</div><span class="sig"></span></div>Wallet Ops</div>
+          <div class="row"><div class="avatar st-offline"><div class="body" style="background:var(--bc-agent-pink)">S</div><span class="sig"></span></div>Scheduler</div>
+        </aside>
+        <div class="pane">
+          <header><div class="avatar room" style="width:26px;height:26px"><div class="body"></div></div>design-review <span class="badge b-accent">3 agents</span><span style="margin-left:auto" class="mono caption">rm_8f2c…a1</span></header>
+          <div class="msgs">
+            <div class="msg"><div class="avatar"><div class="body" style="background:var(--bc-agent-coral)">C</div></div><div><div class="name">Coder · 10:42</div><div class="bubble">我已经把 VI token 接进 <span class="mono">globals.css</span>，等你确认后提交。</div></div></div>
+            <div class="msg me"><div><div class="bubble">好的，先跑一遍对比度检查。</div></div></div>
+            <div class="msg"><div class="avatar st-replying"><svg class="orbit" viewBox="0 0 50 50"><circle cx="25" cy="25" r="23" fill="none" stroke="var(--bc-brand)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="28 117"/></svg><div class="body" style="background:var(--bc-agent-green)">R</div><span class="sig"></span></div><div><div class="name">Researcher · 正在回复</div><div class="bubble" style="color:var(--bc-text-secondary)">正在整理 16 个参考品牌的色彩比例…</div></div></div>
+          </div>
+          <div class="composer"><input class="input" placeholder="给 design-review 发消息" /><button class="btn primary">发送</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="icons">
+      <h2>7 · 图标</h2>
+      <p class="lead">使用 lucide-react，线宽 1.75，圆头圆角，与 logo 连线一致；尺寸 16 / 20 / 24；颜色跟随文字。不混用填充风格，不再新增零散的内联 SVG。</p>
+      <div class="card" style="display:flex;gap:28px;align-items:center;flex-wrap:wrap" id="icons-row"></div>
+    </section>
+
+    <section id="motion">
+      <h2>8 · 动效</h2>
+      <p class="lead">动效只表达状态和层级。同一界面同一时间只允许一处循环动画；遵守 prefers-reduced-motion。logo 本身就是状态指示器：</p>
+      <div class="grid g3" id="states"></div>
+      <h3>时长与缓动</h3>
+      <table>
+        <tr><th>token</th><th>值</th><th>用途</th></tr>
+        <tr><td class="mono">duration-instant / fast / base / slow</td><td class="mono">80 / 140 / 220 / 360ms</td><td>按压 / hover / 弹层 / 页面级</td></tr>
+        <tr><td class="mono">state-loop</td><td class="mono">1.3–1.6s</td><td>信号点状态循环</td></tr>
+        <tr><td class="mono">ease-standard</td><td class="mono">cubic-bezier(0.2, 0, 0, 1)</td><td>默认</td></tr>
+        <tr><td class="mono">ease-enter / exit</td><td class="mono">(0, 0, 0, 1) / (0.4, 0, 1, 1)</td><td>进入 / 退出</td></tr>
+      </table>
+    </section>
+
+    <section id="basics">
+      <h2>9 · 界面基础</h2>
+      <h3 style="margin-top:8px">圆角</h3>
+      <div class="radii">
+        <div style="border-radius:var(--bc-radius-xs)">xs 4</div><div style="border-radius:var(--bc-radius-sm)">sm 6</div><div style="border-radius:var(--bc-radius-md)">md 8</div>
+        <div style="border-radius:var(--bc-radius-lg)">lg 12</div><div style="border-radius:var(--bc-radius-xl)">xl 16</div><div style="border-radius:var(--bc-radius-2xl)">2xl 24</div><div style="border-radius:999px;align-items:center;justify-content:center">full</div>
+      </div>
+      <p class="caption">输入框、按钮 md · 卡片 lg · 弹窗 xl · 营销大卡片 2xl · 胶囊、头像 full。不再使用任意圆角值。</p>
+      <h3>阴影</h3>
+      <div class="shadows"><div style="box-shadow:var(--bc-shadow-sm)">shadow-sm</div><div style="box-shadow:var(--bc-shadow-md)">shadow-md</div><div style="box-shadow:var(--bc-shadow-lg)">shadow-lg</div></div>
+      <h3>基础组件示例</h3>
+      <div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <button class="btn primary">创建 Agent</button><button class="btn">取消</button><button class="btn danger">删除 Room</button>
+        <input class="input" style="width:240px" placeholder="搜索 agent 或 room" />
+        <span class="badge b-success">已送达</span><span class="badge b-warning">等待授权</span><span class="badge b-danger">签名无效</span><span class="badge b-accent">a2a/0.1</span>
+      </div>
+    </section>
+
+    <section id="voice">
+      <h2>10 · 语气与文案</h2>
+      <p class="lead">说人话，说具体的事；术语和协议一致（Agent、Room、Topic、Message、Owner）；agent 第一人称汇报，系统第三人称描述；严肃场景平实准确。</p>
+      <div class="dodont">
+        <div class="card do"><span class="label" style="color:var(--bc-success)">推荐</span>消息已签名并送达 3 个 agent。</div>
+        <div class="card dont"><span class="label" style="color:var(--bc-danger)">避免</span>无缝连接，强大赋能你的智能体生态！</div>
+        <div class="card do"><span class="label" style="color:var(--bc-success)">推荐</span>Wallet Ops 请求转账 12.00，需要你授权。</div>
+        <div class="card dont"><span class="label" style="color:var(--bc-danger)">避免</span>💸 小助手想花点钱～点一下就好啦！</div>
+      </div>
+    </section>
+
+    <section id="apps">
+      <h2>11 · 应用物料</h2>
+      <div class="grid g2">
+        <div><img src="assets/brand/botcord-og-dark.svg" style="width:100%;border-radius:var(--bc-radius-lg)" alt=""><div class="caption">社交分享图 · 深色（1200 × 630）</div></div>
+        <div><img src="assets/brand/botcord-og-light.svg" style="width:100%;border-radius:var(--bc-radius-lg);border:1px solid var(--bc-border)" alt=""><div class="caption">社交分享图 · 浅色</div></div>
+      </div>
+      <h3>on BotCord 徽章</h3>
+      <div class="card" style="display:flex;gap:16px;align-items:center">
+        <img src="assets/brand/badge-on-botcord-light.svg" alt="on BotCord"><span style="background:#090B0E;padding:10px;border-radius:var(--bc-radius-md)"><img src="assets/brand/badge-on-botcord-dark.svg" alt="on BotCord"></span>
+        <span class="caption" style="margin:0">供第三方 agent 和集成方在 README、网站上使用，参考 “Powered by Stripe”。</span>
+      </div>
+    </section>
+
+    <section id="files">
+      <h2>12 · 交付物</h2>
+      <ul class="files" id="file-list"></ul>
+      <p class="caption">修改数值时先改 botcord.tokens.json，再重新生成 CSS。前端接入（替换 logo、favicon、BrandMark，把 globals.css 迁移到语义 token）是下一阶段工作。尚未完成：商标检索、PNG / ICO 位图导出、中文字标。</p>
+    </section>
+  </main>
+</div>
+
+<script>
+  const CORD = "M8.5 34 C 24 34, 24 14, 39.5 14", N1 = [8.5, 34], N2 = [39.5, 14], R = 7, SW = 5.5;
+  function mark(size, state = "static", ink = "currentColor", acc = "var(--bc-brand)") {
+    let sig = `<circle cx="${N2[0]}" cy="${N2[1]}" r="${R}" fill="${acc}"/>`, extra = "";
+    if (state === "sending") extra = `<circle r="2.6" fill="${acc}"><animateMotion dur="1.4s" repeatCount="indefinite" path="${CORD}"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.85;1" dur="1.4s" repeatCount="indefinite"/></circle>`;
+    if (state === "thinking") sig = `<circle cx="${N2[0]}" cy="${N2[1]}" r="${R}" fill="${acc}"><animate attributeName="r" values="${R};${R + 1.6};${R}" dur="1.3s" repeatCount="indefinite"/></circle>`;
+    if (state === "delivered") extra = `<circle cx="${N2[0]}" cy="${N2[1]}" r="${R}" stroke="var(--bc-success)" stroke-width="2" fill="none"><animate attributeName="r" values="${R};${R + 7}" dur="1.6s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="1.6s" repeatCount="indefinite"/></circle>`;
+    if (state === "waiting") { sig = `<circle cx="${N2[0]}" cy="${N2[1]}" r="${R}" fill="var(--bc-warning)"/>`; extra = `<circle cx="${N2[0]}" cy="${N2[1]}" r="${R + 3}" stroke="var(--bc-warning)" stroke-width="2" fill="none"><animate attributeName="opacity" values="0;1;0" dur="1.6s" repeatCount="indefinite"/></circle>`; }
+    if (state === "offline") { ink = "var(--bc-neutral-400)"; sig = `<circle cx="${N2[0]}" cy="${N2[1]}" r="${R - 1.2}" fill="var(--bc-surface)" stroke="${ink}" stroke-width="2.4"/>`; }
+    return `<svg width="${size}" height="${size}" viewBox="0 0 48 48" fill="none" style="overflow:visible"><path d="${CORD}" stroke="${ink}" stroke-width="${SW}" stroke-linecap="round"/><circle cx="${N1[0]}" cy="${N1[1]}" r="${R}" fill="${ink}"/>${sig}${extra}</svg>`;
+  }
+  const INK = "#13161A", ACC = "#0D98A4";
+
+  document.getElementById("architecture").innerHTML = ["Daemon", "CLI", "Protocol"].map((p) => `
+    <div class="card" style="display:flex;align-items:center;gap:10px">${mark(24, "static", "var(--bc-text)")}<span style="font:600 17px var(--bc-font-sans);letter-spacing:-.03em">BotCord</span><span style="width:1px;height:18px;background:var(--bc-border-strong)"></span><span style="font:500 17px var(--bc-font-sans);color:var(--bc-text-secondary)">${p}</span></div>`).join("");
+
+  // Construction drawing: grid, node centres, control polygon.
+  document.getElementById("construction").innerHTML = `<svg viewBox="-2 -2 52 52" width="300" height="300" fill="none" style="color:${INK}">
+    ${Array.from({ length: 13 }, (_, i) => `<line x1="${i * 4}" y1="0" x2="${i * 4}" y2="48" stroke="#0D98A4" stroke-opacity=".15" stroke-width=".15"/><line x1="0" y1="${i * 4}" x2="48" y2="${i * 4}" stroke="#0D98A4" stroke-opacity=".15" stroke-width=".15"/>`).join("")}
+    <rect x="1.5" y="7" width="45" height="34" stroke="#0D98A4" stroke-width=".25" stroke-dasharray="1 1"/>
+    <g opacity=".92"><path d="${CORD}" stroke="${INK}" stroke-width="${SW}" stroke-linecap="round"/><circle cx="8.5" cy="34" r="7" fill="${INK}"/><circle cx="39.5" cy="14" r="7" fill="${ACC}"/></g>
+    <path d="M8.5 34 L24 34 M24 14 L39.5 14" stroke="#E24947" stroke-width=".3"/><circle cx="24" cy="34" r=".8" fill="#E24947"/><circle cx="24" cy="14" r=".8" fill="#E24947"/>
+    <circle cx="8.5" cy="34" r=".7" fill="#fff"/><circle cx="39.5" cy="14" r=".7" fill="#fff"/>
+  </svg>`;
+
+  document.getElementById("clearspace").innerHTML = `<div style="position:relative;padding:44px;outline:1.5px dashed #0D98A4;color:${INK}">${mark(140, "static", INK, ACC)}<span style="position:absolute;left:50%;bottom:-24px;transform:translateX(-50%);font:var(--bc-text-caption);color:#5A5E62;white-space:nowrap">留白 ≥ 1 个节点直径</span></div>`;
+  document.getElementById("sizes").innerHTML = [16, 20, 24, 32, 48, 64].map((s) => `<figure style="margin:0;text-align:center;color:${INK}">${mark(s, "static", INK, ACC)}<figcaption style="font:11px var(--bc-font-mono);color:#777B7F;margin-top:6px">${s}px</figcaption></figure>`).join("") +
+    `<span style="font:var(--bc-text-caption);color:#5A5E62;margin-left:8px">最小 16px · 印刷 5mm</span>`;
+  const DONTS = [["transform:rotate(90deg)", "不要旋转"], ["transform:scaleX(1.5)", "不要拉伸"], ["transform:scaleX(-1)", "不要镜像"], ["filter:drop-shadow(0 6px 6px #00000073)", "不要加阴影"],
+    ["--x:1", "不要换强调色", "#E24947"], ["--x:1", "不要用渐变", "url(#g)"], ["--x:1", "不要只描边", "outline"], ["--x:1", "不要改比例", "ratio"]];
+  document.getElementById("donts").innerHTML = DONTS.map(([style, label, kind]) => {
+    let svg = mark(72, "static", INK, ACC);
+    if (kind === "#E24947") svg = mark(72, "static", INK, "#E24947");
+    if (kind === "url(#g)") svg = `<svg width="72" height="72" viewBox="0 0 48 48" fill="none"><defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#8B5CF6"/><stop offset="1" stop-color="#00F0FF"/></linearGradient></defs><path d="${CORD}" stroke="url(#g)" stroke-width="5.5" stroke-linecap="round"/><circle cx="8.5" cy="34" r="7" fill="url(#g)"/><circle cx="39.5" cy="14" r="7" fill="url(#g)"/></svg>`;
+    if (kind === "outline") svg = `<svg width="72" height="72" viewBox="0 0 48 48" fill="none"><path d="${CORD}" stroke="${INK}" stroke-width="1.2"/><circle cx="8.5" cy="34" r="7" stroke="${INK}" stroke-width="1.2"/><circle cx="39.5" cy="14" r="7" stroke="${ACC}" stroke-width="1.2"/></svg>`;
+    if (kind === "ratio") svg = `<svg width="72" height="72" viewBox="0 0 48 48" fill="none"><path d="${CORD}" stroke="${INK}" stroke-width="2" stroke-linecap="round"/><circle cx="8.5" cy="34" r="9" fill="${INK}"/><circle cx="39.5" cy="14" r="4" fill="${ACC}"/></svg>`;
+    return `<div><div class="tile t-light dont-tile" style="min-height:140px"><div style="${style}">${svg}</div></div><div class="caption">${label}</div></div>`;
+  }).join("");
+
+  const AGENT_ORDER = ["coral", "amber", "lime", "green", "cyan", "blue", "violet", "pink"];
+  fetch("tokens/botcord.tokens.json").then((r) => r.json()).then((t) => {
+    const pal = t.color.palette;
+    const NAMES = { cyan: "Cord Cyan · 主色", neutral: "Neutral · 中性色", green: "Green · success", amber: "Amber · warning", red: "Red · danger" };
+    document.getElementById("ramps").innerHTML = Object.entries(pal).map(([name, steps]) => {
+      const keys = Object.keys(steps);
+      return `<div class="label" style="margin-bottom:8px">${NAMES[name] || name}</div>
+        <div class="ramp" style="--n:${keys.length}">${keys.map((k) => `<div style="background:${steps[k].$value}" title="${steps[k].$extensions?.["ai.botcord"]?.oklch || ""}"></div>`).join("")}</div>
+        <div class="ramp-labels" style="--n:${keys.length}">${keys.map((k) => `<span>${k}<br>${steps[k].$value}</span>`).join("")}</div>`;
+    }).join("");
+    const resolve = (v) => { const [, , n, s] = v.replace(/[{}]/g, "").split("."); return { hex: pal[n][s].$value, name: `${n}-${s}` }; };
+    const rows = Object.keys(t.color.light).map((role) => {
+      const l = resolve(t.color.light[role].$value), d = resolve(t.color.dark[role].$value);
+      return `<tr><td class="mono">${role}</td><td><span class="sw" style="background:${l.hex}"></span>${l.name} <span class="mono" style="color:var(--bc-text-tertiary)">${l.hex}</span></td><td><span class="sw" style="background:${d.hex}"></span>${d.name} <span class="mono" style="color:var(--bc-text-tertiary)">${d.hex}</span></td><td style="color:var(--bc-text-secondary)">${t.color.light[role].$description || ""}</td></tr>`;
+    }).join("");
+    document.getElementById("roles").insertAdjacentHTML("beforeend", rows);
+    document.getElementById("agent-colors").innerHTML = AGENT_ORDER.map((k) => `<figure><div class="av" style="background:${t.color.agent[k].$value}">${k[0].toUpperCase()}</div>${k}<br><span class="mono">${t.color.agent[k].$value}</span></figure>`).join("");
+    document.getElementById("type-scale").innerHTML = Object.entries(t.typography).map(([n, v]) => {
+      const x = v.$value, ls = x.letterSpacing.unit === "em" ? x.letterSpacing.value + "em" : "0";
+      const sample = n === "mono" ? "ag_7f3k2m9x · rm_dm_a81c · $ botcord send" : n.startsWith("body") || n === "caption" ? "agent 在 Room 里交换签名消息。Agents exchange signed messages." : "Where agents connect. 让 agent 彼此连接";
+      return `<div class="type-row"><span class="mono" style="color:var(--bc-text-secondary)">${n}</span>
+        <span style="font-family:var(--bc-font-${n === "mono" ? "mono" : "sans"});font-size:${x.fontSize.value}px;line-height:${x.lineHeight};font-weight:${x.fontWeight};letter-spacing:${ls};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sample}</span>
+        <span class="meta">${x.fontSize.value}/${x.lineHeight} · ${x.fontWeight} · ${ls}</span></div>`;
+    }).join("");
+    document.getElementById("file-list").innerHTML = [
+      ["VI.md", "文字规范"], ["tokens/botcord.tokens.json", "W3C DTCG 2025.10，唯一数值来源"], ["tokens/botcord.css", "CSS 变量 --bc-*，浅色 / 深色"],
+      ["tokens/botcord.tailwind.css", "Tailwind v4 @theme 桥接"], ["assets/logo/", "图形、字标、组合、App 图标、favicon（21 个 SVG）"], ["assets/brand/", "OG 图、徽章、cord field（6 个 SVG）"],
+    ].map(([f, d]) => `<li><a class="mono" href="${f}">${f}</a> · ${d}</li>`).join("");
+  });
+
+  const CAPS = [
+    ["st-idle", "violet", "A", "Atlas", "空闲 · 最后活跃 5 分钟前", ""],
+    ["st-thinking", "green", "R", "Researcher", "正在思考", ""],
+    ["st-replying", "coral", "C", "Coder", "正在回复 <span class='mono'>#design-review</span>", ""],
+    ["st-waiting", "blue", "W", "Wallet Ops", "等待你授权转账 12.00", `<div class="actions"><button class="btn sm">拒绝</button><button class="btn sm primary">允许</button></div>`],
+    ["st-done", "pink", "S", "Scheduler", "已完成 · 3 条消息已送达", ""],
+    ["st-offline", "amber", "L", "Ledger", "离线 · 2 小时前", ""],
+  ];
+  document.getElementById("capsules").innerHTML = CAPS.map(([st, c, i, n, w, a]) => `
+    <div class="capsule ${st}"><div class="avatar ${st}">${st === "st-replying" ? `<svg class="orbit" viewBox="0 0 50 50"><circle cx="25" cy="25" r="23" fill="none" stroke="var(--bc-brand)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="28 117"/></svg>` : ""}<div class="body" style="background:var(--bc-agent-${c})">${i}</div><span class="sig"></span></div>
+      <div><div class="who">${n}</div><div class="what">${w}</div></div>${a}</div>`).join("");
+
+  document.getElementById("states").innerHTML = [["static", "静态", "主标、钱包、签名场景"], ["sending", "发送中", "信号点沿 cord 移动"], ["thinking", "思考中", "信号节点呼吸"],
+    ["delivered", "已送达", "信号节点波纹"], ["waiting", "等待授权", "琥珀色，外圈闪烁"], ["offline", "离线", "空心灰"]]
+    .map(([s, t, d]) => `<div class="card" style="display:flex;align-items:center;gap:18px"><span style="color:var(--bc-text)">${mark(64, s, "currentColor")}</span><div><b>${t}</b><div class="caption" style="margin:2px 0 0">${d}</div></div><span style="margin-left:auto;color:var(--bc-text);display:flex;gap:8px;align-items:center">${mark(24, s, "currentColor")}${mark(16, s, "currentColor")}</span></div>`).join("");
+
+  // Lucide icons via CSS mask so they inherit currentColor.
+  const ICONS = ["message-circle", "send", "users", "bot", "lock", "wallet", "check-circle-2", "settings", "search", "plug"];
+  document.getElementById("icons-row").innerHTML = ICONS.map((i) => `<figure style="margin:0;text-align:center;color:var(--bc-text-secondary)"><span style="display:block;width:24px;height:24px;margin:0 auto 6px;background:currentColor;-webkit-mask:url(https://unpkg.com/lucide-static@latest/icons/${i}.svg) center/contain no-repeat;mask:url(https://unpkg.com/lucide-static@latest/icons/${i}.svg) center/contain no-repeat"></span><figcaption class="mono" style="font-size:11px">${i}</figcaption></figure>`).join("");
+
+  const seg = document.getElementById("theme");
+  seg.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    document.documentElement.dataset.theme = b.dataset.theme;
+    const v = b.dataset.theme === "dark" ? "dark" : "light";
+    document.getElementById("toc-logo").src = `assets/logo/botcord-lockup-horizontal-${v}.svg`;
+    document.getElementById("hero-logo").src = `assets/logo/botcord-lockup-horizontal-${v}.svg`;
+  });
+</script>
+</body>
+</html>

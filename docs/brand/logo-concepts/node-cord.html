@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BotCord · Node·Cord 精修</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --hue: 205; --chroma: 0.13;
+    --accent: oklch(0.62 var(--chroma) var(--hue));
+    --ink: oklch(0.2 0.01 250);
+    --bg: oklch(0.985 0.002 250);
+    --surface: #fff;
+    --line: oklch(0.91 0.005 250);
+    --muted: oklch(0.55 0.01 250);
+    --warning: oklch(0.72 0.15 70);
+    --danger: oklch(0.6 0.2 25);
+    --dark-bg: oklch(0.17 0.008 250);
+    font-family: "Geist", "PingFang SC", system-ui, sans-serif;
+  }
+  html[data-theme="dark"] {
+    --accent: oklch(0.74 var(--chroma) var(--hue));
+    --ink: oklch(0.96 0.003 250);
+    --bg: oklch(0.15 0.006 250);
+    --surface: oklch(0.2 0.007 250);
+    --line: oklch(0.28 0.008 250);
+    --muted: oklch(0.68 0.01 250);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+  header.top { padding: 48px 0 24px; }
+  h1 { margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.03em; }
+  h2 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  h3 { margin: 0 0 10px; font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  p { margin: 0; }
+  .lead { color: var(--muted); margin-top: 8px; max-width: 820px; font-size: 15px; }
+  .controls { display: flex; gap: 16px; margin-top: 20px; font-size: 13px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--surface); }
+  .seg button { border: 0; background: transparent; color: var(--ink); font: inherit; padding: 5px 14px; border-radius: 999px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  section { padding: 40px 0; border-top: 1px solid var(--line); }
+  .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; gap: 16px; flex-wrap: wrap; }
+  .tag { font-family: "Geist Mono", monospace; font-size: 12px; color: var(--muted); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+  .variants { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .variant { display: flex; flex-direction: column; gap: 14px; }
+  .variant.rec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .variant .big { display: flex; justify-content: center; padding: 6px 0; }
+  .variant .small { display: flex; align-items: flex-end; justify-content: center; gap: 14px; padding: 12px; border-radius: 10px; }
+  .variant .title { font-weight: 600; display: flex; justify-content: space-between; align-items: baseline; }
+  .variant .badge { font-size: 11px; font-weight: 500; color: var(--accent); }
+  .variant p { font-size: 13px; color: var(--muted); }
+  .on-light { background: #fff; color: oklch(0.2 0.01 250); --accent: oklch(0.62 var(--chroma) var(--hue)); }
+  .on-dark { background: var(--dark-bg); color: oklch(0.97 0.003 250); --accent: oklch(0.74 var(--chroma) var(--hue)); }
+  .on-accent { background: oklch(0.62 var(--chroma) var(--hue)); color: #fff; --accent: #fff; }
+  .states { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 22px 10px 16px; text-align: center; }
+  .state b { font-size: 14px; }
+  .state span { font-size: 12px; color: var(--muted); }
+  .state.offline svg { --accent: transparent; color: oklch(0.7 0.01 250); }
+  .rules { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
+  .clearspace { position: relative; display: flex; justify-content: center; padding: 30px; }
+  .clearspace .box { position: relative; padding: 30px; outline: 1.5px dashed var(--accent); }
+  .clearspace .box::after { content: "留白 ≥ 节点直径"; position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .rule-list { font-size: 13.5px; margin: 0; padding-left: 18px; }
+  .rule-list li { margin-bottom: 6px; }
+  .donts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 16px; }
+  .dont { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 8px 14px; font-size: 12px; color: var(--muted); text-align: center; }
+  .dont::before { content: "✕"; position: absolute; right: 10px; top: 6px; color: var(--danger); font-weight: 700; }
+  .context { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+  .nav { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-radius: 12px; }
+  .lockup { display: flex; align-items: center; gap: 9px; font-weight: 600; letter-spacing: -0.035em; font-size: 19px; }
+  .nav .links { display: flex; gap: 22px; font-size: 13.5px; opacity: .7; }
+  .nav .cta { font-size: 13px; padding: 7px 14px; border-radius: 999px; background: oklch(0.62 var(--chroma) var(--hue)); color: #fff; font-weight: 500; }
+  .tabs { display: flex; gap: 4px; background: oklch(0.93 0.004 250); padding: 8px 8px 0; border-radius: 12px 12px 0 0; }
+  html[data-theme="dark"] .tabs { background: oklch(0.12 0.005 250); }
+  .tab { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 9px 9px 0 0; font-size: 12px; color: var(--muted); }
+  .tab.active { background: var(--surface); color: var(--ink); }
+  .app-icons { display: flex; gap: 16px; }
+  .app-icon { width: 84px; height: 84px; border-radius: 22.37%; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.08); }
+  .files { font-family: "Geist Mono", monospace; font-size: 12.5px; }
+  .files a { color: var(--accent); }
+  footer { padding: 32px 0 64px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); }
+  @media (max-width: 960px) { .variants, .states { grid-template-columns: repeat(2, 1fr); } .rules, .context { grid-template-columns: 1fr; } .donts { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Node·Cord 精修</h1>
+    <p class="lead">方向 A“节点连线”的精修稿：两个节点是两个 agent，连线是 cord，强调色节点是信号点。下面先比较 4 种连线走法，再用推荐的 A1 展示状态动画、使用规范和实际场景。初版的问题是“大圆头 + 细尾巴”像哑铃或蝌蚪，所以这一轮主要调连线的走向和节点比例。</p>
+    <div class="controls">
+      <span>主题</span>
+      <div class="seg" id="theme"><button data-theme="light" aria-pressed="true">浅色</button><button data-theme="dark">深色</button></div>
+    </div>
+  </header>
+
+  <section>
+    <div class="head"><h2>1 · 连线走法</h2><span class="tag">48 × 48 网格</span></div>
+    <div class="variants" id="variants"></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>2 · 状态动画（A1）</h2><span class="tag">SVG SMIL，可直接用于头像和加载态</span></div>
+    <p class="lead" style="margin:-6px 0 18px">logo 本身就是状态指示器：信号点沿 cord 移动表示发送，强调色节点呼吸表示思考，波纹表示送达。dashboard 里的 loading、agent 头像角标、消息投递状态都可以复用这一套。</p>
+    <div class="states" id="states"></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>3 · 使用规范（草案）</h2><span class="tag">A1</span></div>
+    <div class="rules">
+      <div class="card on-light clearspace"><div class="box" id="clearspace"></div></div>
+      <div class="card">
+        <h3>规则</h3>
+        <ul class="rule-list">
+          <li><b>最小尺寸</b>：屏幕 16px，印刷 5mm。小于 24px 时用不带字标的图形。</li>
+          <li><b>留白</b>：四周至少留一个节点直径。</li>
+          <li><b>配色只有 4 种</b>：浅底用墨色 + 主色；深底用白色 + 亮主色；主色底用全白；单色场景用全墨或全白。</li>
+          <li><b>方向固定</b>：墨色节点在左下（发送方），主色节点在右上（接收方 / 信号）。</li>
+          <li><b>严肃场景</b>（钱包、签名、安全提示）只用静态图形，不做动画。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="donts" id="donts"></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>4 · 实际场景</h2><span class="tag">导航栏 · 标签页 · App 图标</span></div>
+    <div class="context">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="nav on-light" style="border:1px solid var(--line)">
+          <span class="lockup" id="lockup-light"></span>
+          <span class="links"><span>Protocol</span><span>Agents</span><span>Docs</span><span>Pricing</span></span>
+          <span class="cta">打开 Dashboard</span>
+        </div>
+        <div class="nav on-dark">
+          <span class="lockup" id="lockup-dark"></span>
+          <span class="links"><span>Protocol</span><span>Agents</span><span>Docs</span><span>Pricing</span></span>
+          <span class="cta">打开 Dashboard</span>
+        </div>
+        <div>
+          <div class="tabs" id="tabs"></div>
+          <div class="card" style="border-top:0;border-radius:0 0 12px 12px;padding:12px 16px;font-size:12.5px;color:var(--muted)">16px favicon 的实际效果</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>App 图标</h3>
+        <div class="app-icons" id="app-icons"></div>
+        <h3 style="margin-top:22px">导出文件（A1 草稿）</h3>
+        <div class="files" id="files"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>精修草稿，未做商标检索。动画使用 SVG SMIL（animateMotion / animate），现代浏览器都支持。</footer>
+</div>
+
+<script>
+  // Each variant: two nodes and the cord between them, on a 48×48 grid.
+  const VARIANTS = [
+    {
+      id: "a0", name: "A0 · 初稿", nodes: [[13.5, 34.5], [34.5, 13.5]], r: 7.5, stroke: 5,
+      cord: "M13.5 34.5 C 13.5 21, 34.5 27, 34.5 13.5",
+      note: "上一轮的版本。圆头大、连线短而平，容易读成哑铃或蝌蚪。",
+    },
+    {
+      id: "a1", name: "A1 · Sigmoid", nodes: [[8.5, 34], [39.5, 14]], r: 7, stroke: 5.5, rec: true,
+      cord: "M8.5 34 C 24 34, 24 14, 39.5 14",
+      note: "连线水平离开、水平进入，是节点编辑器里“连接线”的标准形状，暗示 agent 之间的工作流。S 形更完整，节点缩小，不再像蝌蚪。",
+    },
+    {
+      id: "a2", name: "A2 · Elbow", nodes: [[12, 36], [36, 12]], r: 6.5, stroke: 5,
+      cord: "M12 36 V 25 A 13 13 0 0 1 25 12 H 36",
+      note: "连线先向上再拐弯向右，像电路走线或管道弯头。更几何、更技术，但也更像一个“转角”符号。",
+    },
+    {
+      id: "a3", name: "A3 · Transit", nodes: [[8.5, 34], [39.5, 14]], r: 7, stroke: 5.5, gap: 10.5,
+      cord: "M8.5 34 C 24 34, 24 14, 39.5 14",
+      note: "A1 的连线两端断开，表示消息“正在途中”。概念最有意思，但 16px 下断口会糊掉，适合做插画或加载动画，不适合做主标。",
+    },
+  ];
+  const A1 = VARIANTS[1];
+
+  let uid = 0;
+  // Builds an inline SVG so states can animate individual parts.
+  function mark(v, size, state = "static") {
+    const id = `m${uid++}`;
+    const [[x1, y1], [x2, y2]] = v.nodes;
+    const mask = v.gap ? `<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48"><rect width="48" height="48" fill="#fff"/><circle cx="${x1}" cy="${y1}" r="${v.gap}" fill="#000"/><circle cx="${x2}" cy="${y2}" r="${v.gap}" fill="#000"/></mask>` : "";
+    const cordColor = state === "offline" ? "currentColor" : "currentColor";
+    let accentNode = `<circle cx="${x2}" cy="${y2}" r="${v.r}" fill="var(--accent)"/>`;
+    let extra = "";
+    if (state === "sending") {
+      extra = `<circle r="2.6" fill="var(--accent)"><animateMotion dur="1.4s" repeatCount="indefinite" path="${v.cord}" keyPoints="0;1" keyTimes="0;1" calcMode="linear"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.85;1" dur="1.4s" repeatCount="indefinite"/></circle>`;
+    } else if (state === "thinking") {
+      accentNode = `<circle cx="${x2}" cy="${y2}" r="${v.r}" fill="var(--accent)"><animate attributeName="r" values="${v.r};${v.r + 1.6};${v.r}" dur="1.3s" repeatCount="indefinite"/></circle>`;
+    } else if (state === "delivered") {
+      extra = `<circle cx="${x2}" cy="${y2}" r="${v.r}" fill="none" stroke="var(--accent)" stroke-width="2"><animate attributeName="r" values="${v.r};${v.r + 7}" dur="1.6s" repeatCount="indefinite"/><animate attributeName="opacity" values=".9;0" dur="1.6s" repeatCount="indefinite"/></circle>`;
+    } else if (state === "waiting") {
+      accentNode = `<circle cx="${x2}" cy="${y2}" r="${v.r}" fill="var(--warning)"/>`;
+      extra = `<circle cx="${x2}" cy="${y2}" r="${v.r + 3}" fill="none" stroke="var(--warning)" stroke-width="2"><animate attributeName="opacity" values="0;1;0" dur="1.6s" repeatCount="indefinite"/></circle>`;
+    } else if (state === "offline") {
+      accentNode = `<circle cx="${x2}" cy="${y2}" r="${v.r - 1.2}" fill="var(--surface)" stroke="currentColor" stroke-width="2.4"/>`;
+    }
+    return `<svg width="${size}" height="${size}" viewBox="0 0 48 48" style="overflow:visible">${mask}
+      <path d="${v.cord}" fill="none" stroke="${cordColor}" stroke-width="${v.stroke}" stroke-linecap="round" ${v.gap ? `mask="url(#${id})"` : ""}/>
+      <circle cx="${x1}" cy="${y1}" r="${v.r}" fill="currentColor"/>${accentNode}${extra}</svg>`;
+  }
+
+  document.getElementById("variants").innerHTML = VARIANTS.map((v) => `
+    <div class="card variant${v.rec ? " rec" : ""}">
+      <div class="title"><span>${v.name}</span>${v.rec ? '<span class="badge">推荐</span>' : ""}</div>
+      <div class="big on-light" style="border-radius:10px">${mark(v, 120)}</div>
+      <div class="small on-light" style="border:1px solid var(--line)">${[16, 24, 32, 48].map((s) => mark(v, s)).join("")}</div>
+      <div class="small on-dark">${[16, 24, 32, 48].map((s) => mark(v, s)).join("")}</div>
+      <p>${v.note}</p>
+    </div>`).join("");
+
+  const STATES = [
+    ["static", "静态", "主标、钱包、签名场景"],
+    ["sending", "发送中", "信号点沿 cord 移动"],
+    ["thinking", "思考中", "信号节点呼吸"],
+    ["delivered", "已送达", "信号节点波纹"],
+    ["waiting", "等待授权", "信号节点变琥珀色，外圈闪烁"],
+    ["offline", "离线", "信号节点变空心、整体变灰"],
+  ];
+  document.getElementById("states").innerHTML = STATES.map(([s, t, d]) => `
+    <div class="card state ${s}">${mark(A1, 84, s)}<b>${t}</b><span>${d}</span>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:4px">${mark(A1, 24, s)}${mark(A1, 16, s)}</div></div>`).join("");
+
+  document.getElementById("clearspace").innerHTML = mark(A1, 150);
+
+  const DONTS = [
+    ["transform:rotate(90deg)", "不要旋转"],
+    ["transform:scaleX(1.5)", "不要拉伸"],
+    ["filter:drop-shadow(0 6px 6px rgba(0,0,0,.45))", "不要加阴影"],
+    ["--accent:oklch(0.65 0.2 25)", "不要换成其他强调色"],
+    ["transform:scaleX(-1)", "不要镜像（方向表示发送 → 接收）"],
+  ];
+  document.getElementById("donts").innerHTML = DONTS.map(([style, label]) => `
+    <div class="card dont on-light"><div style="color:oklch(0.2 0.01 250);${style}">${mark(A1, 64)}</div>${label}</div>`).join("");
+
+  document.getElementById("lockup-light").innerHTML = `${mark(A1, 28)}BotCord`;
+  document.getElementById("lockup-dark").innerHTML = `${mark(A1, 28)}BotCord`;
+  document.getElementById("tabs").innerHTML =
+    `<div class="tab active">${mark(A1, 16)}BotCord · Dashboard</div><div class="tab">${mark(A1, 16, "thinking")}Atlas 正在思考…</div><div class="tab"><span style="width:16px;height:16px;border-radius:4px;background:#5865F2"></span>Discord</div><div class="tab"><span style="width:16px;height:16px;border-radius:50%;background:#26A5E4"></span>Telegram</div>`;
+  document.getElementById("app-icons").innerHTML = `
+    <div class="app-icon on-light" style="border:1px solid var(--line)">${mark(A1, 60)}</div>
+    <div class="app-icon on-dark">${mark(A1, 60)}</div>
+    <div class="app-icon on-accent">${mark(A1, 60)}</div>`;
+  document.getElementById("files").innerHTML = ["botcord-mark.svg", "botcord-mark-dark.svg", "botcord-mark-mono.svg", "botcord-app-icon.svg", "botcord-favicon.svg"]
+    .map((f) => `<div><a href="../botcord-vi/assets/logo/" target="_blank">已迁移到 botcord-vi/assets/logo/</a></div>`).join("");
+
+  const seg = document.getElementById("theme");
+  seg.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    document.documentElement.dataset.theme = b.dataset.theme;
+  });
+</script>
+</body>
+</html>

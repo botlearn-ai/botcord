@@ -1,0 +1,1326 @@
+{
+  "$description": "BotCord design tokens · VI v1.0 (Node·Cord). Hex values are canonical; OKLCH sources are in $extensions.",
+  "color": {
+    "palette": {
+      "cyan": {
+        "50": {
+          "$type": "color",
+          "$value": "#DFFCFF",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.97 0.03 205)"
+            }
+          }
+        },
+        "100": {
+          "$type": "color",
+          "$value": "#C3F2F7",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.93 0.048 205)"
+            }
+          }
+        },
+        "200": {
+          "$type": "color",
+          "$value": "#98E3EC",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.87 0.075 205)"
+            }
+          }
+        },
+        "300": {
+          "$type": "color",
+          "$value": "#50CFDD",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.79 0.112 205)"
+            }
+          }
+        },
+        "400": {
+          "$type": "color",
+          "$value": "#0BB6C5",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.71 0.12 205)"
+            }
+          }
+        },
+        "500": {
+          "$type": "color",
+          "$value": "#0D98A4",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.62 0.104 205)"
+            }
+          }
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#017E88",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.54 0.092 205)"
+            }
+          }
+        },
+        "700": {
+          "$type": "color",
+          "$value": "#02646D",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.46 0.078 205)"
+            }
+          }
+        },
+        "800": {
+          "$type": "color",
+          "$value": "#024C52",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.38 0.064 205)"
+            }
+          }
+        },
+        "900": {
+          "$type": "color",
+          "$value": "#02353A",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.3 0.05 205)"
+            }
+          }
+        },
+        "950": {
+          "$type": "color",
+          "$value": "#011F22",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.22 0.036 205)"
+            }
+          }
+        }
+      },
+      "neutral": {
+        "0": {
+          "$type": "color",
+          "$value": "#FFFFFF",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(1.0 0.0 250)"
+            }
+          }
+        },
+        "25": {
+          "$type": "color",
+          "$value": "#F7FAFE",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.985 0.006 250)"
+            }
+          }
+        },
+        "50": {
+          "$type": "color",
+          "$value": "#F1F6FA",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.97 0.008 250)"
+            }
+          }
+        },
+        "100": {
+          "$type": "color",
+          "$value": "#E7ECF0",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.94 0.008 250)"
+            }
+          }
+        },
+        "200": {
+          "$type": "color",
+          "$value": "#DADEE3",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.9 0.008 250)"
+            }
+          }
+        },
+        "300": {
+          "$type": "color",
+          "$value": "#C7CBD0",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.84 0.008 250)"
+            }
+          }
+        },
+        "400": {
+          "$type": "color",
+          "$value": "#A1A5A9",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.72 0.008 250)"
+            }
+          }
+        },
+        "500": {
+          "$type": "color",
+          "$value": "#777B7F",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.58 0.008 250)"
+            }
+          }
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#5A5E62",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.48 0.008 250)"
+            }
+          }
+        },
+        "700": {
+          "$type": "color",
+          "$value": "#3F4347",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.38 0.008 250)"
+            }
+          }
+        },
+        "800": {
+          "$type": "color",
+          "$value": "#26292D",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.28 0.008 250)"
+            }
+          }
+        },
+        "850": {
+          "$type": "color",
+          "$value": "#181B1E",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.22 0.008 250)"
+            }
+          }
+        },
+        "900": {
+          "$type": "color",
+          "$value": "#13161A",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.2 0.008 250)"
+            }
+          }
+        },
+        "950": {
+          "$type": "color",
+          "$value": "#090B0E",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.15 0.008 250)"
+            }
+          }
+        },
+        "1000": {
+          "$type": "color",
+          "$value": "#040608",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.12 0.008 250)"
+            }
+          }
+        }
+      },
+      "green": {
+        "50": {
+          "$type": "color",
+          "$value": "#E4FDE8",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.97 0.037 150)"
+            }
+          }
+        },
+        "100": {
+          "$type": "color",
+          "$value": "#CFF3D5",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.93 0.055 150)"
+            }
+          }
+        },
+        "200": {
+          "$type": "color",
+          "$value": "#ABE5B6",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.87 0.087 150)"
+            }
+          }
+        },
+        "300": {
+          "$type": "color",
+          "$value": "#7AD28E",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.79 0.129 150)"
+            }
+          }
+        },
+        "400": {
+          "$type": "color",
+          "$value": "#50BB6D",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.71 0.15 150)"
+            }
+          }
+        },
+        "500": {
+          "$type": "color",
+          "$value": "#2E9E52",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.62 0.15 150)"
+            }
+          }
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#02853C",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.54 0.148 150)"
+            }
+          }
+        },
+        "700": {
+          "$type": "color",
+          "$value": "#026A2E",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.46 0.126 150)"
+            }
+          }
+        },
+        "800": {
+          "$type": "color",
+          "$value": "#015122",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.38 0.104 150)"
+            }
+          }
+        },
+        "900": {
+          "$type": "color",
+          "$value": "#013916",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.3 0.082 150)"
+            }
+          }
+        },
+        "950": {
+          "$type": "color",
+          "$value": "#00220A",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.22 0.06 150)"
+            }
+          }
+        }
+      },
+      "amber": {
+        "50": {
+          "$type": "color",
+          "$value": "#FFF3E6",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.97 0.021 70)"
+            }
+          }
+        },
+        "100": {
+          "$type": "color",
+          "$value": "#FFE3C3",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.93 0.051 70)"
+            }
+          }
+        },
+        "200": {
+          "$type": "color",
+          "$value": "#FACB95",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.87 0.087 70)"
+            }
+          }
+        },
+        "300": {
+          "$type": "color",
+          "$value": "#EFAB56",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.79 0.129 70)"
+            }
+          }
+        },
+        "400": {
+          "$type": "color",
+          "$value": "#DC8E12",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.71 0.15 70)"
+            }
+          }
+        },
+        "500": {
+          "$type": "color",
+          "$value": "#B87501",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.62 0.134 70)"
+            }
+          }
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#996103",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.54 0.116 70)"
+            }
+          }
+        },
+        "700": {
+          "$type": "color",
+          "$value": "#7A4D04",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.46 0.098 70)"
+            }
+          }
+        },
+        "800": {
+          "$type": "color",
+          "$value": "#5E3900",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.38 0.082 70)"
+            }
+          }
+        },
+        "900": {
+          "$type": "color",
+          "$value": "#422701",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.3 0.064 70)"
+            }
+          }
+        },
+        "950": {
+          "$type": "color",
+          "$value": "#281600",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.22 0.048 70)"
+            }
+          }
+        }
+      },
+      "red": {
+        "50": {
+          "$type": "color",
+          "$value": "#FEF2F0",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.97 0.013 25)"
+            }
+          }
+        },
+        "100": {
+          "$type": "color",
+          "$value": "#FEE0DC",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.93 0.034 25)"
+            }
+          }
+        },
+        "200": {
+          "$type": "color",
+          "$value": "#FEC4BE",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.87 0.068 25)"
+            }
+          }
+        },
+        "300": {
+          "$type": "color",
+          "$value": "#FE9B94",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.79 0.119 25)"
+            }
+          }
+        },
+        "400": {
+          "$type": "color",
+          "$value": "#FF6B65",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.71 0.182 25)"
+            }
+          }
+        },
+        "500": {
+          "$type": "color",
+          "$value": "#E24947",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.62 0.19 25)"
+            }
+          }
+        },
+        "600": {
+          "$type": "color",
+          "$value": "#C52B30",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.54 0.19 25)"
+            }
+          }
+        },
+        "700": {
+          "$type": "color",
+          "$value": "#A70119",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.46 0.186 25)"
+            }
+          }
+        },
+        "800": {
+          "$type": "color",
+          "$value": "#810010",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.38 0.154 25)"
+            }
+          }
+        },
+        "900": {
+          "$type": "color",
+          "$value": "#5D0009",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.3 0.122 25)"
+            }
+          }
+        },
+        "950": {
+          "$type": "color",
+          "$value": "#3A0104",
+          "$extensions": {
+            "ai.botcord": {
+              "oklch": "oklch(0.22 0.088 25)"
+            }
+          }
+        }
+      }
+    },
+    "agent": {
+      "coral": {
+        "$type": "color",
+        "$value": "#C25D58",
+        "$extensions": {
+          "ai.botcord": {
+            "oklch": "oklch(0.6 0.13 25)"
+          }
+        }
+      },
+      "amber": {
+        "$type": "color",
+        "$value": "#B46D10",
+        "$extensions": {
+          "ai.botcord": {
+            "oklch": "oklch(0.6 0.13 65)"
+          }
+        }
+      },
+      "lime": {
+        "$type": "color",
+        "$value": "#7E8814",
+        "$extensions": {
+          "ai.botcord": {
+            "oklch": "oklch(0.6 0.13 115)"
+          }
+        }
+      },
+      "green": {
+        "$type": "color",
+        "$value": "#3B9555",
+        "$extensions": {
+          "ai.botcord": {
+            "oklch": "oklch(0.6 0.13 150)"
+          }
+        }
+      },
+      "cyan": {
+        "$type": "color",
+        "$value": "#03919D",
+        "$extensions": {
+          "ai.botcord": {
+            "oklch": "oklch(0.6 0.102 205)"
+          }
+        }
+      },
+      "blue": {
+        "$type": "color",
+        "$value": "#3A84CA",
+        "$extensions": {
+          "ai.botcord": {
+            "oklch": "oklch(0.6 0.13 250)"
+          }
+        }
+      },
+      "violet": {
+        "$type": "color",
+        "$value": "#8071C8",
+        "$extensions": {
+          "ai.botcord": {
+            "oklch": "oklch(0.6 0.13 290)"
+          }
+        }
+      },
+      "pink": {
+        "$type": "color",
+        "$value": "#AF609F",
+        "$extensions": {
+          "ai.botcord": {
+            "oklch": "oklch(0.6 0.13 335)"
+          }
+        }
+      }
+    },
+    "light": {
+      "bg": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.25}",
+        "$description": "页面背景"
+      },
+      "surface": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.0}",
+        "$description": "卡片、面板"
+      },
+      "surface-raised": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.0}",
+        "$description": "弹层、菜单"
+      },
+      "surface-sunken": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.50}",
+        "$description": "输入框底、代码块"
+      },
+      "border": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.200}",
+        "$description": "默认边框"
+      },
+      "border-strong": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.300}",
+        "$description": "强调边框、分隔"
+      },
+      "text": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.900}",
+        "$description": "主文字"
+      },
+      "text-secondary": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.600}",
+        "$description": "次要文字"
+      },
+      "text-tertiary": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.500}",
+        "$description": "占位、禁用"
+      },
+      "brand": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.500}",
+        "$description": "品牌色：logo 信号点、装饰，不用于小字"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.600}",
+        "$description": "主按钮填充、选中态"
+      },
+      "accent-hover": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.700}",
+        "$description": "主按钮 hover"
+      },
+      "accent-text": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.700}",
+        "$description": "链接、强调文字"
+      },
+      "accent-soft": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.50}",
+        "$description": "选中背景、提示条"
+      },
+      "on-accent": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.0}",
+        "$description": "accent 填充上的文字"
+      },
+      "success": {
+        "$type": "color",
+        "$value": "{color.palette.green.600}",
+        "$description": "成功、已送达"
+      },
+      "success-soft": {
+        "$type": "color",
+        "$value": "{color.palette.green.50}"
+      },
+      "warning": {
+        "$type": "color",
+        "$value": "{color.palette.amber.600}",
+        "$description": "警告、等待授权"
+      },
+      "warning-soft": {
+        "$type": "color",
+        "$value": "{color.palette.amber.50}"
+      },
+      "danger": {
+        "$type": "color",
+        "$value": "{color.palette.red.600}",
+        "$description": "错误、危险操作"
+      },
+      "danger-soft": {
+        "$type": "color",
+        "$value": "{color.palette.red.50}"
+      },
+      "focus-ring": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.500}",
+        "$description": "键盘焦点环"
+      }
+    },
+    "dark": {
+      "bg": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.950}",
+        "$description": "页面背景"
+      },
+      "surface": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.850}",
+        "$description": "卡片、面板"
+      },
+      "surface-raised": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.800}",
+        "$description": "弹层、菜单"
+      },
+      "surface-sunken": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.1000}",
+        "$description": "输入框底、代码块"
+      },
+      "border": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.800}",
+        "$description": "默认边框"
+      },
+      "border-strong": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.700}",
+        "$description": "强调边框、分隔"
+      },
+      "text": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.50}",
+        "$description": "主文字"
+      },
+      "text-secondary": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.400}",
+        "$description": "次要文字"
+      },
+      "text-tertiary": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.500}",
+        "$description": "占位、禁用"
+      },
+      "brand": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.400}",
+        "$description": "品牌色：logo 信号点、装饰，不用于小字"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.400}",
+        "$description": "主按钮填充、选中态"
+      },
+      "accent-hover": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.300}",
+        "$description": "主按钮 hover"
+      },
+      "accent-text": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.300}",
+        "$description": "链接、强调文字"
+      },
+      "accent-soft": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.950}",
+        "$description": "选中背景、提示条"
+      },
+      "on-accent": {
+        "$type": "color",
+        "$value": "{color.palette.neutral.950}",
+        "$description": "accent 填充上的文字"
+      },
+      "success": {
+        "$type": "color",
+        "$value": "{color.palette.green.400}",
+        "$description": "成功、已送达"
+      },
+      "success-soft": {
+        "$type": "color",
+        "$value": "{color.palette.green.950}"
+      },
+      "warning": {
+        "$type": "color",
+        "$value": "{color.palette.amber.400}",
+        "$description": "警告、等待授权"
+      },
+      "warning-soft": {
+        "$type": "color",
+        "$value": "{color.palette.amber.950}"
+      },
+      "danger": {
+        "$type": "color",
+        "$value": "{color.palette.red.400}",
+        "$description": "错误、危险操作"
+      },
+      "danger-soft": {
+        "$type": "color",
+        "$value": "{color.palette.red.950}"
+      },
+      "focus-ring": {
+        "$type": "color",
+        "$value": "{color.palette.cyan.400}",
+        "$description": "键盘焦点环"
+      }
+    }
+  },
+  "font": {
+    "family": {
+      "sans": {
+        "$type": "fontFamily",
+        "$value": [
+          "Geist",
+          "PingFang SC",
+          "Noto Sans SC",
+          "Microsoft YaHei",
+          "system-ui",
+          "sans-serif"
+        ]
+      },
+      "mono": {
+        "$type": "fontFamily",
+        "$value": [
+          "Geist Mono",
+          "SFMono-Regular",
+          "Menlo",
+          "monospace"
+        ]
+      }
+    },
+    "weight": {
+      "regular": {
+        "$type": "fontWeight",
+        "$value": 400
+      },
+      "medium": {
+        "$type": "fontWeight",
+        "$value": 500
+      },
+      "semibold": {
+        "$type": "fontWeight",
+        "$value": 600
+      }
+    }
+  },
+  "typography": {
+    "display": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": {
+          "value": 56,
+          "unit": "px"
+        },
+        "lineHeight": 1.05,
+        "fontWeight": 600,
+        "letterSpacing": {
+          "value": -0.04,
+          "unit": "em"
+        }
+      }
+    },
+    "h1": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": {
+          "value": 36,
+          "unit": "px"
+        },
+        "lineHeight": 1.15,
+        "fontWeight": 600,
+        "letterSpacing": {
+          "value": -0.03,
+          "unit": "em"
+        }
+      }
+    },
+    "h2": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": {
+          "value": 28,
+          "unit": "px"
+        },
+        "lineHeight": 1.2,
+        "fontWeight": 600,
+        "letterSpacing": {
+          "value": -0.025,
+          "unit": "em"
+        }
+      }
+    },
+    "h3": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": {
+          "value": 22,
+          "unit": "px"
+        },
+        "lineHeight": 1.3,
+        "fontWeight": 600,
+        "letterSpacing": {
+          "value": -0.02,
+          "unit": "em"
+        }
+      }
+    },
+    "h4": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": {
+          "value": 18,
+          "unit": "px"
+        },
+        "lineHeight": 1.4,
+        "fontWeight": 600,
+        "letterSpacing": {
+          "value": -0.01,
+          "unit": "em"
+        }
+      }
+    },
+    "body-lg": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": {
+          "value": 16,
+          "unit": "px"
+        },
+        "lineHeight": 1.6,
+        "fontWeight": 400,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "px"
+        }
+      }
+    },
+    "body": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": {
+          "value": 14,
+          "unit": "px"
+        },
+        "lineHeight": 1.6,
+        "fontWeight": 400,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "px"
+        }
+      }
+    },
+    "body-sm": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": {
+          "value": 13,
+          "unit": "px"
+        },
+        "lineHeight": 1.5,
+        "fontWeight": 400,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "px"
+        }
+      }
+    },
+    "caption": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": {
+          "value": 12,
+          "unit": "px"
+        },
+        "lineHeight": 1.45,
+        "fontWeight": 500,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "px"
+        }
+      }
+    },
+    "mono": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.mono}",
+        "fontSize": {
+          "value": 13,
+          "unit": "px"
+        },
+        "lineHeight": 1.5,
+        "fontWeight": 400,
+        "letterSpacing": {
+          "value": 0,
+          "unit": "px"
+        }
+      }
+    }
+  },
+  "radius": {
+    "xs": {
+      "$type": "dimension",
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      }
+    },
+    "sm": {
+      "$type": "dimension",
+      "$value": {
+        "value": 6,
+        "unit": "px"
+      }
+    },
+    "md": {
+      "$type": "dimension",
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      }
+    },
+    "lg": {
+      "$type": "dimension",
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      }
+    },
+    "xl": {
+      "$type": "dimension",
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      }
+    },
+    "2xl": {
+      "$type": "dimension",
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      }
+    },
+    "full": {
+      "$type": "dimension",
+      "$value": {
+        "value": 9999,
+        "unit": "px"
+      }
+    }
+  },
+  "space": {
+    "0": {
+      "$type": "dimension",
+      "$value": {
+        "value": 0,
+        "unit": "px"
+      }
+    },
+    "1": {
+      "$type": "dimension",
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      }
+    },
+    "2": {
+      "$type": "dimension",
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      }
+    },
+    "3": {
+      "$type": "dimension",
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      }
+    },
+    "4": {
+      "$type": "dimension",
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      }
+    },
+    "5": {
+      "$type": "dimension",
+      "$value": {
+        "value": 20,
+        "unit": "px"
+      }
+    },
+    "6": {
+      "$type": "dimension",
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      }
+    },
+    "8": {
+      "$type": "dimension",
+      "$value": {
+        "value": 32,
+        "unit": "px"
+      }
+    },
+    "10": {
+      "$type": "dimension",
+      "$value": {
+        "value": 40,
+        "unit": "px"
+      }
+    },
+    "12": {
+      "$type": "dimension",
+      "$value": {
+        "value": 48,
+        "unit": "px"
+      }
+    },
+    "16": {
+      "$type": "dimension",
+      "$value": {
+        "value": 64,
+        "unit": "px"
+      }
+    },
+    "20": {
+      "$type": "dimension",
+      "$value": {
+        "value": 80,
+        "unit": "px"
+      }
+    },
+    "24": {
+      "$type": "dimension",
+      "$value": {
+        "value": 96,
+        "unit": "px"
+      }
+    }
+  },
+  "shadow": {
+    "sm": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "#13161A0F",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 1,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 2,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        }
+      ]
+    },
+    "md": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "#13161A14",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 4,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 16,
+            "unit": "px"
+          },
+          "spread": {
+            "value": -2,
+            "unit": "px"
+          }
+        }
+      ]
+    },
+    "lg": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "#13161A1F",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 16,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 40,
+            "unit": "px"
+          },
+          "spread": {
+            "value": -8,
+            "unit": "px"
+          }
+        }
+      ]
+    }
+  },
+  "motion": {
+    "duration": {
+      "instant": {
+        "$type": "duration",
+        "$value": {
+          "value": 80,
+          "unit": "ms"
+        }
+      },
+      "fast": {
+        "$type": "duration",
+        "$value": {
+          "value": 140,
+          "unit": "ms"
+        }
+      },
+      "base": {
+        "$type": "duration",
+        "$value": {
+          "value": 220,
+          "unit": "ms"
+        }
+      },
+      "slow": {
+        "$type": "duration",
+        "$value": {
+          "value": 360,
+          "unit": "ms"
+        }
+      },
+      "state-loop": {
+        "$type": "duration",
+        "$value": {
+          "value": 1400,
+          "unit": "ms"
+        }
+      }
+    },
+    "easing": {
+      "standard": {
+        "$type": "cubicBezier",
+        "$value": [
+          0.2,
+          0,
+          0,
+          1
+        ]
+      },
+      "enter": {
+        "$type": "cubicBezier",
+        "$value": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "exit": {
+        "$type": "cubicBezier",
+        "$value": [
+          0.4,
+          0,
+          1,
+          1
+        ]
+      }
+    }
+  }
+}
