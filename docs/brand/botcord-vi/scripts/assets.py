@@ -101,16 +101,18 @@ def app_icon(bg, ink, acc, border=None):
 write("logo/botcord-app-icon-dark.svg", app_icon(BG_DARK, INK_ON_DARK, ACCENT_ON_DARK))
 write("logo/botcord-app-icon-light.svg", app_icon(BG_LIGHT, INK, ACCENT, border="#DADEE3"))
 write("logo/botcord-app-icon-brand.svg", app_icon(ACCENT, "#FFFFFF", "#FFFFFF"))
-write("logo/botcord-favicon.svg", f'''
+# Browser tab backgrounds do not necessarily follow the OS colour scheme.
+write("logo/botcord-favicon.svg", '''
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
-  <style>
-    .cord {{ stroke: {INK}; }} .node {{ fill: {INK}; }} .sig {{ fill: {ACCENT}; }}
-    @media (prefers-color-scheme: dark) {{ .cord {{ stroke: {INK_ON_DARK}; }} .node {{ fill: {INK_ON_DARK}; }} .sig {{ fill: {ACCENT_ON_DARK}; }} }}
-  </style>
-  <path class="cord" d="{CORD}" stroke-width="{STROKE}" stroke-linecap="round"/>
-  <circle class="node" cx="{N1[0]}" cy="{N1[1]}" r="{R}"/>
-  <circle class="sig" cx="{N2[0]}" cy="{N2[1]}" r="{R}"/>
-</svg>''')
+  <!-- An opaque tile keeps the mark readable on selected, inactive and tinted browser tabs. -->
+  <rect x="0.5" y="0.5" width="47" height="47" rx="11" fill="#F1F6FA" stroke="#DADEE3"/>
+  <g transform="translate(4.8 4.8) scale(0.8)">
+    <path d="M8.5 34 C 24 34, 24 14, 39.5 14" stroke="#13161A" stroke-width="5.5" stroke-linecap="round"/>
+    <circle cx="8.5" cy="34" r="7" fill="#13161A"/>
+    <circle cx="39.5" cy="14" r="7" fill="#0D98A4"/>
+  </g>
+</svg>
+''')
 
 # --- cord field (auxiliary graphic) ------------------------------------------
 def cord_field(w, h, step, ink, acc, seed=7, line_op=0.18, node_op=0.35, accent_every=9, r=3.2, sw=1.6):
