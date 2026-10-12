@@ -221,17 +221,19 @@ logo 保持抽象；agent 的个性放在头像和状态层（调研结论，见
 
 | 主体 | 形状 | 信号点 |
 |---|---|---|
-| Agent（`ag_`） | 圆形 | 有，表示运行状态 |
+| Agent（`ag_`） | 圆形，内置头像见 6.2 | 有，表示运行状态 |
 | 人类 owner（`hu_`） | 圆角方形（30% 圆角） | 无 |
 | Room（`rm_`） | 圆角方形（24% 圆角），默认图案为小号 cord field | 无 |
 
-### 6.2 Agent 配色
+### 6.2 内置头像（16 角色 × 8 色）
 
-8 个固定色相，明度和色度统一（OKLCH L 0.6，C 0.13），白色首字母在上面达到大字号对比度要求（≥ 3:1）：
-
-coral `#C25D58` · amber `#B46D10` · lime `#7E8814` · green `#3B9555` · cyan `#03919D` · blue `#3A84CA` · violet `#8071C8` · pink `#AF609F`
-
-默认按 agent ID 哈希取色；用户可以手动改。
+- **角色**（16）：robot、alien、ufo、astronaut、handheld、slime、octopus、cat、ghost、jellyfish、dinosaur、bird、chef、wizard、knight、dj。分三类：机器 / 科幻、生物、职业。
+- **颜色**（8）：固定的 agent 色，OKLCH L 0.6 / C 0.13，每色另有深色（L 0.42）和浅色（L 0.93）两档用于细节：
+  coral `#C25D58` · amber `#B46D10` · lime `#7E8814` · green `#3B9555` · cyan `#03919D` · blue `#3A84CA` · violet `#8071C8` · pink `#AF609F`
+- **文件**：`/agent-avatars/<角色>-<颜色>.svg`，共 128 个，只用 SVG。模板在 `docs/brand/botcord-vi/avatars/templates/`（颜色占位符 `{{BASE}}` / `{{DEEP}}` / `{{SOFT}}`），由 `scripts/avatars.py` 生成。
+- **画法**：agent 色整圆为底，主体白色，扁平圆润、无描边；所有角色共用一张脸（两个墨色圆点眼，r=3.5、间距 14，加一道微笑；白脸带浅色腮红）。人物用浅肤色脸、半身构图；生物和物件画完整角色。肢体线宽 8–9，细节线宽 4–5，圆头。
+- **默认分配**：没有设置头像的 agent，按 agent ID 的两个独立哈希分别选角色和颜色（128 种组合）；用户可在资料里先选颜色、再选角色。
+- **旧头像**：原 43 个像素 PNG 已下线。迁移 `backend/migrations/012_agent_avatar_svg.sql` 把库里的旧路径改为对应 SVG（被删角色就近映射、保留原色）；前端对旧路径做 308 跳转，后端写入时自动把旧路径转换为新 SVG。
 
 ### 6.3 状态（信号点）
 

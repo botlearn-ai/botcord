@@ -19,7 +19,7 @@ import {
 import UnbindAgentDialog from "./UnbindAgentDialog";
 import AgentChannelsTab from "./AgentChannelsTab";
 import AgentSchedulesTab from "./AgentSchedulesTab";
-import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
+import AgentAvatarPicker from "./AgentAvatarPicker";
 import BotRuntimeCapabilitiesPanel from "./BotRuntimeCapabilitiesPanel";
 import AgentSkillsTab from "./AgentSkillsTab";
 import AgentDefaultPermission from "./AgentDefaultPermission";
@@ -578,28 +578,13 @@ function AgentSettingsDrawer({
                 <label className="mb-2 block text-xs font-medium text-text-secondary">
                   {labels.avatar}
                 </label>
-                <div className="grid grid-cols-6 gap-2 sm:grid-cols-8">
-                  {AGENT_AVATAR_URLS.map((url) => {
-                    const selected = avatarVal === url;
-                    return (
-                      <button
-                        key={url}
-                        type="button"
-                        onClick={() => setAvatarVal(url)}
-                        disabled={profileSaving}
-                        className={`aspect-square overflow-hidden rounded-full border bg-glass-bg transition-all disabled:opacity-60 ${
-                          selected
-                            ? "border-neon-cyan ring-2 ring-neon-cyan/30"
-                            : "border-glass-border hover:border-neon-cyan/50"
-                        }`}
-                        aria-label={labels.chooseAvatar}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="" className="h-full w-full object-cover" />
-                      </button>
-                    );
-                  })}
-                </div>
+                <AgentAvatarPicker
+                  value={avatarVal}
+                  onChange={setAvatarVal}
+                  disabled={profileSaving}
+                  colorLabel={locale === "zh" ? "头像颜色" : "Avatar colour"}
+                  avatarLabel={labels.chooseAvatar}
+                />
               </div>
 
               <div>

@@ -665,7 +665,7 @@ async def test_list_owned_agent_rooms_excludes_current_human_rooms(
     agent = Agent(
         agent_id="ag_alice00001",
         display_name="Alice Bot",
-        avatar_url="/agent-avatars/2.png",
+        avatar_url="/agent-avatars/cat-lime.svg",
         message_policy=MessagePolicy.open,
         user_id=seed["user_id"],
     )
@@ -758,14 +758,14 @@ async def test_list_owned_agent_rooms_excludes_current_human_rooms(
     assert rooms[0]["bots"] == [
         {
             "agent_id": "ag_alice00001",
-            "avatar_url": "/agent-avatars/2.png",
+            "avatar_url": "/agent-avatars/cat-lime.svg",
             "display_name": "Alice Bot",
             "role": "member",
         }
     ]
     assert rooms[0]["member_count"] == 3
     assert rooms[0]["members_preview"] == [
-        {"agent_id": "ag_alice00001", "avatar_url": "/agent-avatars/2.png", "display_name": "Alice Bot"},
+        {"agent_id": "ag_alice00001", "avatar_url": "/agent-avatars/cat-lime.svg", "display_name": "Alice Bot"},
         {"agent_id": "ag_peer000001", "avatar_url": None, "display_name": "Peer Bot"},
         {"agent_id": "ag_third00001", "avatar_url": None, "display_name": "Third Bot"},
     ]

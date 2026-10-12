@@ -822,18 +822,30 @@ async def test_patch_agent_updates_avatar_url(client: AsyncClient, seed_user: di
 
     resp = await client.patch(
         "/api/users/me/agents/ag_agent001",
-        json={"avatar_url": "/agent-avatars/7.png"},
+        json={"avatar_url": "/agent-avatars/robot-blue.svg"},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["avatar_url"] == "/agent-avatars/7.png"
+    assert resp.json()["avatar_url"] == "/agent-avatars/robot-blue.svg"
 
     agents_resp = await client.get(
         "/api/users/me/agents",
         headers={"Authorization": f"Bearer {token}"},
     )
     agents = {a["agent_id"]: a for a in agents_resp.json()["agents"]}
-    assert agents["ag_agent001"]["avatar_url"] == "/agent-avatars/7.png"
+    assert agents["ag_agent001"]["avatar_url"] == "/agent-avatars/robot-blue.svg"
+
+
+@pytest.mark.asyncio
+async def test_patch_agent_maps_legacy_pixel_avatar_to_svg(client: AsyncClient, seed_user: dict):
+    # Stale clients may still send a retired /agent-avatars/<n>.png value.
+    resp = await client.patch(
+        "/api/users/me/agents/ag_agent001",
+        json={"avatar_url": "/agent-avatars/20.png"},
+        headers={"Authorization": f"Bearer {seed_user['token']}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["avatar_url"] == "/agent-avatars/knight-coral.svg"
 
 
 @pytest.mark.asyncio

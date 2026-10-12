@@ -132,7 +132,7 @@ async def seed(db_session: AsyncSession):
     now = datetime.datetime.now(datetime.timezone.utc)
     a1 = Agent(agent_id="ag_alice001", display_name="Alice", message_policy=MessagePolicy.open,
                user_id=uid1, is_default=True, claimed_at=now,
-               avatar_url="/agent-avatars/4.png")
+               avatar_url="/agent-avatars/alien-green.svg")
     a3 = Agent(agent_id="ag_carol001", display_name="Carol Agent",
                message_policy=MessagePolicy.open,
                user_id=uid3, is_default=True, claimed_at=now)

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <defs>
+    <clipPath id="c">
+      <circle cx="48" cy="48" r="48"/>
+    </clipPath>
+  </defs>
+  <circle cx="48" cy="48" r="48" fill="#3B9555"/>
+  <g clip-path="url(#c)">
+    <rect x="22" y="73" width="52" height="40" rx="18" fill="#D6F0DA"/>
+    <circle cx="48" cy="56" r="17" fill="#D6F0DA"/>
+    <path d="M31 58 C 31 76, 40 88, 48 90 C 56 88, 65 76, 65 58 C 61 65, 56 67, 48 67 C 40 67, 35 65, 31 58 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M30 41 C 36 30, 40 18, 52 10 C 58 7, 66 9, 68 14 C 62 13, 58 16, 60 24 C 62 30, 64 36, 66 41 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="20" y="38" width="56" height="8" rx="4" fill="#FFFFFF"/>
+    <circle cx="50" cy="30" r="3" fill="#195C2E"/>
+    <circle cx="41" cy="54" r="3.5" fill="#13161A"/>
+    <circle cx="55" cy="54" r="3.5" fill="#13161A"/>
+    <path d="M43 59 Q48 63 53 59" fill="none" stroke="#13161A" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>

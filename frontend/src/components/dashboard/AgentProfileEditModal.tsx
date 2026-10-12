@@ -7,7 +7,7 @@ import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import UnbindAgentDialog from "./UnbindAgentDialog";
-import { AGENT_AVATAR_URLS } from "@/lib/agent-avatars";
+import AgentAvatarPicker from "./AgentAvatarPicker";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
 
 interface AgentProfileEditModalProps {
@@ -160,28 +160,13 @@ function AgentProfileEditModal({
           <span className="mb-2 block text-xs font-medium text-text-secondary">
             {locale === "zh" ? "头像" : "Avatar"}
           </span>
-          <div className="grid max-h-40 grid-cols-6 gap-2 overflow-y-auto pr-1">
-            {AGENT_AVATAR_URLS.map((url) => {
-              const selected = avatarUrl === url;
-              return (
-                <button
-                  key={url}
-                  type="button"
-                  onClick={() => setAvatarUrl(url)}
-                  disabled={saving}
-                  className={`liquid-action aspect-square overflow-hidden rounded-full border transition-all disabled:opacity-60 ${
-                    selected
-                      ? "border-neon-cyan ring-2 ring-neon-cyan/30"
-                      : "border-glass-border hover:border-neon-cyan/50"
-                  }`}
-                  aria-label={locale === "zh" ? "选择头像" : "Select avatar"}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt="" className="h-full w-full object-cover" />
-                </button>
-              );
-            })}
-          </div>
+          <AgentAvatarPicker
+            value={avatarUrl}
+            onChange={setAvatarUrl}
+            disabled={saving}
+            colorLabel={locale === "zh" ? "头像颜色" : "Avatar colour"}
+            avatarLabel={locale === "zh" ? "选择头像" : "Select avatar"}
+          />
         </div>
 
         <label data-agent-profile-modal-part className="mb-3 block">
