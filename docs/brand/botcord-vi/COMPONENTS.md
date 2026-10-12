@@ -170,3 +170,11 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 - **营销专用布局与动画**：Hero、3D 场景和功能演示继续放在营销目录，组件库提供品牌、卡片、标题和 CTA。
 
 本轮完成类型覆盖、共享实现提取和代表性业务接入，不代表所有裸 button/input、手写弹窗和旧视觉样式已迁移完毕。新增页面优先用上表的组件，存量按业务行为逐步迁移。
+
+### 排版与可读性（2026-10-12）
+
+- 字体由 `next/font` 加载 Geist / Geist Mono；中文依次回退 PingFang SC、Noto Sans SC、Microsoft YaHei。字体加载变量与 Tailwind 别名分开命名，避免自引用。
+- `type-heading-1/2/3`、`type-body-sm`、`type-caption` 直接引用生成的 VI 字体 token；新增规格先更新 token 源文件。
+- 选项说明、表单提示使用普通字体及 `text-text-secondary`，不降低透明度。等宽字体留给代码和标识符。
+- 加载文案不强制大写、不额外增加字距；按钮和输入框使用 8px 圆角。
+- `/design#typography` 提供中英文、数字及标识符样张。业务页面中尚未迁移的局部样式不代表已完成全站 VI 对齐。

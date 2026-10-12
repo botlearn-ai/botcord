@@ -43,7 +43,7 @@ export default function ExtendedGallery() {
   const confirm = useConfirm();
   return <div className="space-y-10 border-t border-border py-10">
     <section id="selection" className="space-y-5">
-      <h2 className="text-2xl font-semibold">选择与搜索</h2>
+      <h2 className="type-heading-2">选择与搜索</h2>
       <p className="text-sm text-text-secondary">原生单选、带说明的单选、可搜索多选和搜索框。原有 dashboard 入口已复用这里的组件。</p>
       <div className="grid gap-6 md:grid-cols-2">
         <Field label="Select · 原生选择"><Select defaultValue="all"><option value="all">全部 Agent</option><option value="online">在线</option><option disabled>不可用</option></Select></Field>
@@ -55,26 +55,26 @@ export default function ExtendedGallery() {
       </div>
     </section>
     <section id="persistent-feedback" className="space-y-4">
-      <h2 className="text-2xl font-semibold">行内反馈与抽屉</h2>
+      <h2 className="type-heading-2">行内反馈与抽屉</h2>
       <div className="grid gap-3 md:grid-cols-2"><Alert title="正在同步">连接建立后会更新列表。</Alert><Alert tone="success" title="已保存">回复规则已更新。</Alert><Alert tone="warning" title="需要授权">转账尚未执行。</Alert><Alert tone="danger" title="保存失败" actions={<Button size="sm">重试</Button>}>请检查连接后重试。</Alert></div>
       <div className="flex flex-wrap items-center gap-3"><IconButton label="设置"><Settings /></IconButton><IconButton label="删除" danger><Trash2 /></IconButton><IconButton label="不可用" disabled><Settings /></IconButton><Button onClick={() => setDrawer(true)}>打开抽屉</Button><Button onClick={() => void confirm({ title: "确认更新规则？", message: "此示例不会修改任何数据。", confirmLabel: "确认", cancelLabel: "取消" })}>打开确认框</Button></div>
       <Disclosure title="Disclosure · 查看详细信息"><p>折叠区使用原生 details，支持键盘操作。</p></Disclosure>
     </section>
     <section id="data" className="space-y-4">
-      <h2 className="text-2xl font-semibold">数据展示</h2>
+      <h2 className="type-heading-2">数据展示</h2>
       <div className="grid gap-3 sm:grid-cols-3"><MetricCard label="在线 Agent" value={8} /><MetricCard label="待处理申请" value={3} accent /><MetricCard label="本月用量" value="1,284" detail="统计范围：当前团队" /></div>
       <div className="overflow-x-auto rounded-xl border border-border"><Table><caption className="p-3 text-left text-sm text-text-secondary">Agent 列表 · 示例数据</caption><TableHead><TableRow><TableHeader>名称</TableHeader><TableHeader>角色</TableHeader><TableHeader>未读</TableHeader></TableRow></TableHead><TableBody><TableRow><TableCell>Atlas</TableCell><TableCell>Research</TableCell><TableCell><UnreadBadge count={4} label="4 条未读消息" /></TableCell></TableRow><TableRow><TableCell>Coder</TableCell><TableCell>Development</TableCell><TableCell><UnreadBadge count={120} /></TableCell></TableRow></TableBody></Table></div>
       <CopyableId value="ag_gallery_example" />
     </section>
     <section id="content" className="space-y-4">
-      <h2 className="text-2xl font-semibold">消息内容与附件</h2>
+      <h2 className="type-heading-2">消息内容与附件</h2>
       <div className="rounded-xl border border-border bg-surface p-4"><MarkdownContent content={'**Atlas** 已完成整理。\n\n- 支持 Markdown 列表\n- 代码、链接和表格沿用消息文档样式\n\n```json\n{"status":"done"}\n```'} /></div>
       <SystemMessageNotice text="Atlas 加入了房间" timestamp="10:24" />
       <AttachmentItem attachment={{ filename: "BotCord Logo.svg", url: "favicon.svg", content_type: "image/svg+xml", size_bytes: 640 }} onPreview={() => setImageOpen(true)} />
       <Button onClick={() => setImageOpen(true)}>打开图片预览</Button>
     </section>
     <section id="marketing" className="space-y-4">
-      <h2 className="text-2xl font-semibold">营销页与品牌</h2>
+      <h2 className="type-heading-2">营销页与品牌</h2>
       <MarketingCard><SectionHeading title="让 Agent 连接起来" subtitle="营销页复用品牌辅助图形、区块标题和 CTA。" /><div className="flex flex-wrap justify-center gap-3"><MarketingButton href="#selection">查看组件</MarketingButton><MarketingButton variant="primary" onClick={() => setDrawer(true)}>体验交互</MarketingButton></div><div className="relative mt-6 h-32 overflow-hidden"><CordField className="absolute inset-0 h-full w-full" /></div></MarketingCard>
       <TypewriterCode code={'{ "from": "Atlas", "to": "Coder", "status": "delivered" }'} />
     </section>

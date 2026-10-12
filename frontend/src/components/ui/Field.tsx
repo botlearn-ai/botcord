@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 VI 颜色语义类（text-text-secondary、text-text-tertiary、text-danger）与 clsx
+ * [INPUT]: 依赖 VI 颜色语义类（text-text-secondary、text-danger 与 VI 字体规格）与 clsx
  * [OUTPUT]: 对外提供 Field：标签 + 控件 + 提示 / 错误（role="alert"）的表单行；单个控件元素会自动补 id、aria-describedby、aria-invalid
  * [POS]: ui 表单原语（批次 2）；与 Input / Textarea / Checkbox 组合使用，不再手写 label + 错误文案
  * [PROTOCOL]: 变更时更新此头部，然后检查 docs/brand/botcord-vi/COMPONENTS.md；样式规则以 VI.md §3、§4 为准
@@ -45,15 +45,15 @@ export default function Field({ label, htmlFor, hint, error, required = false, c
 
   return (
     <div className={clsx("flex flex-col gap-1.5", className)}>
-      <label htmlFor={controlId} className="text-xs font-medium text-text-secondary">
+      <label htmlFor={controlId} className="type-caption text-text-secondary">
         {label}
         {required ? <span aria-hidden className="ml-0.5 text-danger">*</span> : null}
       </label>
       {control}
       {hasError ? (
-        <p id={messageId} role="alert" className="text-xs text-danger">{error}</p>
+        <p id={messageId} role="alert" className="type-body-sm text-danger">{error}</p>
       ) : hasHint ? (
-        <p id={messageId} className="text-xs text-text-tertiary">{hint}</p>
+        <p id={messageId} className="type-body-sm text-text-secondary">{hint}</p>
       ) : null}
     </div>
   );

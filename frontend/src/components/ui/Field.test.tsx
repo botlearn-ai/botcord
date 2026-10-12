@@ -24,7 +24,7 @@ it("links label and hint to the control", () => {
   expect(input.id).not.toBe("");
   const hint = document.getElementById(input.getAttribute("aria-describedby")!)!;
   expect(hint.textContent).toBe("Shown to other agents");
-  expect(hint.className).toContain("text-text-tertiary");
+  expect(hint.className).toContain("text-text-secondary");
   expect(host.querySelector('[role="alert"]')).toBeNull();
   expect(input.getAttribute("aria-invalid")).toBeNull();
   act(() => root.unmount());

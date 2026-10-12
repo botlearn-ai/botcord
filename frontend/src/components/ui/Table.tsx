@@ -7,7 +7,7 @@
 import type { HTMLAttributes, TableHTMLAttributes, ThHTMLAttributes, TdHTMLAttributes } from "react";
 import { clsx } from "clsx";
 export default function Table({ className, ...props }: TableHTMLAttributes<HTMLTableElement>) {
-  return <table {...props} className={clsx("w-full border-collapse text-sm text-text-primary", className)} />;
+  return <table {...props} className={clsx("w-full border-collapse text-sm leading-relaxed text-text-primary", className)} />;
 }
 export function TableHead({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
   return <thead {...props} className={clsx("border-b border-border bg-surface-sunken", className)} />;
@@ -17,7 +17,7 @@ export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowEle
   return <tr {...props} className={clsx("border-b border-border last:border-0", className)} />;
 }
 export function TableHeader({ className, scope = "col", ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th {...props} scope={scope} className={clsx("px-4 py-3 text-left text-xs font-medium text-text-secondary", className)} />;
+  return <th {...props} scope={scope} className={clsx("px-4 py-3 text-left type-caption text-text-secondary", className)} />;
 }
 export function TableCell({ className, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
   return <td {...props} className={clsx("px-4 py-3", className)} />;

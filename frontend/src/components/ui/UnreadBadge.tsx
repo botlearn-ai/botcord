@@ -40,7 +40,7 @@ export default function UnreadBadge({
     <span
       ref={badgeRef}
       aria-label={label}
-      className={`flex shrink-0 items-center justify-center rounded-full bg-neon-cyan font-bold leading-none text-[var(--color-on-accent)] tabular-nums ${sizing} ${className}`}
+      className={`flex shrink-0 items-center justify-center rounded-full bg-neon-cyan font-semibold leading-none text-[var(--color-on-accent)] tabular-nums ${sizing} ${className}`}
     >
       {formatUnreadCount(count)}
     </span>

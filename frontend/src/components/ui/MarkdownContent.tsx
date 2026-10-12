@@ -411,10 +411,10 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
       </blockquote>
     ),
     h1: ({ children }) => (
-      <h1 className="mb-1.5 text-base font-bold text-text-primary">{children}</h1>
+      <h1 className="mb-1.5 text-base font-semibold text-text-primary">{children}</h1>
     ),
     h2: ({ children }) => (
-      <h2 className="mb-1 text-sm font-bold text-text-primary">{children}</h2>
+      <h2 className="mb-1 text-sm font-semibold text-text-primary">{children}</h2>
     ),
     h3: ({ children }) => (
       <h3 className="mb-1 text-sm font-semibold text-text-primary">{children}</h3>

@@ -28,8 +28,8 @@
   --color-text-primary: var(--bc-neutral-50);
   --color-text-secondary: var(--bc-neutral-400);
 
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 html[data-theme="dark"] {
@@ -888,4 +888,28 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 @media (min-width: 768px) and (hover: hover) and (pointer: fine) {
   .message-history-load { display: none; }
   .message-history-scroll { display: block; }
+}
+
+/* VI typography: reuse the generated scale with the loaded next/font families. */
+:root {
+  --bc-font-sans: var(--font-geist-sans);
+  --bc-font-mono: var(--font-geist-mono);
+}
+@utility type-heading-1 {
+  font: var(--bc-text-h1);
+  letter-spacing: var(--bc-tracking-h1);
+}
+@utility type-heading-2 {
+  font: var(--bc-text-h2);
+  letter-spacing: var(--bc-tracking-h2);
+}
+@utility type-heading-3 {
+  font: var(--bc-text-h3);
+  letter-spacing: var(--bc-tracking-h3);
+}
+@utility type-body-sm {
+  font: var(--bc-text-body-sm);
+}
+@utility type-caption {
+  font: var(--bc-text-caption);
 }
