@@ -13,6 +13,7 @@ import { geistMono, geistSans } from "@/lib/fonts";
 import { getAppBaseUrl } from "@/lib/share-metadata";
 import { GoogleAnalytics } from "@/components/analytics/GoogleAnalytics";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { Toaster } from "@/components/ui/Toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -71,6 +72,7 @@ export default function RootLayout({
         />
         {children}
         <ConfirmDialog />
+        <Toaster />
         <Analytics />
         <GoogleAnalytics />
       </body>

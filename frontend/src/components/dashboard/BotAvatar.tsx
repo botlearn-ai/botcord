@@ -1,6 +1,6 @@
 "use client";
 
-import { getBotAvatarUrl } from "@/lib/bot-avatars";
+import Avatar from "@/components/ui/Avatar";
 
 interface BotAvatarProps {
   agentId: string;
@@ -10,29 +10,20 @@ interface BotAvatarProps {
   /** Optional alt text (defaults to agent name if provided). */
   alt?: string;
   className?: string;
-  /** Override the rounded radius. Defaults to "rounded-full". */
+  /** Ignored: VI v1.0 draws every agent as a circle. Kept for call-site compatibility. */
   shape?: "circle" | "rounded";
 }
 
-export default function BotAvatar({
-  agentId,
-  avatarUrl,
-  size = 40,
-  alt,
-  className = "",
-  shape = "circle",
-}: BotAvatarProps) {
-  const url = avatarUrl || getBotAvatarUrl(agentId);
-  const radius = shape === "circle" ? "rounded-full" : "rounded-xl";
+/** Legacy wrapper around `ui/Avatar` (kind="agent"). New code should use Avatar directly. */
+export default function BotAvatar({ agentId, avatarUrl, size = 40, alt, className = "" }: BotAvatarProps) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={url}
-      alt={alt || `Bot ${agentId}`}
-      width={size}
-      height={size}
-      className={`shrink-0 ${radius} object-cover ring-1 ring-glass-border ${className}`}
-      style={{ width: size, height: size }}
+    <Avatar
+      kind="agent"
+      id={agentId}
+      name={alt || `Bot ${agentId}`}
+      src={avatarUrl}
+      pixelSize={size}
+      className={className}
     />
   );
 }

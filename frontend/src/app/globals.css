@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "../styles/botcord-tokens.css";
 @import "../styles/botcord-tailwind.css";
+@import "../styles/ui-motion.css";
+@import "../styles/ui-motion-interactive.css";
 
 /*
  * VI v1.0 (Node·Cord) bridge. The legacy token names below (deep-black,

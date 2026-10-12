@@ -1,0 +1,76 @@
+/*
+ * [INPUT]: 依赖 botcord-tokens.css 的 --bc-duration-* / --bc-ease-* 动效 token
+ * [OUTPUT]: 对外提供弹层（Menu / Tooltip）与 Toast 的进出场动画类：.bc-popover、.bc-toast
+ * [POS]: components/ui 批次 2 交互组件的动效层；在 globals.css 中紧跟 botcord-tailwind.css 引入
+ * [PROTOCOL]: 时长与缓动只引用 VI §8 token；新增动画必须同时处理 prefers-reduced-motion
+ */
+
+@keyframes bc-popover-in {
+  from { opacity: 0; transform: translateY(var(--bc-popover-shift, 4px)) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes bc-popover-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(0.97); }
+}
+
+@keyframes bc-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes bc-toast-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(4px); }
+}
+
+@keyframes bc-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bc-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Radix 弹层：Menu 用 data-state=open/closed，Tooltip 用 delayed-open/instant-open/closed。 */
+.bc-popover[data-side="top"] { --bc-popover-shift: 4px; }
+.bc-popover[data-side="bottom"] { --bc-popover-shift: -4px; }
+.bc-popover[data-side="left"],
+.bc-popover[data-side="right"] { --bc-popover-shift: 0px; }
+
+.bc-popover[data-state="open"],
+.bc-popover[data-state="delayed-open"],
+.bc-popover[data-state="instant-open"] {
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-tooltip-content-transform-origin, center));
+  animation: bc-popover-in var(--bc-duration-base) var(--bc-ease-enter);
+}
+
+.bc-popover[data-state="closed"] {
+  animation: bc-popover-out var(--bc-duration-fast) var(--bc-ease-exit) forwards;
+}
+
+.bc-toast[data-state="open"] {
+  animation: bc-toast-in var(--bc-duration-base) var(--bc-ease-enter);
+}
+
+.bc-toast[data-state="closed"] {
+  animation: bc-toast-out var(--bc-duration-base) var(--bc-ease-exit) forwards;
+}
+
+/* VI §8：减少动态时去掉位移，只保留透明度变化。 */
+@media (prefers-reduced-motion: reduce) {
+  .bc-popover[data-state="open"],
+  .bc-popover[data-state="delayed-open"],
+  .bc-popover[data-state="instant-open"],
+  .bc-toast[data-state="open"] {
+    animation: bc-fade-in var(--bc-duration-base) linear;
+  }
+
+  .bc-popover[data-state="closed"],
+  .bc-toast[data-state="closed"] {
+    animation: bc-fade-out var(--bc-duration-fast) linear forwards;
+  }
+}
