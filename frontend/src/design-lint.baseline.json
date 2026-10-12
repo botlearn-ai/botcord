@@ -1,0 +1,22 @@
+{
+  "text-below-11px": {},
+  "text-11px": {},
+  "hex-in-class": {
+    "components/dashboard/DocumentPreviewPane.tsx": 1,
+    "components/dashboard/RoomZeroState.tsx": 1
+  },
+  "rgba-in-class": {
+    "components/home/ConversationDemo.tsx": 3
+  },
+  "fixed-inset-scrim": {
+    "components/dashboard/DashboardApp.tsx": 1,
+    "components/dashboard/DashboardShellSkeleton.tsx": 1,
+    "components/dashboard/DocumentPreviewPane.tsx": 1,
+    "components/dashboard/RoomHeader.tsx": 1,
+    "components/dashboard/sidebar/MessagesPanel.tsx": 1,
+    "components/ui/ImagePreviewOverlay.tsx": 1
+  },
+  "neon-purple": {
+    "components/home/ConversationDemo.tsx": 8
+  }
+}
