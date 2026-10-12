@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 VI token（--bc-text 墨色、--bc-brand 主色）与 globals.css 主题块中的 --cord-line-opacity / --cord-node-opacity
- * [OUTPUT]: 对外提供 CordField 辅助图形（节点之间用 logo 同款 S 形连线相连，约每 9 个节点 1 个主色节点）与 CORD_FIELD 原始几何
- * [POS]: 营销页 hero 背景图形，替代旧的 three.js 粒子网格；浅/深双主题自动跟随 html[data-theme]；分享 OG 图复用 CORD_FIELD
+ * [OUTPUT]: 对外提供 CordField 辅助图形（节点之间用 logo 同款 S 形连线相连，约每 9 个节点 1 个主色节点；可选 seed / 画布尺寸 / 节点间距生成小号变体）与 CORD_FIELD 原始几何
+ * [POS]: 营销页背景与房间封面图形，替代旧的 three.js 粒子网格；浅/深双主题自动跟随 html[data-theme]；分享 OG 图复用 CORD_FIELD
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md；生成规则对齐 docs/brand/botcord-vi/scripts/assets.py cord_field()
  */
 
@@ -76,34 +76,60 @@ const FIELD = buildField(WIDTH, HEIGHT, 96, 7);
 /** Raw geometry for non-DOM renderers (e.g. next/og share images) that cannot read CSS variables. */
 export const CORD_FIELD = { width: WIDTH, height: HEIGHT, ...FIELD };
 
+const FIELD_CACHE = new Map<string, ReturnType<typeof buildField>>();
+
+function fieldFor(width: number, height: number, step: number, seed: number) {
+  if (width === WIDTH && height === HEIGHT && step === 96 && seed === 7) return FIELD;
+  const key = `${width}x${height}/${step}/${seed}`;
+  let field = FIELD_CACHE.get(key);
+  if (!field) {
+    field = buildField(width, height, step, seed);
+    FIELD_CACHE.set(key, field);
+  }
+  return field;
+}
+
+interface CordFieldProps {
+  className?: string;
+  /** Different seeds give different but stable fields, e.g. one per room cover. */
+  seed?: number;
+  width?: number;
+  height?: number;
+  /** Grid spacing between nodes, in viewBox units. */
+  step?: number;
+}
+
 /**
  * Static cord field (VI §5). Ink follows --bc-text, signal nodes use
  * --bc-brand; line/node opacity come from the per-theme --cord-* variables in globals.css so
  * each theme stays inside the 14–22% / 25–40% range.
  */
-export default function CordField({ className }: { className?: string }) {
+export default function CordField({ className, seed = 7, width = WIDTH, height = HEIGHT, step = 96 }: CordFieldProps) {
+  const field = fieldFor(width, height, step, seed);
+  // Node radius tracks the grid so small fields keep the same visual weight.
+  const scale = step / 96;
   return (
     <svg
-      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+      viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="xMidYMid slice"
       fill="none"
       aria-hidden="true"
       className={clsx("text-[var(--bc-text)]", className)}
     >
       <path
-        d={FIELD.d}
+        d={field.d}
         stroke="currentColor"
         strokeWidth={1.6}
         strokeLinecap="round"
         style={{ strokeOpacity: "var(--cord-line-opacity, 0.16)" }}
         vectorEffect="non-scaling-stroke"
       />
-      {FIELD.nodes.map((node) => (
+      {field.nodes.map((node) => (
         <circle
           key={`${node.x}-${node.y}`}
           cx={node.x}
           cy={node.y}
-          r={node.accent ? 4 : 3.2}
+          r={(node.accent ? 4 : 3.2) * scale}
           fill={node.accent ? "var(--bc-brand)" : "currentColor"}
           style={node.accent ? undefined : { fillOpacity: "var(--cord-node-opacity, 0.3)" }}
         />

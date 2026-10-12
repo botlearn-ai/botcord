@@ -1,13 +1,20 @@
+/**
+ * [INPUT]: 依赖 Hub 公开房间 API、首页 publicRoomsSection i18n 文案、Avatar / Badge / CordField 原语与 HomeSectionHeader
+ * [OUTPUT]: 对外提供 PublicRoomsSection：按成员数排序的前 6 个公开房间卡片（cord field 封面 + 房间头像 + 标签 + 成员数 + 最近活跃）
+ * [POS]: marketing 首页第三屏，让访客挑一个房间把 Agent 带进去
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md；房间视觉以 docs/brand/botcord-vi/VI.md §5、§6.1 为准
+ */
+
 "use client";
 
-import Card from "@/components/ui/Card";
-import Badge from "@/components/ui/Badge";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { initialsFromName, themeFromRoomName } from "@/components/dashboard/roomVisualTheme";
-import SectionHeading from "@/components/ui/SectionHeading";
+import Avatar from "@/components/ui/Avatar";
+import Badge from "@/components/ui/Badge";
+import CordField from "@/components/ui/CordField";
+import HomeSectionHeader from "./HomeSectionHeader";
 import { useLanguage, type Locale } from "@/lib/i18n";
 import { publicRoomsSection as t } from "@/lib/i18n/translations/home";
 import type { PublicRoom } from "@/lib/types";
@@ -47,7 +54,7 @@ async function fetchTopRooms(): Promise<PublicRoom[]> {
     if (!res.ok) return [];
     const data = await res.json();
     const rooms: PublicRoom[] = data.rooms ?? [];
-    return rooms.sort((a, b) => b.member_count - a.member_count).slice(0, 10);
+    return rooms.sort((a, b) => b.member_count - a.member_count).slice(0, 6);
   } catch {
     return [];
   }
@@ -123,23 +130,18 @@ function deriveRoomTags(
   return Array.from(new Set(tags)).slice(0, 3);
 }
 
-function buildCoverStyle(room: PublicRoom) {
-  const theme = themeFromRoomName(room.name || room.room_id);
-  return {
-    theme,
-    style: {
-      backgroundImage: `linear-gradient(135deg, ${theme.accentDim}, var(--mock-cover-fade)), ${theme.patternUrl}`,
-      backgroundRepeat: "no-repeat, repeat",
-      backgroundSize: "cover, auto",
-    } as const,
-  };
+/** Stable per-room seed so each cover gets its own cord field. */
+function seedFromId(id: string): number {
+  let hash = 0;
+  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+  return Math.abs(hash) % 10000;
 }
 
 function roomHref(roomId: string) {
   return `/chats/messages/${encodeURIComponent(roomId)}`;
 }
 
-function FeaturedRoomCard({
+function RoomCard({
   room,
   locale,
   strings,
@@ -148,187 +150,39 @@ function FeaturedRoomCard({
   locale: Locale;
   strings: (typeof t)["en"];
 }) {
-  const { theme, style } = buildCoverStyle(room);
   const tags = deriveRoomTags(room, locale, strings);
-  const memberWord =
-    room.member_count === 1 ? strings.memberSingular : strings.memberPlural;
+  const memberWord = room.member_count === 1 ? strings.memberSingular : strings.memberPlural;
+  // The message preview may carry markdown emphasis; strip the markers for a plain card summary.
+  const description = (room.description || room.last_message_preview || "").replace(/\*\*|__|`/g, "");
 
   return (
-    <Link href={roomHref(room.room_id)} className="group block h-full">
-      <Card as="article" padding="none"
-        className="flex h-full min-h-[320px] flex-col overflow-hidden" >
-        <div className="relative min-h-[156px] px-5 py-5" style={style}>
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent,var(--mock-cover-scrim-mid),var(--mock-cover-scrim))]" />
-          <div className="relative flex items-start justify-between gap-4">
-            <div className="inline-flex items-center gap-3">
-              <div
-                className="flex h-11 w-11 items-center justify-center rounded-xl text-sm font-semibold text-[var(--mock-cover-ink)]"
-                style={{ background: theme.accentDim }} >
-                {initialsFromName(room.name || "Room")}
-              </div>
-              <div>
-                <p className="text-xs font-medium text-[var(--mock-cover-ink-soft)]">
-                  {strings.featuredLabel}
-                </p>
-                <p className="mt-1 text-sm text-[var(--mock-cover-ink)]">
-                  {formatCompactCount(room.member_count, locale)} {memberWord}
-                </p>
-              </div>
-            </div>
-
-            <Badge tone="neutral" >
-              {formatRelativeTime(room.last_message_at, locale, strings)}
+    <Link
+      href={roomHref(room.room_id)}
+      className="group flex h-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--bc-shadow-sm)] transition-colors duration-[140ms] hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bc-focus-ring)]"
+    >
+      <div className="relative h-20 border-b border-border bg-surface-sunken">
+        <CordField seed={seedFromId(room.room_id)} width={400} height={80} step={44} className="absolute inset-0 h-full w-full" />
+        {/* Wrapper owns the positioning; Avatar's own root is `relative`. */}
+        <span className="absolute -bottom-6 left-4 inline-flex rounded-[24%] ring-4 ring-surface">
+          <Avatar kind="room" size="lg" id={room.room_id} name={room.name} />
+        </span>
+      </div>
+      <div className="flex flex-1 flex-col px-4 pt-8 pb-4">
+        <h3 className="truncate text-lg font-semibold leading-[1.4] tracking-[-0.01em] text-text">{room.name}</h3>
+        {description ? (
+          <p className="mt-1.5 line-clamp-2 text-[13px] leading-[1.5] text-text-secondary">{description}</p>
+        ) : null}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <Badge key={tag} variant="outline">
+              {tag}
             </Badge>
-          </div>
+          ))}
         </div>
-
-        <div className="flex flex-1 flex-col px-5 py-4">
-          <h3 className="text-[22px] font-semibold leading-[1.3] tracking-[-0.02em] text-[var(--bc-text)]">
-            {room.name}
-          </h3>
-          <p className="mt-2.5 line-clamp-3 max-w-[38rem] text-sm leading-6 text-text-secondary">
-            {room.description || room.last_message_preview || strings.noRecentActivity}
-          </p>
-
-          <div className="mt-3.5 flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <Badge tone="neutral"
-                key={`${room.room_id}-${tag}`} >
-                {tag}
-              </Badge>
-            ))}
-          </div>
-
-          <div className="mt-auto pt-4">
-            <Card padding="sm" >
-              <p className="text-xs font-medium text-[var(--bc-text-secondary)]">
-                {room.last_sender_name || strings.featuredLabel}
-              </p>
-              <p className="mt-2 line-clamp-2 text-sm leading-[1.35rem] text-text-secondary">
-                {room.last_message_preview || room.description || strings.noRecentActivity}
-              </p>
-            </Card>
-          </div>
-        </div>
-      </Card>
-    </Link>
-  );
-}
-
-function SpotlightRoomCard({
-  room,
-  locale,
-  strings,
-}: {
-  room: PublicRoom;
-  locale: Locale;
-  strings: (typeof t)["en"];
-}) {
-  const { theme, style } = buildCoverStyle(room);
-  const tags = deriveRoomTags(room, locale, strings);
-  const memberWord =
-    room.member_count === 1 ? strings.memberSingular : strings.memberPlural;
-
-  return (
-    <Link href={roomHref(room.room_id)} className="group block h-full">
-      <Card as="article" padding="none"
-        className="flex h-full min-h-[156px] flex-col overflow-hidden" >
-        <div className="relative h-[84px] px-4 py-3.5" style={style}>
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent,var(--mock-cover-scrim))]" />
-          <div className="relative flex items-start justify-between gap-3">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-xs font-semibold text-[var(--mock-cover-ink)]"
-              style={{ background: theme.accentDim }} >
-              {initialsFromName(room.name || "Room")}
-            </div>
-            <Badge tone="neutral" >
-              {formatCompactCount(room.member_count, locale)} {memberWord}
-            </Badge>
-          </div>
-        </div>
-
-        <div className="flex flex-1 flex-col px-4 py-3.5">
-          <h3 className="truncate text-base font-semibold text-[var(--bc-text)]">
-            {room.name}
-          </h3>
-          <p className="mt-2 line-clamp-2 text-sm leading-[1.35rem] text-text-secondary">
-            {room.description || room.last_message_preview || strings.noRecentActivity}
-          </p>
-
-          <div className="mt-auto flex items-center justify-between gap-3 pt-3.5">
-            <div className="flex flex-wrap gap-2">
-              {tags.slice(0, 2).map((tag) => (
-                <Badge tone="neutral"
-                  key={`${room.room_id}-${tag}`} >
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-            <span className="shrink-0 text-xs text-[var(--bc-text-secondary)]">
-              {formatRelativeTime(room.last_message_at, locale, strings)}
-            </span>
-          </div>
-        </div>
-      </Card>
-    </Link>
-  );
-}
-
-function CompactRoomCard({
-  room,
-  locale,
-  strings,
-}: {
-  room: PublicRoom;
-  locale: Locale;
-  strings: (typeof t)["en"];
-}) {
-  const { theme, style } = buildCoverStyle(room);
-  const tags = deriveRoomTags(room, locale, strings);
-  const memberWord =
-    room.member_count === 1 ? strings.memberSingular : strings.memberPlural;
-
-  return (
-    <Link href={roomHref(room.room_id)} className="group block h-full">
-      <Card as="article" padding="none"
-        className="flex h-full flex-col overflow-hidden" >
-        <div className="relative h-14 px-3.5 py-2.5" style={style}>
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent,var(--mock-cover-scrim))]" />
-          <div className="relative flex items-center justify-between gap-3">
-            <div className="inline-flex items-center gap-2.5">
-              <div
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold text-[var(--mock-cover-ink)]"
-                style={{ background: theme.accentDim }} >
-                {initialsFromName(room.name || "Room")}
-              </div>
-              <span className="text-xs font-medium text-[var(--mock-cover-ink)]">
-                {formatCompactCount(room.member_count, locale)} {memberWord}
-              </span>
-            </div>
-            <span className="text-xs text-[var(--mock-cover-ink-soft)]">
-              {formatRelativeTime(room.last_message_at, locale, strings)}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-1 flex-col px-3.5 py-3.5">
-          <h3 className="truncate text-sm font-semibold text-[var(--bc-text)]">
-            {room.name}
-          </h3>
-          <p className="mt-2 line-clamp-2 text-[13px] leading-[1.5] text-[var(--bc-text-secondary)]">
-            {room.description || room.last_message_preview || strings.noRecentActivity}
-          </p>
-
-          <div className="mt-auto flex flex-wrap gap-2 pt-2.5">
-            {tags.slice(0, 3).map((tag) => (
-              <Badge tone="neutral"
-                key={`${room.room_id}-${tag}`} >
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      </Card>
+        <p className="mt-auto pt-4 text-xs text-text-secondary">
+          {formatCompactCount(room.member_count, locale)} {memberWord} · {formatRelativeTime(room.last_message_at, locale, strings)}
+        </p>
+      </div>
     </Link>
   );
 }
@@ -344,85 +198,37 @@ export default function PublicRoomsSection() {
 
   if (rooms.length === 0) return null;
 
-  const featuredRoom = rooms[0];
-  const spotlightRooms = rooms.slice(1, 3);
-  const compactRooms = rooms.slice(3, 9);
-
   return (
-    <section className="px-6 pt-10 pb-24">
-      <div className="mx-auto max-w-5xl">
-        <SectionHeading
+    <section className="px-6 py-24">
+      <div className="mx-auto max-w-6xl">
+        <HomeSectionHeader
+          label={strings.label}
           title={strings.title}
           subtitle={strings.subtitle}
+          action={
+            <Link
+              href="/chats/explore/rooms"
+              className="inline-flex items-center gap-2 text-sm font-medium text-accent-text transition-colors duration-[140ms] hover:text-accent-hover"
+            >
+              {strings.exploreAll}
+              <ArrowRight size={14} />
+            </Link>
+          }
         />
 
-        {featuredRoom ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ duration: 0.6 }}
-            className="grid gap-4 lg:grid-cols-[minmax(0,1.22fr)_minmax(280px,0.9fr)]" >
-            <FeaturedRoomCard
-              room={featuredRoom}
-              locale={locale}
-              strings={strings}
-            />
-
-            {spotlightRooms.length > 0 ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-                {spotlightRooms.map((room, i) => (
-                  <motion.div
-                    key={room.room_id}
-                    initial={{ opacity: 0, y: 18 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.45, delay: i * 0.08 }} >
-                    <SpotlightRoomCard
-                      room={room}
-                      locale={locale}
-                      strings={strings}
-                    />
-                  </motion.div>
-                ))}
-              </div>
-            ) : null}
-          </motion.div>
-        ) : null}
-
-        {compactRooms.length > 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ duration: 0.6, delay: 0.08 }}
-            className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" >
-            {compactRooms.map((room, i) => (
-              <motion.div
-                key={room.room_id}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: i * 0.04 }} >
-                <CompactRoomCard room={room} locale={locale} strings={strings} />
-              </motion.div>
-            ))}
-          </motion.div>
-        ) : null}
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          className="mt-8 text-center" >
-          <Link
-            href="/chats/explore/rooms"
-            className="inline-flex items-center gap-2 text-sm font-medium text-[var(--bc-accent-text)] transition-colors duration-[140ms] hover:text-[var(--bc-accent-hover)]" >
-            {strings.exploreAll}
-            <ArrowRight size={14} />
-          </Link>
-        </motion.div>
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {rooms.map((room, i) => (
+            <motion.div
+              key={room.room_id}
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.36, delay: (i % 3) * 0.06, ease: [0, 0, 0, 1] }}
+            >
+              <RoomCard room={room} locale={locale} strings={strings} />
+            </motion.div>
+          ))}
+        </div>
       </div>
     </section>
   );

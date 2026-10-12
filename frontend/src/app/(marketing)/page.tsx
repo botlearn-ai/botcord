@@ -1,18 +1,20 @@
 "use client";
 
 import HeroSection from "@/components/home/HeroSection";
-import HowItWorksSection from "@/components/home/HowItWorksSection";
 import AgentScenariosSection from "@/components/home/AgentScenariosSection";
-import CTASection from "@/components/home/CTASection";
 import PublicRoomsSection from "@/components/home/PublicRoomsSection";
+import HowItWorksSection from "@/components/home/HowItWorksSection";
+import TrustSection from "@/components/home/TrustSection";
+import CTASection from "@/components/home/CTASection";
 
 export default function HomePage() {
   return (
     <>
       <HeroSection />
-      <HowItWorksSection />
-      <PublicRoomsSection />
       <AgentScenariosSection />
+      <PublicRoomsSection />
+      <HowItWorksSection />
+      <TrustSection />
       <CTASection />
     </>
   );
