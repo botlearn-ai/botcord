@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VI 参考库 · BotCord</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #fff; --ink: #18181b; --muted: #71717a; --line: #e4e4e7;
+    --radius: 14px; font-family: Inter, -apple-system, "PingFang SC", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.55; }
+  header { padding: 40px 32px 16px; max-width: 1280px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -0.02em; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+  .filters { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
+  .filters button {
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    padding: 6px 14px; border-radius: 999px; font-size: 13px; cursor: pointer;
+  }
+  .filters button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  main {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 20px; padding: 16px 32px 64px; max-width: 1280px; margin: 0 auto;
+  }
+  article {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .hero { height: 132px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .hero img { width: 56px; height: 56px; }
+  .hero .fallback { font-size: 26px; font-weight: 700; }
+  .body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+  .title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .title h2 { margin: 0; font-size: 18px; }
+  .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+  .scale { color: var(--muted); font-size: 12px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sw { display: flex; flex-direction: column; width: 64px; font-size: 10px; color: var(--muted); }
+  .sw i { display: block; height: 36px; border-radius: 8px; border: 1px solid rgba(0,0,0,.08); margin-bottom: 3px; }
+  .sw b { color: var(--ink); font-weight: 500; font-family: ui-monospace, monospace; }
+  .sw .unv { color: #b45309; }
+  dl { margin: 0; display: grid; grid-template-columns: 64px 1fr; gap: 6px 10px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  ul { margin: 0; padding-left: 18px; }
+  .lessons { background: #f4f4f5; border-radius: 10px; padding: 10px 12px; }
+  .lessons strong { display: block; margin-bottom: 4px; font-size: 12px; }
+  .links { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; }
+  .links a { color: #2563eb; text-decoration: none; }
+  .err { padding: 32px; color: #b91c1c; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VI 参考库</h1>
+  <p>BotCord 品牌重设计的参考资料。数据来自 <code>brands.json</code>；色块右下角标 <span style="color:#b45309">*</span> 的色值未在官方来源核实。Logo 由 Simple Icons CDN 实时加载，仓库不存第三方商标文件。</p>
+  <div class="filters" id="filters"></div>
+</header>
+<main id="grid"></main>
+<script>
+  const CATEGORY_LABELS = {
+    all: "全部", messaging: "通讯", "dev-tool": "开发工具", ai: "AI", productivity: "生产力", consumer: "消费",
+  };
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+  function heroColor(brand) {
+    const c = brand.colors.find((x) => x.role === "primary") || brand.colors[0];
+    return c ? c.hex : "#e4e4e7";
+  }
+
+  function isDark(hex) {
+    const h = hex.replace("#", "").slice(0, 6);
+    if (h.length < 6) return false;
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+    return 0.299 * r + 0.587 * g + 0.114 * b < 150;
+  }
+
+  function card(brand) {
+    const bg = heroColor(brand);
+    const fg = isDark(bg) ? "ffffff" : "18181b";
+    const slug = brand.logo.simple_icons_slug;
+    const logo = slug
+      ? `<img src="https://cdn.simpleicons.org/${esc(slug)}/${fg}" alt="${esc(brand.name)} logo" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'fallback',textContent:'${esc(brand.name)}'}))">`
+      : `<span class="fallback" style="color:#${fg}">${esc(brand.name)}</span>`;
+    const swatches = brand.colors.map((c) => `
+      <div class="sw" title="${esc(c.role)}">
+        <i style="background:${esc(c.hex)}"></i>
+        <span>${esc(c.name)}</span>
+        <b>${esc(c.hex)}${c.verified ? "" : '<span class="unv">*</span>'}</b>
+      </div>`).join("");
+    const traits = brand.signature_traits.map((t) => `<li>${esc(t)}</li>`).join("");
+    const lessons = brand.lessons_for_botcord.map((t) => `<li>${esc(t)}</li>`).join("");
+    const links = [
+      brand.guidelines_url && `<a href="${esc(brand.guidelines_url)}" target="_blank" rel="noreferrer">品牌规范</a>`,
+      brand.design_system && brand.design_system.url && `<a href="${esc(brand.design_system.url)}" target="_blank" rel="noreferrer">${esc(brand.design_system.name)}</a>`,
+      ...brand.sources.slice(0, 4).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noreferrer">来源 ${i + 1}</a>`),
+    ].filter(Boolean).join("");
+    return `
+      <article data-category="${esc(brand.category)}">
+        <div class="hero" style="background:${esc(bg)}">${logo}</div>
+        <div class="body">
+          <div class="title"><h2>${esc(brand.name)}</h2><span class="tag">${esc(CATEGORY_LABELS[brand.category] || brand.category)}</span></div>
+          ${brand.scale ? `<div class="scale">${esc(brand.scale)}</div>` : ""}
+          <div class="swatches">${swatches}</div>
+          <dl>
+            <dt>Logo</dt><dd>${esc(brand.logo.description)}</dd>
+            <dt>理念</dt><dd>${esc(brand.logo.concept)}</dd>
+            <dt>演变</dt><dd>${esc(brand.logo.evolution)}</dd>
+            <dt>字体</dt><dd>品牌：${esc(brand.typography.brand)}；产品：${esc(brand.typography.ui)}</dd>
+            <dt>辅助元素</dt><dd>${esc(brand.graphic_elements)}</dd>
+            <dt>语气</dt><dd>${esc(brand.voice)}</dd>
+          </dl>
+          <div><strong style="font-size:12px">识别特征</strong><ul>${traits}</ul></div>
+          <div class="lessons"><strong>对 BotCord 的启示</strong><ul>${lessons}</ul></div>
+          <div class="links">${links}</div>
+        </div>
+      </article>`;
+  }
+
+  function render(brands, category) {
+    const list = category === "all" ? brands : brands.filter((b) => b.category === category);
+    document.getElementById("grid").innerHTML = list.map(card).join("");
+  }
+
+  fetch("brands.json")
+    .then((r) => r.json())
+    .then((brands) => {
+      const cats = ["all", ...new Set(brands.map((b) => b.category))];
+      const filters = document.getElementById("filters");
+      let active = "all";
+      const draw = () => {
+        filters.innerHTML = cats.map((c) =>
+          `<button data-c="${c}" aria-pressed="${c === active}">${CATEGORY_LABELS[c] || c}</button>`).join("");
+        render(brands, active);
+      };
+      filters.addEventListener("click", (e) => {
+        const c = e.target.dataset && e.target.dataset.c;
+        if (c) { active = c; draw(); }
+      });
+      draw();
+    })
+    .catch(() => {
+      document.getElementById("grid").innerHTML =
+        '<div class="err">无法加载 brands.json。请在本目录运行 <code>python3 -m http.server</code> 后访问 http://localhost:8000。</div>';
+    });
+</script>
+</body>
+</html>
