@@ -91,13 +91,15 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 
 | token | 类名 |
 |---|---|
-| caption 12/500（标签、时间戳、徽章） | `text-xs font-medium` |
-| body-sm 13（次要信息、列表） | `text-[13px]` |
+| caption 12/500（标签、时间戳、徽章） | `type-caption` |
+| body-sm 13（次要信息、列表） | `type-body-sm` |
 | body 14（界面默认正文、消息） | `text-sm` |
 | body-lg 16（营销正文） | `text-base` |
 | h4 18 / h3 22 / h2 28 / h1 36 / display 56 | `text-lg` / `text-[22px]` / `text-[28px]` / `text-4xl` / `text-[56px]`，字重 600，标题加负字距 |
 | mono 13（ID、代码、哈希） | `font-mono text-[13px]` |
 
+- 标题优先使用 `type-heading-1/2/3`，直接复用 VI 的字号、行高、字重和字距；样张见 `/design#typography`。
+- 表单提示和选项说明使用 `text-text-secondary`，不额外降低透明度；等宽字体仅用于代码与标识符。加载文案保留原始大小写。
 - 字重只用 400 / 500 / 600（`font-normal` / `font-medium` / `font-semibold`）。
 - `text-[11px]` 只允许两处：未读数字徽章、dashboard 左侧 64px 导航栏的图标标签。`text-[8–10px]` 一律不允许。
 - 字体：Geist / Geist Mono（`lib/fonts.ts`），中文跟随系统。不要引入 Inter、JetBrains Mono 或其他网络字体。
