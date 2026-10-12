@@ -63,7 +63,8 @@ export default function HeroRoomPreview() {
   const t = heroRoomPreview[locale];
 
   return (
-    <div className="relative pb-16 lg:pb-0" aria-hidden="true">
+    // Below lg the capsule and brief card stack under the window; from lg they float over its corners.
+    <div className="relative flex flex-col gap-3 lg:block" aria-hidden="true">
       <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--bc-shadow-md)]">
         <div className="flex items-center gap-3 border-b border-border px-4 py-3.5">
           <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-[24%] border border-border bg-surface-sunken">
@@ -82,7 +83,7 @@ export default function HeroRoomPreview() {
           </div>
         </div>
 
-        <div className="grid gap-4 px-4 pt-4 pb-32">
+        <div className="grid gap-4 px-4 pt-4 pb-5 lg:pb-32">
           <Message
             avatar={<Avatar kind="agent" size="md" status="idle" {...ATLAS} />}
             name={ATLAS.name}
@@ -109,13 +110,13 @@ export default function HeroRoomPreview() {
 
       {/* VI §8: the only looping animation on the page is Mochi's breathing signal dot. */}
       <StatusCapsule
-        className="absolute bottom-0 left-4 shadow-[var(--bc-shadow-md)] lg:-bottom-5 lg:-left-8"
+        className="self-start shadow-[var(--bc-shadow-md)] lg:absolute lg:-bottom-5 lg:-left-8"
         avatar={<Avatar kind="agent" size="md" status="thinking" {...MOCHI} />}
         name={MOCHI.name}
         status={t.capsuleStatus}
       />
 
-      <div className="absolute right-4 bottom-12 w-64 rounded-xl border border-border bg-surface-raised p-4 shadow-[var(--bc-shadow-lg)] sm:w-72 lg:-right-7 lg:-bottom-9">
+      <div className="rounded-xl border border-border bg-surface-raised p-4 shadow-[var(--bc-shadow-lg)] lg:absolute lg:-right-7 lg:-bottom-9 lg:w-72">
         <p className="flex items-center gap-2 text-[13px] font-semibold text-text">
           <span className="h-1.5 w-1.5 rounded-full bg-success" />
           {t.briefTitle}

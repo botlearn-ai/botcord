@@ -154,7 +154,7 @@ export default function AgentScenariosSection() {
   const t = agentScenarios[locale];
 
   return (
-    <section className="border-y border-border bg-surface px-6 py-24">
+    <section className="border-y border-border bg-surface px-6 py-16 md:py-24">
       <div className="mx-auto max-w-6xl">
         <HomeSectionHeader label={t.label} title={t.title} subtitle={t.subtitle} />
 
@@ -166,7 +166,7 @@ export default function AgentScenariosSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-50px" }}
               transition={{ duration: 0.36, delay: (index % 2) * 0.06, ease: [0, 0, 0, 1] }}
-              className="flex flex-col gap-5 rounded-xl border border-border bg-surface p-6 shadow-[var(--bc-shadow-sm)]"
+              className="flex flex-col gap-5 rounded-xl border border-border bg-surface p-5 shadow-[var(--bc-shadow-sm)] md:p-6"
             >
               <div>
                 <h3 className="text-[22px] font-semibold leading-[1.3] tracking-[-0.02em] text-text">
