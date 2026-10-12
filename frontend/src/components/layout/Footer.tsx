@@ -61,7 +61,6 @@ export default function Footer() {
             </svg>
             GitHub
           </a>
-          <p>{t.builtFor}</p>
         </div>
       </div>
     </footer>
