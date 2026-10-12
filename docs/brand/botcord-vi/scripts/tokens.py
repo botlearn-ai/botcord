@@ -119,15 +119,15 @@ lines += ["  --bc-shadow-sm: 0 1px 2px #0000004D;", "  --bc-shadow-md: 0 4px 16p
           "@media (prefers-reduced-motion: reduce) {", "  :root { --bc-duration-fast: 0ms; --bc-duration-base: 0ms; --bc-duration-slow: 0ms; }", "}", ""]
 open(f"{out_dir}/botcord.css", "w", encoding="utf-8").write("\n".join(lines))
 
-# Tailwind v4 bridge: semantic utilities (bg-surface, text-secondary, border-default…)
-tw = ["/*", " * Tailwind CSS v4 bridge for BotCord tokens. Import after botcord.css:", " *   @import \"./botcord.css\";", " *   @import \"./botcord.tailwind.css\";", " */", "@theme inline {"]
+# Tailwind v4 bridge: semantic colour utilities (bg-surface, text-text-secondary, border-border…).
+# Colours only. Radius / shadow / font names would override Tailwind's own scale
+# (e.g. rounded-xl 12px → 16px) and next/font's --font-sans, so those stay as
+# --bc-* variables; see VI.md §9 for the VI → Tailwind class mapping.
+tw = ["/*", " * Tailwind CSS v4 bridge for BotCord colour tokens. Import after botcord.css:", " *   @import \"./botcord.css\";", " *   @import \"./botcord.tailwind.css\";", " */", "@theme inline {"]
 for k in ROLES:
     tw.append(f"  --color-{k}: var(--bc-{k});")
 for k in agents:
     tw.append(f"  --color-agent-{k}: var(--bc-agent-{k});")
-tw += ["  --font-sans: var(--bc-font-sans);", "  --font-mono: var(--bc-font-mono);"]
-for k in ("xs", "sm", "md", "lg", "xl", "2xl"):
-    tw.append(f"  --radius-{k}: var(--bc-radius-{k});")
-tw += ["  --shadow-sm: var(--bc-shadow-sm);", "  --shadow-md: var(--bc-shadow-md);", "  --shadow-lg: var(--bc-shadow-lg);", "  --ease-standard: var(--bc-ease-standard);", "}", ""]
+tw += ["}", ""]
 open(f"{out_dir}/botcord.tailwind.css", "w", encoding="utf-8").write("\n".join(tw))
 print("tokens ok", len(ROLES), "roles")

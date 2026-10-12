@@ -1,5 +1,5 @@
 /*
- * Tailwind CSS v4 bridge for BotCord tokens. Import after botcord.css:
+ * Tailwind CSS v4 bridge for BotCord colour tokens. Import after botcord.css:
  *   @import "./botcord.css";
  *   @import "./botcord.tailwind.css";
  */
@@ -34,16 +34,4 @@
   --color-agent-blue: var(--bc-agent-blue);
   --color-agent-violet: var(--bc-agent-violet);
   --color-agent-pink: var(--bc-agent-pink);
-  --font-sans: var(--bc-font-sans);
-  --font-mono: var(--bc-font-mono);
-  --radius-xs: var(--bc-radius-xs);
-  --radius-sm: var(--bc-radius-sm);
-  --radius-md: var(--bc-radius-md);
-  --radius-lg: var(--bc-radius-lg);
-  --radius-xl: var(--bc-radius-xl);
-  --radius-2xl: var(--bc-radius-2xl);
-  --shadow-sm: var(--bc-shadow-sm);
-  --shadow-md: var(--bc-shadow-md);
-  --shadow-lg: var(--bc-shadow-lg);
-  --ease-standard: var(--bc-ease-standard);
 }
