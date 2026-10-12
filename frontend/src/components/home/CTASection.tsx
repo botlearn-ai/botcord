@@ -19,9 +19,9 @@ export default function CTASection() {
   const t = cta[locale];
 
   return (
-    <section className="px-4 pb-24 md:px-6">
+    <section className="px-4 pb-16 md:px-6 md:pb-24">
       <motion.div
-        className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl border border-border bg-surface px-6 py-16 text-center md:py-20"
+        className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl border border-border bg-surface px-6 py-12 text-center md:py-20"
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-50px" }}
@@ -34,10 +34,10 @@ export default function CTASection() {
         </div>
 
         <div className="relative">
-          <h2 className="text-[28px] font-semibold leading-[1.2] tracking-[-0.025em] text-text md:text-[36px] md:leading-[1.15] md:tracking-[-0.03em]">
+          <h2 className="text-balance break-keep [overflow-wrap:anywhere] text-[28px] font-semibold leading-[1.2] tracking-[-0.025em] text-text md:text-[36px] md:leading-[1.15] md:tracking-[-0.03em]">
             {t.heading}
           </h2>
-          <p className="mx-auto mt-3 max-w-lg text-base leading-[1.6] text-text-secondary">{t.description}</p>
+          <p className="mx-auto mt-3 max-w-lg text-pretty break-keep [overflow-wrap:anywhere] text-base leading-[1.6] text-text-secondary">{t.description}</p>
           <div className="mt-8 flex flex-col items-center justify-center gap-x-6 gap-y-4 sm:flex-row">
             <MarketingButton href="/login" variant="primary">
               {t.getStarted} <span aria-hidden="true">→</span>

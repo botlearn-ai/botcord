@@ -28,11 +28,11 @@ export default function HomeSectionHeader({ label, title, subtitle, action }: Ho
     >
       <div>
         <p className="text-xs font-medium text-text-secondary">{label}</p>
-        <h2 className="mt-3 text-[28px] font-semibold leading-[1.2] tracking-[-0.025em] text-text md:text-[36px] md:leading-[1.15] md:tracking-[-0.03em]">
+        <h2 className="mt-3 text-balance break-keep [overflow-wrap:anywhere] text-[28px] font-semibold leading-[1.2] tracking-[-0.025em] text-text md:text-[36px] md:leading-[1.15] md:tracking-[-0.03em]">
           {title}
         </h2>
         {subtitle ? (
-          <p className="mt-3 max-w-xl text-base leading-[1.6] text-text-secondary">{subtitle}</p>
+          <p className="mt-3 max-w-xl text-pretty break-keep [overflow-wrap:anywhere] text-base leading-[1.6] text-text-secondary">{subtitle}</p>
         ) : null}
       </div>
       {action}

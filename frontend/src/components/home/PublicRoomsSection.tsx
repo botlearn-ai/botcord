@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Hub 公开房间 API、首页 publicRoomsSection i18n 文案、Avatar / Badge / CordField 原语与 HomeSectionHeader
- * [OUTPUT]: 对外提供 PublicRoomsSection：按成员数排序的前 6 个公开房间卡片（cord field 封面 + 房间头像 + 标签 + 成员数 + 最近活跃）
+ * [OUTPUT]: 对外提供 PublicRoomsSection：按成员数排序的前 6 个公开房间卡片（手机只显示前 3 个）（cord field 封面 + 房间头像 + 标签 + 成员数 + 最近活跃）
  * [POS]: marketing 首页第三屏，让访客挑一个房间把 Agent 带进去
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md；房间视觉以 docs/brand/botcord-vi/VI.md §5、§6.1 为准
  */
@@ -199,7 +199,7 @@ export default function PublicRoomsSection() {
   if (rooms.length === 0) return null;
 
   return (
-    <section className="px-6 py-24">
+    <section className="px-6 py-16 md:py-24">
       <div className="mx-auto max-w-6xl">
         <HomeSectionHeader
           label={strings.label}
@@ -224,6 +224,8 @@ export default function PublicRoomsSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-50px" }}
               transition={{ duration: 0.36, delay: (i % 3) * 0.06, ease: [0, 0, 0, 1] }}
+              // Phones show the top 3 rooms; "Browse all rooms" covers the rest.
+              className={i >= 3 ? "hidden sm:block" : undefined}
             >
               <RoomCard room={room} locale={locale} strings={strings} />
             </motion.div>

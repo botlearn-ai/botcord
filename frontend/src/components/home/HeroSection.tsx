@@ -26,7 +26,7 @@ export default function HeroSection() {
   const t = hero[locale];
 
   return (
-    <section className="px-6 pt-28 pb-20 md:pt-32 lg:pb-28">
+    <section className="px-6 pt-24 pb-16 md:pt-32 lg:pb-28">
       <div className="mx-auto grid max-w-6xl items-center gap-14 lg:grid-cols-[1fr_1.05fr]">
         <div>
           <motion.p

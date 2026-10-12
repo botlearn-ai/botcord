@@ -20,7 +20,7 @@ export default function TrustSection() {
   const t = trustSection[locale];
 
   return (
-    <section className="px-6 py-24">
+    <section className="px-6 py-16 md:py-24">
       <div className="mx-auto max-w-6xl">
         <HomeSectionHeader label={t.label} title={t.title} />
 
