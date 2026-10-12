@@ -28,6 +28,8 @@ it("preserves the selected identity type and id when switching accounts from the
   const trigger = host.querySelector<HTMLButtonElement>('[aria-haspopup="listbox"]')!;
   expect(trigger.getAttribute("aria-label")).toBe("From account");
   await act(() => trigger.click());
+  // Let the picker finish its scheduled initial focus before keyboard navigation.
+  await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   const options = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="option"]'));
   expect(options).toHaveLength(2);
   await act(() => { options[0].focus(); options[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
