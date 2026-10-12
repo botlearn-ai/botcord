@@ -7,10 +7,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { confirmDialog } from "@/lib/i18n/translations/common";
 import { useConfirmStore } from "@/store/useConfirmStore";
+import Button from "./Button";
+import DialogShell from "./DialogShell";
 
 export default function ConfirmDialog() {
   const current = useConfirmStore((s) => s.current);
@@ -18,23 +20,26 @@ export default function ConfirmDialog() {
   const locale = useLanguage();
   const t = confirmDialog[locale];
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  // Result reported once the exit motion finishes; Esc / scrim / X keep the
+  // default (cancel, or "ok" in alert mode), the confirm button sets true.
+  const resultRef = useRef(false);
+  // Remount DialogShell per request so a request that replaces an open one
+  // never inherits the previous dialog's closing state.
+  const requestKeyRef = useRef<{ request: unknown; key: number }>({ request: null, key: 0 });
 
   const isAlert = current?.alert ?? false;
   const isDanger = current?.tone === "danger";
 
-  // Escape 取消（alert 模式下等同于关闭），并把焦点移到主操作按钮。
+  if (current && requestKeyRef.current.request !== current) {
+    requestKeyRef.current = { request: current, key: requestKeyRef.current.key + 1 };
+  }
+
+  // 每个新请求重置默认结果，并把焦点移到主操作按钮（DialogShell 负责 Esc 关闭）。
   useEffect(() => {
     if (!current) return;
+    resultRef.current = isAlert;
     confirmButtonRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        close(isAlert);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [current, close, isAlert]);
+  }, [current, isAlert]);
 
   if (!current) return null;
 
@@ -42,68 +47,45 @@ export default function ConfirmDialog() {
     current.confirmLabel ?? (isAlert ? t.ok : t.confirm);
   const cancelLabel = current.cancelLabel ?? t.cancel;
 
-  const confirmClasses = isDanger
-    ? "border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20"
-    : "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan/20";
-
   return (
-    <div
-      className="liquid-scrim fixed inset-0 z-[1100] flex items-center justify-center p-4"
-      role="presentation"
-      onClick={() => close(isAlert)}
-    >
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        aria-label={current.title}
-        className="liquid-dialog relative w-full max-w-md rounded-2xl p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={() => close(isAlert)}
-          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary"
-          aria-label={cancelLabel}
-        >
-          <X className="h-5 w-5" />
-        </button>
-
-        <div className="flex gap-3 pr-8">
-          {isDanger ? (
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-300">
-              <AlertTriangle className="h-5 w-5" />
-            </span>
-          ) : null}
-          <div className="min-w-0">
-            <h3 className="text-lg font-bold text-text-primary">{current.title}</h3>
-            {current.message ? (
-              <p className="mt-2 whitespace-pre-line text-sm text-text-secondary">
-                {current.message}
-              </p>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="mt-5 flex justify-end gap-2">
+    <DialogShell
+      key={requestKeyRef.current.key}
+      role="alertdialog"
+      title={current.title}
+      description={
+        current.message ? <span className="whitespace-pre-line">{current.message}</span> : undefined
+      }
+      icon={isDanger ? <AlertTriangle className="h-5 w-5 shrink-0 text-danger" /> : undefined}
+      onClose={() => close(resultRef.current)}
+      closeLabel={cancelLabel}
+      overlayClassName="z-[1100]"
+      footer={(dismiss) => (
+        <>
           {isAlert ? null : (
-            <button
-              type="button"
-              onClick={() => close(false)}
-              className="liquid-action rounded-lg px-3 py-1.5 text-sm text-text-secondary transition-colors"
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                resultRef.current = false;
+                dismiss();
+              }}
             >
               {cancelLabel}
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             ref={confirmButtonRef}
-            type="button"
-            onClick={() => close(true)}
-            className={`liquid-action rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${confirmClasses}`}
+            variant={isDanger ? "danger" : "primary"}
+            size="sm"
+            onClick={() => {
+              resultRef.current = true;
+              dismiss();
+            }}
           >
             {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </>
+      )}
+    />
   );
 }

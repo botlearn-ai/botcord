@@ -1,9 +1,8 @@
 "use client";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, X } from "lucide-react";
-import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
+import Button from "@/components/ui/Button";
+import DialogShell from "@/components/ui/DialogShell";
 import { useLanguage } from "@/lib/i18n";
 import { roomAdvancedSettings } from "@/lib/i18n/translations/dashboard";
 
@@ -28,10 +27,6 @@ function PlanChangeConfirmDialog({
 }: PlanChangeConfirmDialogProps) {
   const locale = useLanguage();
   const ta = roomAdvancedSettings[locale];
-  const [closing, setClosing] = useState(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   const fromTo = ta.planChangeFromTo
     .replace("{from}", fromLabel)
@@ -41,80 +36,31 @@ function PlanChangeConfirmDialog({
     String(affectedCount),
   );
 
-  const closeWithMotion = useCallback(() => {
-    if (loading || closing) return;
-    setClosing(true);
-    cleanupAnime(animationRef.current);
-    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
-      onComplete: onClose,
-    });
-  }, [closing, loading, onClose]);
-
-  useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
-    return () => cleanupAnime(animationRef.current);
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
-
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-[80] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        className="liquid-dialog relative w-full max-w-md rounded-2xl p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={closeWithMotion}
-          disabled={loading}
-          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
-          aria-label={ta.planChangeCancel}
-        >
-          <X className="h-5 w-5" />
-        </button>
-
-        <div className="pr-8">
-          <h3 className="text-xl font-bold text-text-primary">{ta.planChangeTitle}</h3>
-          <p className="mt-3 text-sm text-text-primary/90">{fromTo}</p>
-          {affectedCount > 0 ? (
-            <p className="mt-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
-              ⚠️ {warning}
-            </p>
-          ) : null}
-          <p className="mt-3 text-xs text-text-secondary">{ta.planChangeIrreversible}</p>
-        </div>
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={closeWithMotion}
-            disabled={loading}
-            className="liquid-action rounded-lg px-3 py-1.5 text-sm text-text-secondary transition-colors disabled:opacity-50"
-          >
+    <DialogShell
+      title={ta.planChangeTitle}
+      busy={loading}
+      onClose={onClose}
+      closeLabel={ta.planChangeCancel}
+      overlayClassName="z-[80]"
+      footer={(close) => (
+        <>
+          <Button variant="ghost" size="sm" onClick={close} disabled={loading}>
             {ta.planChangeCancel}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={loading}
-            className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          </Button>
+          <Button variant="primary" size="sm" onClick={onConfirm} loading={loading}>
             {ta.planChangeConfirm}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </>
+      )}
+    >
+      <p className="text-sm text-text-primary/90">{fromTo}</p>
+      {affectedCount > 0 ? (
+        <p className="mt-3 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning">
+          ⚠️ {warning}
+        </p>
+      ) : null}
+      <p className="mt-3 text-xs text-text-secondary">{ta.planChangeIrreversible}</p>
+    </DialogShell>
   );
 }

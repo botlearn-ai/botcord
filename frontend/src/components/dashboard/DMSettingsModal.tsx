@@ -8,13 +8,15 @@ import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
-import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
+import { useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
+import { animatePop, cleanupAnime } from "@/lib/anime";
 import { useLanguage } from "@/lib/i18n";
 import { dmSettingsModal } from "@/lib/i18n/translations/dashboard";
 import { api } from "@/lib/api";
+import Button from "@/components/ui/Button";
 import CopyableId from "@/components/ui/CopyableId";
+import DialogShell, { useDialogClose } from "@/components/ui/DialogShell";
 import type { ContactInfo } from "@/lib/types";
 
 interface DMSettingsModalProps {
@@ -43,16 +45,116 @@ function DMSettingsModal({
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const removeButtonRef = useRef<HTMLButtonElement>(null);
-  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
   const feedbackAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   const isOwnAgent = contact === null;
   const title = isOwnAgent ? t.titleMyAgent : t.titleFriend;
+
+  useEffect(() => {
+    const target = error ? errorRef.current : confirming ? removeButtonRef.current : null;
+    if (!target) return;
+    cleanupAnime(feedbackAnimationRef.current);
+    feedbackAnimationRef.current = animatePop(target);
+    return () => cleanupAnime(feedbackAnimationRef.current);
+  }, [confirming, error]);
+
+  return (
+    <DialogShell
+      title={title}
+      size="sm"
+      busy={removing}
+      onClose={onClose}
+      hideCloseButton
+      overlayClassName="z-50 backdrop-blur-sm"
+      bodyClassName="space-y-4"
+      footer={(close) => (
+        <>
+          {!isOwnAgent && (
+            <RemoveFriendButton
+              buttonRef={removeButtonRef}
+              contact={contact}
+              confirming={confirming}
+              removing={removing}
+              labels={t}
+              onContactRemoved={onContactRemoved}
+              setConfirming={setConfirming}
+              setRemoving={setRemoving}
+              setError={setError}
+            />
+          )}
+          <Button variant="ghost" onClick={close} className="ml-auto">
+            {t.close}
+          </Button>
+        </>
+      )}
+    >
+      {error && (
+        <div ref={errorRef} className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-sm text-danger">
+          {error}
+        </div>
+      )}
+
+      {isOwnAgent ? (
+        <div className="liquid-card space-y-3 rounded-xl border p-3">
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+              {t.displayName}
+            </p>
+            <p className="text-sm text-text-primary">{ownAgentName ?? "—"}</p>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+              {t.agentId}
+            </p>
+            <CopyableId value={ownAgentId ?? ""} />
+          </div>
+        </div>
+      ) : (
+        <div className="liquid-card space-y-3 rounded-xl border p-3">
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+              {t.displayName}
+            </p>
+            <p className="text-sm text-text-primary">{contact!.display_name}</p>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+              {t.agentId}
+            </p>
+            <CopyableId value={contact!.contact_agent_id} />
+          </div>
+        </div>
+      )}
+    </DialogShell>
+  );
+}
+
+// Lives inside DialogShell so it can close the dialog with its exit animation
+// once the contact is removed. First click arms the confirmation.
+function RemoveFriendButton({
+  buttonRef,
+  contact,
+  confirming,
+  removing,
+  labels,
+  onContactRemoved,
+  setConfirming,
+  setRemoving,
+  setError,
+}: {
+  buttonRef: RefObject<HTMLButtonElement | null>;
+  contact: ContactInfo | null;
+  confirming: boolean;
+  removing: boolean;
+  labels: (typeof dmSettingsModal)[keyof typeof dmSettingsModal];
+  onContactRemoved?: () => void;
+  setConfirming: (confirming: boolean) => void;
+  setRemoving: (removing: boolean) => void;
+  setError: (error: string | null) => void;
+}) {
+  const closeDialog = useDialogClose();
 
   const handleRemove = async () => {
     if (!contact) return;
@@ -65,118 +167,25 @@ function DMSettingsModal({
     try {
       await api.removeContact(contact.contact_agent_id);
       onContactRemoved?.();
-      closeWithMotion();
+      closeDialog();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t.removeFriendFailed);
+      setError(err instanceof Error ? err.message : labels.removeFriendFailed);
       setConfirming(false);
     } finally {
       setRemoving(false);
     }
   };
 
-  const closeWithMotion = useCallback(() => {
-    if (removing || closing) return;
-    setClosing(true);
-    cleanupAnime(animationRef.current);
-    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
-      onComplete: onClose,
-    });
-  }, [closing, onClose, removing]);
-
-  useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
-    return () => cleanupAnime(animationRef.current);
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
-
-  useEffect(() => {
-    const target = error ? errorRef.current : confirming ? removeButtonRef.current : null;
-    if (!target) return;
-    cleanupAnime(feedbackAnimationRef.current);
-    feedbackAnimationRef.current = animatePop(target);
-    return () => cleanupAnime(feedbackAnimationRef.current);
-  }, [confirming, error]);
-
   return (
-    <div ref={overlayRef} className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
-      <div
-        ref={panelRef}
-        className="liquid-dialog flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-xl border"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-glass-border px-6 py-4">
-          <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {error && (
-            <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-
-          {isOwnAgent ? (
-            <div className="liquid-card space-y-3 rounded-xl border p-3">
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                  {t.displayName}
-                </p>
-                <p className="text-sm text-text-primary">{ownAgentName ?? "—"}</p>
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                  {t.agentId}
-                </p>
-                <CopyableId value={ownAgentId ?? ""} />
-              </div>
-            </div>
-          ) : (
-            <div className="liquid-card space-y-3 rounded-xl border p-3">
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                  {t.displayName}
-                </p>
-                <p className="text-sm text-text-primary">{contact!.display_name}</p>
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                  {t.agentId}
-                </p>
-                <CopyableId value={contact!.contact_agent_id} />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-between gap-2 border-t border-glass-border px-6 py-3">
-          {!isOwnAgent && (
-            <button
-              ref={removeButtonRef}
-              onClick={() => void handleRemove()}
-              disabled={removing}
-              className="liquid-action inline-flex items-center gap-1.5 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 disabled:opacity-50"
-            >
-              {removing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {confirming
-                ? removing ? t.removingFriend : t.removeFriendConfirm
-                : t.removeFriend}
-            </button>
-          )}
-          <button
-            onClick={closeWithMotion}
-            className="liquid-action ml-auto rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
-          >
-            {t.close}
-          </button>
-        </div>
-      </div>
-    </div>
+    <Button
+      ref={buttonRef}
+      variant="danger"
+      onClick={() => void handleRemove()}
+      loading={removing}
+    >
+      {confirming
+        ? removing ? labels.removingFriend : labels.removeFriendConfirm
+        : labels.removeFriend}
+    </Button>
   );
 }

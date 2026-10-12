@@ -8,10 +8,12 @@ import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { PublicRoomMember } from "@/lib/types";
 import { humansApi } from "@/lib/api";
-import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
+import Button from "@/components/ui/Button";
+import DialogShell, { useDialogClose } from "@/components/ui/DialogShell";
+import { Input } from "@/components/ui/Input";
 import { useLanguage } from "@/lib/i18n";
 import { agentBrowser } from "@/lib/i18n/translations/dashboard";
 import DashboardSelect from "./DashboardSelect";
@@ -47,15 +49,109 @@ function TransferOwnershipDialog({
   const [selectedId, setSelectedId] = useState<string>(candidates[0]?.agent_id ?? "");
   const [confirmText, setConfirmText] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
 
   const selected = candidates.find((c) => c.agent_id === selectedId);
   // Require the user to type the room name exactly — this is a
   // non-reversible action and the blast radius is losing ownership.
   const confirmArmed = confirmText.trim() === roomName.trim();
+
+  return (
+    <DialogShell
+      title={t.transferOwnership}
+      busy={submitting}
+      onClose={onClose}
+      hideCloseButton
+      overlayClassName="z-30"
+      className="max-w-[360px]"
+      footer={(close) => (
+        <>
+          <Button variant="ghost" size="sm" onClick={close} disabled={submitting}>
+            {t.permCancel}
+          </Button>
+          {candidates.length > 0 && (
+            <TransferSubmitButton
+              roomId={roomId}
+              selected={selected}
+              confirmArmed={confirmArmed}
+              submitting={submitting}
+              label={submitting ? "…" : t.transferOwnership}
+              failedMessage={t.transferFailed}
+              onSuccess={onSuccess}
+              onError={onError}
+              setSubmitting={setSubmitting}
+            />
+          )}
+        </>
+      )}
+    >
+      {candidates.length === 0 ? (
+        <p className="text-xs text-text-secondary">{t.transferPromptNoCandidate}</p>
+      ) : (
+        <>
+          <label className="mb-3 block">
+            <span className="mb-1 block text-xs text-text-secondary">
+              {t.transferSelectLabel}
+            </span>
+            <DashboardSelect
+              value={selectedId}
+              onChange={(value) => {
+                if (value) setSelectedId(value);
+              }}
+              placeholder={t.transferSelectLabel}
+              buttonClassName="min-h-9 rounded px-2 text-xs"
+              options={candidates.map((c) => ({
+                value: c.agent_id,
+                label: c.display_name,
+                sublabel: `${c.agent_id.startsWith("hu_") ? "H" : "A"} · ${c.role} · ${c.agent_id}`,
+              }))}
+            />
+          </label>
+
+          <label className="mb-3 block">
+            <span className="mb-1 block text-xs text-text-secondary">
+              {t.transferConfirmLabel.replace("{room}", roomName)}
+            </span>
+            <Input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder={roomName}
+            />
+          </label>
+
+          <p className="text-xs leading-5 text-warning">
+            {t.transferWarning}
+          </p>
+        </>
+      )}
+    </DialogShell>
+  );
+}
+
+// Lives inside DialogShell so it can close the dialog with its exit animation
+// once the transfer succeeds.
+function TransferSubmitButton({
+  roomId,
+  selected,
+  confirmArmed,
+  submitting,
+  label,
+  failedMessage,
+  onSuccess,
+  onError,
+  setSubmitting,
+}: {
+  roomId: string;
+  selected: PublicRoomMember | undefined;
+  confirmArmed: boolean;
+  submitting: boolean;
+  label: string;
+  failedMessage: string;
+  onSuccess: () => void;
+  onError: (msg: string) => void;
+  setSubmitting: (submitting: boolean) => void;
+}) {
+  const closeDialog = useDialogClose();
 
   const submit = async () => {
     if (!selected || !confirmArmed || submitting) return;
@@ -63,112 +159,22 @@ function TransferOwnershipDialog({
     try {
       await humansApi.transferRoomOwnership(roomId, selected.agent_id);
       onSuccess();
-      closeWithMotion();
+      closeDialog();
     } catch (e: any) {
-      onError(e?.message || t.transferFailed);
+      onError(e?.message || failedMessage);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const closeWithMotion = useCallback(() => {
-    if (submitting || closing) return;
-    setClosing(true);
-    cleanupAnime(animationRef.current);
-    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
-      onComplete: onClose,
-    });
-  }, [closing, onClose, submitting]);
-
-  useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
-    return () => cleanupAnime(animationRef.current);
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
-
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-30 flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
-      onClick={closeWithMotion}
+    <Button
+      variant="primary"
+      size="sm"
+      onClick={submit}
+      disabled={!confirmArmed || !selected || submitting}
     >
-      <div
-        ref={panelRef}
-        className="liquid-dialog w-full max-w-[360px] rounded-xl p-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="mb-3 text-sm font-semibold text-text-primary">
-          {t.transferOwnership}
-        </h3>
-
-        {candidates.length === 0 ? (
-          <p className="text-xs text-text-secondary">{t.transferPromptNoCandidate}</p>
-        ) : (
-          <>
-            <label className="mb-3 block">
-              <span className="mb-1 block text-xs text-text-secondary">
-                {t.transferSelectLabel}
-              </span>
-              <DashboardSelect
-                value={selectedId}
-                onChange={(value) => {
-                  if (value) setSelectedId(value);
-                }}
-                placeholder={t.transferSelectLabel}
-                buttonClassName="min-h-9 rounded px-2 text-xs"
-                options={candidates.map((c) => ({
-                  value: c.agent_id,
-                  label: c.display_name,
-                  sublabel: `${c.agent_id.startsWith("hu_") ? "H" : "A"} · ${c.role} · ${c.agent_id}`,
-                }))}
-              />
-            </label>
-
-            <label className="mb-3 block">
-              <span className="mb-1 block text-xs text-text-secondary">
-                {t.transferConfirmLabel.replace("{room}", roomName)}
-              </span>
-              <input
-                type="text"
-                value={confirmText}
-                onChange={(e) => setConfirmText(e.target.value)}
-                placeholder={roomName}
-                className="liquid-input w-full rounded-lg border px-2.5 py-2 text-xs text-text-primary placeholder:text-text-secondary/40"
-              />
-            </label>
-
-            <p className="mb-3 text-xs leading-5 text-yellow-300/80">
-              {t.transferWarning}
-            </p>
-          </>
-        )}
-
-        <div className="mt-1 flex justify-end gap-2">
-          <button
-            onClick={closeWithMotion}
-            disabled={submitting}
-            className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-secondary"
-          >
-            {t.permCancel}
-          </button>
-          {candidates.length > 0 && (
-            <button
-              onClick={submit}
-              disabled={!confirmArmed || !selected || submitting}
-              className="liquid-action rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {submitting ? "…" : t.transferOwnership}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+      {label}
+    </Button>
   );
 }
