@@ -8,16 +8,17 @@ import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, humansApi } from "@/lib/api";
-import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
+import { animatePop, cleanupAnime } from "@/lib/anime";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { common } from "@/lib/i18n/translations/common";
 import { useLanguage } from "@/lib/i18n";
 import type { InvitePreviewResponse } from "@/lib/types";
 import { buildFriendInvitePrompt, rebaseToCurrentOrigin } from "@/lib/onboarding";
 import { friendInviteModal } from "@/lib/i18n/translations/dashboard";
-import { Loader2 } from "lucide-react";
+import Button from "@/components/ui/Button";
+import DialogShell from "@/components/ui/DialogShell";
 
 export default withDashboardOverlayPortal(FriendInviteModal);
 
@@ -30,12 +31,8 @@ function FriendInviteModal({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"link" | "prompt" | null>(null);
-  const [closing, setClosing] = useState(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const copyButtonRef = useRef<HTMLButtonElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
-  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
   const feedbackAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   async function handleCreate() {
@@ -65,28 +62,6 @@ function FriendInviteModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const closeWithMotion = useCallback(() => {
-    if (closing) return;
-    setClosing(true);
-    cleanupAnime(animationRef.current);
-    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
-      onComplete: onClose,
-    });
-  }, [closing, onClose]);
-
-  useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
-    return () => cleanupAnime(animationRef.current);
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
-
   useEffect(() => {
     const target = copied ? copyButtonRef.current : error ? errorRef.current : null;
     if (!target) return;
@@ -96,73 +71,58 @@ function FriendInviteModal({ onClose }: { onClose: () => void }) {
   }, [copied, error]);
 
   return (
-    <div ref={overlayRef} className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
-      <div
-        ref={panelRef}
-        className="liquid-dialog w-full max-w-md rounded-2xl p-6"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <h2 className="mb-1 text-lg font-semibold text-text-primary">{t.title}</h2>
-        <p className="mb-4 text-sm text-text-secondary">
-          {t.description}
-        </p>
-
-        {error ? (
-          <div ref={errorRef} className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-            {error}
-          </div>
-        ) : null}
-
-        {!invite ? (
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={closeWithMotion}
-              className="liquid-action rounded-lg px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
-            >
+    <DialogShell
+      title={t.title}
+      description={t.description}
+      onClose={onClose}
+      hideCloseButton
+      overlayClassName="z-50"
+      footer={(close) => (
+        !invite ? (
+          <>
+            <Button variant="ghost" onClick={close}>
               {tc.cancel}
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={loading}
-              className="liquid-action inline-flex items-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            </Button>
+            <Button variant="primary" onClick={handleCreate} loading={loading}>
               {loading ? t.creating : t.createInvite}
-            </button>
-          </div>
+            </Button>
+          </>
         ) : (
-          <div className="space-y-4">
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                  {t.invitePrompt}
-                </p>
-                <button
-                  ref={copyButtonRef}
-                  onClick={() => copyField("prompt")}
-                  className="liquid-action shrink-0 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
-                >
-                  {copied === "prompt" ? tc.copied : t.copyPrompt}
-                </button>
-              </div>
-              <textarea
-                readOnly
-                rows={6}
-                value={buildFriendInvitePrompt({ inviteCode: invite.code, locale })}
-                className="liquid-input w-full resize-none rounded-lg border px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
-              />
-            </div>
-            <div className="flex justify-end">
-              <button
-                onClick={closeWithMotion}
-                className="liquid-action rounded-lg px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
-              >
-                {tc.done}
-              </button>
-            </div>
+          <Button variant="ghost" onClick={close}>
+            {tc.done}
+          </Button>
+        )
+      )}
+    >
+      {error ? (
+        <div ref={errorRef} className="mb-4 rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-sm text-danger">
+          {error}
+        </div>
+      ) : null}
+
+      {invite ? (
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+              {t.invitePrompt}
+            </p>
+            <Button
+              ref={copyButtonRef}
+              variant="secondary"
+              size="sm"
+              onClick={() => copyField("prompt")}
+            >
+              {copied === "prompt" ? tc.copied : t.copyPrompt}
+            </Button>
           </div>
-        )}
-      </div>
-    </div>
+          <textarea
+            readOnly
+            rows={6}
+            value={buildFriendInvitePrompt({ inviteCode: invite.code, locale })}
+            className="liquid-input w-full resize-none rounded-lg border px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
+          />
+        </div>
+      ) : null}
+    </DialogShell>
   );
 }

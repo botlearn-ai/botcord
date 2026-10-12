@@ -8,9 +8,9 @@ import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
  * [PROTOCOL]: update header on changes
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Cpu, X } from "lucide-react";
-import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
+import { useEffect, useRef } from "react";
+import { Cpu } from "lucide-react";
+import DialogShell from "@/components/ui/DialogShell";
 import { useDaemonStore } from "@/store/useDaemonStore";
 import { useLanguage } from "@/lib/i18n";
 import { DeviceConnectPanel } from "./HomePanel";
@@ -27,10 +27,6 @@ function AddDeviceDialog({ onClose }: AddDeviceDialogProps) {
   const loading = useDaemonStore((s) => s.loading);
   const refresh = useDaemonStore((s) => s.refresh);
   const existingIdsRef = useRef<Set<string> | null>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
-  const [closing, setClosing] = useState(false);
 
   if (existingIdsRef.current === null) {
     existingIdsRef.current = new Set(daemons.map((d) => d.id));
@@ -47,73 +43,25 @@ function AddDeviceDialog({ onClose }: AddDeviceDialogProps) {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  const closeWithMotion = useCallback(() => {
-    if (closing) return;
-    setClosing(true);
-    cleanupAnime(animationRef.current);
-    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
-      onComplete: onClose,
-    });
-  }, [closing, onClose]);
-
-  useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
-    return () => cleanupAnime(animationRef.current);
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
-
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-[110] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeWithMotion();
-      }}
+    <DialogShell
+      title={locale === "zh" ? "添加设备" : "Add Device"}
+      icon={<Cpu className="h-4 w-4 shrink-0 text-accent-text" />}
+      onClose={onClose}
+      closeLabel={locale === "zh" ? "关闭" : "Close"}
+      className="max-w-xl overflow-hidden"
+      bodyClassName="overflow-x-hidden overscroll-contain"
     >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-device-title"
-        className="liquid-dialog relative flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl"
-      >
-        <div className="liquid-toolbar flex shrink-0 items-center gap-3 border-b px-4 py-3 sm:px-5">
-          <h3
-            id="add-device-title"
-            className="flex min-w-0 flex-1 items-center gap-2 text-base font-semibold text-text-primary"
-          >
-            <Cpu className="h-4 w-4 shrink-0 text-neon-cyan" />
-            {locale === "zh" ? "添加设备" : "Add Device"}
-          </h3>
-          <button
-            type="button"
-            onClick={closeWithMotion}
-            aria-label={locale === "zh" ? "关闭" : "Close"}
-            className="liquid-action shrink-0 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary"
-          >
-            <X className="h-5 w-5" />
-          </button>
+      {connected ? (
+        <div className="mb-4 rounded-xl border border-success/30 bg-success-soft px-3 py-2 text-xs text-success">
+          {locale === "zh" ? "新设备已连接。" : "New device connected."}
         </div>
-        <div className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
-          {connected ? (
-            <div className="mb-4 rounded-xl border border-neon-green/30 bg-neon-green/10 px-3 py-2 text-xs text-neon-green">
-              {locale === "zh" ? "新设备已连接。" : "New device connected."}
-            </div>
-          ) : null}
-          <DeviceConnectPanel
-            connected={connected}
-            daemonLoading={loading}
-            onRefreshDaemons={() => void refresh()}
-          />
-        </div>
-      </div>
-    </div>
+      ) : null}
+      <DeviceConnectPanel
+        connected={connected}
+        daemonLoading={loading}
+        onRefreshDaemons={() => void refresh()}
+      />
+    </DialogShell>
   );
 }

@@ -1,0 +1,38 @@
+/* Copied from docs/brand/botcord-vi/tokens/botcord.tailwind.css (VI v1.0). Regenerate there, then copy; do not edit here. */
+/*
+ * Tailwind CSS v4 bridge for BotCord colour tokens. Import after botcord.css:
+ *   @import "./botcord.css";
+ *   @import "./botcord.tailwind.css";
+ */
+@theme inline {
+  --color-bg: var(--bc-bg);
+  --color-surface: var(--bc-surface);
+  --color-surface-raised: var(--bc-surface-raised);
+  --color-surface-sunken: var(--bc-surface-sunken);
+  --color-border: var(--bc-border);
+  --color-border-strong: var(--bc-border-strong);
+  --color-text: var(--bc-text);
+  --color-text-secondary: var(--bc-text-secondary);
+  --color-text-tertiary: var(--bc-text-tertiary);
+  --color-brand: var(--bc-brand);
+  --color-accent: var(--bc-accent);
+  --color-accent-hover: var(--bc-accent-hover);
+  --color-accent-text: var(--bc-accent-text);
+  --color-accent-soft: var(--bc-accent-soft);
+  --color-on-accent: var(--bc-on-accent);
+  --color-success: var(--bc-success);
+  --color-success-soft: var(--bc-success-soft);
+  --color-warning: var(--bc-warning);
+  --color-warning-soft: var(--bc-warning-soft);
+  --color-danger: var(--bc-danger);
+  --color-danger-soft: var(--bc-danger-soft);
+  --color-focus-ring: var(--bc-focus-ring);
+  --color-agent-coral: var(--bc-agent-coral);
+  --color-agent-amber: var(--bc-agent-amber);
+  --color-agent-lime: var(--bc-agent-lime);
+  --color-agent-green: var(--bc-agent-green);
+  --color-agent-cyan: var(--bc-agent-cyan);
+  --color-agent-blue: var(--bc-agent-blue);
+  --color-agent-violet: var(--bc-agent-violet);
+  --color-agent-pink: var(--bc-agent-pink);
+}

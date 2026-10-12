@@ -293,6 +293,18 @@ coral `#C25D58` · amber `#B46D10` · lime `#7E8814` · green `#3B9555` · cyan 
 
 圆角用法：输入框和按钮 `md`；卡片 `lg`；弹窗 `xl`；营销大卡片 `2xl`；胶囊、头像 `full`。不再使用 `rounded-[18px]` 等任意值。
 
+Tailwind v4 的默认圆角命名和 VI 不同，代码里按下表写类名，不要用 `--bc-radius-*` 覆盖 Tailwind 的 `--radius-*`：
+
+| VI | 值 | Tailwind 类名 |
+|---|---|---|
+| xs | 4 | `rounded` |
+| sm | 6 | `rounded-md` |
+| md | 8 | `rounded-lg` |
+| lg | 12 | `rounded-xl` |
+| xl | 16 | `rounded-2xl` |
+| 2xl | 24 | `rounded-3xl` |
+| full | — | `rounded-full` |
+
 ---
 
 ## 10. 语气与文案
@@ -324,7 +336,7 @@ docs/brand/botcord-vi/
 ├── tokens/
 │   ├── botcord.tokens.json    W3C DTCG 2025.10 格式，唯一数值来源
 │   ├── botcord.css            CSS 变量（--bc-*），浅色 / 深色主题
-│   └── botcord.tailwind.css   Tailwind v4 @theme 桥接（bg-surface、text-secondary…）
+│   └── botcord.tailwind.css   Tailwind v4 @theme 颜色桥接（bg-surface、text-text-secondary…，只含颜色）
 └── assets/
     ├── logo/                  图形、字标、横排 / 竖排组合、App 图标、favicon
     └── brand/                 OG 图、徽章、cord field

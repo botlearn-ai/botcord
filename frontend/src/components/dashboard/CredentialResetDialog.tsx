@@ -8,13 +8,15 @@ import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { userApi } from "@/lib/api";
-import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupAnime } from "@/lib/anime";
+import { animatePop, cleanupAnime } from "@/lib/anime";
+import Button from "@/components/ui/Button";
+import DialogShell from "@/components/ui/DialogShell";
 import { useLanguage } from "@/lib/i18n";
 import { credentialResetDialog } from "@/lib/i18n/translations/dashboard";
 import { buildResetCredentialPrompt, getHubApiBaseUrl } from "@/lib/onboarding";
-import { Check, Copy, Loader2, X } from "lucide-react";
+import { Check, Copy, Loader2 } from "lucide-react";
 
 interface CredentialResetDialogProps {
   agentId: string;
@@ -34,12 +36,8 @@ function CredentialResetDialog({
   const [resetCode, setResetCode] = useState("");
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [closing, setClosing] = useState(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const copyButtonRef = useRef<HTMLButtonElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
-  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
   const feedbackAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   useEffect(() => {
@@ -83,28 +81,6 @@ function CredentialResetDialog({
     }
   }
 
-  const closeWithMotion = useCallback(() => {
-    if (closing) return;
-    setClosing(true);
-    cleanupAnime(animationRef.current);
-    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
-      onComplete: onClose,
-    });
-  }, [closing, onClose]);
-
-  useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
-    return () => cleanupAnime(animationRef.current);
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
-
   useEffect(() => {
     const target = copied ? copyButtonRef.current : error ? errorRef.current : null;
     if (!target) return;
@@ -114,83 +90,72 @@ function CredentialResetDialog({
   }, [copied, error]);
 
   return (
-    <div ref={overlayRef} className={`liquid-scrim fixed inset-0 z-[110] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`} onMouseDown={(event) => { if (event.target === event.currentTarget) closeWithMotion(); }}>
-      <div ref={panelRef} className="liquid-dialog relative w-full max-w-xl rounded-2xl p-5">
-        <button
-          onClick={closeWithMotion}
-          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary"
-        >
-          <X className="h-5 w-5" />
-        </button>
+    <DialogShell
+      title={t.title}
+      description={t.description}
+      onClose={onClose}
+      className="max-w-xl"
+      footer={(close) => (
+        <Button variant="primary" onClick={close}>
+          {t.close}
+        </Button>
+      )}
+    >
+      <p className="mb-4 text-xs text-text-tertiary">
+        {t.targetAgent}{agentId}
+      </p>
 
-        <div className="mb-6 pr-8">
-          <h3 className="text-xl font-bold text-text-primary">{t.title}</h3>
-          <p className="mt-1 text-sm text-text-secondary">{t.description}</p>
-          <p className="mt-3 text-xs text-text-secondary/70">
-            {t.targetAgent}{agentId}
+      <div className="liquid-card rounded-xl p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-xs font-bold uppercase tracking-widest text-text-secondary opacity-60">
+            {t.prompt}
           </p>
-        </div>
-
-        <div className="liquid-card rounded-xl p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-widest text-text-secondary opacity-60">
-              {t.prompt}
-            </p>
-            <button
-              ref={copyButtonRef}
-              onClick={handleCopyPrompt}
-              disabled={!promptText}
-              className="liquid-action flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-semibold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-60"
-            >
-              {copied ? (
-                <>
-                  <Check className="h-3.5 w-3.5" />
-                  {t.copied}
-                </>
-              ) : (
-                <>
-                  <Copy className="h-3.5 w-3.5" />
-                  {t.copyPrompt}
-                </>
-              )}
-            </button>
-          </div>
-
-          {loading ? (
-            <div className="liquid-tool-surface flex items-center justify-center rounded-lg p-6 text-neon-cyan">
-              <Loader2 className="h-5 w-5 animate-spin" />
-            </div>
-          ) : (
-            <textarea
-              readOnly
-              value={promptText}
-              rows={9}
-              className="liquid-input w-full resize-none rounded-lg border p-3 font-mono text-xs leading-relaxed text-text-primary outline-none"
-            />
-          )}
-
-          {expiresAt && (
-            <p className="mt-2 text-xs text-text-secondary/50">
-              {t.ticketExpiresAt}{new Date(expiresAt * 1000).toLocaleString()}
-            </p>
-          )}
-        </div>
-
-        {error ? (
-          <p ref={errorRef} className="mt-4 rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
-            {error}
-          </p>
-        ) : null}
-
-        <div className="mt-6 flex items-center justify-center">
-          <button
-            onClick={closeWithMotion}
-            className="liquid-action min-h-11 rounded-xl border border-neon-cyan/50 bg-neon-cyan px-5 py-3 text-sm font-bold text-deep-black transition-all hover:bg-neon-cyan/90"
+          <Button
+            ref={copyButtonRef}
+            variant="secondary"
+            size="sm"
+            onClick={handleCopyPrompt}
+            disabled={!promptText}
           >
-            {t.close}
-          </button>
+            {copied ? (
+              <>
+                <Check className="h-3.5 w-3.5" />
+                {t.copied}
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5" />
+                {t.copyPrompt}
+              </>
+            )}
+          </Button>
         </div>
+
+        {loading ? (
+          <div className="liquid-tool-surface flex items-center justify-center rounded-lg p-6 text-accent-text">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        ) : (
+          <textarea
+            readOnly
+            value={promptText}
+            rows={9}
+            className="liquid-input w-full resize-none rounded-lg border p-3 font-mono text-xs leading-relaxed text-text-primary outline-none"
+          />
+        )}
+
+        {expiresAt && (
+          <p className="mt-2 text-xs text-text-tertiary">
+            {t.ticketExpiresAt}{new Date(expiresAt * 1000).toLocaleString()}
+          </p>
+        )}
       </div>
-    </div>
+
+      {error ? (
+        <p ref={errorRef} className="mt-4 rounded-lg border border-danger/25 bg-danger-soft p-2 text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
+    </DialogShell>
   );
 }
