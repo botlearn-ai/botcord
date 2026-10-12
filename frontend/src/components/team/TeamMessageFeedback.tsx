@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
+import { chatPane } from "@/lib/i18n/translations/dashboard";
 import type { DashboardMessage } from "@/lib/types";
 import { emitJumpToMessage } from "@/components/dashboard/messageNavigation";
 import { sendDashboardRoomMessage } from "@/lib/room-message-send";
@@ -22,6 +23,10 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
   const [retryError, setRetryError] = useState<string | null>(null);
   const [retried, setRetried] = useState(false);
   const activity = message.reply_activity ?? [];
+  const accessRevoked = message.send_error === "agent_access_revoked";
+  const errorText = (error: string) => error === "agent_access_revoked"
+    ? chatPane[zh ? "zh" : "en"].agentAccessRevoked
+    : error;
   const pending = activity.some((a) => a.status === "waiting" || a.status === "processing");
   const sending = message.send_status === "sending" || (message.hub_msg_id.startsWith("tmp_") && message.state !== "failed");
   const failedSend = message.send_status === "failed" || (message.hub_msg_id.startsWith("tmp_") && message.state === "failed");
@@ -34,7 +39,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
   }, [pending, waitingForStatus, longWait, message.created_at]);
 
   const retry = async () => {
-    if (retrying) return;
+    if (retrying || accessRevoked) return;
     setRetrying(true);
     setRetryError(null);
     try {
@@ -50,12 +55,12 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
       });
       setRetried(true);
     } catch (error) {
-      setRetryError(error instanceof Error ? error.message : (zh ? "重试失败" : "Retry failed"));
+      setRetryError(error instanceof Error ? errorText(error.message) : (zh ? "重试失败" : "Retry failed"));
     } finally {
       setRetrying(false);
     }
   };
-  const canRetry = message.is_mine && (failedSend || activity.some((a) => ["failed", "interrupted", "unconfirmed"].includes(a.status)));
+  const canRetry = message.is_mine && !accessRevoked && (failedSend || activity.some((a) => ["failed", "interrupted", "unconfirmed"].includes(a.status)));
   return (
     <div className="mt-1 space-y-1 text-xs text-text-secondary" aria-live="polite" aria-atomic="true">
       {message.is_mine && <div className="flex items-center gap-1">
@@ -78,7 +83,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
         {agent.status === "processing" && <span aria-hidden="true" className="motion-safe:animate-pulse text-neon-cyan">•••</span>}
       </div>)}
       {(pending || waitingForStatus) && longWait && <div>{zh ? "还在等待回复，你可以继续发送消息" : "Still waiting for a reply. You can send another message."}</div>}
-      {failedSend && message.send_error && <div className="text-red-400">{message.send_error}</div>}
+      {failedSend && message.send_error && <div className="text-red-400">{errorText(message.send_error)}</div>}
       {canRetry && !retried && <button type="button" disabled={retrying || sending} onClick={() => void retry()} className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-50"><RotateCcw aria-hidden="true" className="h-3 w-3" />{retrying ? (zh ? "正在重试…" : "Retrying…") : (zh ? "重试" : "Retry")}</button>}
       {retried && !failedSend && <div>{zh ? "已重新发送" : "Sent again"}</div>}
       {retryError && <div role="alert" className="text-red-400">{retryError}</div>}

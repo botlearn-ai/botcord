@@ -61,8 +61,8 @@ export interface ApproveInput {
 export interface RoomAgentAccess {
   agent_id: string;
   display_name: string;
-  my_capability: AgentCapability;
-  basis: "owner" | "grant" | "room";
+  my_capability: AgentCapability | "deny";
+  basis: "owner" | "grant" | "room" | "none";
   reply_mode: ReplyMode;
   keywords: string[];
 }
@@ -217,8 +217,9 @@ export function accessBadge(access: MyAgentAccess, zh: boolean): AccessBadgeInfo
 }
 
 /** What my messages may make an Agent do (rooms, personal default). */
-export function capabilityBadge(capability: AgentCapability, zh: boolean): AccessBadgeInfo {
+export function capabilityBadge(capability: AgentCapability | "deny", zh: boolean): AccessBadgeInfo {
   const i = zh ? 0 : 1;
+  if (capability === "deny") return accessBadge("none", zh);
   if (capability === "full")
     return { label: zh ? "完整" : "Full", explanation: EXPLAIN.full[i], tone: "full" };
   if (capability === "collaborator")
