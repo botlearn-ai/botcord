@@ -8,7 +8,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md；样式规则以 docs/brand/botcord-vi/VI.md §8、§9 为准
  */
 
-import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
+import { Children, createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { clsx } from "clsx";
 import { X } from "lucide-react";
@@ -117,6 +117,9 @@ export default function DialogShell({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [close]);
 
+  // Conditional children (e.g. `{invite && …}`) can render nothing; skip the padded body then.
+  const hasBody = Children.toArray(children).length > 0;
+
   return (
     <DialogCloseContext.Provider value={closeAfterSubmit}>
       <div
@@ -161,7 +164,11 @@ export default function DialogShell({
               <X className="h-5 w-5" />
             </button>
           )}
-          <div className={clsx("min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-4", bodyClassName)}>{children}</div>
+          {hasBody ? (
+            <div className={clsx("min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-4", bodyClassName)}>{children}</div>
+          ) : (
+            <div className="pb-4" />
+          )}
           {footer ? (
             <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3.5">
               {typeof footer === "function" ? footer(close) : footer}
