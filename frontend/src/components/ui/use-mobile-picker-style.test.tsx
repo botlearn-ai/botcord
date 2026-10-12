@@ -21,6 +21,7 @@ it("keeps the picker above the virtual keyboard and updates when it resizes", ()
   expect(picker.style.maxHeight).toBe("268px");
   act(() => { viewport.height = 700; viewport.dispatchEvent(new Event("resize")); });
   expect(picker.style.bottom).toContain("112px");
+  expect(picker.style.maxHeight).toBe("360px");
   act(() => root.render(<Picker open={false} />));
   expect(picker.style.position).toBe("");
 });

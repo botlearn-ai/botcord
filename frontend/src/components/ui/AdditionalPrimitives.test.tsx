@@ -77,3 +77,28 @@ it("keeps Tab inside the drawer and restores focus after unmount", () => {
   key(done, "Tab"); expect(document.activeElement?.getAttribute("aria-label")).toBe("Close");
   act(() => root.render(<button id="launch">Open</button>)); expect(document.activeElement).toBe(launch);
 });
+
+
+it("Escape dismisses only the picker inside a drawer, then the drawer", () => {
+  const close = vi.fn();
+  const host = mount(<DrawerShell title="Nested" onClose={close}><SingleSelect value={null} onChange={() => {}} placeholder="Choose" options={[{ value: "a", label: "Alpha" }]} /></DrawerShell>);
+  const trigger = host.querySelector<HTMLButtonElement>('[aria-haspopup="listbox"]')!;
+  act(() => trigger.click());
+  act(() => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+  expect(host.querySelector('[role="listbox"]')).toBeNull();
+  expect(close).not.toHaveBeenCalled();
+  act(() => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+  expect(close).toHaveBeenCalledOnce();
+});
+
+
+it("keeps page scrolling locked until the last dialog unmounts", () => {
+  document.body.style.overflow = "auto";
+  mount(<><DrawerShell title="Outer" onClose={() => {}} /><DrawerShell title="Inner" onClose={() => {}} /></>);
+  expect(document.body.style.overflow).toBe("hidden");
+  act(() => root.render(<DrawerShell title="Outer" onClose={() => {}} />));
+  expect(document.body.style.overflow).toBe("hidden");
+  act(() => root.render(null));
+  expect(document.body.style.overflow).toBe("auto");
+  document.body.style.overflow = "";
+});

@@ -30,6 +30,9 @@ function hasUtility(classes: string | undefined, prefix: string): boolean {
   return Boolean(classes?.split(/\s+/).some((name) => name.startsWith(prefix)));
 }
 
+let openDialogCount = 0;
+let originalBodyOverflow = "";
+
 const DialogCloseContext = createContext<() => void>(() => {});
 
 /** Close the surrounding DialogShell with its exit animation (e.g. after a successful submit). */
@@ -82,6 +85,7 @@ export default function DialogShell({
   children,
 }: DialogShellProps) {
   const titleId = useId();
+  const descriptionId = useId();
   const [closing, setClosing] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -108,16 +112,22 @@ export default function DialogShell({
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    if (openDialogCount++ === 0) { originalBodyOverflow = document.body.style.overflow; document.body.style.overflow = "hidden"; }
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+      // An identity transform still traps fixed descendants in this panel.
+      onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
+    });
     panelRef.current?.focus({ preventScroll: true });
     return () => {
       cleanupAnime(animationRef.current);
+      if (--openDialogCount === 0) document.body.style.overflow = originalBodyOverflow;
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
   }, []);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented) return;
       const panel = panelRef.current;
       const nativeModal = document.querySelector("dialog[open]");
       if (!panel || (nativeModal && !panel.contains(nativeModal))) return;
@@ -159,6 +169,7 @@ export default function DialogShell({
           role={role}
           aria-modal="true"
           aria-labelledby={titleId}
+          aria-describedby={description ? descriptionId : undefined}
           tabIndex={-1}
           className={clsx(
             "liquid-dialog relative flex w-full flex-col outline-none",
@@ -168,11 +179,11 @@ export default function DialogShell({
           )}
         >
           <div className={clsx("px-5 pt-5", hideCloseButton ? "" : "pr-16")}>
-            <h3 id={titleId} className="flex items-center gap-2 text-lg font-semibold tracking-[-0.01em] text-text-primary">
+            <h3 id={titleId} className="flex items-center gap-2 break-words text-lg font-semibold tracking-[-0.01em] text-text-primary">
               {icon}
               {title}
             </h3>
-            {description ? <p className="mt-1.5 text-sm text-text-secondary">{description}</p> : null}
+            {description ? <p id={descriptionId} className="mt-1.5 break-words text-sm text-text-secondary">{description}</p> : null}
           </div>
           {hideCloseButton ? null : (
             <IconButton

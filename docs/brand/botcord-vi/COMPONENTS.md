@@ -187,3 +187,7 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 - DialogShell 限制动态视口高度、允许底部操作换行；DrawerShell 与 Toast 避让底部安全区。
 - Tooltip 不能承载完成任务所必需的信息；移动端必须提供可见标签或独立说明。无标签开关、Radio 的调用方须保证足够间距及可点击标签。
 - 已验证 Chromium 触控模拟 320 / 375 / 430px：页面无横向溢出、按钮点击区域、选择器选中 / 搜索、抽屉打开关闭。单元测试覆盖软键盘视口变化。真实 iOS / Android 键盘、横屏刘海安全区及复杂业务页面仍需真机验收。
+
+## 迁移基线
+
+组件成熟度、稳定接口、样式覆盖限制、真实页面试点和验收边界见 [RELEASE-READINESS.md](./RELEASE-READINESS.md)。
