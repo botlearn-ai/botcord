@@ -31,17 +31,17 @@ function UnbindAgentDialog({
   const isCloudDelete = deleteMode === "cloud";
   const copy = isCloudDelete
     ? {
-        title: locale === "zh" ? "删除云端 Bot" : "Delete Cloud Bot",
+        title: locale === "zh" ? "删除云端 Agent" : "Delete Cloud Bot",
         description: locale === "zh"
-          ? "这将删除云端 Bot，并清理对应的云端运行环境、凭据与未结算用量预留。"
+          ? "将删除云端 Agent。清理其云端运行环境和登录凭据。清理未结算用量预留。"
           : "This will delete the Cloud Bot and clean up its cloud runtime, credentials, and pending usage reservations.",
         warning: locale === "zh"
-          ? "此操作不可撤销。删除后如果需要使用该 Bot，需要重新创建。"
+          ? "此操作不可撤销。再次使用需要重新创建 Agent。"
           : "This action cannot be undone. Create a new Bot if you need it again.",
         targetAgent: locale === "zh" ? "即将删除：" : "Bot to delete: ",
         confirm: locale === "zh" ? "确认删除" : "Confirm Delete",
         loading: locale === "zh" ? "删除中..." : "Deleting...",
-        failed: locale === "zh" ? "删除云端 Bot 失败" : "Failed to delete Cloud Bot",
+        failed: locale === "zh" ? "删除云端 Agent 失败" : "Failed to delete Cloud Bot",
       }
     : {
         title: t.title,

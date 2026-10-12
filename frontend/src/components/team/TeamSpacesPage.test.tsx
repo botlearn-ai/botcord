@@ -63,7 +63,7 @@ describe("Team governance rendering", () => {
       const html = renderToStaticMarkup(<TeamSpacesPage teamMode section={section} sharedStore={sharedStore} />);
       expect(html).not.toContain("正在加载团队空间");
       expect(html).not.toContain('aria-busy="true"');
-      expect(html).toContain({ members: "邀请用户", settings: "管理员访问组织私聊" }[section]);
+      expect(html).toContain({ members: "邀请用户", settings: "私聊查阅" }[section]);
     }
   });
 
@@ -103,7 +103,7 @@ describe("Team governance rendering", () => {
   it("lets owners manage settings while explaining the unopened content entry", () => {
     const html = renderToStaticMarkup(<TeamSpacesPage />);
     expect(html).toContain("邀请用户");
-    expect(html).toContain("私聊内容查看入口尚未开放");
+    expect(html).toContain("查看入口暂未开放");
     const toggle = html.match(/<button[^>]*role="switch"[^>]*>/)?.[0];
     expect(toggle).toBeDefined();
     expect(toggle).not.toContain(' disabled=""');
@@ -137,7 +137,7 @@ describe("Team governance rendering", () => {
     const html = renderToStaticMarkup(<TeamSpacesPage teamMode section="members" />);
     expect(html).toContain("邀请用户");
     expect(html).not.toContain("组织 Agent");
-    expect(html).not.toContain("管理员访问组织私聊");
+    expect(html).not.toContain("私聊查阅");
     expect(html).not.toContain("当前空间");
     expect(html).not.toContain("创建组织");
   });

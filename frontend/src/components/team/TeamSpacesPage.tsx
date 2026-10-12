@@ -479,7 +479,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
               </p>
               <p className="text-sm">
                 {t(
-                  "管理员访问组织私聊：",
+                  "私聊查阅：",
                   "Admin access to organization DMs: ",
                 )}
                 {space.admin_dm_content_access_enabled
@@ -714,13 +714,13 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                     <div className="max-w-xl">
                       <h3 className="font-medium">
                         {t(
-                          "管理员访问组织私聊",
+                          "私聊查阅",
                           "Admin access to organization DMs",
                         )}
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-text-secondary">
                         {t(
-                          "开启后，组织所有者和管理员可通过专用入口查看仍保留的全部组织私聊历史。个人对话、私人文件和其他组织不受影响。",
+                          "开启后，所有者和管理员获得查看权限。范围为全部仍保留的组织私聊记录。不影响个人对话、私人文件和其他组织。",
                           "When enabled, organization owners and admins can view all retained organization DM history through a dedicated entry. Personal conversations, private files and other organizations are unaffected.",
                         )}
                       </p>
@@ -730,7 +730,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                       role="switch"
                       aria-checked={space.admin_dm_content_access_enabled}
                       aria-label={t(
-                        "管理员访问组织私聊",
+                        "私聊查阅",
                         "Admin access to organization DMs",
                       )}
                       className={`${button} ${space.admin_dm_content_access_enabled ? "border-neon-cyan/40 text-neon-cyan" : "text-text-secondary"}`}
@@ -744,25 +744,25 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                               !(await confirmForSpace({
                                 title: enabled
                                   ? t(
-                                      "开启组织私聊访问？",
+                                      "允许查阅",
                                       "Enable organization DM access?",
                                     )
                                   : t(
-                                      "关闭组织私聊访问？",
+                                      "关闭查阅",
                                       "Disable organization DM access?",
                                     ),
                                 message: enabled
                                   ? t(
-                                      "范围涵盖当前仍保留的全部组织私聊历史。所有成员可看到此设置，变更会被记录。内容查看入口尚未开放。",
+                                      "允许所有者和管理员查看组织私聊。包含全部仍保留的历史记录。所有成员可见此设置，修改会留记录。查看入口暂未开放。",
                                       "This covers all retained organization DM history. Members can see this setting and the change is recorded. The content viewing entry is not available yet.",
                                     )
                                   : t(
-                                      "关闭后管理员不再拥有此项额外访问权；已记录的审计信息保留。",
+                                      "关闭后，管理员失去这项额外查看权限。此前的操作记录仍会保留。",
                                       "Admins lose this additional access. Existing audit records are retained.",
                                     ),
                                 confirmLabel: enabled
-                                  ? t("确认开启", "Enable access")
-                                  : t("确认关闭", "Disable access"),
+                                  ? t("允许查阅", "Enable access")
+                                  : t("关闭查阅", "Disable access"),
                               }))
                             )
                               return false;
@@ -773,7 +773,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                             );
                           },
                           t(
-                            "组织设置已更新。",
+                            "设置已保存",
                             "Organization settings updated.",
                           ),
                         )
@@ -786,7 +786,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                   </div>
                   <p className="text-xs leading-5 text-text-secondary">
                     {t(
-                      "仅组织所有者可修改。当前可保存设置，私聊内容查看入口尚未开放。",
+                      "仅组织所有者可修改。可保存设置，查看入口暂未开放。",
                       "Only the organization owner can change this setting. It can be saved now; the DM content viewing entry is not available yet.",
                     )}
                   </p>
@@ -798,7 +798,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                       )}
                     </span>
                     <span className="text-text-secondary">
-                      {t("未开放", "Not available")}
+                      {t("暂未开放", "Not available")}
                     </span>
                   </div>
                   {manager && <AccessOverviewSection spaceId={space.id} />}
