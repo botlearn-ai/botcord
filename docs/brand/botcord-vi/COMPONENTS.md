@@ -178,3 +178,12 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 - 选项说明、表单提示使用普通字体及 `text-text-secondary`，不降低透明度。等宽字体留给代码和标识符。
 - 加载文案不强制大写、不额外增加字距；按钮和输入框使用 8px 圆角。
 - `/design#typography` 提供中英文、数字及标识符样张。业务页面中尚未迁移的局部样式不代表已完成全站 VI 对齐。
+
+### 移动端约束与验证（2026-10-12）
+
+- 粗指针设备上，Button、IconButton、MenuItem、Tabs 及带标签的 Checkbox / Switch 最小点击区域为 44px；表单控件最小高度为 44px，输入文字最小 16px。
+- SingleSelect / MultiSelect 在不超过 640px 的触控视口中使用底部选项面板，监听 visualViewport 的 resize / scroll，以避开软键盘；仍为非模态控件，点击外部关闭。
+- Tabs 支持自身横向滚动；Table 默认包含可聚焦的横向滚动区域，保留内部 table 语义。为数据表传入有意义的 aria-label。
+- DialogShell 限制动态视口高度、允许底部操作换行；DrawerShell 与 Toast 避让底部安全区。
+- Tooltip 不能承载完成任务所必需的信息；移动端必须提供可见标签或独立说明。无标签开关、Radio 的调用方须保证足够间距及可点击标签。
+- 已验证 Chromium 触控模拟 320 / 375 / 430px：页面无横向溢出、按钮点击区域、选择器选中 / 搜索、抽屉打开关闭。单元测试覆盖软键盘视口变化。真实 iOS / Android 键盘、横屏刘海安全区及复杂业务页面仍需真机验收。

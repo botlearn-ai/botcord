@@ -913,3 +913,10 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 @utility type-caption {
   font: var(--bc-text-caption);
 }
+
+/* Coarse pointers need larger hit targets; desktop density stays unchanged. */
+@media (pointer: coarse) {
+  .bc-touch-target, label:has(> .bc-radio) { min-width: 44px; min-height: 44px; }
+  .liquid-input { min-height: 44px; }
+  [role="listbox"] [role="option"] { min-height: 44px; }
+}

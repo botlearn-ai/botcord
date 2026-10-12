@@ -44,7 +44,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={clsx(
-        "inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors",
+        "bc-touch-target inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/60",
         "disabled:cursor-not-allowed disabled:opacity-55",
         VARIANT[variant],

@@ -8,6 +8,7 @@
  */
 
 import { moveListboxFocus } from "./listbox-keyboard";
+import { useMobilePickerStyle } from "./use-mobile-picker-style";
 import { type ButtonHTMLAttributes, type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { animatePop, animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
@@ -75,6 +76,7 @@ export default function MultiSelect({
   const selectionAnimationRefs = useRef<Array<ReturnType<typeof animatePop>>>([]);
   const previousValueRef = useRef(value);
   const [open, setOpen] = useState(false);
+  const mobilePickerStyle = useMobilePickerStyle(open);
   const [query, setQuery] = useState("");
 
   const normalizedGroups = useMemo<MultiSelectGroup[]>(() => {
@@ -325,6 +327,7 @@ export default function MultiSelect({
       {open ? (
         <div
           ref={panelRef}
+          style={mobilePickerStyle}
           id={`${id}-panel`}
           className={`liquid-menu absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-xl border border-border ${panelClassName}`}
         >

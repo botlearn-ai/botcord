@@ -38,7 +38,7 @@ const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(
   return (
     <label
       className={clsx(
-        "inline-flex items-center gap-2 text-sm text-text-primary",
+        "bc-touch-target inline-flex items-center gap-2 text-sm text-text-primary",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
         className,
       )}

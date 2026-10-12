@@ -95,7 +95,7 @@ export default function Tabs({
   }
 
   return (
-    <div role="tablist" aria-label={ariaLabel} aria-orientation="horizontal" className={clsx(LIST[variant], className)}>
+    <div role="tablist" aria-label={ariaLabel} aria-orientation="horizontal" className={clsx("max-w-full overflow-x-auto", LIST[variant], className)}>
       {items.map((item, index) => {
         const selected = item.value === value;
         return (
@@ -110,7 +110,7 @@ export default function Tabs({
             onClick={() => select(index)}
             onKeyDown={(event) => onKeyDown(event, index)}
             className={clsx(
-              "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap font-medium",
+              "bc-touch-target inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap font-medium",
               "transition-colors duration-[var(--bc-duration-fast)] motion-reduce:transition-none",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/60",
               "disabled:cursor-not-allowed disabled:opacity-50",

@@ -104,7 +104,7 @@ export default function ImagePreviewOverlay({
             href={src}
             target="_blank"
             rel="noopener noreferrer"
-            className="liquid-action inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary"
+            className="bc-touch-target liquid-action inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary"
             aria-label="Open original image"
             onClick={(event) => event.stopPropagation()}
           >
@@ -116,7 +116,7 @@ export default function ImagePreviewOverlay({
               event.stopPropagation();
               onClose();
             }}
-            className="liquid-action inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary"
+            className="bc-touch-target liquid-action inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary"
             aria-label="Close image preview"
           >
             <X className="h-5 w-5" />
@@ -142,7 +142,7 @@ export default function ImagePreviewOverlay({
         <img
           src={src}
           alt={title}
-          className="max-h-[calc(100vh-6.5rem)] max-w-full object-contain shadow-2xl"
+          className="max-h-[calc(100dvh-6.5rem)] max-w-full object-contain shadow-2xl"
           onError={onImageError}
         />
         {hasGallery && (
