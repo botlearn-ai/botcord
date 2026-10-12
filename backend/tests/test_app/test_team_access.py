@@ -257,6 +257,11 @@ async def test_agent_dm_access_matches_send_authorization(client, db_session, or
         row.expires_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
         await db_session.commit()
     else:
+        # SQLite server timestamps have one-second precision. Make ordering
+        # deterministic so this scenario exercises a newer, other-space grant.
+        row = await db_session.get(AgentAccessGrant, UUID(grant["id"]))
+        row.created_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+        await db_session.commit()
         other = await spaces.create_organization(db_session, org["danny_id"], "other-dm", "Other")
         await spaces.invite_user(db_session, other.space_id, org["danny_id"], org["alice_id"])
         await spaces.accept_invitation(db_session, other.space_id, org["alice_id"])
