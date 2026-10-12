@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/ui/Select";
 import { useState, useEffect, useRef } from "react";
 import { Search, FileText, CheckCircle2, Code2, Brain, HelpCircle, Wrench, ChevronDown, ChevronRight, Bot, AlertTriangle, ListTodo, Info } from "lucide-react";
 import type { StreamBlockEntry } from "@/lib/types";
@@ -1144,13 +1145,13 @@ export default function StreamBlocksView({
               </button>
               <label className="flex shrink-0 items-center gap-1.5 text-xs text-text-secondary">
                 <span>Max</span>
-                <select
+                <Select
                   value={visibleBlockMax}
                   onChange={(event) => {
                     setVisibleBlockMax(Number(event.target.value));
                     setOlderBlocksExpanded(false);
                   }}
-                  className="liquid-input h-6 rounded border border-glass-border px-1.5 text-xs text-text-primary outline-none"
+
                   aria-label="Maximum visible reasoning steps"
                 >
                   {VISIBLE_BLOCK_MAX_OPTIONS.map((option) => (
@@ -1158,7 +1159,7 @@ export default function StreamBlocksView({
                       {option}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             </div>
             {renderExpandedContent && (

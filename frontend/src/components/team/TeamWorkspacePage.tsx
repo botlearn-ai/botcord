@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -488,10 +489,10 @@ export function TeamWorkspace({
             <span className="mb-1 block text-xs text-text-secondary">
               {t("当前组织", "Organization")}
             </span>
-            <select
+            <Select
               aria-label={t("切换组织", "Switch organization")}
               value={space.id}
-              className="w-full truncate bg-transparent text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan"
+
               onChange={(e) => router.push(teamHref(e.target.value))}
             >
               {snapshot.spaces
@@ -504,7 +505,7 @@ export function TeamWorkspace({
                       : ""}
                   </option>
                 ))}
-            </select>
+            </Select>
           </label>
           <Link
             href={teamHref(space.id, "settings")}

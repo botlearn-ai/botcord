@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Bell, Bot, Inbox, LogOut, Moon, Settings, Sun, Trash2, Wallet } from "lucide-react";
+import ExtendedGallery from "./ExtendedGallery";
 import LoadingPreview from "./LoadingPreview";
 import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
@@ -97,6 +98,10 @@ export default function DesignGallery() {
             <code className="font-mono text-sm"> docs/brand/botcord-vi/COMPONENTS.md</code>。新界面只用这里的组件拼。
           </p>
         </div>
+
+        <nav aria-label="组件分类" className="mb-6 flex flex-wrap gap-2 text-sm">
+          {[ ["loading", "加载"], ["buttons", "基础"], ["selection", "选择与搜索"], ["persistent-feedback", "反馈与抽屉"], ["data", "数据"], ["content", "内容"], ["marketing", "营销"] ].map(([id, label]) => <a key={id} href={`#${id}`} className="rounded-lg border border-border px-3 py-2 text-text-secondary hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">{label}</a>)}
+        </nav>
 
         <Section id="loading" title="Logo Loading" note="全页面加载、区域等待和紧凑状态共用 BotCord 品牌动效。支持浅色、深色和减少动态效果。">
           <LoadingPreview />
@@ -298,6 +303,7 @@ export default function DesignGallery() {
             </Card>
           </div>
         </Section>
+        <ExtendedGallery />
       </main>
 
       {dialogOpen ? (

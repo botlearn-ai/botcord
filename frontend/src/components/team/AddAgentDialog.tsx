@@ -1,5 +1,6 @@
 "use client";
 
+import Alert from "@/components/ui/Alert";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Loader2, Plus, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -160,9 +161,9 @@ export default function AddAgentDialog({
         </button>
 
         {error != null && (
-          <p role="alert" className="rounded-xl border border-red-500/30 p-3 text-sm text-red-500">
+          <Alert tone="danger">
             {spaceError(error, zh)}
-          </p>
+          </Alert>
         )}
       </div>
     </dialog>

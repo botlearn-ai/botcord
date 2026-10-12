@@ -1,5 +1,6 @@
 "use client";
 
+import Radio from "@/components/ui/Radio";
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -126,8 +127,8 @@ export default function AgentDefaultPermission({
                     : "border-glass-border hover:bg-glass-bg/60"
                 } ${saving ? "pointer-events-none opacity-50" : ""}`}
               >
-                <input
-                  type="radio"
+                <Radio
+
                   name={`default_capability_${agentId}`}
                   value={opt.value}
                   checked={selected}

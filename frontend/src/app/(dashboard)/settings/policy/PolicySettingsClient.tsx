@@ -7,6 +7,7 @@
  * [PROTOCOL]: update header on changes
  */
 
+import Radio from "@/components/ui/Radio";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, Bot, Loader2, MessageSquare, Shield, UserRound, X } from "lucide-react";
 import { userApi } from "@/lib/api";
@@ -89,8 +90,8 @@ function RadioGroup<T extends string>({
                 : "border-glass-border bg-transparent hover:bg-glass-bg/60"
             } ${disabled ? "pointer-events-none opacity-50" : ""}`}
           >
-            <input
-              type="radio"
+            <Radio
+
               name={name}
               value={opt.value}
               checked={selected}

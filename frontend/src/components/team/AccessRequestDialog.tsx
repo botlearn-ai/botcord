@@ -1,5 +1,7 @@
 "use client";
 
+import Alert from "@/components/ui/Alert";
+import Radio from "@/components/ui/Radio";
 import { useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -103,8 +105,8 @@ export default function AccessRequestDialog({
                   role === value ? "border-neon-cyan/40 bg-neon-cyan/5" : "border-glass-border"
                 } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
               >
-                <input
-                  type="radio"
+                <Radio
+
                   name="access-role"
                   value={value}
                   checked={role === value}
@@ -136,9 +138,9 @@ export default function AccessRequestDialog({
           <span className="block text-right text-xs text-text-secondary">{message.length}/500</span>
         </label>
         {error != null && (
-          <p role="alert" className="rounded-xl border border-red-500/30 p-3 text-sm text-red-500">
+          <Alert tone="danger">
             {spaceError(error, zh)}
-          </p>
+          </Alert>
         )}
         <div className="flex flex-wrap justify-end gap-3">
           <button type="button" className={`${teamButton} flex-1 sm:flex-none`} onClick={onClose} disabled={busy}>

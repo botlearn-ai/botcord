@@ -5,6 +5,7 @@
  * [OUTPUT]: Admin 等待列表审批页 — 申请列表 + 通过/拒绝操作，过滤请求隔离及后台刷新
  */
 
+import Table, { TableHead, TableBody, TableRow, TableHeader, TableCell } from "@/components/ui/Table";
 import { useMemo, useEffect, useState } from "react";
 import { Loader2, CheckCircle, XCircle, Copy } from "lucide-react";
 import { adminBetaApi, type BetaWaitlistEntry } from "@/lib/api";
@@ -129,44 +130,44 @@ export default function AdminWaitlistPage() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-glass-border">
-          <table className="w-full text-sm">
-            <thead className="border-b border-glass-border bg-glass-bg">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">邮箱</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">说明</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">申请时间</th>
+          <Table className="w-full text-sm">
+            <TableHead className="border-b border-glass-border bg-glass-bg">
+              <TableRow>
+                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">邮箱</TableHeader>
+                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">说明</TableHeader>
+                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">申请时间</TableHeader>
                 {filter === "approved" && (
-                  <th className="px-4 py-3 text-left text-xs text-text-secondary">已发激活码</th>
+                  <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">已发激活码</TableHeader>
                 )}
                 {filter === "pending" && (
-                  <th className="px-4 py-3 text-left text-xs text-text-secondary">操作</th>
+                  <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">操作</TableHeader>
                 )}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {entries.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-text-secondary">暂无申请</td>
-                </tr>
+                <TableRow>
+                  <TableCell colSpan={5} className="px-4 py-8 text-center text-text-secondary">暂无申请</TableCell>
+                </TableRow>
               ) : (
                 entries.map((e) => (
-                  <tr key={e.id} className="border-b border-glass-border/50 last:border-0">
-                    <td className="px-4 py-3 text-text-primary">{e.email}</td>
-                    <td className="px-4 py-3 text-xs text-text-secondary max-w-[200px] truncate">{e.note || "—"}</td>
-                    <td className="px-4 py-3 text-xs text-text-secondary">
+                  <TableRow key={e.id} className="border-b border-glass-border/50 last:border-0">
+                    <TableCell className="px-4 py-3 text-text-primary">{e.email}</TableCell>
+                    <TableCell className="px-4 py-3 text-xs text-text-secondary max-w-[200px] truncate">{e.note || "—"}</TableCell>
+                    <TableCell className="px-4 py-3 text-xs text-text-secondary">
                       {new Date(e.applied_at).toLocaleDateString("zh-CN")}
-                    </td>
+                    </TableCell>
                     {filter === "approved" && (
-                      <td className="px-4 py-3">
+                      <TableCell className="px-4 py-3">
                         {e.sent_code ? (
                           <span className="font-mono text-xs text-neon-cyan">{e.sent_code}</span>
                         ) : (
                           <span className="text-xs text-text-tertiary">—</span>
                         )}
-                      </td>
+                      </TableCell>
                     )}
                     {filter === "pending" && (
-                      <td className="px-4 py-3">
+                      <TableCell className="px-4 py-3">
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
                             <button
@@ -203,13 +204,13 @@ export default function AdminWaitlistPage() {
                             </div>
                           )}
                         </div>
-                      </td>
+                      </TableCell>
                     )}
-                  </tr>
+                  </TableRow>
                 ))
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

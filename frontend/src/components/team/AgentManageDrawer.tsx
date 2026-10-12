@@ -1,5 +1,6 @@
 "use client";
 
+import MetricCard from "@/components/ui/MetricCard";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Hash, Loader2, MessageCircle, Trash2, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -86,10 +87,7 @@ export default function AgentManageDrawer({
     danger: t("危险操作", "Danger zone"),
   };
   const stat = (value: number | string, label: string, accent = false) => (
-    <div className="rounded-xl border border-glass-border bg-glass-bg px-3 py-3">
-      <p className={`text-xl font-semibold tabular-nums ${accent ? "text-neon-cyan" : ""}`}>{value}</p>
-      <p className="mt-0.5 text-xs text-text-secondary">{label}</p>
-    </div>
+    <MetricCard value={value} label={label} accent={accent} />
   );
 
   return (

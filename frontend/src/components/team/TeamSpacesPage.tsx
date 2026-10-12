@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/ui/Select";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -272,9 +273,9 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                 <span className="mb-1 block text-xs text-text-secondary">
                   {t("当前空间", "Current space")}
                 </span>
-                <select
+                <Select
                   aria-label={t("当前空间", "Current space")}
-                  className={input}
+
                   value={space.id}
                   disabled={busy}
                   onChange={(e) => select(e.target.value)}
@@ -292,7 +293,7 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                         : ""}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
             </div>
             <button

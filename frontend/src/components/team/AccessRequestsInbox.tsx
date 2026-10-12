@@ -1,5 +1,8 @@
 "use client";
 
+import Alert from "@/components/ui/Alert";
+import Radio from "@/components/ui/Radio";
+import Select from "@/components/ui/Select";
 import { useEffect, useRef, useState } from "react";
 import { Check, Inbox, Loader2, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -264,8 +267,8 @@ export function ApproveRequestDialog({
                   role === value ? "border-neon-cyan/40 bg-neon-cyan/5" : "border-glass-border"
                 }`}
               >
-                <input
-                  type="radio"
+                <Radio
+
                   name="approve-role"
                   value={value}
                   checked={role === value}
@@ -282,13 +285,13 @@ export function ApproveRequestDialog({
         </fieldset>
         <label className="block space-y-1.5 text-sm">
           <span>{t("有效期", "Duration")}</span>
-          <select className={field} value={duration} disabled={busy} onChange={(e) => setDuration(e.target.value as GrantDuration)}>
+          <Select  value={duration} disabled={busy} onChange={(e) => setDuration(e.target.value as GrantDuration)}>
             {GRANT_DURATIONS.map((value) => (
               <option key={value} value={value}>
                 {durationLabel(value)}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {role === "collaborator" && (
           <>
@@ -332,9 +335,9 @@ export function ApproveRequestDialog({
           </>
         )}
         {error != null && (
-          <p role="alert" className="rounded-xl border border-red-500/30 p-3 text-sm text-red-500">
+          <Alert tone="danger">
             {spaceError(error, zh)}
-          </p>
+          </Alert>
         )}
         <div className="flex flex-wrap justify-end gap-3">
           <button type="button" className={`${teamButton} flex-1 sm:flex-none`} onClick={onClose} disabled={busy}>

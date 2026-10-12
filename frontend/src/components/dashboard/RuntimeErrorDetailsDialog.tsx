@@ -4,6 +4,7 @@ import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useRef } from "react";
 import { Copy } from "lucide-react";
 import { animatePop, cleanupAnime } from "@/lib/anime";
+import Disclosure from "@/components/ui/Disclosure";
 import Button from "@/components/ui/Button";
 import DialogShell from "@/components/ui/DialogShell";
 
@@ -81,14 +82,11 @@ function RuntimeErrorDetailsDialog({
         </div>
       </div>
 
-      <details className="group">
-        <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-text-secondary transition-colors hover:text-text-primary">
-          Raw payload
-        </summary>
+      <Disclosure title="Raw payload">
         <pre className="liquid-tool-surface mt-2 max-h-64 overflow-auto rounded-lg border p-3 text-xs leading-relaxed text-text-primary">
           {raw}
         </pre>
-      </details>
+      </Disclosure>
     </DialogShell>
   );
 }

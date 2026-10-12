@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/ui/Select";
 import { useEffect, useRef, useState } from "react";
 import { Bot, Loader2, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -128,8 +129,8 @@ export default function TeamConversationDialog({
               <span>
                 {t("谁可以查看和发言", "Who can read and send messages")}
               </span>
-              <select
-                className={teamInput}
+              <Select
+
                 value={visibility}
                 disabled={busy}
                 onChange={(e) =>
@@ -142,7 +143,7 @@ export default function TeamConversationDialog({
                 <option value="private">
                   {t("仅指定成员", "Selected members only")}
                 </option>
-              </select>
+              </Select>
             </label>
           </>
         )}

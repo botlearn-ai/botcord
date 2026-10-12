@@ -8,9 +8,9 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useLanguage } from '@/lib/i18n';
-import { searchBar } from '@/lib/i18n/translations/dashboard';
-import { animateIfMotion, cleanupAnime } from "@/lib/anime";
+import { useLanguage } from "@/lib/i18n";
+import { searchBar } from "@/lib/i18n/translations/dashboard";
+import SearchInput from "@/components/ui/SearchInput";
 
 interface SearchBarProps {
   onSearch: (query: string) => void;
@@ -20,51 +20,15 @@ interface SearchBarProps {
 
 export default function SearchBar({ onSearch, onInputChange, placeholder }: SearchBarProps) {
   const locale = useLanguage();
-  const t = searchBar[locale];
-  const resolvedPlaceholder = placeholder || t.placeholder;
+  const resolvedPlaceholder = placeholder || searchBar[locale].placeholder;
   const [value, setValue] = useState("");
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const feedbackAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value;
-    setValue(v);
-    onInputChange?.(v);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+  return <SearchInput label={resolvedPlaceholder} placeholder={resolvedPlaceholder} value={value} onChange={(event) => {
+    const next = event.target.value;
+    setValue(next);
+    onInputChange?.(next);
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => onSearch(v), 300);
-  };
-
-  const handleFocus = () => {
-    const input = inputRef.current;
-    if (!input) return;
-
-    cleanupAnime(feedbackAnimationRef.current);
-    feedbackAnimationRef.current = animateIfMotion(input, {
-      boxShadow: [
-        "0 0 0 rgba(34, 211, 238, 0)",
-        "0 0 14px rgba(34, 211, 238, 0.18)",
-        "0 0 0 rgba(34, 211, 238, 0)",
-      ],
-      duration: 420,
-      ease: "out(3)",
-    });
-  };
-
-  useEffect(() => () => {
-    clearTimeout(timerRef.current);
-    cleanupAnime(feedbackAnimationRef.current);
-  }, []);
-
-  return (
-    <input
-      ref={inputRef}
-      type="text"
-      value={value}
-      onChange={handleChange}
-      onFocus={handleFocus}
-      placeholder={resolvedPlaceholder}
-      className="liquid-input w-full rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary placeholder-text-secondary/50 outline-none transition-colors focus:border-neon-cyan/50"
-    />
-  );
+    timerRef.current = setTimeout(() => onSearch(next), 300);
+  }} />;
 }

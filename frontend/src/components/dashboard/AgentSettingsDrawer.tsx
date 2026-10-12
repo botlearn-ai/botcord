@@ -1,5 +1,6 @@
 "use client";
 
+import Radio from "@/components/ui/Radio";
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, Bot, Clock, FileText, Loader2, MessageSquare, Plug, RefreshCw, Shield, Sparkles, Trash2, User, UserRound, X } from "lucide-react";
@@ -90,8 +91,8 @@ function RadioGroup<T extends string>({
                 : "border-glass-border bg-transparent hover:bg-glass-bg/60"
             } ${disabled ? "pointer-events-none opacity-50" : ""}`}
           >
-            <input
-              type="radio"
+            <Radio
+
               name={name}
               value={opt.value}
               checked={selected}

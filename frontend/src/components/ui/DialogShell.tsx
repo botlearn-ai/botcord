@@ -11,6 +11,7 @@
 import { Children, createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { clsx } from "clsx";
+import IconButton from "./IconButton";
 import { X } from "lucide-react";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
@@ -36,7 +37,8 @@ export function useDialogClose(): () => void {
   return useContext(DialogCloseContext);
 }
 
-interface DialogShellProps {
+export interface DialogShellProps {
+  placement?: "center" | "right";
   title: ReactNode;
   description?: ReactNode;
   /** Icon shown before the title. */
@@ -67,6 +69,7 @@ export default function DialogShell({
   description,
   icon,
   size = "md",
+  placement = "center",
   busy = false,
   onClose,
   footer,
@@ -104,14 +107,30 @@ export default function DialogShell({
   }, [closing, onClose]);
 
   useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
     panelRef.current?.focus({ preventScroll: true });
-    return () => cleanupAnime(animationRef.current);
+    return () => {
+      cleanupAnime(animationRef.current);
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
   }, []);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") close();
+      const panel = panelRef.current;
+      const nativeModal = document.querySelector("dialog[open]");
+      if (!panel || (nativeModal && !panel.contains(nativeModal))) return;
+      const modals = [...document.querySelectorAll('[aria-modal="true"]')];
+      if (modals.at(-1) !== panel) return;
+      if (event.key === "Escape") { event.preventDefault(); close(); }
+      if (event.key === "Tab") {
+        const controls = [...panel.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter((node) => !node.hidden && node.getAttribute("aria-hidden") !== "true");
+        const first = controls[0], last = controls.at(-1);
+        if (!first) { event.preventDefault(); panel.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel)) { event.preventDefault(); first.focus(); }
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -125,7 +144,8 @@ export default function DialogShell({
       <div
         ref={overlayRef}
         className={clsx(
-          "liquid-scrim fixed inset-0 flex items-center justify-center p-4",
+          "liquid-scrim fixed inset-0 flex",
+          placement === "right" ? "items-stretch justify-end" : "items-center justify-center p-4",
           hasUtility(overlayClassName, "z-") ? null : "z-[110]",
           overlayClassName,
           closing && "pointer-events-none",
@@ -141,7 +161,8 @@ export default function DialogShell({
           aria-labelledby={titleId}
           tabIndex={-1}
           className={clsx(
-            "liquid-dialog relative flex max-h-[90vh] w-full flex-col rounded-2xl outline-none",
+            "liquid-dialog relative flex w-full flex-col outline-none",
+            placement === "right" ? "h-dvh border-l border-border" : "max-h-[90vh] rounded-2xl",
             hasUtility(className, "max-w-") ? null : SIZE[size],
             className,
           )}
@@ -154,15 +175,15 @@ export default function DialogShell({
             {description ? <p className="mt-1.5 text-sm text-text-secondary">{description}</p> : null}
           </div>
           {hideCloseButton ? null : (
-            <button
-              type="button"
+            <IconButton
+              size="sm"
               onClick={close}
               disabled={busy}
-              aria-label={closeLabel}
-              className="absolute right-4 top-4 rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface-sunken hover:text-text-primary disabled:opacity-50"
+              label={closeLabel}
+              className="absolute right-4 top-4"
             >
               <X className="h-5 w-5" />
-            </button>
+            </IconButton>
           )}
           {hasBody ? (
             <div className={clsx("min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-4", bodyClassName)}>{children}</div>

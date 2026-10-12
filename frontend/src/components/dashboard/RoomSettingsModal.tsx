@@ -1,5 +1,6 @@
 "use client";
 
+import Radio from "@/components/ui/Radio";
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Loader2, Search, Trash2, X } from "lucide-react";
@@ -1133,8 +1134,8 @@ function RoomSettingsModal({
                           {ta.subscriptionBillingLabel}
                         </label>
                         <label className="flex items-center gap-1.5 text-sm text-text-secondary">
-                          <input
-                            type="radio"
+                          <Radio
+
                             name="billing-interval"
                             value="week"
                             checked={billingInterval === "week"}
@@ -1145,8 +1146,8 @@ function RoomSettingsModal({
                           {ta.subscriptionWeekly}
                         </label>
                         <label className="flex items-center gap-1.5 text-sm text-text-secondary">
-                          <input
-                            type="radio"
+                          <Radio
+
                             name="billing-interval"
                             value="month"
                             checked={billingInterval === "month"}

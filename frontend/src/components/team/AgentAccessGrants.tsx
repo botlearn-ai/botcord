@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, UserPlus } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -212,8 +213,8 @@ export default function AgentAccessGrants({
           <div className="grid gap-3">
             <label className="space-y-1.5 text-sm">
               <span>{t("组织成员", "Member")}</span>
-              <select
-                className={input}
+              <Select
+
                 value={grantee}
                 onChange={(e) => setGrantee(e.target.value)}
                 disabled={busy || !candidates.length}
@@ -229,12 +230,12 @@ export default function AgentAccessGrants({
                     {u.display_name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="space-y-1.5 text-sm">
               <span>{t("角色", "Role")}</span>
-              <select
-                className={input}
+              <Select
+
                 value={role}
                 onChange={(e) => setRole(e.target.value as AgentAccessRole)}
                 disabled={busy}
@@ -245,12 +246,12 @@ export default function AgentAccessGrants({
                 <option value="collaborator">
                   {t("协作者（可在独立副本改代码）", "Collaborator (edits in an isolated copy)")}
                 </option>
-              </select>
+              </Select>
             </label>
             <label className="space-y-1.5 text-sm">
               <span>{t("有效期", "Duration")}</span>
-              <select
-                className={input}
+              <Select
+
                 value={duration}
                 onChange={(e) => setDuration(e.target.value as GrantDuration)}
                 disabled={busy}
@@ -260,7 +261,7 @@ export default function AgentAccessGrants({
                     {durationLabel(value)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
           {role === "collaborator" && (
