@@ -8,6 +8,7 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 在 `frontend/` 写界面时按本文执行。规则来源：
 
 - 视觉规范：`docs/brand/botcord-vi/VI.md`（唯一文字来源，数值以 `tokens/botcord.tokens.json` 为准）
+- 全仓组件盘点：`docs/brand/botcord-vi/COMPONENT-INVENTORY.md`（`cd frontend && node scripts/audit-ui-components.mjs` 重新生成）
 - 组件 API 契约：`docs/brand/botcord-vi/COMPONENTS.md`
 - Tailwind 颜色桥：`frontend/src/styles/botcord-tailwind.css`；旧 token 映射：`frontend/src/app/globals.css` 顶部
 - 防回退检查：`frontend/src/design-lint.test.ts` + `design-lint.baseline.json`
@@ -20,8 +21,15 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 
 | 需要 | 用 |
 |---|---|
+| 纯图标按钮 | `IconButton`，必须提供 `label`，不要只提供 title |
 | 按钮 | `Button`（`variant: primary \| secondary \| ghost \| danger`，`size: sm \| md`，`loading`）。一屏只有一个 `primary` |
 | 输入框 / 多行输入 | `Input` / `Textarea`（`invalid`）；带标签、提示、错误时外面包 `Field` |
+| 原生下拉 / 带说明单选 / 多选 | `Select` / `SingleSelect` / `MultiSelect`；原生表单提交用 Select，旧 DashboardSelect / DashboardMultiSelect 是兼容导出 |
+| 搜索框 | `SearchInput`；防抖和 API 请求留在业务层 |
+| 单选按钮 | `Radio`；组内共享 name，外层提供 label / fieldset |
+| 行内提示 | `Alert`（neutral / success / warning / danger）；瞬时结果用 Toast |
+| 抽屉 | `DrawerShell`；复杂业务抽屉迁移时保留嵌套确认与生命周期 |
+| 数据表 / 指标卡 / 折叠区 | `Table` 系列 / `MetricCard` / `Disclosure` |
 | 弹窗 | `DialogShell` + `useDialogClose`；dashboard 弹窗外层再包 `withDashboardOverlayPortal` |
 | 确认 / 提示框 | `useConfirm()`（`ConfirmDialog`），不要用 `window.confirm` |
 | 结果反馈（已保存、失败） | `toast({ title, tone })`（`<Toaster />` 挂在 `app/layout.tsx`） |
@@ -67,6 +75,12 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 | 小标签 | xs 4 / sm 6 | `rounded` / `rounded-md` |
 | 输入框、按钮 | md 8 | `rounded-lg` |
 | 卡片、菜单 | lg 12 | `rounded-xl` |
+| 原生下拉 / 带说明单选 / 多选 | `Select` / `SingleSelect` / `MultiSelect`；原生表单提交用 Select，旧 DashboardSelect / DashboardMultiSelect 是兼容导出 |
+| 搜索框 | `SearchInput`；防抖和 API 请求留在业务层 |
+| 单选按钮 | `Radio`；组内共享 name，外层提供 label / fieldset |
+| 行内提示 | `Alert`（neutral / success / warning / danger）；瞬时结果用 Toast |
+| 抽屉 | `DrawerShell`；复杂业务抽屉迁移时保留嵌套确认与生命周期 |
+| 数据表 / 指标卡 / 折叠区 | `Table` 系列 / `MetricCard` / `Disclosure` |
 | 弹窗 | xl 16 | `rounded-2xl` |
 | 营销大卡片 | 2xl 24 | `rounded-3xl` |
 | 胶囊、头像 | full | `rounded-full` |
@@ -156,6 +170,8 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 ## 8. 提交前检查
 
 在 `frontend/` 下：
+
+新增组件或迁移入口后更新 `COMPONENTS.md` 和 `/design` 示例，并重新运行组件盘点脚本。运行状态 SignalDot 与出席状态 PresenceDot 不直接互换；业务消息、编辑器、文件上传请求和流式协议留在业务层。
 
 1. `pnpm vitest run` 全部通过（包含 `src/design-lint.test.ts`）。失败信息会列出 `file:line`。
 2. `pnpm build` 通过。
