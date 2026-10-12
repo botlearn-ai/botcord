@@ -1,10 +1,14 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import Checkbox from "@/components/ui/Checkbox";
+import Disclosure from "@/components/ui/Disclosure";
+import Field from "@/components/ui/Field";
+import { Input } from "@/components/ui/Input";
 
 import Select from "@/components/ui/Select";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, Link2, Loader2, Share2 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
-import { spaceError, teamSpacesApi, type InviteLink } from "@/lib/team-spaces";
 import {
   INVITE_EXPIRY_OPTIONS,
   buildInviteLinkInput,
@@ -16,13 +20,10 @@ import {
   inviteUsageLabel,
   type InviteExpiry,
 } from "@/lib/org-invite-links";
+import { spaceError, teamSpacesApi, type InviteLink } from "@/lib/team-spaces";
 import { useConfirm } from "@/store/useConfirmStore";
-
-const input =
-  "w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan focus:ring-2 focus:ring-neon-cyan/20 disabled:opacity-50";
-const button =
-  "inline-flex items-center justify-center gap-2 rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-neon-cyan/10 focus-visible:outline-2 focus-visible:outline-neon-cyan disabled:cursor-not-allowed disabled:opacity-50";
-const primary = `${button} border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan`;
+import { Check, Copy, Link2, Loader2, Share2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Manager-side invites. Each invite is a personal link for one person (single
@@ -45,7 +46,9 @@ export default function OrgInviteLinks({
   const [links, setLinks] = useState<InviteLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(
+    null,
+  );
   const [expiry, setExpiry] = useState<InviteExpiry>("7");
   const [multiUse, setMultiUse] = useState(false);
   const [label, setLabel] = useState("");
@@ -60,17 +63,24 @@ export default function OrgInviteLinks({
     setShareable(canShare());
   }, []);
 
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const { links: next } = await teamSpacesApi.inviteLinks(spaceId, signal);
-      if (mounted.current) setLinks(next.filter((l) => l.status !== "revoked"));
-    } catch (cause) {
-      if (mounted.current && !signal?.aborted)
-        setNotice({ error: true, text: spaceError(cause, zh) });
-    } finally {
-      if (mounted.current) setLoading(false);
-    }
-  }, [spaceId, zh]);
+  const reload = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const { links: next } = await teamSpacesApi.inviteLinks(
+          spaceId,
+          signal,
+        );
+        if (mounted.current)
+          setLinks(next.filter((l) => l.status !== "revoked"));
+      } catch (cause) {
+        if (mounted.current && !signal?.aborted)
+          setNotice({ error: true, text: spaceError(cause, zh) });
+      } finally {
+        if (mounted.current) setLoading(false);
+      }
+    },
+    [spaceId, zh],
+  );
   useEffect(() => {
     mounted.current = true;
     setCreated(null);
@@ -83,7 +93,10 @@ export default function OrgInviteLinks({
     };
   }, [reload]);
 
-  async function run(task: () => Promise<boolean | void>, success: string | null) {
+  async function run(
+    task: () => Promise<boolean | void>,
+    success: string | null,
+  ) {
     if (locked.current) return;
     locked.current = true;
     setBusy(true);
@@ -94,7 +107,8 @@ export default function OrgInviteLinks({
       if (success) setNotice({ error: false, text: success });
       await reload();
     } catch (cause) {
-      if (mounted.current) setNotice({ error: true, text: spaceError(cause, zh) });
+      if (mounted.current)
+        setNotice({ error: true, text: spaceError(cause, zh) });
     } finally {
       locked.current = false;
       if (mounted.current) setBusy(false);
@@ -115,13 +129,19 @@ export default function OrgInviteLinks({
     const field = fields.current.get(link.id);
     field?.focus();
     field?.select();
-    setNotice({ error: false, text: t("已选中链接，请手动复制。", "Link selected. Copy it manually.") });
+    setNotice({
+      error: false,
+      text: t("已选中链接，请手动复制。", "Link selected. Copy it manually."),
+    });
   }
 
   async function handleShare(link: InviteLink) {
     try {
       await navigator.share({
-        title: t(`加入 ${spaceName ?? "组织"}`, `Join ${spaceName ?? "the organization"}`),
+        title: t(
+          `加入 ${spaceName ?? "组织"}`,
+          `Join ${spaceName ?? "the organization"}`,
+        ),
         text: t(
           `邀请你加入 BotCord 组织「${spaceName ?? ""}」`,
           `You're invited to join ${spaceName ?? "an organization"} on BotCord`,
@@ -139,28 +159,35 @@ export default function OrgInviteLinks({
       : t("永不过期", "Never expires");
 
   const linkField = (link: InviteLink) => (
-    <input
+    <Input
       ref={(el) => {
         if (el) fields.current.set(link.id, el);
         else fields.current.delete(link.id);
       }}
       readOnly
       aria-label={t("邀请链接", "Invite link")}
-      className={`${input} font-mono text-xs`}
+
       value={origin ? urlOf(link) : link.path}
       onFocus={(e) => e.currentTarget.select()}
     />
   );
-  const copyButton = (link: InviteLink, className = button) => (
-    <button type="button" className={className} disabled={busy} onClick={() => void handleCopy(link)}>
+  const copyButton = (link: InviteLink) => (
+    <Button
+      variant="secondary"
+      type="button"
+      disabled={busy}
+      onClick={() => void handleCopy(link)}
+    >
       {copiedId === link.id ? <Check size={16} /> : <Copy size={16} />}
-      {copiedId === link.id ? t("已复制", "Copied") : t("复制链接", "Copy link")}
-    </button>
+      {copiedId === link.id
+        ? t("已复制", "Copied")
+        : t("复制链接", "Copy link")}
+    </Button>
   );
 
   return (
     <div className="space-y-4">
-      <div className="space-y-3 rounded-xl border border-glass-border bg-deep-black/40 p-4">
+      <Card className="space-y-3">
         <div>
           <h3 className="flex items-center gap-2 font-medium">
             <Link2 size={16} />
@@ -179,18 +206,21 @@ export default function OrgInviteLinks({
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            className={input}
+          <Input
             value={label}
             maxLength={64}
             disabled={busy}
-            placeholder={t("对方称呼（可选），如：Alice", "Who is it for? (optional), e.g. Alice")}
+            placeholder={t(
+              "对方称呼（可选），如：Alice",
+              "Who is it for? (optional), e.g. Alice",
+            )}
             aria-label={t("对方称呼", "Invitee name")}
             onChange={(e) => setLabel(e.target.value)}
           />
-          <button
+          <Button
+            variant="primary"
             type="button"
-            className={`${primary} w-full shrink-0 sm:w-auto`}
+            className="w-full shrink-0"
             disabled={busy}
             onClick={() =>
               void run(async () => {
@@ -204,20 +234,30 @@ export default function OrgInviteLinks({
               }, null)
             }
           >
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={16} />}
-            {multiUse ? t("生成邀请链接", "Create invite link") : t("生成专属邀请链接", "Create personal invite link")}
-          </button>
+            {busy ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Link2 size={16} />
+            )}
+            {multiUse
+              ? t("生成邀请链接", "Create invite link")
+              : t("生成专属邀请链接", "Create personal invite link")}
+          </Button>
         </div>
-        <details className="text-xs text-text-secondary">
-          <summary className="cursor-pointer select-none">
-            {t("更多选项", "More options")} ·{" "}
-            {inviteExpiryLabel(expiry, zh)} · {multiUse ? t("多人可用", "Multi-use") : t("仅限 1 人", "One person")}
-          </summary>
+        <Disclosure
+          title={
+            <>
+              {t("更多选项", "More options")} · {inviteExpiryLabel(expiry, zh)}{" "}
+              ·{" "}
+              {multiUse
+                ? t("多人可用", "Multi-use")
+                : t("仅限 1 人", "One person")}
+            </>
+          }
+        >
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1">
-              <span>{t("有效期", "Expires after")}</span>
+            <Field label={<>{t("有效期", "Expires after")}</>}>
               <Select
-
                 value={expiry}
                 disabled={busy}
                 onChange={(e) => setExpiry(e.target.value as InviteExpiry)}
@@ -228,20 +268,26 @@ export default function OrgInviteLinks({
                   </option>
                 ))}
               </Select>
-            </label>
-            <label className="flex items-center gap-2 self-end pb-2.5">
-              <input
-                type="checkbox"
-                checked={multiUse}
-                disabled={busy}
-                onChange={(e) => setMultiUse(e.target.checked)}
-              />
-              <span>{t("多人可用（不限次数）", "Anyone with the link (unlimited uses)")}</span>
-            </label>
+            </Field>
+            <Checkbox
+              checked={multiUse}
+              disabled={busy}
+              onCheckedChange={(checked) => setMultiUse(checked)}
+              label={
+                <>
+                  <span>
+                    {t(
+                      "多人可用（不限次数）",
+                      "Anyone with the link (unlimited uses)",
+                    )}
+                  </span>
+                </>
+              }
+            />
           </div>
-        </details>
+        </Disclosure>
         {created && (
-          <div className="space-y-2 rounded-xl border border-neon-cyan/30 bg-neon-cyan/5 p-3" role="status">
+          <Card className="space-y-2" role="status">
             <p className="text-xs text-neon-cyan">
               {created.max_uses === 1
                 ? t(
@@ -253,36 +299,39 @@ export default function OrgInviteLinks({
             </p>
             {linkField(created)}
             <div className="grid grid-cols-2 gap-2 sm:flex">
-              {copyButton(created, primary)}
+              {copyButton(created)}
               {shareable && (
-                <button type="button" className={button} onClick={() => void handleShare(created)}>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => void handleShare(created)}
+                >
                   <Share2 size={16} />
                   {t("分享", "Share")}
-                </button>
+                </Button>
               )}
             </div>
-          </div>
+          </Card>
         )}
-      </div>
+      </Card>
 
       {notice && (
-        <p
-          role={notice.error ? "alert" : "status"}
-          className={`text-sm ${notice.error ? "text-red-500" : "text-neon-cyan"}`}
-        >
-          {notice.text}
-        </p>
+        <Alert tone={notice.error ? "danger" : "success"}>{notice.text}</Alert>
       )}
 
       <div className="space-y-2">
-        <h4 className="text-sm font-medium">{t("已发出的邀请", "Sent invites")}</h4>
+        <h4 className="text-sm font-medium">
+          {t("已发出的邀请", "Sent invites")}
+        </h4>
         {loading ? (
           <p className="flex items-center gap-2 text-sm text-text-secondary">
             <Loader2 size={14} className="animate-spin" />
             {t("正在加载邀请链接…", "Loading invite links…")}
           </p>
         ) : links.length === 0 ? (
-          <p className="text-sm text-text-secondary">{t("还没有发出邀请。", "No invites sent yet.")}</p>
+          <p className="text-sm text-text-secondary">
+            {t("还没有发出邀请。", "No invites sent yet.")}
+          </p>
         ) : (
           <ul className="divide-y divide-glass-border">
             {links.map((link) => (
@@ -290,48 +339,67 @@ export default function OrgInviteLinks({
                 <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
                   <span className="text-sm font-medium text-text-primary">
                     {link.label ||
-                      (link.max_uses === 1 ? t("专属邀请", "Personal invite") : t("多人邀请链接", "Shared invite link"))}
+                      (link.max_uses === 1
+                        ? t("专属邀请", "Personal invite")
+                        : t("多人邀请链接", "Shared invite link"))}
                   </span>
                   <span
                     className={`rounded-full border px-2 py-0.5 ${link.status === "active" ? "border-neon-cyan/40 text-neon-cyan" : "border-glass-border"}`}
                   >
                     {inviteRowStatus(link, zh)}
                   </span>
-                  {link.max_uses !== 1 && <span>{inviteUsageLabel(link, zh)}</span>}
+                  {link.max_uses !== 1 && (
+                    <span>{inviteUsageLabel(link, zh)}</span>
+                  )}
                   {link.status === "active" && <span>{expiresText(link)}</span>}
                 </div>
                 {link.status === "active" && linkField(link)}
                 <div className="flex flex-wrap gap-2">
                   {link.status === "active" && copyButton(link)}
-                  <button
+                  <Button
+                    variant="danger"
                     type="button"
-                    className={`${button} text-red-500`}
+
                     disabled={busy}
                     onClick={() =>
-                      void run(async () => {
-                        if (
-                          !(await confirm({
-                            title:
-                              link.status === "active"
-                                ? t("撤销这个邀请？", "Revoke this invite?")
-                                : t("移除这条记录？", "Remove this record?"),
-                            message: t(
-                              "撤销后该链接立即失效，已加入的成员不受影响。",
-                              "The link stops working immediately. Members who already joined are unaffected.",
-                            ),
-                            tone: "danger",
-                            confirmLabel: link.status === "active" ? t("撤销", "Revoke") : t("移除", "Remove"),
-                          })) ||
-                          !mounted.current
-                        )
-                          return false;
-                        await teamSpacesApi.revokeInviteLink(spaceId, link.id);
-                        if (mounted.current) setCreated((c) => (c?.id === link.id ? null : c));
-                      }, link.status === "active" ? t("邀请已撤销。", "Invite revoked.") : null)
+                      void run(
+                        async () => {
+                          if (
+                            !(await confirm({
+                              title:
+                                link.status === "active"
+                                  ? t("撤销这个邀请？", "Revoke this invite?")
+                                  : t("移除这条记录？", "Remove this record?"),
+                              message: t(
+                                "撤销后该链接立即失效，已加入的成员不受影响。",
+                                "The link stops working immediately. Members who already joined are unaffected.",
+                              ),
+                              tone: "danger",
+                              confirmLabel:
+                                link.status === "active"
+                                  ? t("撤销", "Revoke")
+                                  : t("移除", "Remove"),
+                            })) ||
+                            !mounted.current
+                          )
+                            return false;
+                          await teamSpacesApi.revokeInviteLink(
+                            spaceId,
+                            link.id,
+                          );
+                          if (mounted.current)
+                            setCreated((c) => (c?.id === link.id ? null : c));
+                        },
+                        link.status === "active"
+                          ? t("邀请已撤销。", "Invite revoked.")
+                          : null,
+                      )
                     }
                   >
-                    {link.status === "active" ? t("撤销", "Revoke") : t("移除", "Remove")}
-                  </button>
+                    {link.status === "active"
+                      ? t("撤销", "Revoke")
+                      : t("移除", "Remove")}
+                  </Button>
                 </div>
               </li>
             ))}

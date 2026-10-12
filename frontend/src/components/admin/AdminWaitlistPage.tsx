@@ -5,6 +5,10 @@
  * [OUTPUT]: Admin 等待列表审批页 — 申请列表 + 通过/拒绝操作，过滤请求隔离及后台刷新
  */
 
+import Alert from "@/components/ui/Alert";
+import Tabs from "@/components/ui/Tabs";
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
 import Table, { TableHead, TableBody, TableRow, TableHeader, TableCell } from "@/components/ui/Table";
 import { useMemo, useEffect, useState } from "react";
 import { Loader2, CheckCircle, XCircle, Copy } from "lucide-react";
@@ -74,53 +78,36 @@ export default function AdminWaitlistPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold text-text-primary">等待列表</h2>
+      <h2 className="text-xl font-semibold text-text-primary">等待列表</h2>
 
-      <div className="flex gap-1 rounded-xl border border-glass-border bg-deep-black-light p-1 w-fit">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
-              filter === tab.key
-                ? "bg-neon-cyan/10 text-neon-cyan"
-                : "text-text-secondary hover:text-text-primary"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={filter} onValueChange={(value) => setFilter(value as StatusFilter)} ariaLabel="申请状态" items={tabs.map((tab) => ({ value: tab.key, label: tab.label }))} />
 
       {error && (
-        <p className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300">{error}</p>
+        <Alert tone="danger" >{error}</Alert>
       )}
 
       {recentFailedApprovals.length > 0 && (
-        <div className="space-y-3 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4">
+        <Alert tone="warning" className="space-y-3">
           <div>
             <p className="text-sm font-medium text-amber-200">以下审批未能完成邮件发送</p>
-            <p className="text-xs text-amber-300/80">请复制激活码，通过其他渠道手动发送给申请人。</p>
+            <p className="text-xs text-warning/80">请复制激活码，通过其他渠道手动发送给申请人。</p>
           </div>
           <div className="space-y-2">
             {recentFailedApprovals.map((entry) => (
               <div
                 key={entry.id}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-400/20 bg-black/20 px-3 py-2"
-              >
+                className="flex flex-wrap items-center gap-2" >
                 <span className="text-xs text-text-primary">{entry.email}</span>
-                <span className="text-xs text-amber-300">激活码：</span>
+                <span className="text-xs text-warning">激活码：</span>
                 <span className="font-mono text-xs text-neon-cyan">{failedEmailCodes[entry.id]}</span>
-                <button
-                  onClick={() => navigator.clipboard.writeText(failedEmailCodes[entry.id])}
-                  className="text-text-secondary hover:text-text-primary"
-                >
+                <IconButton label="复制邀请码"
+                  onClick={() => navigator.clipboard.writeText(failedEmailCodes[entry.id])} >
                   <Copy className="h-3 w-3" />
-                </button>
+                </IconButton>
               </div>
             ))}
           </div>
-        </div>
+        </Alert>
       )}
 
       {loading ? (
@@ -129,79 +116,73 @@ export default function AdminWaitlistPage() {
           加载中…
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-glass-border">
-          <Table className="w-full text-sm">
-            <TableHead className="border-b border-glass-border bg-glass-bg">
+        <div className="min-w-0">
+          <Table aria-label="等待列表">
+            <TableHead >
               <TableRow>
-                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">邮箱</TableHeader>
-                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">说明</TableHeader>
-                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">申请时间</TableHeader>
+                <TableHeader >邮箱</TableHeader>
+                <TableHeader >说明</TableHeader>
+                <TableHeader >申请时间</TableHeader>
                 {filter === "approved" && (
-                  <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">已发激活码</TableHeader>
+                  <TableHeader >已发激活码</TableHeader>
                 )}
                 {filter === "pending" && (
-                  <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">操作</TableHeader>
+                  <TableHeader >操作</TableHeader>
                 )}
               </TableRow>
             </TableHead>
             <TableBody>
               {entries.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="px-4 py-8 text-center text-text-secondary">暂无申请</TableCell>
+                  <TableCell colSpan={5} className="text-center">暂无申请</TableCell>
                 </TableRow>
               ) : (
                 entries.map((e) => (
-                  <TableRow key={e.id} className="border-b border-glass-border/50 last:border-0">
-                    <TableCell className="px-4 py-3 text-text-primary">{e.email}</TableCell>
-                    <TableCell className="px-4 py-3 text-xs text-text-secondary max-w-[200px] truncate">{e.note || "—"}</TableCell>
-                    <TableCell className="px-4 py-3 text-xs text-text-secondary">
+                  <TableRow key={e.id} >
+                    <TableCell >{e.email}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">{e.note || "—"}</TableCell>
+                    <TableCell >
                       {new Date(e.applied_at).toLocaleDateString("zh-CN")}
                     </TableCell>
                     {filter === "approved" && (
-                      <TableCell className="px-4 py-3">
+                      <TableCell >
                         {e.sent_code ? (
                           <span className="font-mono text-xs text-neon-cyan">{e.sent_code}</span>
                         ) : (
-                          <span className="text-xs text-text-tertiary">—</span>
+                          <span className="text-xs text-text-secondary">—</span>
                         )}
                       </TableCell>
                     )}
                     {filter === "pending" && (
-                      <TableCell className="px-4 py-3">
+                      <TableCell >
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
-                            <button
+                            <Button variant="secondary" size="sm"
                               onClick={() => handleApprove(e.id)}
-                              disabled={pendingAction === e.id}
-                              className="flex items-center gap-1 rounded-lg bg-neon-cyan/10 px-3 py-1 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-50"
-                            >
+                              disabled={pendingAction === e.id} >
                               {pendingAction === e.id ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
                               ) : (
                                 <CheckCircle className="h-3 w-3" />
                               )}
                               通过
-                            </button>
-                            <button
+                            </Button>
+                            <Button variant="danger" size="sm"
                               onClick={() => handleReject(e.id)}
-                              disabled={pendingAction === e.id}
-                              className="flex items-center gap-1 rounded-lg border border-glass-border px-3 py-1 text-xs text-text-secondary transition-colors hover:text-red-300 disabled:opacity-50"
-                            >
+                              disabled={pendingAction === e.id} >
                               <XCircle className="h-3 w-3" />
                               拒绝
-                            </button>
+                            </Button>
                           </div>
                           {failedEmailCodes[e.id] && (
-                            <div className="flex items-center gap-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-1.5">
-                              <span className="text-xs text-amber-300">邮件发送失败，激活码：</span>
+                            <Alert tone="warning" className="flex items-center gap-2">
+                              <span className="text-xs text-warning">邮件发送失败，激活码：</span>
                               <span className="font-mono text-xs text-neon-cyan">{failedEmailCodes[e.id]}</span>
-                              <button
-                                onClick={() => navigator.clipboard.writeText(failedEmailCodes[e.id])}
-                                className="text-text-secondary hover:text-text-primary"
-                              >
+                              <IconButton label="复制邀请码"
+                                onClick={() => navigator.clipboard.writeText(failedEmailCodes[e.id])} >
                                 <Copy className="h-3 w-3" />
-                              </button>
-                            </div>
+                              </IconButton>
+                            </Alert>
                           )}
                         </div>
                       </TableCell>

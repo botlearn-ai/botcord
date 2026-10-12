@@ -1,4 +1,14 @@
 "use client";
+import EmptyState from "@/components/ui/EmptyState";
+import Badge from "@/components/ui/Badge";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import Button from "@/components/ui/Button";
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Input";
 
 /**
  * [INPUT]: agentId; uses useAgentGatewayStore for data + actions
@@ -59,10 +69,10 @@ const STATUS_LABELS: Record<GatewayStatus, string> = {
 };
 
 const STATUS_STYLES: Record<GatewayStatus, string> = {
-  active: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
+  active: "border-success/40 bg-success-soft text-success",
   disabled: "border-glass-border bg-glass-bg/40 text-text-secondary",
-  error: "border-red-400/40 bg-red-400/10 text-red-300",
-  pending: "border-amber-400/40 bg-amber-400/10 text-amber-300",
+  error: "border-danger/40 bg-danger-soft text-danger",
+  pending: "border-warning/40 bg-warning-soft text-warning",
 };
 
 function ProviderIcon({ provider }: { provider: GatewayProvider }) {
@@ -133,10 +143,10 @@ function WechatLoginExpiryNotice({
     <div
       className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
         expired
-          ? "border-amber-400/35 bg-amber-400/10 text-amber-200"
+          ? "border-warning/35 bg-warning-soft text-amber-200"
           : remainingMs <= 60_000
-            ? "border-amber-400/30 bg-amber-400/10 text-amber-200"
-            : "border-glass-border bg-glass-bg/45 text-text-tertiary"
+            ? "border-warning/30 bg-warning-soft text-amber-200"
+            : "border-glass-border bg-glass-bg/45 text-text-secondary"
       }`}
     >
       <Clock className="h-3 w-3" />
@@ -159,12 +169,12 @@ function StepSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="liquid-card rounded-xl border border-glass-border p-3">
+    <Card as="section" padding="none" className="p-3">
       <div className="mb-3 flex items-start gap-2.5">
         <span
           className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
             complete
-              ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+              ? "border-success/40 bg-success-soft text-success"
               : "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan"
           }`}
         >
@@ -173,14 +183,14 @@ function StepSection({
         <div className="min-w-0">
           <h4 className="text-xs font-semibold text-text-primary">{title}</h4>
           {description ? (
-            <p className="mt-0.5 text-xs leading-relaxed text-text-tertiary">
+            <p className="mt-0.5 text-xs leading-relaxed text-text-secondary">
               {description}
             </p>
           ) : null}
         </div>
       </div>
       {children}
-    </section>
+    </Card>
   );
 }
 
@@ -270,13 +280,13 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="liquid-card rounded-lg border border-glass-border px-3 py-2 text-xs text-text-tertiary">
+      <Card padding="none" className="px-3 py-2">
         {isCloudAgent
           ? "Cloud Agent 的第三方接入由云端 ingress 服务托管，setup 不依赖你的本机。"
           : "Local Agent 的第三方接入运行在你本地 daemon 中。"}
-      </div>
+      </Card>
       {daemonOffline && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2.5 text-xs text-amber-200">
+        <div className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-soft px-3 py-2.5 text-xs text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <div className="font-semibold">
@@ -308,31 +318,29 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-text-primary">第三方接入</h3>
           {!addMode && (
-            <button
+            <Button variant="primary"
               type="button"
               onClick={() => setAddMode("telegram")}
               disabled={blockedByOffline}
-              className="inline-flex items-center gap-1 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+
             >
               <Plus className="h-3 w-3" />
               添加接入
-            </button>
+            </Button>
           )}
         </div>
 
         {loading && list.length === 0 ? (
-          <div className="liquid-empty-state rounded-xl border border-glass-border p-4 text-xs text-text-secondary">
+          <Card>
             <MobileBotCordLoading
               label="加载中…"
               size="sm"
               className="justify-start"
               textClassName="text-xs text-text-secondary"
             />
-          </div>
+          </Card>
         ) : list.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-glass-border/60 bg-transparent p-4 text-center text-xs text-text-tertiary">
-            尚未连接任何第三方入口
-          </div>
+          <EmptyState compact bordered title="尚未连接任何第三方入口" />
         ) : (
           <ul className="space-y-2">
             {list.map((g) => {
@@ -347,9 +355,9 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
                   ? "disabled"
                   : g.status;
               return (
-                <li
+                <Card as="li" padding="sm"
                   key={g.id}
-                  className="liquid-card rounded-xl border border-glass-border p-3"
+
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -366,36 +374,36 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
                           {STATUS_LABELS[status]}
                         </span>
                       </div>
-                      <div className="mt-1 text-xs text-text-secondary/80">
+                      <div className="mt-1 text-xs text-text-secondary">
                         {providerName(g.provider)}
                         {cfg.tokenPreview ? ` · token ${cfg.tokenPreview}` : ""}
                       </div>
                       {g.last_error && (
-                        <div className="mt-1 truncate text-xs text-red-300">
+                        <div className="mt-1 truncate text-xs text-danger">
                           {g.last_error}
                         </div>
                       )}
                       {rowError[g.id] && (
-                        <div className="mt-1 text-xs text-red-300">
+                        <div className="mt-1 text-xs text-danger">
                           {rowError[g.id]}
                         </div>
                       )}
                       {rowOk[g.id] && (
-                        <div className="mt-1 text-xs text-emerald-300">
+                        <div className="mt-1 text-xs text-success">
                           {rowOk[g.id]}
                         </div>
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <button
+                      <Button variant="secondary"
                         type="button"
                         onClick={() => handleToggle(g)}
                         disabled={blockedByOffline || busyId === g.id}
-                        className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+
                       >
                         {g.enabled ? "停用" : "启用"}
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="secondary"
                         type="button"
                         onClick={() => {
                           setEditingId((cur) => (cur === g.id ? null : g.id));
@@ -403,20 +411,20 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
                           setOk(g.id, null);
                         }}
                         disabled={blockedByOffline || busyId === g.id}
-                        className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+
                       >
                         <SquarePen className="h-3 w-3" />
                         编辑
-                      </button>
-                      <button
+                      </Button>
+                      <IconButton label="删除" danger
                         type="button"
                         onClick={() => setPendingDelete(g)}
                         disabled={blockedByOffline || busyId === g.id}
-                        className="rounded-md border border-red-400/40 bg-red-500/10 p-1 text-red-300 transition-colors hover:bg-red-500/20 disabled:opacity-50"
+
                         title="删除"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      </IconButton>
                     </div>
                   </div>
                   {editingId === g.id && (
@@ -432,45 +440,41 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
                       onError={(msg) => setErr(g.id, msg)}
                     />
                   )}
-                </li>
+                </Card>
               );
             })}
           </ul>
         )}
 
         {!addMode && lastError && !blockedByOffline && (
-          <div className="text-xs text-red-300">{lastError}</div>
+          <Alert tone="danger" >{lastError}</Alert>
         )}
       </section>
 
       {/* Add gateway form. */}
       {addMode && (
-        <section className="liquid-card rounded-2xl border border-glass-border p-4">
+        <Card as="section" padding="none" className="p-4">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-text-primary">添加接入</h3>
-            <button
+            <IconButton label="Close"
               type="button"
               onClick={() => setAddMode(null)}
-              className="rounded-full p-1 text-text-secondary hover:bg-glass-bg hover:text-text-primary"
+
             >
               <X className="h-4 w-4" />
-            </button>
+            </IconButton>
           </div>
           {/* provider segmented control */}
           <div className="mb-4 inline-flex rounded-lg border border-glass-border bg-deep-black/40 p-0.5">
             {PROVIDER_OPTIONS.map((p) => (
-              <button
+              <Button aria-pressed={addMode === p} variant="row"
                 key={p}
                 type="button"
                 onClick={() => setAddMode(p)}
-                className={`rounded-md px-3 py-1 text-xs transition-colors ${
-                  addMode === p
-                    ? "bg-neon-cyan/20 text-neon-cyan"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
+
               >
                 {p === "feishu" ? "飞书" : p === "wechat" ? "微信" : "Telegram"}
-              </button>
+              </Button>
             ))}
           </div>
           {addMode === "telegram" ? (
@@ -495,7 +499,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
               onCreated={() => setAddMode(null)}
             />
           )}
-        </section>
+        </Card>
       )}
 
       {pendingDelete && (
@@ -693,25 +697,25 @@ function TelegramAddForm({
       >
         <Field label="Bot token">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input
+            <Input
               type="password"
               autoComplete="off"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               disabled={saving}
               placeholder="123456:ABC-..."
-              className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+              className="w-full"
             />
-            <button
+            <Button variant="secondary"
               type="button"
               onClick={() => setTokenGuideOpen(true)}
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300/45 bg-amber-300/12 px-3 py-2 text-xs font-medium text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.14)] hover:bg-amber-300/20"
+              className="shrink-0"
             >
               <Info className="h-3.5 w-3.5" />
               如何获取 token
-            </button>
+            </Button>
           </div>
-          <p className="mt-1 text-xs text-text-tertiary">
+          <p className="mt-1 text-xs text-text-secondary">
             Token 只在创建或替换时填写。
           </p>
         </Field>
@@ -726,19 +730,19 @@ function TelegramAddForm({
           >
           <Field label="允许的 chat id（逗号或换行分隔）">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-              <textarea
+              <Textarea
                 value={chatIds}
                 onChange={(e) => setChatIds(e.target.value)}
                 disabled={saving}
                 rows={2}
                 placeholder="-1001234567890, 987654321"
-                className="min-h-16 flex-1 resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+                className="flex-1"
               />
-              <button
+              <Button variant="secondary"
                 type="button"
                 onClick={handleDiscoverChats}
                 disabled={!token.trim() || saving || discoveringChats}
-                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-neon-cyan/50 bg-neon-cyan/15 px-3 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50 sm:w-auto"
+                className="shrink-0 sm:w-auto"
               >
                 {discoveringChats ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -746,7 +750,7 @@ function TelegramAddForm({
                   <Search className="h-3.5 w-3.5" />
                 )}
                 我已发送
-              </button>
+              </Button>
             </div>
             {discoveredChats.length > 0 && (
               <div className="mt-2 space-y-1.5">
@@ -761,7 +765,7 @@ function TelegramAddForm({
                           {chat.label || "未命名会话"}
                         </span>
                         {chat.type ? (
-                          <span className="rounded border border-glass-border px-1.5 py-0.5 text-xs uppercase text-text-tertiary">
+                          <span className="rounded border border-glass-border px-1.5 py-0.5 text-xs uppercase text-text-secondary">
                             {chat.type}
                           </span>
                         ) : null}
@@ -771,42 +775,42 @@ function TelegramAddForm({
                       </code>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <button
+                      <Button variant="primary"
                         type="button"
                         onClick={() => setChatIds(chat.id)}
                         disabled={saving}
-                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+
                       >
                         填入
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="secondary"
                         type="button"
                         onClick={() => appendChatId(chat.id)}
                         disabled={saving}
-                        className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+
                       >
                         追加
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="secondary"
                         type="button"
                         onClick={() => copyChatId(chat.id)}
                         disabled={saving}
                         title={copiedChatId === chat.id ? "已复制" : "复制 chat id"}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                        className="w-6"
                       >
                         {copiedChatId === chat.id ? (
                           <CheckCircle2 className="h-3 w-3" />
                         ) : (
                           <Copy className="h-3 w-3" />
                         )}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
             {discoverHint && (
-              <p className="mt-1 text-xs leading-relaxed text-text-tertiary">
+              <p className="mt-1 text-xs leading-relaxed text-text-secondary">
                 {discoverHint}
               </p>
             )}
@@ -825,15 +829,15 @@ function TelegramAddForm({
               complete={senderReady}
             >
           <Field label="允许的发送者 user id（逗号或换行分隔）">
-            <textarea
+            <Textarea
               value={senderIds}
               onChange={(e) => setSenderIds(e.target.value)}
               disabled={saving}
               rows={2}
               placeholder="123456789"
-              className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+              className="w-full"
             />
-            <p className="mt-1 text-xs text-text-tertiary">
+            <p className="mt-1 text-xs text-text-secondary">
               如果第 2 步识别到用户，会自动填到这里。
             </p>
             {discoveredSenders.length > 0 && (
@@ -852,35 +856,35 @@ function TelegramAddForm({
                       </code>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <button
+                      <Button variant="primary"
                         type="button"
                         onClick={() => setSenderIds(sender.id)}
                         disabled={saving}
-                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+
                       >
                         填入
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="secondary"
                         type="button"
                         onClick={() => appendSenderId(sender.id)}
                         disabled={saving}
-                        className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+
                       >
                         追加
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="secondary"
                         type="button"
                         onClick={() => copySenderId(sender.id)}
                         disabled={saving}
                         title={copiedSenderId === sender.id ? "已复制" : "复制 user id"}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                        className="w-6"
                       >
                         {copiedSenderId === sender.id ? (
                           <CheckCircle2 className="h-3 w-3" />
                         ) : (
                           <Copy className="h-3 w-3" />
                         )}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -896,49 +900,47 @@ function TelegramAddForm({
               description="名称只用于列表里识别这个 Telegram 接入。"
             >
               <Field label="接入名称（可选）">
-                <input
+                <Input
                   type="text"
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
                   disabled={saving}
                   placeholder="例如：客服 Bot"
-                  className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+                  className="w-full"
                 />
               </Field>
             </StepSection>
           )}
           {chatReady && whitelistIncomplete && (
-            <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+            <p className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-amber-200">
               必须同时填写允许的 chat id 和发送者 user id，才能保存 Telegram 接入。
             </p>
           )}
           {error && (
-            <p className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-xs text-red-300">
+            <Alert tone="danger" >
               {error}
-            </p>
+            </Alert>
           )}
         </>
       )}
       <div className="flex justify-end gap-2 pt-1">
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={onCancel}
           disabled={saving}
-          className="rounded-md border border-glass-border bg-glass-bg/60 px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+
         >
           取消
-        </button>
-        <button
+        </Button>
+        <Button variant="primary"
           type="button"
           onClick={handleSave}
           disabled={!tokenReady || !canSave}
-          className={`inline-flex items-center gap-1 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50 ${
-            senderReady ? "" : "hidden"
-          }`}
+
         >
           {saving && <Loader2 className="h-3 w-3 animate-spin" />}
           保存
-        </button>
+        </Button>
       </div>
       {tokenGuideOpen && (
         <PortaledTelegramTokenGuideDialog onClose={() => setTokenGuideOpen(false)} />
@@ -961,32 +963,18 @@ function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
       contentSelector: "[data-motion-item]",
     });
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWithMotion();
-    };
-    document.addEventListener("keydown", onKeyDown);
+
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+
       cleanupAnime(animationRef.current);
     };
   }, [closeWithMotion]);
 
   return (
-    <div
-      ref={overlayRef}
-      className="liquid-scrim fixed inset-0 z-[70] flex items-center justify-center px-4 backdrop-blur-sm"
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-dialog w-full max-w-md rounded-2xl border border-glass-border p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<>从 BotFather 获取 Bot token</>} overlayClassName="z-[70]" className="max-w-md p-5">
         <div data-motion-item className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-text-primary">
@@ -996,52 +984,51 @@ function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
               Token 来自 Telegram 官方 BotFather，创建后复制到这里即可继续配置接入。
             </p>
           </div>
-          <button
+          <IconButton label="关闭"
             type="button"
             onClick={closeWithMotion}
             aria-label="关闭"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan"
+            className="w-8 shrink-0"
           >
             <X className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
         <ol className="space-y-3 text-xs text-text-secondary">
           <li data-motion-item className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
+            <Badge tone="accent" className="flex w-5 shrink-0 items-center justify-center">
               1
-            </span>
+            </Badge>
             <span>打开 Telegram，搜索并进入官方账号 @BotFather。</span>
           </li>
           <li data-motion-item className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
+            <Badge tone="accent" className="flex w-5 shrink-0 items-center justify-center">
               2
-            </span>
+            </Badge>
             <span>发送 /newbot，按提示填写 bot 显示名称和以 bot 结尾的用户名。</span>
           </li>
           <li data-motion-item className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
+            <Badge tone="accent" className="flex w-5 shrink-0 items-center justify-center">
               3
-            </span>
+            </Badge>
             <span>BotFather 会返回一串 HTTP API token，格式通常类似 123456:ABC-...。</span>
           </li>
           <li data-motion-item className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
+            <Badge tone="accent" className="flex w-5 shrink-0 items-center justify-center">
               4
-            </span>
+            </Badge>
             <span>复制 token，粘贴到 Bot token 输入框；不要把 token 发到群聊或提交到代码仓库。</span>
           </li>
         </ol>
         <div data-motion-item className="mt-5 flex justify-end">
-          <button
+          <Button variant="primary"
             type="button"
             onClick={closeWithMotion}
-            className="rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20"
+
           >
             知道了
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }
 
@@ -1285,36 +1272,32 @@ function FeishuAddForm({
       >
         <div className="mb-3 inline-flex rounded-lg border border-glass-border bg-deep-black/40 p-0.5">
           {(["feishu", "lark"] as const).map((d) => (
-            <button
+            <Button aria-pressed={domain === d} variant="row"
               key={d}
               type="button"
               onClick={() => setDomain(d)}
               disabled={phase !== "idle" || busy}
-              className={`rounded-md px-3 py-1 text-xs transition-colors ${
-                domain === d
-                  ? "bg-neon-cyan/20 text-neon-cyan"
-                  : "text-text-secondary hover:text-text-primary"
-              } disabled:opacity-50`}
+
             >
               {d === "feishu" ? "飞书" : "Lark"}
-            </button>
+            </Button>
           ))}
         </div>
         {phase === "idle" ? (
-          <button
+          <Button variant="secondary"
             type="button"
             onClick={handleStart}
             disabled={daemonOffline || busy}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-2 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
+
           >
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
             生成二维码
-          </button>
+          </Button>
         ) : (
           <div className="space-y-2">
             <div className="text-xs text-text-secondary">{statusText[status]}</div>
             {phase === "scanning" && qrcodeUrl ? (
-              <div className="inline-block rounded-xl border border-glass-border bg-[#ffffff] p-3">
+              <div className="inline-block rounded-xl border border-glass-border bg-white p-3">
                 <QRCodeSVG value={qrcodeUrl} size={176} />
               </div>
             ) : null}
@@ -1338,28 +1321,28 @@ function FeishuAddForm({
         >
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
-              <button
+              <Button variant="secondary"
                 type="button"
                 onClick={handleDiscoverChats}
                 disabled={discoveringChats || busy || !loginId}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-2 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
+
               >
                 {discoveringChats ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
                 {discoveringChats ? "监听中" : "刷新"}
-              </button>
-              <button
+              </Button>
+              <Button variant="secondary"
                 type="button"
                 onClick={() => setChatDiscoverySkipped(true)}
                 disabled={discoveringChats || busy}
-                className="rounded-lg border border-glass-border px-3 py-2 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+
               >
                 跳过
-              </button>
+              </Button>
             </div>
             {discoveredChats.length > 0 ? (
               <div className="space-y-1">
                 {discoveredChats.slice(0, 5).map((chat) => (
-                  <button
+                  <Button variant="secondary"
                     key={`${chat.chatId}:${chat.senderOpenId}`}
                     type="button"
                     onClick={() => {
@@ -1369,11 +1352,11 @@ function FeishuAddForm({
                       setChatIdsTouched(true);
                       setChatDiscoverySkipped(false);
                     }}
-                    className="flex w-full items-center justify-between rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-left text-xs text-text-secondary hover:border-neon-cyan/40 hover:text-text-primary"
+                    className="w-full"
                   >
                     <span className="min-w-0 truncate font-mono">{chat.chatId}</span>
                     <span className="ml-3 shrink-0 text-xs">{chat.kind === "direct" ? "单聊" : "群聊"}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             ) : null}
@@ -1390,23 +1373,23 @@ function FeishuAddForm({
         >
           <div className="space-y-3">
             <Field label="接入名称">
-              <input
+              <Input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="例如：飞书助手"
-                className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40"
+                className="w-full"
               />
             </Field>
             <Field label="允许的用户 open_id（逗号或换行分隔）">
-              <textarea
+              <Textarea
                 value={senderIds}
                 onChange={(e) => setSenderIds(e.target.value)}
                 rows={2}
-                className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40"
+                className="w-full"
               />
             </Field>
             <Field label="允许的群 chat_id（可选）">
-              <textarea
+              <Textarea
                 value={chatIds}
                 onChange={(e) => {
                   const next = e.target.value;
@@ -1418,32 +1401,32 @@ function FeishuAddForm({
                 }}
                 rows={2}
                 placeholder="oc_xxxxx"
-                className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40"
+                className="w-full"
               />
             </Field>
           </div>
         </StepSection>
       )}
 
-      {error && <div className="text-xs text-red-300">{error}</div>}
+      {error && <Alert tone="danger" >{error}</Alert>}
       <div className="flex justify-end gap-2">
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={onCancel}
           disabled={busy}
-          className="rounded-lg border border-glass-border px-3 py-2 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+
         >
           取消
-        </button>
-        <button
+        </Button>
+        <Button variant="secondary"
           type="button"
           onClick={handleSave}
           disabled={!canSave}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-2 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
+
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           保存接入
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -1721,15 +1704,15 @@ function WechatAddForm({
         complete={loginReady}
       >
         {phase === "idle" && (
-          <button
+          <Button variant="primary"
             type="button"
             onClick={handleStart}
             disabled={daemonOffline || busy}
-            className="inline-flex items-center gap-2 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+
           >
             {busy && <Loader2 className="h-3 w-3 animate-spin" />}
             扫码登录
-          </button>
+          </Button>
         )}
 
         {phase === "scanning" && (
@@ -1739,7 +1722,7 @@ function WechatAddForm({
               <WechatLoginExpiryNotice remainingMs={loginRemainingMs} />
             </div>
             {qrcodeUrl ? (
-              <div className="inline-flex h-44 w-44 items-center justify-center rounded-md border border-glass-border bg-[#ffffff] p-2">
+              <div className="inline-flex h-44 w-44 items-center justify-center rounded-md border border-glass-border bg-white p-2">
                 <QRCodeSVG
                   value={qrcodeUrl}
                   size={160}
@@ -1753,7 +1736,7 @@ function WechatAddForm({
                 <div className="break-all rounded-md border border-glass-border bg-glass-bg/40 p-2 font-mono text-xs text-text-secondary">
                   {qrcode}
                 </div>
-                <button
+                <Button variant="secondary"
                   type="button"
                   onClick={async () => {
                     try {
@@ -1764,27 +1747,27 @@ function WechatAddForm({
                       /* noop */
                     }
                   }}
-                  className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-xs text-text-secondary hover:text-text-primary"
+
                 >
                   {copied ? "已复制" : "复制二维码内容"}
-                </button>
+                </Button>
               </div>
             ) : null}
             {(status === "expired" || status === "failed") && (
-              <button
+              <Button variant="secondary"
                 type="button"
                 onClick={handleStart}
                 disabled={busy}
-                className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+
               >
                 重新获取二维码
-              </button>
+              </Button>
             )}
           </div>
         )}
 
         {phase === "ready" && (
-          <div className="space-y-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2">
+          <div className="space-y-2 rounded-lg border border-success/30 bg-success-soft p-2">
             <div className="text-xs text-emerald-200">
               已授权
               {tokenPreview ? (
@@ -1805,19 +1788,19 @@ function WechatAddForm({
         >
           <Field label="允许的微信用户 ID（逗号或换行分隔）">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-              <textarea
+              <Textarea
                 value={senderIds}
                 onChange={(e) => setSenderIds(e.target.value)}
                 disabled={busy}
                 rows={2}
                 placeholder="xxx@im.wechat"
-                className="min-h-16 flex-1 resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+                className="flex-1"
               />
-              <button
+              <Button variant="secondary"
                 type="button"
                 onClick={handleDiscoverSenders}
                 disabled={!loginId || loginExpired || busy || discoveringSenders}
-                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border border-neon-cyan/50 bg-neon-cyan/15 px-3 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50 sm:w-auto"
+                className="shrink-0 sm:w-auto"
               >
                 {discoveringSenders ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1825,7 +1808,7 @@ function WechatAddForm({
                   <Search className="h-3.5 w-3.5" />
                 )}
                 我已发送
-              </button>
+              </Button>
             </div>
             {discoveredSenders.length > 0 && (
               <div className="mt-2 space-y-1.5">
@@ -1843,42 +1826,42 @@ function WechatAddForm({
                       </code>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <button
+                      <Button variant="primary"
                         type="button"
                         onClick={() => setSenderIds(sender.id)}
                         disabled={busy}
-                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+
                       >
                         填入
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="secondary"
                         type="button"
                         onClick={() => appendSenderId(sender.id)}
                         disabled={busy}
-                        className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+
                       >
                         追加
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="secondary"
                         type="button"
                         onClick={() => copySenderId(sender.id)}
                         disabled={busy}
                         title={copiedSenderId === sender.id ? "已复制" : "复制微信用户 ID"}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                        className="w-6"
                       >
                         {copiedSenderId === sender.id ? (
                           <CheckCircle2 className="h-3 w-3" />
                         ) : (
                           <Copy className="h-3 w-3" />
                         )}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
             {senderDiscoverHint && (
-              <p className="mt-1 text-xs leading-relaxed text-text-tertiary">
+              <p className="mt-1 text-xs leading-relaxed text-text-secondary">
                 {senderDiscoverHint}
               </p>
             )}
@@ -1889,7 +1872,7 @@ function WechatAddForm({
             )}
           </Field>
           {whitelistEmpty && (
-            <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+            <p className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-amber-200">
               必须填写至少一个允许的微信用户 ID，才能保存微信接入。
             </p>
           )}
@@ -1904,13 +1887,13 @@ function WechatAddForm({
           complete
         >
           <Field label="接入名称（可选）">
-            <input
+            <Input
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               disabled={busy}
               placeholder="例如：我的微信"
-              className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+              className="w-full"
             />
           </Field>
         </StepSection>
@@ -1922,15 +1905,15 @@ function WechatAddForm({
           title="保存微信接入"
           description="保存后会开始处理来自允许用户的微信消息，后续可以在列表里停用、编辑或删除。"
         >
-          <button
+          <Button variant="primary"
             type="button"
             onClick={handleSave}
             disabled={!canSave}
-            className="inline-flex items-center gap-1 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+
           >
             {busy && <Loader2 className="h-3 w-3 animate-spin" />}
             保存
-          </button>
+          </Button>
           {loginExpired && (
             <p className="mt-2 text-xs leading-relaxed text-amber-200">
               微信临时登录态已过期，请重新扫码后保存。
@@ -1940,20 +1923,20 @@ function WechatAddForm({
       )}
 
       {error && (
-        <p className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-xs text-red-300">
+        <Alert tone="danger" >
           {error}
-        </p>
+        </Alert>
       )}
 
       <div className="flex justify-end gap-2 pt-1">
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={onCancel}
           disabled={busy}
-          className="rounded-md border border-glass-border bg-glass-bg/60 px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+
         >
           取消
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -2301,7 +2284,7 @@ function GatewayEditForm({
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-glass-border bg-deep-black/35 p-3">
       <Field label="接入名称（可选）">
-        <input
+        <Input
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
@@ -2313,27 +2296,27 @@ function GatewayEditForm({
                 ? "例如：飞书助手"
                 : "例如：客服 Bot"
           }
-          className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+          className="w-full"
         />
       </Field>
       {gateway.provider === "telegram" && (
         <>
           <Field label="允许的 chat id（逗号或换行分隔）">
-            <textarea
+            <Textarea
               value={chatIds}
               onChange={(e) => setChatIds(e.target.value)}
               disabled={saving}
               rows={2}
               placeholder="-1001234567890, 987654321"
-              className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+              className="w-full"
             />
             <div className="mt-2 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <button
+                <Button variant="secondary"
                   type="button"
                   onClick={handleDiscoverTelegramChats}
                   disabled={!token.trim() || saving || discoveringChats}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-1.5 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
+
                 >
                   {discoveringChats ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -2341,8 +2324,8 @@ function GatewayEditForm({
                     <Search className="h-3 w-3" />
                   )}
                   我已发送
-                </button>
-                <span className="text-xs text-text-tertiary">
+                </Button>
+                <span className="text-xs text-text-secondary">
                   在要接入的私聊、群或频道里发一条消息。
                 </span>
               </div>
@@ -2359,7 +2342,7 @@ function GatewayEditForm({
                             {chat.label || "未命名会话"}
                           </span>
                           {chat.type ? (
-                            <span className="rounded border border-glass-border px-1.5 py-0.5 text-xs uppercase text-text-tertiary">
+                            <span className="rounded border border-glass-border px-1.5 py-0.5 text-xs uppercase text-text-secondary">
                               {chat.type}
                             </span>
                           ) : null}
@@ -2369,42 +2352,42 @@ function GatewayEditForm({
                         </code>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <button
+                        <Button variant="primary"
                           type="button"
                           onClick={() => setChatIds(chat.id)}
                           disabled={saving}
-                          className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+
                         >
                           填入
-                        </button>
-                        <button
+                        </Button>
+                        <Button variant="secondary"
                           type="button"
                           onClick={() => appendChatId(chat.id)}
                           disabled={saving}
-                          className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+
                         >
                           追加
-                        </button>
-                        <button
+                        </Button>
+                        <Button variant="secondary"
                           type="button"
                           onClick={() => copyChatId(chat.id)}
                           disabled={saving}
                           title={copiedChatId === chat.id ? "已复制" : "复制 chat id"}
-                          className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                          className="w-6"
                         >
                           {copiedChatId === chat.id ? (
                             <CheckCircle2 className="h-3 w-3" />
                           ) : (
                             <Copy className="h-3 w-3" />
                           )}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
               {chatDiscoverHint && (
-                <p className="text-xs leading-relaxed text-text-tertiary">
+                <p className="text-xs leading-relaxed text-text-secondary">
                   {chatDiscoverHint}
                 </p>
               )}
@@ -2416,14 +2399,14 @@ function GatewayEditForm({
             </div>
           </Field>
           <Field label="替换 Bot token（可选）">
-            <input
+            <Input
               type="password"
               autoComplete="off"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               disabled={saving}
               placeholder="不填写则保持当前 token"
-              className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+              className="w-full"
             />
           </Field>
         </>
@@ -2433,30 +2416,26 @@ function GatewayEditForm({
           <Field label="飞书域">
             <div className="inline-flex rounded-lg border border-glass-border bg-deep-black/40 p-0.5">
               {(["feishu", "lark"] as const).map((d) => (
-                <button
+                <Button aria-pressed={feishuDomain === d} variant="row"
                   key={d}
                   type="button"
                   onClick={() => setFeishuDomain(d)}
                   disabled={saving}
-                  className={`rounded-md px-3 py-1 text-xs transition-colors ${
-                    feishuDomain === d
-                      ? "bg-neon-cyan/20 text-neon-cyan"
-                      : "text-text-secondary hover:text-text-primary"
-                  } disabled:opacity-50`}
+
                 >
                   {d === "feishu" ? "飞书" : "Lark"}
-                </button>
+                </Button>
               ))}
             </div>
           </Field>
           <Field label="允许的飞书群 chat_id（可选，逗号或换行分隔）">
-            <textarea
+            <Textarea
               value={chatIds}
               onChange={(e) => setChatIds(e.target.value)}
               disabled={saving}
               rows={2}
               placeholder="oc_xxxxx"
-              className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+              className="w-full"
             />
           </Field>
         </>
@@ -2470,7 +2449,7 @@ function GatewayEditForm({
               : "允许的发送者 user id（逗号或换行分隔）"
         }
       >
-        <textarea
+        <Textarea
           value={senderIds}
           onChange={(e) => setSenderIds(e.target.value)}
           disabled={saving}
@@ -2482,16 +2461,16 @@ function GatewayEditForm({
                 ? "ou_xxxxx"
                 : "123456789"
           }
-          className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
+          className="w-full"
         />
         {gateway.provider === "wechat" && (
           <div className="mt-2 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <button
+              <Button variant="secondary"
                 type="button"
                 onClick={handleStartWechatDiscoveryLogin}
                 disabled={daemonOffline || saving || wechatLoginBusy}
-                className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+
               >
                 {wechatLoginBusy ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -2499,8 +2478,8 @@ function GatewayEditForm({
                   <Search className="h-3 w-3" />
                 )}
                 {wechatLoginId ? "重新扫码检测用户 ID" : "检测微信用户 ID"}
-              </button>
-              <button
+              </Button>
+              <Button variant="secondary"
                 type="button"
                 onClick={handleDiscoverWechatSenders}
                 disabled={
@@ -2510,7 +2489,7 @@ function GatewayEditForm({
                   saving ||
                   discoveringSenders
                 }
-                className="inline-flex items-center gap-1.5 rounded-md border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-1.5 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
+
               >
                 {discoveringSenders ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -2518,8 +2497,8 @@ function GatewayEditForm({
                   <Search className="h-3 w-3" />
                 )}
                 我已发送
-              </button>
-              <span className="text-xs text-text-tertiary">
+              </Button>
+              <span className="text-xs text-text-secondary">
                 用要接入的微信账号发一条消息。
               </span>
             </div>
@@ -2532,7 +2511,7 @@ function GatewayEditForm({
                   {wechatStatusText[wechatStatus]}
                 </div>
                 {wechatQrcodeUrl ? (
-                  <div className="inline-flex h-36 w-36 items-center justify-center rounded-md border border-glass-border bg-[#ffffff] p-2">
+                  <div className="inline-flex h-36 w-36 items-center justify-center rounded-md border border-glass-border bg-white p-2">
                     <QRCodeSVG
                       value={wechatQrcodeUrl}
                       size={128}
@@ -2564,42 +2543,42 @@ function GatewayEditForm({
                       </code>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                      <button
+                      <Button variant="primary"
                         type="button"
                         onClick={() => setSenderIds(sender.id)}
                         disabled={saving}
-                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+
                       >
                         填入
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="secondary"
                         type="button"
                         onClick={() => appendSenderId(sender.id)}
                         disabled={saving}
-                        className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+
                       >
                         追加
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="secondary"
                         type="button"
                         onClick={() => copySenderId(sender.id)}
                         disabled={saving}
                         title={copiedSenderId === sender.id ? "已复制" : "复制微信用户 ID"}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded border border-glass-border text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                        className="w-6"
                       >
                         {copiedSenderId === sender.id ? (
                           <CheckCircle2 className="h-3 w-3" />
                         ) : (
                           <Copy className="h-3 w-3" />
                         )}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
             {senderDiscoverHint && (
-              <p className="text-xs leading-relaxed text-text-tertiary">
+              <p className="text-xs leading-relaxed text-text-secondary">
                 {senderDiscoverHint}
               </p>
             )}
@@ -2612,7 +2591,7 @@ function GatewayEditForm({
         )}
       </Field>
       {whitelistIncomplete && (
-        <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+        <p className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-amber-200">
           {gateway.provider === "telegram"
             ? "必须同时保留允许的 chat id 和发送者 user id，才能保存修改。"
             : gateway.provider === "feishu"
@@ -2621,23 +2600,23 @@ function GatewayEditForm({
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={onCancel}
           disabled={saving}
-          className="rounded-md border border-glass-border bg-glass-bg/60 px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+
         >
           取消
-        </button>
-        <button
+        </Button>
+        <Button variant="primary"
           type="button"
           onClick={handleSave}
           disabled={!canSave}
-          className="inline-flex items-center gap-1 rounded-md border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+
         >
           {saving && <Loader2 className="h-3 w-3 animate-spin" />}
           保存修改
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -2678,32 +2657,18 @@ function DeleteConfirmDialog({
   }, [onCancel]);
 
   useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
       contentSelector: "[data-motion-item]",
     });
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWithMotion();
-    };
-    document.addEventListener("keydown", onKeyDown);
+
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+
       cleanupAnime(animationRef.current);
     };
   }, [closeWithMotion]);
 
   return (
-    <div
-      ref={overlayRef}
-      className="liquid-scrim fixed inset-0 z-[60] flex items-center justify-center px-4"
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-dialog w-full max-w-sm rounded-2xl border border-glass-border p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<>删除接入</>} overlayClassName="z-[60]" className="max-w-sm p-5">
         <h3 data-motion-item className="mb-2 text-base font-semibold text-text-primary">
           删除接入
         </h3>
@@ -2716,26 +2681,25 @@ function DeleteConfirmDialog({
           <li>不会删除 agent workspace、memory 或 runtime 配置。</li>
         </ul>
         <div data-motion-item className="mt-5 flex justify-end gap-2">
-          <button
+          <Button variant="secondary"
             type="button"
             onClick={closeWithMotion}
             disabled={busy}
-            className="rounded-md border border-glass-border bg-glass-bg/60 px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
+
           >
             取消
-          </button>
-          <button
+          </Button>
+          <Button variant="danger"
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded-md border border-red-400/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+
           >
             {busy && <Loader2 className="h-3 w-3 animate-spin" />}
             确认删除
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }
 

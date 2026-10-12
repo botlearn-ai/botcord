@@ -12,20 +12,25 @@ import { clsx } from "clsx";
 const FIELD =
   "liquid-input w-full rounded-lg px-3 text-sm text-text-primary outline-none transition-colors placeholder:text-text-tertiary disabled:cursor-not-allowed disabled:opacity-60";
 
+const MESSAGE = "w-full min-h-11 border-0 bg-transparent px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-tertiary disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-1 focus-visible:ring-focus-ring";
+const COMPOSER = "w-full border-0 bg-transparent p-0 text-sm text-text-primary outline-none placeholder:text-text-tertiary disabled:cursor-not-allowed disabled:opacity-60 focus-visible:ring-1 focus-visible:ring-focus-ring";
+
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   /** Marks the field invalid; styling comes from `.liquid-input[aria-invalid]`. */
   invalid?: boolean;
+  /** Borderless embedded editor; callers own sizing and input/composition logic. */
+  variant?: "default" | "composer" | "message";
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { invalid, className, ...rest },
+  { invalid, variant = "default", className, ...rest },
   ref,
 ) {
   return (
     <input
       ref={ref}
       aria-invalid={invalid || undefined}
-      className={clsx(FIELD, "h-10", className)}
+      className={clsx(variant === "composer" ? COMPOSER : variant === "message" ? MESSAGE : FIELD, variant === "default" && "h-10", className)}
       {...rest}
     />
   );
@@ -33,17 +38,19 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   invalid?: boolean;
+  /** Borderless embedded editor; callers own sizing and input/composition logic. */
+  variant?: "default" | "composer" | "message";
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { invalid, className, ...rest },
+  { invalid, variant = "default", className, ...rest },
   ref,
 ) {
   return (
     <textarea
       ref={ref}
       aria-invalid={invalid || undefined}
-      className={clsx(FIELD, "min-h-20 py-2 leading-relaxed", className)}
+      className={clsx(variant === "composer" ? COMPOSER : variant === "message" ? MESSAGE : FIELD, variant !== "default" ? "resize-none leading-relaxed" : "min-h-20 py-2 leading-relaxed", className)}
       {...rest}
     />
   );

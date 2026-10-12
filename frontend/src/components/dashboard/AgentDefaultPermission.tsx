@@ -1,4 +1,7 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+
+import Button from "@/components/ui/Button";
 
 import Radio from "@/components/ui/Radio";
 import { useEffect, useRef, useState } from "react";
@@ -96,14 +99,14 @@ export default function AgentDefaultPermission({
         )}
       </p>
       {error && (
-        <p role="alert" className="mb-3 text-xs text-red-500">
+        <Alert tone="danger" role="alert" className="mb-3">
           {error}
           {value == null && (
-            <button type="button" className="ml-2 underline" onClick={() => setVersion((v) => v + 1)}>
+            <Button variant="ghost" type="button" className="ml-2" onClick={() => setVersion((v) => v + 1)}>
               {t("重试", "Retry")}
-            </button>
+            </Button>
           )}
-        </p>
+        </Alert>
       )}
       {value == null ? (
         !error && (
@@ -122,7 +125,7 @@ export default function AgentDefaultPermission({
                 className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
                   selected
                     ? opt.value === "full"
-                      ? "border-red-500/40 bg-red-500/5"
+                      ? "border-danger/40 bg-danger-soft"
                       : "border-neon-cyan/40 bg-neon-cyan/5"
                     : "border-glass-border hover:bg-glass-bg/60"
                 } ${saving ? "pointer-events-none opacity-50" : ""}`}

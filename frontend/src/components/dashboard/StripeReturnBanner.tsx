@@ -1,5 +1,8 @@
 "use client";
 
+import Card from "@/components/ui/Card";
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
 import { useState, useEffect, memo } from "react";
 import { api } from "@/lib/api";
 import type { StripeSessionStatusResponse } from "@/lib/types";
@@ -89,22 +92,22 @@ function StripeReturnBanner() {
   // Cancelled
   if (mode === "cancelled") {
     return (
-      <div className="liquid-card fixed bottom-4 right-4 z-40 max-w-sm rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 backdrop-blur-xl">
+      <Card padding="md" className="fixed bottom-4 right-4 z-40 max-w-sm">
         <div className="flex items-start gap-3">
-          <span className="text-yellow-400 text-lg">!</span>
+          <span className="text-warning text-lg">!</span>
           <div className="flex-1">
-            <p className="text-sm font-medium text-yellow-400">Payment cancelled</p>
+            <p className="text-sm font-medium text-warning">Payment cancelled</p>
             <p className="mt-1 text-xs text-text-secondary">
               Your payment was not processed. You can try again anytime.
             </p>
           </div>
-          <button onClick={dismiss} className="text-text-secondary hover:text-text-primary">
+          <IconButton label="Close" size="sm" onClick={dismiss} >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M4 4l8 8M12 4l-8 8" />
             </svg>
-          </button>
+          </IconButton>
         </div>
-      </div>
+      </Card>
     );
   }
 
@@ -112,21 +115,17 @@ function StripeReturnBanner() {
   const credited = status?.wallet_credited ?? false;
 
   return (
-    <div className={`liquid-card fixed bottom-4 right-4 z-40 max-w-sm rounded-xl border p-4 backdrop-blur-xl ${
-      credited
-        ? "border-neon-green/30 bg-neon-green/10"
-        : "border-neon-cyan/30 bg-neon-cyan/10"
-    }`}>
+    <Card padding="md" className={`fixed bottom-4 right-4 z-40 max-w-sm  `}>
       <div className="flex items-start gap-3">
         {credited ? (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5 text-neon-green flex-shrink-0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5 text-success flex-shrink-0">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         ) : (
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-neon-cyan/30 border-t-neon-cyan flex-shrink-0" />
         )}
         <div className="flex-1">
-          <p className={`text-sm font-medium ${credited ? "text-neon-green" : "text-neon-cyan"}`}>
+          <p className={`text-sm font-medium ${credited ? "text-success" : "text-accent-text"}`}>
             {credited ? "Recharge successful!" : "Processing payment..."}
           </p>
           <p className="mt-1 text-xs text-text-secondary">
@@ -138,12 +137,12 @@ function StripeReturnBanner() {
             }
           </p>
         </div>
-        <button onClick={dismiss} className="text-text-secondary hover:text-text-primary">
+        <IconButton label="Close" size="sm" onClick={dismiss} >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M4 4l8 8M12 4l-8 8" />
           </svg>
-        </button>
+        </IconButton>
       </div>
-    </div>
+    </Card>
   );
 }

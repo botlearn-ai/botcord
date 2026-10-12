@@ -1,4 +1,11 @@
 "use client";
+import EmptyState from "@/components/ui/EmptyState";
+import Skeleton from "@/components/ui/Skeleton";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
+
+import Button from "@/components/ui/Button";
 
 /**
  * [INPUT]: agentId + Hub skill snapshot API
@@ -100,17 +107,17 @@ function SkillCard({
   sourceDetailLabel: string;
 }) {
   return (
-    <li className="liquid-card rounded-xl border border-glass-border px-3 py-3">
+    <Card as="li" padding="sm" >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-semibold text-text-primary">{skill.name}</span>
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-neon-cyan/25 bg-neon-cyan/5 px-2 py-0.5 text-xs font-medium text-neon-cyan">
+            <Badge tone="accent" className="shrink-0 items-center gap-1">
               {sourceIcon(skill.source)}
               {sourceLabel}
-            </span>
+            </Badge>
           </div>
-          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-text-secondary/80">
+          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-text-secondary">
             {skill.description}
           </p>
         </div>
@@ -142,7 +149,7 @@ function SkillCard({
           </span>
         ) : null}
       </div>
-    </li>
+    </Card>
   );
 }
 
@@ -245,11 +252,11 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
           </h3>
           <p className="mt-0.5 text-xs text-text-secondary">{copy.subtitle}</p>
         </div>
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={() => void refreshSkills()}
           disabled={loading || refreshing}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border bg-glass-bg text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+          className="w-9 shrink-0"
           title={copy.refresh}
           aria-label={copy.refresh}
         >
@@ -258,51 +265,49 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}
-        </button>
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <div className="liquid-card rounded-xl border border-glass-border px-3 py-2">
-          <div className="text-xs uppercase tracking-normal text-text-secondary/65">{copy.title}</div>
+        <Card padding="none" className="px-3 py-2">
+          <div className="text-xs text-text-secondary">{copy.title}</div>
           <div className="mt-1 text-lg font-semibold text-text-primary">{total}</div>
-        </div>
-        <div className="liquid-card rounded-xl border border-glass-border px-3 py-2">
-          <div className="text-xs uppercase tracking-normal text-text-secondary/65">
+        </Card>
+        <Card padding="none" className="px-3 py-2">
+          <div className="text-xs text-text-secondary">
             {visibleSnapshot?.runtime ? copy.runtime : copy.lastSniffed}
           </div>
           <div className="mt-1 truncate font-mono text-xs text-text-primary">
             {visibleSnapshot?.runtime ?? sniffedAt ?? "-"}
           </div>
-        </div>
+        </Card>
       </div>
 
       {sniffedAt ? (
-        <p className="text-xs text-text-secondary/65">
+        <p className="text-xs text-text-secondary">
           {copy.lastSniffed}: {sniffedAt}
         </p>
       ) : null}
 
       {error ? (
-        <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+        <Alert tone="danger" >
           {error}
-        </div>
+        </Alert>
       ) : null}
 
       {loading && total === 0 ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-xl bg-glass-bg/60" />
+            <Skeleton shape="block" height={80} key={i} />
           ))}
         </div>
       ) : total === 0 ? (
-        <div className="liquid-empty-state rounded-xl border border-glass-border px-4 py-8 text-center text-sm text-text-secondary">
-          {copy.empty}
-        </div>
+        <EmptyState compact bordered title={<>{copy.empty}</>} />
       ) : (
         <div className="space-y-5">
           {runtimeGroups.map((group) => (
             <section key={group.runtime} className="space-y-3">
-              <div className="flex items-center justify-between gap-2 border-b border-glass-border/70 pb-2 text-xs font-semibold uppercase tracking-normal text-text-secondary/70">
+              <div className="flex items-center justify-between gap-2 border-b border-glass-border/70 pb-2 text-xs font-semibold text-text-secondary">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <Cpu className="h-3.5 w-3.5 text-neon-cyan" />
                   <span className="truncate font-mono">{group.runtime}</span>
@@ -315,7 +320,7 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
                 const label = sourceLabels[source];
                 return (
                   <div key={`${group.runtime}:${source}`} className="space-y-2">
-                    <div className="flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-normal text-text-secondary/70">
+                    <div className="flex items-center justify-between gap-2 text-xs font-semibold text-text-secondary">
                       <span className="flex items-center gap-1.5">
                         {sourceIcon(source)}
                         {label}
@@ -341,7 +346,7 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
             </section>
           ))}
           {runtimeGroups.length === 0 ? (
-            <div className="rounded-xl border border-glass-border/70 bg-glass-bg/20 px-3 py-3 text-xs text-text-secondary/60">
+            <div className="rounded-xl border border-glass-border/70 bg-glass-bg/20 px-3 py-3 text-xs text-text-secondary">
               {copy.empty}
             </div>
           ) : null}

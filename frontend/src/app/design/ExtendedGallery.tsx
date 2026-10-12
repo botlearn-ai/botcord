@@ -14,6 +14,9 @@ import Button from "@/components/ui/Button";
 import CopyableId from "@/components/ui/CopyableId";
 import CordField from "@/components/ui/CordField";
 import Disclosure from "@/components/ui/Disclosure";
+import DialogSurface from "@/components/ui/DialogSurface";
+import DismissLayer from "@/components/ui/DismissLayer";
+import LinkButton from "@/components/ui/LinkButton";
 import DrawerShell from "@/components/ui/DrawerShell";
 import Field from "@/components/ui/Field";
 import IconButton from "@/components/ui/IconButton";
@@ -40,6 +43,8 @@ export default function ExtendedGallery() {
   const [query, setQuery] = useState("");
   const [drawer, setDrawer] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
+  const [surfaceOpen, setSurfaceOpen] = useState(false);
+  const [dismissVisible, setDismissVisible] = useState(false);
   const confirm = useConfirm();
   return <div className="space-y-10 border-t border-border py-10">
     <section id="selection" className="space-y-5">
@@ -73,11 +78,25 @@ export default function ExtendedGallery() {
       <AttachmentItem attachment={{ filename: "BotCord Logo.svg", url: "favicon.svg", content_type: "image/svg+xml", size_bytes: 640 }} onPreview={() => setImageOpen(true)} />
       <Button onClick={() => setImageOpen(true)}>打开图片预览</Button>
     </section>
+    <section id="composition" className="space-y-4">
+      <h2 className="type-heading-2">组合控件与导航</h2>
+      <div className="flex flex-wrap items-center gap-3">
+        <LinkButton href="/design/pilot">真实页面试点</LinkButton>
+        <Button onClick={() => setSurfaceOpen(true)}>无内置动画弹层</Button>
+        <Button onClick={() => setDismissVisible(true)}>局部关闭遮罩</Button>
+      </div>
+      <Button variant="row" aria-pressed><span className="block font-medium">已选列表行</span><span className="type-body-sm">多行内容使用 row，导航使用 LinkButton 保留链接行为。</span></Button>
+      <div className="relative flex h-28 items-center justify-center rounded-xl border border-border">
+        <span className="text-sm text-text-secondary">局部导航示例</span>
+        {dismissVisible && <DismissLayer label="关闭局部遮罩" className="absolute inset-0 rounded-xl" onClick={() => setDismissVisible(false)} />}
+      </div>
+    </section>
     <section id="marketing" className="space-y-4">
       <h2 className="type-heading-2">营销页与品牌</h2>
       <MarketingCard><SectionHeading title="让 Agent 连接起来" subtitle="营销页复用品牌辅助图形、区块标题和 CTA。" /><div className="flex flex-wrap justify-center gap-3"><MarketingButton href="#selection">查看组件</MarketingButton><MarketingButton variant="primary" onClick={() => setDrawer(true)}>体验交互</MarketingButton></div><div className="relative mt-6 h-32 overflow-hidden"><CordField className="absolute inset-0 h-full w-full" /></div></MarketingCard>
       <TypewriterCode code={'{ "from": "Atlas", "to": "Coder", "status": "delivered" }'} />
     </section>
+    {surfaceOpen && <DialogSurface title="组合式弹层" onClose={() => setSurfaceOpen(false)}><div className="space-y-4 p-5"><h3 className="text-lg font-semibold">组合式弹层</h3><p className="text-sm text-text-secondary">共享焦点、Esc 和滚动锁，动画由业务组件持有。</p><Button onClick={() => setSurfaceOpen(false)}>关闭</Button></div></DialogSurface>}
     {drawer ? <DrawerShell title="Agent 详情" closeLabel="关闭抽屉" description="共享标题、正文和底部操作区" onClose={() => setDrawer(false)} footer={(close) => <Button onClick={close}>完成</Button>}><Alert tone="neutral">此抽屉仅展示组件，不连接业务数据。</Alert><Disclosure className="mt-4" title="运行信息">当前状态：在线</Disclosure></DrawerShell> : null}
     {imageOpen ? <ImagePreviewOverlay src="/favicon.svg?v=2" title="BotCord Logo" onClose={() => setImageOpen(false)} onImageError={() => setImageOpen(false)} /> : null}
   </div>;

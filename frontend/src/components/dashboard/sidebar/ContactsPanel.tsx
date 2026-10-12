@@ -1,5 +1,7 @@
 "use client";
 
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 import { startTransition, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { ChevronDown, UserPlus2, Users } from "lucide-react";
@@ -29,9 +31,9 @@ function Section({
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border-b border-glass-border/50">
-      <button
+      <Button variant="row"
         onClick={() => setOpen((v) => !v)}
-        className="liquid-list-row flex w-full items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary/70 transition-colors hover:text-text-primary"
+        className="flex w-full items-center justify-between"
       >
         <span className="flex items-center gap-1.5">
           <ChevronDown
@@ -39,8 +41,8 @@ function Section({
           />
           {title}
         </span>
-        <span className="text-xs font-medium text-text-secondary/50">{count}</span>
-      </button>
+        <span className="text-xs font-medium text-text-secondary">{count}</span>
+      </Button>
       {open ? <div className="overflow-hidden pb-2">{children}</div> : null}
     </div>
   );
@@ -48,7 +50,7 @@ function Section({
 
 function SubGroupHeader({ title, count }: { title: string; count: number }) {
   return (
-    <div data-contact-section-item className="flex items-center justify-between px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-[0.14em] text-text-secondary/45">
+    <div data-contact-section-item className="flex items-center justify-between px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-[0.14em] text-text-secondary">
       <span>{title}</span>
       <span>{count}</span>
     </div>
@@ -71,14 +73,10 @@ function ListRow({
   active?: boolean;
 }) {
   return (
-    <button
+    <Button variant="row" aria-pressed={active}
       data-contact-section-item
       onClick={onClick}
-      className={`liquid-list-row flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors ${
-        active
-          ? "!bg-neon-cyan/10"
-          : "hover:bg-glass-bg/60"
-      }`}
+      className={`flex w-full items-center gap-2.5 `}
     >
       <div className="relative shrink-0">
         {avatar}
@@ -93,17 +91,17 @@ function ListRow({
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm text-text-primary">{name}</div>
         {subtitle ? (
-          <div className="truncate text-xs text-text-secondary/60">{subtitle}</div>
+          <div className="truncate text-xs text-text-secondary">{subtitle}</div>
         ) : null}
       </div>
-    </button>
+    </Button>
   );
 }
 
 function Avatar({ seed, tone = "cyan" }: { seed: string; tone?: "cyan" | "purple" }) {
   const bg = tone === "purple"
-    ? "border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan"
-    : "border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan";
+    ? "border-neon-cyan/25 bg-accent-soft text-accent-text"
+    : "border-neon-cyan/25 bg-accent-soft text-accent-text";
   return (
     <div className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold ${bg}`}>
       {seed.charAt(0).toUpperCase()}
@@ -196,29 +194,29 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Pinned: New Requests */}
-      <button
+      <Button variant="row"
         onClick={openRequests}
-        className="liquid-list-row flex items-center gap-3 border-b border-glass-border px-3 py-3 text-left transition-colors"
+        className="flex items-center gap-3"
       >
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-soft text-warning">
           <UserPlus2 className="h-4.5 w-4.5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-text-primary">{t.newRequests}</span>
             {totalPendingRequests > 0 ? (
-              <span className="rounded-full bg-neon-cyan px-1.5 text-xs font-bold text-[var(--color-on-accent)]">
+              <Badge tone="neutral" >
                 {totalPendingRequests > 99 ? "99+" : totalPendingRequests}
-              </span>
+              </Badge>
             ) : null}
           </div>
-          <p className="truncate text-xs text-text-secondary/60">
+          <p className="truncate text-xs text-text-secondary">
             {totalPendingRequests > 0
               ? t.pendingRequests(totalPendingRequests)
               : overview ? t.noPendingRequests : "…"}
           </p>
         </div>
-      </button>
+      </Button>
 
       <div className="flex-1 overflow-y-auto">
         {/* Agents */}
@@ -254,7 +252,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
             />
           ))}
           {overview && ownedAgents.length === 0 && agentContacts.length === 0 ? (
-            <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary/50">{t.noAgentsYet}</p>
+            <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary">{t.noAgentsYet}</p>
           ) : null}
         </Section>
 
@@ -263,7 +261,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
           {humanContacts.length === 0 && !overview ? (
             <ContactSectionsSkeleton />
           ) : humanContacts.length === 0 ? (
-            <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary/50">{t.noHumanContactsYet}</p>
+            <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary">{t.noHumanContactsYet}</p>
           ) : (
             humanContacts.map((c) => (
               <ListRow
@@ -284,7 +282,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
           {groups.length === 0 && !overview ? (
             <ContactSectionsSkeleton />
           ) : groups.length === 0 ? (
-            <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary/50">{t.noGroupsJoined}</p>
+            <p data-contact-section-item className="px-3 py-3 text-xs text-text-secondary">{t.noGroupsJoined}</p>
           ) : (
             groups.map((room) => (
               <ListRow
@@ -297,7 +295,7 @@ export default function ContactsPanel({ onOpenAddFriend }: ContactsPanelProps) {
                       size={32}
                     />
                   ) : (
-                    <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-neon-cyan/25 bg-accent-soft text-accent-text">
                       <Users className="h-3.5 w-3.5" />
                     </div>
                   )

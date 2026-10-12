@@ -1,22 +1,18 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import Disclosure from "@/components/ui/Disclosure";
+import EmptyState from "@/components/ui/EmptyState";
+import Field from "@/components/ui/Field";
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import Switch from "@/components/ui/Switch";
 
+import LinkButton from "@/components/ui/LinkButton";
 import Select from "@/components/ui/Select";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
-import {
-  Building2,
-  UserRound,
-  Users,
-  Bot,
-  ShieldCheck,
-  Loader2,
-  RefreshCw,
-  Plus,
-  ArrowRight,
-} from "lucide-react";
-import { useStore } from "zustand";
 import { useLanguage } from "@/lib/i18n";
+import { subscribeToPageReturn } from "@/lib/page-return";
 import {
   canManage,
   canRemoveUser,
@@ -24,25 +20,39 @@ import {
   teamSpacesApi,
   type MembershipStatus,
 } from "@/lib/team-spaces";
-import { subscribeToPageReturn } from "@/lib/page-return";
-import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
-import AccessOverviewSection from "./AccessOverviewSection";
-import OrgInviteLinks from "./OrgInviteLinks";
-import { createTeamSpaceStore, type TeamSpaceStore } from "@/store/team-space-store";
+import {
+  createTeamSpaceStore,
+  type TeamSpaceStore,
+} from "@/store/team-space-store";
 import {
   useConfirm,
   useConfirmStore,
   type ConfirmOptions,
 } from "@/store/useConfirmStore";
+import {
+  ArrowRight,
+  Bot,
+  Building2,
+  Loader2,
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  UserRound,
+  Users,
+} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useStore } from "zustand";
+import AccessOverviewSection from "./AccessOverviewSection";
+import OrgInviteLinks from "./OrgInviteLinks";
+import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
 
-const panel = "rounded-2xl border border-glass-border bg-glass-bg p-5 sm:p-6";
-const input =
-  "w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan focus:ring-2 focus:ring-neon-cyan/20 disabled:opacity-50";
-const button =
-  "inline-flex items-center justify-center gap-2 rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-neon-cyan/10 focus-visible:outline-2 focus-visible:outline-neon-cyan disabled:cursor-not-allowed disabled:opacity-50";
-const primary = `${button} border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan`;
-
-export default function TeamSpacesPage({ teamMode = false, section, onChanged, sharedStore }: {
+export default function TeamSpacesPage({
+  teamMode = false,
+  section,
+  onChanged,
+  sharedStore,
+}: {
   teamMode?: boolean;
   sharedStore?: TeamSpaceStore;
   section?: "members" | "settings";
@@ -53,8 +63,18 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
   const router = useRouter();
   const query = useSearchParams();
   const requestedId = query.get("space");
-  const store = useMemo(() => sharedStore ?? createTeamSpaceStore(teamMode), [sharedStore, teamMode]);
-  const { snapshot: loadedSnapshot, loading, refreshing, error, load, refresh } = useStore(store);
+  const store = useMemo(
+    () => sharedStore ?? createTeamSpaceStore(teamMode),
+    [sharedStore, teamMode],
+  );
+  const {
+    snapshot: loadedSnapshot,
+    loading,
+    refreshing,
+    error,
+    load,
+    refresh,
+  } = useStore(store);
   const snapshot =
     loadedSnapshot &&
     (requestedId
@@ -109,14 +129,20 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
   }, [load, requestedId, store, sharedStore]);
   // Window focus also fires when returning from DevTools. Only a real page return
   // may refresh; the store coalesces requests and keeps the current page visible.
-  useEffect(() => subscribeToPageReturn(() => {
-    if (!sharedStore && !locked.current) void refresh(requestedId);
-  }), [refresh, requestedId, sharedStore]);
+  useEffect(
+    () =>
+      subscribeToPageReturn(() => {
+        if (!sharedStore && !locked.current) void refresh(requestedId);
+      }),
+    [refresh, requestedId, sharedStore],
+  );
 
   const select = (id: string) =>
-    router.push(teamMode && snapshot?.spaces.find((s) => s.id === id)?.kind === "personal"
-      ? basePath
-      : `${basePath}?space=${encodeURIComponent(id)}`);
+    router.push(
+      teamMode && snapshot?.spaces.find((s) => s.id === id)?.kind === "personal"
+        ? basePath
+        : `${basePath}?space=${encodeURIComponent(id)}`,
+    );
   async function confirmForSpace(options: ConfirmOptions) {
     const origin = currentRoute.current;
     const result = confirm({
@@ -155,7 +181,8 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
         select(nextId);
       } else {
         await load(origin, { background: Boolean(sharedStore) });
-        if (!sharedStore && mounted.current && currentRoute.current === origin) onChanged?.();
+        if (!sharedStore && mounted.current && currentRoute.current === origin)
+          onChanged?.();
       }
     } catch (cause) {
       if (mounted.current && currentRoute.current === origin) {
@@ -194,152 +221,155 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
-      {!section && <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-neon-cyan">
-            Team
-          </p>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            {teamMode ? t("团队空间", "Team workspace") : t("空间与组织", "Spaces & organizations")}
-          </h1>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-text-secondary">
-            {t(
-              "使用同一个账户和 Agent，分别管理个人与组织身份。",
-              "Use the same account and Agents with separate personal and organization memberships.",
-            )}
-          </p>
-        </div>
-        <button
-          className={primary}
-          disabled={busy || loading || !snapshot}
-          onClick={() => setShowCreate(!showCreate)}
-          aria-expanded={showCreate}
-        >
-          <Plus size={16} />
-          {t("创建组织", "Create organization")}
-        </button>
-      </header>}
+      {!section && (
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-neon-cyan">
+              Team
+            </p>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              {teamMode
+                ? t("团队空间", "Team workspace")
+                : t("空间与组织", "Spaces & organizations")}
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-text-secondary">
+              {t(
+                "使用同一个账户和 Agent，分别管理个人与组织身份。",
+                "Use the same account and Agents with separate personal and organization memberships.",
+              )}
+            </p>
+          </div>
+          <Button
+            variant="primary"
+
+            disabled={busy || loading || !snapshot}
+            onClick={() => setShowCreate(!showCreate)}
+            aria-expanded={showCreate}
+          >
+            <Plus size={16} />
+            {t("创建组织", "Create organization")}
+          </Button>
+        </header>
+      )}
 
       {notice && (
-        <div
-          role={notice.error ? "alert" : "status"}
-          className={`rounded-xl border p-4 text-sm ${notice.error ? "border-red-500/30 text-red-500" : "border-neon-cyan/30 text-neon-cyan"}`}
-        >
-          {notice.text}
-        </div>
+        <Alert tone={notice.error ? "danger" : "success"}>{notice.text}</Alert>
       )}
       {loading && (
-        <div
-          role="status"
-          className={`${panel} flex items-center gap-3 text-text-secondary`}
-        >
+        <Card role="status" className="flex items-center gap-3">
           <Loader2 size={20} className="animate-spin" />
           {t("正在加载空间…", "Loading spaces…")}
-        </div>
+        </Card>
       )}
       {error != null && (
-        <div role="alert" className={`${panel} space-y-4`}>
+        <Alert tone="danger" className="space-y-4">
           <p>{spaceError(error, zh)}</p>
           <div className="flex flex-wrap gap-3">
-            <button
-              className={button}
+            <Button
+              variant="secondary"
+
               disabled={busy}
               onClick={() => void load(requestedId)}
             >
               <RefreshCw size={16} />
               {t("重试", "Retry")}
-            </button>
-            <Link className={button} href={basePath}>
+            </Button>
+            <LinkButton variant="secondary" href={basePath}>
               {t("返回我的空间", "My spaces")}
-            </Link>
-            <Link className={button} href="/login">
+            </LinkButton>
+            <LinkButton variant="secondary" href="/login">
               {t("重新登录", "Sign in")}
-            </Link>
+            </LinkButton>
           </div>
-        </div>
+        </Alert>
       )}
 
       {snapshot && space && (
         <>
-          {!section && !(teamMode && personal) && <section
-            className={`${panel} flex flex-wrap items-center justify-between gap-4`}
-            aria-label={t("选择空间", "Choose space")}
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <div className="rounded-xl bg-neon-cyan/10 p-3 text-neon-cyan">
-                {personal ? <UserRound size={22} /> : <Building2 size={22} />}
-              </div>
-              <label className="min-w-0 flex-1">
-                <span className="mb-1 block text-xs text-text-secondary">
-                  {t("当前空间", "Current space")}
-                </span>
-                <Select
-                  aria-label={t("当前空间", "Current space")}
-
-                  value={space.id}
-                  disabled={busy}
-                  onChange={(e) => select(e.target.value)}
-                >
-                  {snapshot.spaces.filter((s) => !teamMode || s.kind === "organization").map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.kind === "personal"
-                        ? t("个人空间", "Personal space")
-                        : s.name}
-                      {s.membership.status === "invited"
-                        ? t(" · 待接受邀请", " · Invitation")
-                        : ""}
-                      {s.status !== "active"
-                        ? t(" · 不可用", " · Unavailable")
-                        : ""}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-            </div>
-            <button
-              className={button}
-              disabled={busy}
-              onClick={() => void load(requestedId)}
-              aria-label={t("刷新空间", "Refresh spaces")}
+          {!section && !(teamMode && personal) && (
+            <Card
+              as="section"
+              className="flex flex-wrap items-center justify-between gap-4"
+              aria-label={t("选择空间", "Choose space")}
             >
-              <RefreshCw size={16} />
-            </button>
-          </section>}
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="rounded-xl bg-neon-cyan/10 p-3 text-neon-cyan">
+                  {personal ? <UserRound size={22} /> : <Building2 size={22} />}
+                </div>
+                <Field label={<>{t("当前空间", "Current space")}</>}>
+                  <Select
+                    aria-label={t("当前空间", "Current space")}
 
-          {!section && snapshot.spaces.some(
-            (s) => s.membership.status === "invited" && s.id !== space.id,
-          ) && (
-            <section
-              className={`${panel} space-y-3`}
-              aria-label={t("待接受邀请", "Pending invitations")}
-            >
-              <h2 className="font-semibold">
-                {t("待接受邀请", "Pending invitations")}
-              </h2>
-              {snapshot.spaces
-                .filter(
-                  (s) => s.membership.status === "invited" && s.id !== space.id,
-                )
-                .map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center justify-between gap-3"
+                    value={space.id}
+                    disabled={busy}
+                    onChange={(e) => select(e.target.value)}
                   >
-                    <span className="min-w-0 break-words text-sm">
-                      {s.name}
-                    </span>
-                    <button
-                      className={button}
-                      disabled={busy}
-                      onClick={() => select(s.id)}
-                    >
-                      {t("查看邀请", "Review invitation")}
-                      <ArrowRight size={16} />
-                    </button>
-                  </div>
-                ))}
-            </section>
+                    {snapshot.spaces
+                      .filter((s) => !teamMode || s.kind === "organization")
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.kind === "personal"
+                            ? t("个人空间", "Personal space")
+                            : s.name}
+                          {s.membership.status === "invited"
+                            ? t(" · 待接受邀请", " · Invitation")
+                            : ""}
+                          {s.status !== "active"
+                            ? t(" · 不可用", " · Unavailable")
+                            : ""}
+                        </option>
+                      ))}
+                  </Select>
+                </Field>
+              </div>
+              <IconButton
+                disabled={busy}
+                onClick={() => void load(requestedId)}
+                label={t("刷新空间", "Refresh spaces")}
+              >
+                <RefreshCw size={16} />
+              </IconButton>
+            </Card>
           )}
+
+          {!section &&
+            snapshot.spaces.some(
+              (s) => s.membership.status === "invited" && s.id !== space.id,
+            ) && (
+              <Card
+                as="section"
+                className="space-y-3"
+                aria-label={t("待接受邀请", "Pending invitations")}
+              >
+                <h2 className="font-semibold">
+                  {t("待接受邀请", "Pending invitations")}
+                </h2>
+                {snapshot.spaces
+                  .filter(
+                    (s) =>
+                      s.membership.status === "invited" && s.id !== space.id,
+                  )
+                  .map((s) => (
+                    <div
+                      key={s.id}
+                      className="flex items-center justify-between gap-3"
+                    >
+                      <span className="min-w-0 break-words text-sm">
+                        {s.name}
+                      </span>
+                      <Button
+                        variant="secondary"
+
+                        disabled={busy}
+                        onClick={() => select(s.id)}
+                      >
+                        {t("查看邀请", "Review invitation")}
+                        <ArrowRight size={16} />
+                      </Button>
+                    </div>
+                  ))}
+              </Card>
+            )}
 
           {teamMode && personal && (
             <section className="mx-auto w-full max-w-3xl py-8 sm:py-16">
@@ -347,128 +377,193 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                 <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan">
                   <Building2 size={30} />
                 </div>
-                <h2 className="text-2xl font-semibold sm:text-3xl">{t("开启你的团队空间", "Start your team workspace")}</h2>
+                <h2 className="text-2xl font-semibold sm:text-3xl">
+                  {t("开启你的团队空间", "Start your team workspace")}
+                </h2>
                 <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-text-secondary">
-                  {t("还没有加入组织。创建一个新组织，或接受邀请，在团队房间里与成员交流。", "You haven’t joined an organization yet. Create one or accept an invitation to talk with teammates in rooms.")}
+                  {t(
+                    "还没有加入组织。创建一个新组织，或接受邀请，在团队房间里与成员交流。",
+                    "You haven’t joined an organization yet. Create one or accept an invitation to talk with teammates in rooms.",
+                  )}
                 </p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <button className={`${panel} group text-left transition-colors hover:border-neon-cyan/40 focus-visible:outline-2 focus-visible:outline-neon-cyan`} disabled={busy} aria-expanded={showCreate} onClick={() => { setShowCreate(true); setShowJoin(false); }}>
+                <Card
+                  as="button"
+                  variant="interactive"
+                  disabled={busy}
+                  aria-expanded={showCreate}
+                  onClick={() => {
+                    setShowCreate(true);
+                    setShowJoin(false);
+                  }}
+                >
                   <Plus size={24} className="mb-5 text-neon-cyan" />
-                  <h3 className="text-lg font-semibold">{t("创建组织", "Create organization")}</h3>
-                  <p className="mt-2 text-sm leading-6 text-text-secondary">{t("为你的团队建立空间，邀请成员并添加 Agent。", "Set up a space for your team, invite people and add Agents.")}</p>
-                  <span className="mt-5 inline-flex items-center gap-2 text-sm text-neon-cyan">{t("开始创建", "Get started")} <ArrowRight size={16} /></span>
-                </button>
-                <button className={`${panel} group text-left transition-colors hover:border-neon-cyan/40 focus-visible:outline-2 focus-visible:outline-neon-cyan`} disabled={busy} aria-expanded={showJoin} onClick={() => { setShowJoin(true); setShowCreate(false); }}>
+                  <h3 className="text-lg font-semibold">
+                    {t("创建组织", "Create organization")}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">
+                    {t(
+                      "为你的团队建立空间，邀请成员并添加 Agent。",
+                      "Set up a space for your team, invite people and add Agents.",
+                    )}
+                  </p>
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm text-neon-cyan">
+                    {t("开始创建", "Get started")} <ArrowRight size={16} />
+                  </span>
+                </Card>
+                <Card
+                  as="button"
+                  variant="interactive"
+                  disabled={busy}
+                  aria-expanded={showJoin}
+                  onClick={() => {
+                    setShowJoin(true);
+                    setShowCreate(false);
+                  }}
+                >
                   <Users size={24} className="mb-5 text-neon-cyan" />
-                  <h3 className="text-lg font-semibold">{t("加入组织", "Join organization")}</h3>
-                  <p className="mt-2 text-sm leading-6 text-text-secondary">{t("已经有团队？向管理员索取邀请链接，或让管理员邀请你加入。", "Already have a team? Ask an administrator for an invite link or an invitation.")}</p>
-                  <span className="mt-5 inline-flex items-center gap-2 text-sm text-neon-cyan">{t("查看加入方式", "How to join")} <ArrowRight size={16} /></span>
-                </button>
+                  <h3 className="text-lg font-semibold">
+                    {t("加入组织", "Join organization")}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">
+                    {t(
+                      "已经有团队？向管理员索取邀请链接，或让管理员邀请你加入。",
+                      "Already have a team? Ask an administrator for an invite link or an invitation.",
+                    )}
+                  </p>
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm text-neon-cyan">
+                    {t("查看加入方式", "How to join")} <ArrowRight size={16} />
+                  </span>
+                </Card>
               </div>
               {showJoin && (
-                <div className={`${panel} mt-4 space-y-4`}>
-                  <h3 className="font-semibold">{t("通过邀请加入组织", "Join by invitation")}</h3>
-                  <p className="text-sm leading-6 text-text-secondary">{t("最简单的方式是打开管理员发来的邀请链接。也可以将下方用户 ID 发给组织管理员，收到邀请后刷新此页即可查看并接受。", "The easiest way is to open an invite link from an administrator. Or share your user ID below; once invited, refresh this page to review and accept.")}</p>
-                  <code className="block select-all break-all rounded-xl bg-deep-black p-3 text-sm">{snapshot.human.human_id}</code>
-                  <button className={primary} disabled={busy || loading} onClick={() => void load(requestedId)}><RefreshCw size={16} />{t("刷新邀请", "Refresh invitations")}</button>
-                </div>
+                <Card className="mt-4 space-y-4">
+                  <h3 className="font-semibold">
+                    {t("通过邀请加入组织", "Join by invitation")}
+                  </h3>
+                  <p className="text-sm leading-6 text-text-secondary">
+                    {t(
+                      "最简单的方式是打开管理员发来的邀请链接。也可以将下方用户 ID 发给组织管理员，收到邀请后刷新此页即可查看并接受。",
+                      "The easiest way is to open an invite link from an administrator. Or share your user ID below; once invited, refresh this page to review and accept.",
+                    )}
+                  </p>
+                  <code className="block select-all break-all rounded-xl bg-deep-black p-3 text-sm">
+                    {snapshot.human.human_id}
+                  </code>
+                  <Button
+                    variant="primary"
+                    disabled={busy || loading}
+                    onClick={() => void load(requestedId)}
+                  >
+                    <RefreshCw size={16} />
+                    {t("刷新邀请", "Refresh invitations")}
+                  </Button>
+                </Card>
               )}
             </section>
           )}
 
           {showCreate && (
-            <form
-              className={`${panel} space-y-4`}
-              onSubmit={(e) => {
-                e.preventDefault();
-                void run(
-                  async () =>
-                    (await teamSpacesApi.create(name.trim(), slug.trim()))
-                      .space_id,
-                  t("组织已创建。", "Organization created."),
-                );
-              }}
-            >
-              <h2 className="text-lg font-semibold">
-                {t("创建组织", "Create organization")}
-              </h2>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-2 text-sm">
-                  <span>{t("组织名称", "Organization name")}</span>
-                  <input
-                    className={input}
-                    ref={createNameRef}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    maxLength={128}
-                    disabled={busy}
-                    placeholder={t("例如：产品研发团队", "e.g. Product team")}
-                  />
-                </label>
-                <label className="space-y-2 text-sm">
-                  <span>{t("组织标识", "Organization address")}</span>
-                  <input
-                    className={input}
-                    value={slug}
-                    onChange={(e) => setSlug(e.target.value.toLowerCase())}
-                    required
-                    minLength={2}
-                    maxLength={64}
-                    pattern="[a-z0-9]+(-[a-z0-9]+)*"
-                    disabled={busy}
-                    placeholder="product-team"
-                  />
-                  <span className="block text-xs text-text-secondary">
-                    {t(
-                      "使用小写字母、数字或连字符，至少 2 个字符。",
-                      "At least 2 characters: lowercase letters, numbers and hyphens.",
-                    )}
-                  </span>
-                </label>
-              </div>
-              <p className="text-sm text-text-secondary">
-                {t(
-                  "你将成为组织所有者。成员和 Agent 需要分别加入。",
-                  "You will be the owner. People and Agents join separately.",
-                )}
-              </p>
-              <button
-                className={primary}
-                disabled={busy || !name.trim() || !slug.trim()}
+            <Card>
+              <form
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(
+                    async () =>
+                      (await teamSpacesApi.create(name.trim(), slug.trim()))
+                        .space_id,
+                    t("组织已创建。", "Organization created."),
+                  );
+                }}
               >
-                {busy && <Loader2 size={16} className="animate-spin" />}
-                {t("创建", "Create")}
-              </button>
-            </form>
+                <h2 className="text-lg font-semibold">
+                  {t("创建组织", "Create organization")}
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label={<>{t("组织名称", "Organization name")}</>}>
+                    <Input
+                      ref={createNameRef}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                      maxLength={128}
+                      disabled={busy}
+                      placeholder={t("例如：产品研发团队", "e.g. Product team")}
+                    />
+                  </Field>
+                  <Field
+                    label={<>{t("组织标识", "Organization address")}</>}
+                    hint={
+                      <>
+                        <span className="block text-xs text-text-secondary">
+                          {t(
+                            "使用小写字母、数字或连字符，至少 2 个字符。",
+                            "At least 2 characters: lowercase letters, numbers and hyphens.",
+                          )}
+                        </span>
+                      </>
+                    }
+                  >
+                    <Input
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value.toLowerCase())}
+                      required
+                      minLength={2}
+                      maxLength={64}
+                      pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                      disabled={busy}
+                      placeholder="product-team"
+                    />
+                  </Field>
+                </div>
+                <p className="text-sm text-text-secondary">
+                  {t(
+                    "你将成为组织所有者。成员和 Agent 需要分别加入。",
+                    "You will be the owner. People and Agents join separately.",
+                  )}
+                </p>
+                <Button
+                  type="submit"
+                  variant="primary"
+
+                  disabled={busy || !name.trim() || !slug.trim()}
+                >
+                  {busy && <Loader2 size={16} className="animate-spin" />}
+                  {t("创建", "Create")}
+                </Button>
+              </form>
+            </Card>
           )}
 
-          {!section && !(teamMode && personal) && <section className="flex flex-wrap items-center justify-between gap-3 px-1 text-sm text-text-secondary">
-            <span>
-              {snapshot.user.display_name} · {t("你的用户 ID", "Your user ID")}
-              ：
-              <code className="select-all break-all text-text-primary">
-                {snapshot.human.human_id}
-              </code>
-            </span>
-            <span>
-              {personal
-                ? t("个人身份", "Personal membership")
-                : space.roles.map(role).join(" · ") ||
-                  status(space.membership.status)}
-            </span>
-          </section>}
+          {!section && !(teamMode && personal) && (
+            <section className="flex flex-wrap items-center justify-between gap-3 px-1 text-sm text-text-secondary">
+              <span>
+                {snapshot.user.display_name} ·{" "}
+                {t("你的用户 ID", "Your user ID")}：
+                <code className="select-all break-all text-text-primary">
+                  {snapshot.human.human_id}
+                </code>
+              </span>
+              <span>
+                {personal
+                  ? t("个人身份", "Personal membership")
+                  : space.roles.map(role).join(" · ") ||
+                    status(space.membership.status)}
+              </span>
+            </section>
+          )}
 
           {space.status !== "active" ? (
-            <div className={panel}>
+            <Card>
               {t(
                 "此空间已暂停或归档，暂不可进行成员管理。",
                 "This space is suspended or archived. Membership management is unavailable.",
               )}
-            </div>
+            </Card>
           ) : space.membership.status === "invited" ? (
-            <section className={`${panel} space-y-4`}>
+            <Card as="section" className="space-y-4">
               <h2 className="text-xl font-semibold">
                 {t("你受邀加入", "You are invited to join")} {space.name}
               </h2>
@@ -490,8 +585,9 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
                     )
                   : t("已关闭。", "Disabled.")}
               </p>
-              <button
-                className={primary}
+              <Button
+                variant="primary"
+
                 disabled={busy}
                 onClick={() =>
                   void run(
@@ -504,306 +600,349 @@ export default function TeamSpacesPage({ teamMode = false, section, onChanged, s
               >
                 {t("接受邀请", "Accept invitation")}
                 <ArrowRight size={16} />
-              </button>
-            </section>
+              </Button>
+            </Card>
           ) : active && personal ? (
-            teamMode ? null : <section className={`${panel} space-y-4`}>
-              <h2 className="text-lg font-semibold">
-                {t("你的个人空间", "Your personal space")}
-              </h2>
-              <p className="text-sm leading-6 text-text-secondary">
-                {t(
-                  "个人对话、联系人和 Agent 保留在这里。加入组织不会转移你的个人资料或 Agent 所有权。",
-                  "Your personal conversations, contacts and Agents stay here. Joining an organization does not transfer your personal data or Agent ownership.",
-                )}
-              </p>
-              <Link className={primary} href="/chats/messages">
-                {t("进入个人对话", "Open personal conversations")}
-                <ArrowRight size={16} />
-              </Link>
-            </section>
+            teamMode ? null : (
+              <Card as="section" className="space-y-4">
+                <h2 className="text-lg font-semibold">
+                  {t("你的个人空间", "Your personal space")}
+                </h2>
+                <p className="text-sm leading-6 text-text-secondary">
+                  {t(
+                    "个人对话、联系人和 Agent 保留在这里。加入组织不会转移你的个人资料或 Agent 所有权。",
+                    "Your personal conversations, contacts and Agents stay here. Joining an organization does not transfer your personal data or Agent ownership.",
+                  )}
+                </p>
+                <LinkButton variant="primary" href="/chats/messages">
+                  {t("进入个人对话", "Open personal conversations")}
+                  <ArrowRight size={16} />
+                </LinkButton>
+              </Card>
+            )
           ) : (
             active && (
               <>
-                {!section && <div className="rounded-xl border border-neon-cyan/20 bg-neon-cyan/5 px-5 py-4 text-sm leading-6">
-                  <strong>
-                    {t(
-                      "组织工作区",
-                      "Organization workspace",
-                    )}
-                  </strong>
-                  <p className="text-text-secondary">
-                    {t(
-                      "在 Team 中查看消息与房间，在这里管理成员、Agent 和组织设置。Agent 的 owner 可以授权成员通过私信使用自己的 Agent。",
-                      "Open Team for messages and rooms. Manage members, Agents and organization settings here. Agent owners can share their Agents with members through direct messages.",
-                    )}
-                  </p>
-                  <Link className="mt-2 inline-flex items-center gap-2 text-neon-cyan" href={`/chats/team?space=${encodeURIComponent(space.id)}`}>
-                    {t("进入团队消息", "Open team messages")} <ArrowRight size={14} />
-                  </Link>
-                </div>}
-
-                {(!section || section === "members") && <section className={`${panel} space-y-5`}>
-                  <h2 className="flex items-center gap-2 text-lg font-semibold">
-                    <Users size={20} />
-                    {t("成员", "Members")}
-                    <span className="text-sm font-normal text-text-secondary">
-                      {
-                        snapshot.members.users.filter(
-                          (m) => m.status === "active",
-                        ).length
-                      }
-                    </span>
-                  </h2>
-                  {manager ? (
-                    <>
-                      <OrgInviteLinks spaceId={space.id} spaceName={space.name} />
-                      <details className="rounded-xl border border-glass-border px-4 py-3">
-                        <summary className="cursor-pointer select-none text-sm text-text-secondary">
-                          {t("已注册用户：按用户 ID 邀请", "Registered users: invite by user ID")}
-                        </summary>
-                        <div className="pt-3">
-                          <form
-                            className="flex flex-wrap items-end gap-3"
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              void run(
-                                async () => {
-                                  await teamSpacesApi.invite(
-                                    space.id,
-                                    humanId.trim(),
-                                  );
-                                  setHumanId("");
-                                },
-                                t(
-                                  "邀请已创建；对方进入 Team 后即可查看并接受。",
-                                  "Invitation created. They can review and accept it in Team.",
-                                ),
-                              );
-                            }}
-                          >
-                            <label className="min-w-0 flex-1 space-y-2 text-sm">
-                              <span>{t("邀请用户", "Invite a person")}</span>
-                              <input
-                                className={input}
-                                aria-describedby="invite-help"
-                                value={humanId}
-                                onChange={(e) => setHumanId(e.target.value)}
-                                required
-                                pattern="hu_[a-zA-Z0-9]+"
-                                maxLength={32}
-                                placeholder="hu_…"
-                                disabled={busy}
-                              />
-                              <span
-                                id="invite-help"
-                                className="block text-xs text-text-secondary"
-                              >
-                                {t(
-                                  "请对方提供账户菜单中的用户 ID。",
-                                  "Ask for the user ID shown in their account menu.",
-                                )}
-                              </span>
-                            </label>
-                            <button
-                              className={primary}
-                              disabled={busy || !humanId.trim()}
-                            >
-                              {t("发送邀请", "Invite")}
-                            </button>
-                          </form>
-                        </div>
-                      </details>
-                    </>
-                  ) : (
-                    <p className="rounded-xl border border-dashed border-glass-border p-4 text-sm text-text-secondary">
-                      {t("请联系管理员获取邀请链接。", "Ask an administrator for an invite link.")}
+                {!section && (
+                  <Card>
+                    <strong>{t("组织工作区", "Organization workspace")}</strong>
+                    <p className="text-text-secondary">
+                      {t(
+                        "在 Team 中查看消息与房间，在这里管理成员、Agent 和组织设置。Agent 的 owner 可以授权成员通过私信使用自己的 Agent。",
+                        "Open Team for messages and rooms. Manage members, Agents and organization settings here. Agent owners can share their Agents with members through direct messages.",
+                      )}
                     </p>
-                  )}
-                  <ul className="divide-y divide-glass-border">
-                    {snapshot.members.users.map((member) => (
-                      <li
-                        key={member.id}
-                        className="flex flex-wrap items-center justify-between gap-3 py-4"
-                      >
-                        <div className="min-w-0">
-                          <p className="break-words font-medium">
-                            {member.display_name}
-                            {member.user_id === snapshot.user.id
-                              ? t("（你）", " (you)")
-                              : ""}
-                          </p>
-                          <p className="mt-1 break-all text-xs text-text-secondary">
-                            {member.human_id} ·{" "}
-                            {member.roles.map(role).join(" / ") ||
-                              t("成员", "Member")}{" "}
-                            · {status(member.status)}
-                          </p>
-                        </div>
-                        {canRemoveUser(space, member, snapshot.user.id) && (
-                          <button
-                            className={`${button} text-red-500`}
-                            disabled={busy}
-                            onClick={() =>
-                              void run(
-                                async () => {
-                                  const self =
-                                    member.user_id === snapshot.user.id;
-                                  if (
-                                    !(await confirmForSpace({
-                                      title: self
-                                        ? t("退出组织？", "Leave organization?")
-                                        : `${t("移除成员", "Remove member")}: ${member.display_name}`,
-                                      message: t(
-                                        "该成员及其 Agent 将失去组织访问权限，个人身份和数据保留。",
-                                        "This member and their Agents will lose organization access. Personal identities and data are retained.",
-                                      ),
-                                      tone: "danger",
-                                    }))
-                                  )
-                                    return false;
-                                  await teamSpacesApi.removeUser(
-                                    space.id,
-                                    member.user_id,
-                                  );
-                                  if (self)
-                                    return snapshot.spaces.find(
-                                      (s) => s.kind === "personal",
-                                    )?.id;
-                                },
-                                t("成员关系已更新。", "Membership updated."),
-                              )
-                            }
-                          >
-                            {member.user_id === snapshot.user.id
-                              ? t("退出组织", "Leave")
-                              : member.status === "invited"
-                                ? t("撤销邀请", "Revoke invitation")
-                                : t("移除", "Remove")}
-                          </button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </section>}
+                    <LinkButton
+                      variant="inline"
+                      className="mt-2"
+                      href={`/chats/team?space=${encodeURIComponent(space.id)}`}
+                    >
+                      {t("进入团队消息", "Open team messages")}{" "}
+                      <ArrowRight size={14} />
+                    </LinkButton>
+                  </Card>
+                )}
 
-                {!section && <Link
-                  className={`${panel} flex items-center gap-4 transition-colors hover:border-neon-cyan/40 focus-visible:outline-2 focus-visible:outline-neon-cyan`}
-                  href={`/chats/team?space=${encodeURIComponent(space.id)}&view=agents`}
-                >
-                  <span className="rounded-xl bg-neon-cyan/10 p-3 text-neon-cyan">
-                    <Bot size={20} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-semibold">{t("组织 Agent", "Organization Agents")}</span>
-                    <span className="mt-1 block text-sm text-text-secondary">
-                      {t("添加 Agent、授权成员使用、设置回复方式。", "Add Agents, share them with members and choose when they reply.")}
+                {(!section || section === "members") && (
+                  <Card as="section" className="space-y-5">
+                    <h2 className="flex items-center gap-2 text-lg font-semibold">
+                      <Users size={20} />
+                      {t("成员", "Members")}
+                      <span className="text-sm font-normal text-text-secondary">
+                        {
+                          snapshot.members.users.filter(
+                            (m) => m.status === "active",
+                          ).length
+                        }
+                      </span>
+                    </h2>
+                    {manager ? (
+                      <>
+                        <OrgInviteLinks
+                          spaceId={space.id}
+                          spaceName={space.name}
+                        />
+                        <Disclosure
+                          title={
+                            <>
+                              {t(
+                                "已注册用户：按用户 ID 邀请",
+                                "Registered users: invite by user ID",
+                              )}
+                            </>
+                          }
+                        >
+                          <div className="pt-3">
+                            <form
+                              className="flex flex-wrap items-end gap-3"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                void run(
+                                  async () => {
+                                    await teamSpacesApi.invite(
+                                      space.id,
+                                      humanId.trim(),
+                                    );
+                                    setHumanId("");
+                                  },
+                                  t(
+                                    "邀请已创建；对方进入 Team 后即可查看并接受。",
+                                    "Invitation created. They can review and accept it in Team.",
+                                  ),
+                                );
+                              }}
+                            >
+                              <Field
+                                label={<>{t("邀请用户", "Invite a person")}</>}
+                                hint={
+                                  <>
+                                    <span
+                                      id="invite-help"
+                                      className="block text-xs text-text-secondary"
+                                    >
+                                      {t(
+                                        "请对方提供账户菜单中的用户 ID。",
+                                        "Ask for the user ID shown in their account menu.",
+                                      )}
+                                    </span>
+                                  </>
+                                }
+                              >
+                                <Input
+                                  aria-describedby="invite-help"
+                                  value={humanId}
+                                  onChange={(e) => setHumanId(e.target.value)}
+                                  required
+                                  pattern="hu_[a-zA-Z0-9]+"
+                                  maxLength={32}
+                                  placeholder="hu_…"
+                                  disabled={busy}
+                                />
+                              </Field>
+                              <Button
+                                type="submit"
+                                variant="primary"
+
+                                disabled={busy || !humanId.trim()}
+                              >
+                                {t("发送邀请", "Invite")}
+                              </Button>
+                            </form>
+                          </div>
+                        </Disclosure>
+                      </>
+                    ) : (
+                      <EmptyState
+                        compact
+                        title={
+                          <>
+                            {t(
+                              "请联系管理员获取邀请链接。",
+                              "Ask an administrator for an invite link.",
+                            )}
+                          </>
+                        }
+                      />
+                    )}
+                    <ul className="divide-y divide-glass-border">
+                      {snapshot.members.users.map((member) => (
+                        <li
+                          key={member.id}
+                          className="flex flex-wrap items-center justify-between gap-3 py-4"
+                        >
+                          <div className="min-w-0">
+                            <p className="break-words font-medium">
+                              {member.display_name}
+                              {member.user_id === snapshot.user.id
+                                ? t("（你）", " (you)")
+                                : ""}
+                            </p>
+                            <p className="mt-1 break-all text-xs text-text-secondary">
+                              {member.human_id} ·{" "}
+                              {member.roles.map(role).join(" / ") ||
+                                t("成员", "Member")}{" "}
+                              · {status(member.status)}
+                            </p>
+                          </div>
+                          {canRemoveUser(space, member, snapshot.user.id) && (
+                            <Button
+                              variant="danger"
+
+                              disabled={busy}
+                              onClick={() =>
+                                void run(
+                                  async () => {
+                                    const self =
+                                      member.user_id === snapshot.user.id;
+                                    if (
+                                      !(await confirmForSpace({
+                                        title: self
+                                          ? t(
+                                              "退出组织？",
+                                              "Leave organization?",
+                                            )
+                                          : `${t("移除成员", "Remove member")}: ${member.display_name}`,
+                                        message: t(
+                                          "该成员及其 Agent 将失去组织访问权限，个人身份和数据保留。",
+                                          "This member and their Agents will lose organization access. Personal identities and data are retained.",
+                                        ),
+                                        tone: "danger",
+                                      }))
+                                    )
+                                      return false;
+                                    await teamSpacesApi.removeUser(
+                                      space.id,
+                                      member.user_id,
+                                    );
+                                    if (self)
+                                      return snapshot.spaces.find(
+                                        (s) => s.kind === "personal",
+                                      )?.id;
+                                  },
+                                  t("成员关系已更新。", "Membership updated."),
+                                )
+                              }
+                            >
+                              {member.user_id === snapshot.user.id
+                                ? t("退出组织", "Leave")
+                                : member.status === "invited"
+                                  ? t("撤销邀请", "Revoke invitation")
+                                  : t("移除", "Remove")}
+                            </Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
+                )}
+
+                {!section && (
+                  <LinkButton
+                    variant="row"
+
+                    href={`/chats/team?space=${encodeURIComponent(space.id)}&view=agents`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="rounded-xl bg-neon-cyan/10 p-3 text-neon-cyan">
+                        <Bot size={20} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">
+                          {t("组织 Agent", "Organization Agents")}
+                        </span>
+                        <span className="mt-1 block text-sm text-text-secondary">
+                          {t(
+                            "添加 Agent、授权成员使用、设置回复方式。",
+                            "Add Agents, share them with members and choose when they reply.",
+                          )}
+                        </span>
+                      </span>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-sm text-neon-cyan">
+                        {t("在 Agent 页面管理", "Manage on the Agent page")}
+                        <ArrowRight size={16} />
+                      </span>
                     </span>
-                  </span>
-                  <span className="inline-flex shrink-0 items-center gap-1 text-sm text-neon-cyan">
-                    {t("在 Agent 页面管理", "Manage on the Agent page")}
-                    <ArrowRight size={16} />
-                  </span>
-                </Link>}
+                  </LinkButton>
+                )}
 
-                {(!section || section === "settings") && <section className={`${panel} space-y-5`}>
-                  <h2 className="flex items-center gap-2 text-lg font-semibold">
-                    <ShieldCheck size={20} />
-                    {t("组织设置", "Organization settings")}
-                  </h2>
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="max-w-xl">
-                      <h3 className="font-medium">
-                        {t(
+                {(!section || section === "settings") && (
+                  <Card as="section" className="space-y-5">
+                    <h2 className="flex items-center gap-2 text-lg font-semibold">
+                      <ShieldCheck size={20} />
+                      {t("组织设置", "Organization settings")}
+                    </h2>
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="max-w-xl">
+                        <h3 className="font-medium">
+                          {t(
+                            "管理员访问组织私聊",
+                            "Admin access to organization DMs",
+                          )}
+                        </h3>
+                        <p className="mt-2 text-sm leading-6 text-text-secondary">
+                          {t(
+                            "开启后，组织所有者和管理员可通过专用入口查看仍保留的全部组织私聊历史。个人对话、私人文件和其他组织不受影响。",
+                            "When enabled, organization owners and admins can view all retained organization DM history through a dedicated entry. Personal conversations, private files and other organizations are unaffected.",
+                          )}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={space.admin_dm_content_access_enabled}
+                        aria-label={t(
                           "管理员访问组织私聊",
                           "Admin access to organization DMs",
                         )}
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-text-secondary">
-                        {t(
-                          "开启后，组织所有者和管理员可通过专用入口查看仍保留的全部组织私聊历史。个人对话、私人文件和其他组织不受影响。",
-                          "When enabled, organization owners and admins can view all retained organization DM history through a dedicated entry. Personal conversations, private files and other organizations are unaffected.",
-                        )}
-                      </p>
+                        disabled={busy || !owner}
+                        onCheckedChange={() =>
+                          void run(
+                            async () => {
+                              const enabled =
+                                !space.admin_dm_content_access_enabled;
+                              if (
+                                !(await confirmForSpace({
+                                  title: enabled
+                                    ? t(
+                                        "开启组织私聊访问？",
+                                        "Enable organization DM access?",
+                                      )
+                                    : t(
+                                        "关闭组织私聊访问？",
+                                        "Disable organization DM access?",
+                                      ),
+                                  message: enabled
+                                    ? t(
+                                        "范围涵盖当前仍保留的全部组织私聊历史。所有成员可看到此设置，变更会被记录。内容查看入口尚未开放。",
+                                        "This covers all retained organization DM history. Members can see this setting and the change is recorded. The content viewing entry is not available yet.",
+                                      )
+                                    : t(
+                                        "关闭后管理员不再拥有此项额外访问权；已记录的审计信息保留。",
+                                        "Admins lose this additional access. Existing audit records are retained.",
+                                      ),
+                                  confirmLabel: enabled
+                                    ? t("确认开启", "Enable access")
+                                    : t("确认关闭", "Disable access"),
+                                }))
+                              )
+                                return false;
+                              await teamSpacesApi.policy(
+                                space.organization_id!,
+                                space.policy_version,
+                                enabled,
+                              );
+                            },
+                            t(
+                              "组织设置已更新。",
+                              "Organization settings updated.",
+                            ),
+                          )
+                        }
+                        label={
+                          space.admin_dm_content_access_enabled
+                            ? t("已开启", "On")
+                            : t("已关闭", "Off")
+                        }
+                      />
                     </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={space.admin_dm_content_access_enabled}
-                      aria-label={t(
-                        "管理员访问组织私聊",
-                        "Admin access to organization DMs",
-                      )}
-                      className={`${button} ${space.admin_dm_content_access_enabled ? "border-neon-cyan/40 text-neon-cyan" : "text-text-secondary"}`}
-                      disabled={busy || !owner}
-                      onClick={() =>
-                        void run(
-                          async () => {
-                            const enabled =
-                              !space.admin_dm_content_access_enabled;
-                            if (
-                              !(await confirmForSpace({
-                                title: enabled
-                                  ? t(
-                                      "开启组织私聊访问？",
-                                      "Enable organization DM access?",
-                                    )
-                                  : t(
-                                      "关闭组织私聊访问？",
-                                      "Disable organization DM access?",
-                                    ),
-                                message: enabled
-                                  ? t(
-                                      "范围涵盖当前仍保留的全部组织私聊历史。所有成员可看到此设置，变更会被记录。内容查看入口尚未开放。",
-                                      "This covers all retained organization DM history. Members can see this setting and the change is recorded. The content viewing entry is not available yet.",
-                                    )
-                                  : t(
-                                      "关闭后管理员不再拥有此项额外访问权；已记录的审计信息保留。",
-                                      "Admins lose this additional access. Existing audit records are retained.",
-                                    ),
-                                confirmLabel: enabled
-                                  ? t("确认开启", "Enable access")
-                                  : t("确认关闭", "Disable access"),
-                              }))
-                            )
-                              return false;
-                            await teamSpacesApi.policy(
-                              space.organization_id!,
-                              space.policy_version,
-                              enabled,
-                            );
-                          },
-                          t(
-                            "组织设置已更新。",
-                            "Organization settings updated.",
-                          ),
-                        )
-                      }
-                    >
-                      {space.admin_dm_content_access_enabled
-                        ? t("已开启", "On")
-                        : t("已关闭", "Off")}
-                    </button>
-                  </div>
-                  <p className="text-xs leading-5 text-text-secondary">
-                    {t(
-                      "仅组织所有者可修改。当前可保存设置，私聊内容查看入口尚未开放。",
-                      "Only the organization owner can change this setting. It can be saved now; the DM content viewing entry is not available yet.",
-                    )}
-                  </p>
-                  <div className="flex justify-between gap-4 border-t border-glass-border pt-4 text-sm">
-                    <span>
+                    <p className="text-xs leading-5 text-text-secondary">
                       {t(
-                        "代表组织对外通信",
-                        "External communication for the organization",
+                        "仅组织所有者可修改。当前可保存设置，私聊内容查看入口尚未开放。",
+                        "Only the organization owner can change this setting. It can be saved now; the DM content viewing entry is not available yet.",
                       )}
-                    </span>
-                    <span className="text-text-secondary">
-                      {t("未开放", "Not available")}
-                    </span>
-                  </div>
-                  {manager && <AccessOverviewSection spaceId={space.id} />}
-                </section>}
+                    </p>
+                    <div className="flex justify-between gap-4 border-t border-glass-border pt-4 text-sm">
+                      <span>
+                        {t(
+                          "代表组织对外通信",
+                          "External communication for the organization",
+                        )}
+                      </span>
+                      <span className="text-text-secondary">
+                        {t("未开放", "Not available")}
+                      </span>
+                    </div>
+                    {manager && <AccessOverviewSection spaceId={space.id} />}
+                  </Card>
+                )}
               </>
             )
           )}

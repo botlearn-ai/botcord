@@ -9,6 +9,9 @@
  * [PROTOCOL]: update header on changes
  */
 
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+import Button from "@/components/ui/Button";
 import { useEffect, useRef, useState } from "react";
 import {
   Check,
@@ -151,26 +154,25 @@ export default function DaemonInstallCommand({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-dashed border-glass-border bg-glass-bg/40 p-4">
+      <Card padding="md" >
         <div className="mb-1 flex items-center gap-2 text-sm font-medium text-text-primary">
           <Server className="h-4 w-4 text-text-secondary" />
           {labels.title}
         </div>
         <p className="text-xs text-text-secondary">{labels.hint}</p>
-      </div>
+      </Card>
 
       <div>
         <div className="flex items-stretch gap-2">
           <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-xl border border-glass-border bg-deep-black px-3 py-2 font-mono text-xs text-text-primary">
             {commandDisplay}
           </code>
-          <button
+          <Button variant="secondary"
             type="button"
             onClick={() => void handleCopy()}
             disabled={copyDisabled}
             title={copyTitle}
-            className="inline-flex min-w-24 items-center justify-center gap-1.5 rounded-xl border border-glass-border px-3 py-2 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-text-secondary"
-          >
+            className="min-w-24" >
             {tokenLoading ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -187,28 +189,26 @@ export default function DaemonInstallCommand({
                 {labels.copy}
               </>
             )}
-          </button>
+          </Button>
         </div>
         <p className="mt-2 text-xs text-text-secondary">{backgroundHint}</p>
         {tokenError && (
-          <p className="mt-2 text-xs text-red-400">{fallbackErrorMsg}</p>
+          <Alert tone="danger" className="mt-2">{fallbackErrorMsg}</Alert>
         )}
       </div>
 
       <div className="flex items-center justify-end gap-3">
-        <button
+        <Button variant="secondary" size="sm"
           type="button"
           onClick={handleRefresh}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
-        >
+          disabled={loading} >
           {loading ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <RefreshCcw className="h-3.5 w-3.5" />
           )}
           {labels.refresh}
-        </button>
+        </Button>
       </div>
     </div>
   );

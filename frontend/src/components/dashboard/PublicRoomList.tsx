@@ -6,6 +6,8 @@
  */
 "use client";
 
+import EmptyState from "@/components/ui/EmptyState";
+import Button from "@/components/ui/Button";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
 import { common } from '@/lib/i18n/translations/common';
@@ -60,9 +62,7 @@ export default function PublicRoomList() {
 
   if (publicRooms.length === 0) {
     return (
-      <div className="liquid-empty-state m-3 p-4 text-center text-xs text-text-secondary">
-        {t.noPublicRooms}
-      </div>
+      <EmptyState compact bordered title={<>{t.noPublicRooms}</>} />
     );
   }
 
@@ -84,18 +84,14 @@ export default function PublicRoomList() {
       {publicRooms.map((room) => {
         const isSelected = focusedRoomId === room.room_id;
         return (
-          <button
+          <Button variant="row" aria-pressed={isSelected}
             key={room.room_id}
             onClick={() => handleSelect(room.room_id)}
-            className={`liquid-list-row w-full px-4 py-2.5 text-left transition-colors ${
-              isSelected
-                ? "!border-neon-cyan !bg-neon-cyan/10 border-l-2"
-                : "hover:bg-glass-bg border-l-2 border-transparent"
-            }`}
+            className={`w-full `}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className={`truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
+                <span className={`truncate text-sm font-medium ${isSelected ? "text-accent-text" : "text-text-primary"}`}>
                   {room.name}
                 </span>
                 {room.required_subscription_product_id && (
@@ -106,7 +102,7 @@ export default function PublicRoomList() {
                 {room.member_count}
               </span>
             </div>
-            <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/50">
+            <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">
               {room.room_id}
             </p>
             {room.description && (
@@ -115,22 +111,22 @@ export default function PublicRoomList() {
               </p>
             )}
             {room.last_message_preview && (
-              <p className="mt-0.5 truncate text-xs text-text-secondary/60">
+              <p className="mt-0.5 truncate text-xs text-text-secondary">
                 {room.last_sender_name && (
                   <span className="text-text-primary/70">{room.last_sender_name}: </span>
                 )}
                 {room.last_message_preview}
               </p>
             )}
-          </button>
+          </Button>
         );
       })}
-      <button
+      <Button variant="secondary" size="sm"
         onClick={() => void loadPublicRooms()}
-        className="liquid-action mx-3 mb-1 w-[calc(100%-1.5rem)] py-2 text-xs text-text-secondary hover:text-neon-cyan"
+        className="mx-3 mb-1 w-[calc(100%-1.5rem)]"
       >
         {tc.refresh}
-      </button>
+      </Button>
     </div>
   );
 }

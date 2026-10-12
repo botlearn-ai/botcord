@@ -7,6 +7,11 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Badge from "@/components/ui/Badge";
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
 import { memo, useEffect, useState } from "react";
 import SubscriptionBadge from "./SubscriptionBadge";
 import { useLanguage } from '@/lib/i18n';
@@ -186,14 +191,14 @@ function AgentBrowser() {
       {/* Header */}
       <div className="liquid-toolbar shrink-0 flex min-h-14 items-center justify-between border-b border-glass-border px-4 py-3">
         <h3 className="text-sm font-semibold text-text-primary">{t.agents}</h3>
-        <button
+        <IconButton label="Close" size="sm"
           onClick={() => toggleRightPanel()}
-          className="liquid-action rounded p-1 text-text-secondary hover:bg-glass-bg hover:text-text-primary"
+
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M3 3l8 8M11 3l-8 8" />
           </svg>
-        </button>
+        </IconButton>
       </div>
 
       {/* Search */}
@@ -210,16 +215,16 @@ function AgentBrowser() {
                 {t.roomMembers} ({roomMembers.length || currentRoom.member_count})
               </h4>
               {activeIdentity?.type === "human" && joinedRoom && (joinedRoom.my_role === "owner" || joinedRoom.my_role === "admin") ? (
-                <button
+                <Button variant="secondary" size="sm"
                   onClick={() => setAddMemberModalOpen(true)}
-                  className="liquid-action rounded border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15"
+
                 >
                   {t.addMembersEntry}
-                </button>
+                </Button>
               ) : null}
             </div>
             <div className="mb-2 flex items-center gap-1.5 min-w-0">
-              <p className="truncate text-xs text-text-secondary/70">{currentRoom.name}</p>
+              <p className="truncate text-xs text-text-secondary">{currentRoom.name}</p>
               {currentRoom.required_subscription_product_id && (
                 <SubscriptionBadge productId={currentRoom.required_subscription_product_id} roomId={currentRoom.room_id} />
               )}
@@ -231,9 +236,9 @@ function AgentBrowser() {
                 textClassName="text-xs text-text-secondary animate-pulse"
               />
             ) : roomMembersError ? (
-              <p className="text-xs text-red-400">{roomMembersError}</p>
+              <p className="text-xs text-danger">{roomMembersError}</p>
             ) : roomMembers.length === 0 ? (
-              <p className="text-xs text-text-secondary/60">{t.noMembers}</p>
+              <p className="text-xs text-text-secondary">{t.noMembers}</p>
             ) : (
               <div className="space-y-1">
                 {roomMembers.map((member) => {
@@ -243,39 +248,29 @@ function AgentBrowser() {
                   const viewerIsModerator = joinedRoom?.my_role === "owner" || joinedRoom?.my_role === "admin";
                   const isSelf = isHumanViewer ? member.agent_id === humanId : false;
                   return (
-                    <div
+                    <Card padding="sm"
                       key={member.agent_id}
-                      className="liquid-list-row flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors"
+                      className="flex items-center justify-between"
                     >
-                      <button
+                      <Button variant="row"
                         onClick={() => selectAgent(member.agent_id)}
-                        className="min-w-0 flex-1 text-left"
+                        className="min-w-0 flex-1"
                       >
                         <div className="flex items-center gap-1.5 truncate text-xs font-medium text-text-primary">
                           <PresenceDot agentId={member.agent_id} fallback={member.online} size="xs" />
                           <span className="truncate">{member.display_name}</span>
-                          <span
+                          <Badge tone="success"
                             title={ptype === "human" ? t.participantHuman : t.participantAgent}
-                            className={`shrink-0 rounded px-1 py-px text-xs font-medium leading-3 ${
-                              ptype === "human"
-                                ? "bg-neon-green/10 text-neon-green"
-                                : "bg-neon-cyan/10 text-neon-cyan"
-                            }`}
+
                           >
                             {ptype === "human" ? "H" : "A"}
-                          </span>
+                          </Badge>
                         </div>
-                      </button>
+                      </Button>
                       <CopyableId value={member.agent_id} className="mt-0.5" />
-                      <span className={`ml-2 shrink-0 rounded border px-1.5 py-px text-xs font-medium ${
-                        member.role === "owner"
-                          ? "border-neon-cyan/30 text-neon-cyan"
-                          : member.role === "admin"
-                            ? "border-neon-cyan/30 text-neon-cyan"
-                            : "border-glass-border text-text-secondary"
-                      }`}>
+                      <Badge tone="accent" >
                         {member.role}
-                      </span>
+                      </Badge>
                       {isHumanViewer && viewerIsModerator && !isSelf && currentRoom?.room_id && (
                         <MemberActionsMenu
                           roomId={currentRoom.room_id}
@@ -285,7 +280,7 @@ function AgentBrowser() {
                           onError={(msg) => setRoomActionError(msg)}
                         />
                       )}
-                    </div>
+                    </Card>
                   );
                 })}
               </div>
@@ -301,35 +296,35 @@ function AgentBrowser() {
             {joinedRoom && (
               <div className="mt-3 border-t border-glass-border pt-3">
                 {roomActionError ? (
-                  <p className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-400">
+                  <Alert tone="danger" className="mb-2">
                     {roomActionError}
-                  </p>
+                  </Alert>
                 ) : null}
                 <div className="flex flex-col gap-2">
-                  <button
+                  <Button variant="danger" size="sm"
                     onClick={() => void handleLeaveRoom()}
                     disabled={joinedRoom.my_role === "owner" || isLeavingCurrentRoom}
-                    className="liquid-action w-full rounded border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+                    className="w-full disabled:cursor-not-allowed disabled:opacity-45"
                     title={joinedRoom.my_role === "owner" ? t.ownerCannotLeave : t.leaveRoom}
                   >
                     {isLeavingCurrentRoom ? t.leavingRoom : t.leaveRoom}
-                  </button>
+                  </Button>
                   {activeSubscription ? (
-                    <button
+                    <Button variant="secondary" size="sm"
                       onClick={() => void handleCancelSubscription()}
                       disabled={cancellingSubscriptionId === activeSubscription.subscription_id}
-                      className="liquid-action w-full rounded border border-yellow-500/35 bg-yellow-500/10 px-3 py-2 text-xs font-medium text-yellow-300 transition-colors hover:bg-yellow-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="w-full disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       {cancellingSubscriptionId === activeSubscription.subscription_id
                         ? t.cancellingSubscription
                         : t.cancelSubscription}
-                    </button>
+                    </Button>
                   ) : null}
                   {activeIdentity?.type === "human" && currentRoom?.room_id && (() => {
                     const selfRow = roomMembers.find((m) => m.agent_id === humanId);
                     const isMuted = Boolean((selfRow as any)?.muted);
                     return (
-                      <button
+                      <Button variant="secondary" size="sm"
                         onClick={async () => {
                           if (mutingRoom || !currentRoom.room_id) return;
                           setMutingRoom(true);
@@ -344,26 +339,26 @@ function AgentBrowser() {
                           }
                         }}
                         disabled={mutingRoom}
-                        className="liquid-action w-full rounded border border-glass-border bg-glass-bg px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+                        className="w-full disabled:opacity-50"
                       >
                         {isMuted ? t.unmuteRoom : t.muteRoom}
-                      </button>
+                      </Button>
                     );
                   })()}
                   {activeIdentity?.type === "human" && joinedRoom.my_role === "owner" && currentRoom?.room_id && (
-                    <button
+                    <Button variant="secondary" size="sm"
                       onClick={() => {
                         setRoomActionError(null);
                         setTransferDialogOpen(true);
                       }}
-                      className="liquid-action w-full rounded border border-neon-cyan/35 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15"
+                      className="w-full"
                     >
                       {t.transferOwnership}
-                    </button>
+                    </Button>
                   )}
                 </div>
                 {joinedRoom.my_role === "owner" ? (
-                  <p className="mt-2 text-xs leading-5 text-text-secondary/70">
+                  <p className="mt-2 text-xs leading-5 text-text-secondary">
                     {t.ownerCannotLeave}
                   </p>
                 ) : null}
@@ -399,24 +394,24 @@ function AgentBrowser() {
           <div className="border-b border-glass-border p-3">
             <h4 className="mb-2 text-xs font-medium text-text-secondary">{t.searchResults}</h4>
             {searchResults.length === 0 ? (
-              <p className="text-xs text-text-secondary/60">{t.noAgentsFound}</p>
+              <p className="text-xs text-text-secondary">{t.noAgentsFound}</p>
             ) : (
               searchResults.map((agent) => (
-                <div
+                <Card padding="sm"
                   key={agent.agent_id}
-                  className="liquid-list-row mb-1 rounded-lg px-2 py-1.5 transition-colors"
+                  className="mb-1"
                 >
-                  <button
+                  <Button variant="row"
                     onClick={() => selectAgent(agent.agent_id)}
-                    className="w-full text-left"
+                    className="w-full"
                   >
                     <div className="flex items-center gap-2 text-sm text-text-primary">
                       <PresenceDot agentId={agent.agent_id} fallback={agent.online} />
                       <span>{agent.display_name}</span>
                     </div>
-                  </button>
+                  </Button>
                   <CopyableId value={agent.agent_id} />
-                </div>
+                </Card>
               ))
             )}
           </div>
@@ -438,10 +433,10 @@ function AgentBrowser() {
                 <p className="text-xs text-text-secondary">{selectedAgentProfile.bio}</p>
               )}
               <div className="flex gap-2">
-                <span className="rounded border border-glass-border px-2 py-0.5 text-xs text-text-secondary">
+                <Badge tone="neutral" >
                   {selectedAgentProfile.message_policy}
-                </span>
-                <span className="font-mono text-xs text-text-secondary/60">
+                </Badge>
+                <span className="font-mono text-xs text-text-secondary">
                   {t.since} {new Date(selectedAgentProfile.created_at).toLocaleDateString()}
                 </span>
               </div>
@@ -456,20 +451,20 @@ function AgentBrowser() {
               {t.sharedRooms} ({selectedAgentConversations.length})
             </h4>
             {selectedAgentConversations.length === 0 ? (
-              <p className="text-xs text-text-secondary/60">{t.noSharedRooms}</p>
+              <p className="text-xs text-text-secondary">{t.noSharedRooms}</p>
             ) : (
               selectedAgentConversations.map((room) => (
-                <div
+                <Card padding="sm"
                   key={room.room_id}
-                  className="liquid-list-row mb-1 rounded-lg px-2 py-1.5 transition-colors"
+                  className="mb-1"
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <button
+                    <Button variant="row"
                       onClick={() => openRoomConversation(room.room_id)}
-                      className="min-w-0 flex-1 text-left"
+                      className="min-w-0 flex-1"
                     >
                       <div className="truncate text-sm text-text-primary">{room.name}</div>
-                    </button>
+                    </Button>
                     {room.required_subscription_product_id && (
                       <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
                     )}
@@ -477,7 +472,7 @@ function AgentBrowser() {
                   <div className="text-xs text-text-secondary">
                     {room.member_count} {t.members} · {room.my_role}
                   </div>
-                </div>
+                </Card>
               ))
             )}
           </div>

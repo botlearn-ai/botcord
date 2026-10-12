@@ -1,4 +1,12 @@
 "use client";
+import Field from "@/components/ui/Field";
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -172,7 +180,7 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
   const [closing, setClosing] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const errorRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
   const errorAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
@@ -243,17 +251,9 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
   }, [closing, onClose, submitting]);
 
   useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; } });
     return () => cleanupAnime(animationRef.current);
   }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
 
   useEffect(() => {
     if (!error || !errorRef.current) return;
@@ -263,23 +263,14 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
   }, [error]);
 
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center ${closing ? "pointer-events-none" : ""}`}
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        className="liquid-dialog relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<>{t.transfer}</>} busy={submitting} overlayClassName="z-50" className="max-w-md">
+        <IconButton label="close"
           onClick={closeWithMotion}
           aria-label="close"
-          className="liquid-action absolute right-4 top-4 z-10 rounded-lg p-1 text-text-secondary hover:text-text-primary"
+          className="absolute right-4 z-10"
         >
           <X className="h-4 w-4" />
-        </button>
+        </IconButton>
 
         <div className="shrink-0 px-6 pt-6 pb-3">
           <h3 className="text-lg font-semibold text-text-primary">{t.transfer}</h3>
@@ -288,7 +279,7 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
         <form id="transferForm" onSubmit={handleSubmit} className="flex-1 space-y-4 overflow-y-auto px-6 pb-4">
           {/* From card */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-secondary">
+            <label className="mb-1.5 block text-xs font-medium text-text-secondary">
               {t.fromLabel}
             </label>
             <FromCard
@@ -305,7 +296,7 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
 
           {/* To */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-secondary">
+            <label className="mb-1.5 block text-xs font-medium text-text-secondary">
               {t.toLabel}
             </label>
             {recipientMode === "picked" && recipientPick ? (
@@ -319,24 +310,24 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
               />
             ) : recipientMode === "custom" ? (
               <div className="space-y-1.5">
-                <input
+                <Input
                   autoFocus
                   type="text"
                   value={customRecipientId}
                   onChange={(e) => setCustomRecipientId(e.target.value)}
                   placeholder={t.enterCustomIdHint}
-                  className="liquid-input w-full rounded-lg border p-3 font-mono text-sm text-text-primary placeholder-text-secondary/40 outline-none focus:border-neon-cyan/50"
+                  className="w-full"
                 />
-                <button
+                <Button variant="ghost"
                   type="button"
                   onClick={() => {
                     setRecipientMode("none");
                     setCustomRecipientId("");
                   }}
-                  className="text-xs text-text-secondary/70 hover:text-text-primary"
+
                 >
                   ← {t.pickRecipientDefault}
-                </button>
+                </Button>
               </div>
             ) : (
               <RecipientPicker
@@ -366,29 +357,27 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
           {/* Amount */}
           <div>
             <div className="mb-1.5 flex items-baseline justify-between">
-              <label className="text-xs font-medium uppercase tracking-wider text-text-secondary">
+              <label className="text-xs font-medium text-text-secondary">
                 {t.amountCoin}
               </label>
-              <button
+              <Button variant="ghost"
                 type="button"
                 onClick={handleMaxAmount}
                 disabled={availableMinor <= 0}
-                className="text-xs font-medium text-neon-cyan hover:underline disabled:opacity-40 disabled:no-underline"
+
               >
                 {t.maxAmount} · {showAmount(senderAvailableMinor, walletAmountsHidden)}
-              </button>
+              </Button>
             </div>
             <div className="relative">
-              <input
+              <Input
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
                 placeholder="0"
-                className={`liquid-input w-full rounded-lg border px-4 py-3 pr-16 font-mono text-2xl font-semibold text-text-primary placeholder-text-secondary/30 outline-none transition-colors ${
-                  overBudget ? "border-red-400/50 focus:border-red-400/70" : "border-glass-border focus:border-neon-cyan/50"
-                }`}
+                className="w-full"
               />
               <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium text-text-secondary">
                 COIN
@@ -397,49 +386,43 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
             {quickAmounts.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {quickAmounts.map((n) => (
-                  <button
+                  <Button aria-pressed={amount === String(n)} variant="row"
                     key={n}
                     type="button"
                     onClick={() => setAmount(String(n))}
-                    className={`liquid-action rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
-                      amount === String(n)
-                        ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan"
-                        : "border-glass-border text-text-secondary hover:border-glass-border/80 hover:text-text-primary"
-                    }`}
+
                   >
                     {n}
-                  </button>
+                  </Button>
                 ))}
               </div>
             ) : null}
             {overBudget ? (
-              <p className="mt-1.5 text-xs text-red-400">{t.insufficient}</p>
+              <p className="mt-1.5 text-xs text-danger">{t.insufficient}</p>
             ) : null}
           </div>
 
           {/* Memo */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-secondary">
-              {t.memoOptional}
-            </label>
-            <input
+          <Field label={<>{t.memoOptional}</>}>
+
+            <Input
               type="text"
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
               placeholder={t.memoPlaceholder}
-              className="liquid-input w-full rounded-lg border p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
+              className="w-full"
             />
-          </div>
+          </Field>
 
-          {error && <p ref={errorRef} className="text-sm text-red-400">{error}</p>}
+          {error && <Alert tone="danger" ref={errorRef} >{error}</Alert>}
         </form>
 
         <div className="liquid-toolbar shrink-0 border-t px-6 py-4">
-          <button
+          <Button variant="primary"
             form="transferForm"
             type="submit"
             disabled={!isValid || submitting}
-            className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 py-3 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neon-cyan/10"
+            className="w-full"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {submitting
@@ -447,10 +430,9 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
               : amountNumber !== null && amountNumber > 0
                 ? t.submitWithAmount.replace("{amount}", amountNumber.toLocaleString())
                 : t.sendTransfer}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }
 
@@ -492,12 +474,12 @@ function FromCard({
 
   return (
     <div className="relative">
-      <button
+      <Button variant="row"
         type="button"
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         onBlur={() => setTimeout(() => setOpen(false), 120)}
-        className="liquid-action flex w-full items-center justify-between gap-3 rounded-lg px-3.5 py-2.5 text-left transition-colors hover:border-neon-cyan/30 disabled:cursor-default disabled:hover:border-glass-border"
+        className="w-full"
       >
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-text-primary">{label}</div>
@@ -505,15 +487,15 @@ function FromCard({
             {availableHint} {showAmount(availableMinor, hidden)} COIN
           </div>
         </div>
-        {!disabled ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-secondary/60" /> : null}
-      </button>
+        {!disabled ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-secondary" /> : null}
+      </Button>
       {open && !disabled ? (
         <div ref={menuRef} className="liquid-menu absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-lg">
           {options.map((opt) => {
             const selected =
               value?.type === opt.identity.type && value.id === opt.identity.id;
             return (
-              <button
+              <Button aria-pressed={selected} variant="row"
                 key={`${opt.identity.type}:${opt.identity.id}`}
                 type="button"
                 onMouseDown={(e) => {
@@ -521,15 +503,13 @@ function FromCard({
                   onChange(opt.identity);
                   setOpen(false);
                 }}
-                className={`liquid-list-row flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors ${
-                  selected ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-primary"
-                }`}
+                className="w-full"
               >
                 <span className="truncate">{opt.label}</span>
-                <span className="ml-2 truncate font-mono text-xs text-text-secondary/60">
+                <span className="ml-2 truncate font-mono text-xs text-text-secondary">
                   {opt.identity.id}
                 </span>
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -584,15 +564,15 @@ function RecipientPicker({
 
   return (
     <div className="relative">
-      <button
+      <Button variant="secondary"
         type="button"
         onClick={() => setOpen(!open)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="liquid-action flex w-full items-center justify-between gap-3 rounded-lg px-3.5 py-2.5 text-left text-sm text-text-secondary transition-colors hover:border-neon-cyan/30"
+        className="w-full"
       >
         <span>{placeholder}</span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-secondary/60" />
-      </button>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-secondary" />
+      </Button>
       {open ? (
         <div ref={pickerRef} className="liquid-menu absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-lg">
           {(["human-self", "my-bot", "contact"] as const).map((group) => {
@@ -600,18 +580,18 @@ function RecipientPicker({
             if (items.length === 0) return null;
             return (
               <div key={group} className="border-b border-glass-border/40 py-1 last:border-b-0">
-                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-text-secondary/60">
+                <div className="px-3 py-1 text-xs font-semibold text-text-secondary">
                   {groups[group]}
                 </div>
                 {items.map((opt) => (
-                  <button
+                  <Button variant="ghost"
                     key={opt.key}
                     type="button"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       onPick(opt);
                     }}
-                    className="liquid-list-row flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors"
+                    className="w-full"
                   >
                     {opt.group === "human-self" ? (
                       <HumanInitial label={opt.label} />
@@ -620,24 +600,24 @@ function RecipientPicker({
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-text-primary">{opt.label}</span>
-                      <span className="block truncate font-mono text-xs text-text-secondary/60">{opt.id}</span>
+                      <span className="block truncate font-mono text-xs text-text-secondary">{opt.id}</span>
                     </span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             );
           })}
-          <button
+          <Button variant="ghost"
             type="button"
             onMouseDown={(e) => {
               e.preventDefault();
               onCustom();
             }}
-            className="liquid-list-row flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:text-text-primary"
+            className="w-full"
           >
             <Pencil className="h-3.5 w-3.5" />
             {customLabel}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>
@@ -654,7 +634,7 @@ function RecipientChip({
   onChange: () => void;
 }) {
   return (
-    <div className="liquid-card flex items-center gap-3 rounded-lg px-3.5 py-2.5">
+    <Card padding="none" className="flex items-center gap-3 px-3.5 py-2.5">
       {option.group === "human-self" ? (
         <HumanInitial label={option.label} />
       ) : (
@@ -662,16 +642,16 @@ function RecipientChip({
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-text-primary">{option.label}</div>
-        <div className="truncate font-mono text-xs text-text-secondary/60">{option.id}</div>
+        <div className="truncate font-mono text-xs text-text-secondary">{option.id}</div>
       </div>
-      <button
+      <Button variant="secondary"
         type="button"
         onClick={onChange}
-        className="liquid-action rounded-md px-2 py-1 text-xs text-text-secondary transition-colors hover:border-neon-cyan/30 hover:text-text-primary"
+
       >
         {changeLabel}
-      </button>
-    </div>
+      </Button>
+    </Card>
   );
 }
 

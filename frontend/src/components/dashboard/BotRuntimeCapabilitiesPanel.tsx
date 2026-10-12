@@ -1,4 +1,8 @@
 "use client";
+import Card from "@/components/ui/Card";
+
+import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 import { Bot, Brain, Check, Cpu, Loader2, RefreshCw, Save, Sparkles } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -123,7 +127,7 @@ function FieldRow({
 }) {
   return (
     <div>
-      <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+      <div className="mb-1.5 text-xs font-semibold text-text-secondary">
         {label}
       </div>
       {children}
@@ -132,7 +136,7 @@ function FieldRow({
 }
 
 function EmptyText({ children }: { children: ReactNode }) {
-  return <p className="text-xs leading-5 text-text-secondary/60">{children}</p>;
+  return <p className="text-xs leading-5 text-text-secondary">{children}</p>;
 }
 
 function Chip({
@@ -332,14 +336,14 @@ export default function BotRuntimeCapabilitiesPanel({
   }
 
   return (
-    <section className={`liquid-card rounded-2xl border border-glass-border p-4 ${className ?? ""}`}>
+    <Card as="section" className={className}>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
             <Cpu className="h-4 w-4 text-neon-cyan" />
             {labels.title}
           </div>
-          <p className="mt-0.5 text-xs text-text-secondary/60">{labels.subtitle}</p>
+          <p className="mt-0.5 text-xs text-text-secondary">{labels.subtitle}</p>
         </div>
         <Chip title={displayRuntimeId ?? labels.unknownRuntime} tone="cyan">
           <Bot className="h-3 w-3 shrink-0" />
@@ -348,16 +352,16 @@ export default function BotRuntimeCapabilitiesPanel({
       </div>
 
       <div className="mb-4 flex justify-end">
-        <button
+        <Button variant="secondary"
           type="button"
           disabled={!daemon?.id || isRefreshing}
           onClick={handleRefresh}
           title={labels.refresh}
-          className="liquid-action inline-flex min-h-8 items-center gap-2 rounded-lg border border-glass-border px-2.5 text-xs font-medium text-text-secondary transition-colors hover:border-neon-cyan/45 hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-50"
+
         >
           <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
           {isRefreshing ? labels.refreshing : labels.refresh}
-        </button>
+        </Button>
       </div>
 
       <div className="space-y-4">
@@ -412,13 +416,13 @@ export default function BotRuntimeCapabilitiesPanel({
                 ) : (
                   <div className="liquid-tool-surface flex min-h-10 items-center gap-2 rounded-xl border border-glass-border px-3">
                     <Brain className="h-4 w-4 shrink-0 text-neon-cyan" />
-                    <input
+                    <Input
                       disabled={saving}
                       type="text"
                       value={selectedReasoning ?? ""}
                       placeholder={labels.reasoningPlaceholder}
                       onChange={(event) => setSelectedReasoning(event.target.value.trim() || null)}
-                      className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-secondary/60 disabled:opacity-50"
+                      className="min-w-0 flex-1"
                     />
                   </div>
                 )}
@@ -427,11 +431,11 @@ export default function BotRuntimeCapabilitiesPanel({
 
             {hasThinking ? (
               <FieldRow label={labels.thinking}>
-                <button
+                <Button variant="secondary"
                   type="button"
                   disabled={saving}
                   onClick={() => setSelectedThinking((value) => value !== true)}
-                  className="liquid-action flex min-h-10 w-full items-center justify-between gap-3 rounded-xl border border-glass-border px-3 text-sm text-text-primary transition-colors hover:border-neon-cyan/45 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full"
                 >
                   <span className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-neon-cyan" />
@@ -446,14 +450,14 @@ export default function BotRuntimeCapabilitiesPanel({
                   >
                     <span className="h-3.5 w-3.5 rounded-full bg-text-primary" />
                   </span>
-                </button>
+                </Button>
               </FieldRow>
             ) : null}
 
             <div className="flex items-center justify-between gap-3">
               <div className="min-h-4 text-xs">
                 {error ? (
-                  <span className="text-red-300">{error}</span>
+                  <span className="text-danger">{error}</span>
                 ) : saved ? (
                   <span className="inline-flex items-center gap-1 text-neon-green">
                     <Check className="h-3 w-3" />
@@ -461,19 +465,19 @@ export default function BotRuntimeCapabilitiesPanel({
                   </span>
                 ) : null}
               </div>
-              <button
+              <Button variant="primary"
                 type="button"
                 disabled={!dirty || saving}
                 onClick={() => void handleSave()}
-                className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+
               >
                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                 {saving ? labels.saving : labels.save}
-              </button>
+              </Button>
             </div>
           </>
         ) : null}
       </div>
-    </section>
+    </Card>
   );
 }

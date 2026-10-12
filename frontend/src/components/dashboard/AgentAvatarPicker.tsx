@@ -1,5 +1,8 @@
 "use client";
 
+import IconButton from "@/components/ui/IconButton";
+import Card from "@/components/ui/Card";
+
 /**
  * [INPUT]: 依赖 lib/agent-avatars 的 16 角色 × 8 色内置头像
  * [OUTPUT]: 对外提供 AgentAvatarPicker：上方 8 个颜色色块，下方 16 个角色（按当前颜色预览）
@@ -8,7 +11,6 @@
  */
 
 import { useState } from "react";
-import { clsx } from "clsx";
 import {
   AGENT_AVATAR_CHARACTERS,
   AGENT_AVATAR_HUE_COLORS,
@@ -43,28 +45,17 @@ export default function AgentAvatarPicker({ value, onChange, disabled, colorLabe
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={colorLabel}>
         {AGENT_AVATAR_HUES.map((h) => (
-          <button
-            key={h}
-            type="button"
-            role="radio"
-            aria-checked={h === hue}
-            aria-label={h}
-            disabled={disabled}
-            onClick={() => pickHue(h)}
-            className={clsx(
-              "h-6 w-6 rounded-full border-2 transition-transform disabled:opacity-60",
-              h === hue ? "scale-110 border-text-primary" : "border-transparent hover:scale-105",
-            )}
-            style={{ backgroundColor: AGENT_AVATAR_HUE_COLORS[h] }}
-          />
+          <IconButton key={h} label={h} role="radio" aria-checked={h === hue} disabled={disabled} onClick={() => pickHue(h)}>
+            <span className="h-6 w-6 rounded-full border border-border" style={{ backgroundColor: AGENT_AVATAR_HUE_COLORS[h], outline: h === hue ? "2px solid var(--bc-accent)" : undefined, outlineOffset: 3 }} />
+          </IconButton>
         ))}
       </div>
-      <div className="grid grid-cols-8 gap-2" role="radiogroup" aria-label={avatarLabel}>
+      <div className="grid grid-cols-4 gap-2 sm:grid-cols-8" role="radiogroup" aria-label={avatarLabel}>
         {AGENT_AVATAR_CHARACTERS.map((character) => {
           const url = agentAvatarUrl(character, hue);
           const isSelected = selected?.character === character && selected.hue === hue;
           return (
-            <button
+            <Card as="button" variant="interactive" padding="sm"
               key={character}
               type="button"
               role="radio"
@@ -72,14 +63,11 @@ export default function AgentAvatarPicker({ value, onChange, disabled, colorLabe
               aria-label={character}
               disabled={disabled}
               onClick={() => onChange(url)}
-              className={clsx(
-                "aspect-square overflow-hidden rounded-full border-2 transition-all disabled:opacity-60",
-                isSelected ? "border-neon-cyan ring-2 ring-neon-cyan/30" : "border-transparent hover:border-neon-cyan/50",
-              )}
+
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt="" className="h-full w-full" />
-            </button>
+              <img src={url} alt="" className="aspect-square w-full" />
+            </Card>
           );
         })}
       </div>

@@ -1,5 +1,9 @@
 "use client";
 
+import Avatar from "@/components/ui/Avatar";
+import Badge from "@/components/ui/Badge";
+import Card from "@/components/ui/Card";
+import Tabs from "@/components/ui/Tabs";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import SectionHeading from "@/components/ui/SectionHeading";
@@ -74,14 +78,7 @@ function AgentAvatar({
   color: AgentColor;
   label: string;
 }) {
-  const c = colorMap[color];
-  return (
-    <div
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${c.ring} ${c.bgLight}`}
-    >
-      <span className={`text-xs font-bold ${c.text}`}>{label}</span>
-    </div>
-  );
+  return <Avatar kind="agent" id={`demo-${color}-${label}`} name={label} size="sm" />;
 }
 
 /* ── Chat Bubble ── */
@@ -108,17 +105,12 @@ function DemoBubble({
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className={`flex gap-3 ${isLeft ? "flex-row" : "flex-row-reverse"}`}
-    >
+      className={`flex gap-3 ${isLeft ? "flex-row" : "flex-row-reverse"}`} >
       <AgentAvatar color={agent.color} label={agent.label} />
 
       <div className="max-w-[75%] space-y-2">
-        <div className={`rounded-xl border px-4 py-3 ${c.bgFaint} ${c.border}`}>
-          <span
-            className={`mb-1 inline-block rounded px-1.5 py-0.5 font-mono text-[10px] font-medium ${c.textFaint} ${c.bgLabel}`}
-          >
-            {typeLabel}
-          </span>
+        <Card padding="sm">
+          <Badge>{typeLabel}</Badge>
           <p className="text-sm leading-relaxed text-text-primary">
             {msg.text}
           </p>
@@ -127,7 +119,7 @@ function DemoBubble({
               {JSON.stringify(msg.payload, null, 2)}
             </pre>
           )}
-        </div>
+        </Card>
       </div>
     </motion.div>
   );
@@ -145,37 +137,7 @@ function TabBar({
   onSelect: (id: string) => void;
   labelMap: Record<string, string>;
 }) {
-  const active = items.find((s) => s.id === activeId)!;
-  const accentColor = active.agents.left.color;
-  const c = colorMap[accentColor];
-
-  return (
-    <div className="scrollbar-hide mb-6 flex gap-2 overflow-x-auto px-2">
-      {items.map((s) => {
-        const isActive = s.id === activeId;
-        return (
-          <button
-            key={s.id}
-            onClick={() => onSelect(s.id)}
-            className={`relative shrink-0 rounded-full px-4 py-1.5 font-mono text-xs font-medium transition-colors ${
-              isActive
-                ? `${c.text} bg-white/5`
-                : "text-text-secondary hover:text-text-primary"
-            }`}
-          >
-            {labelMap[s.id] || s.label}
-            {isActive && (
-              <motion.div
-                layoutId="tab-indicator"
-                className={`absolute inset-x-2 -bottom-0.5 h-0.5 rounded-full ${c.bg}`}
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-              />
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <Tabs value={activeId} onValueChange={onSelect} ariaLabel="Conversation scenarios" variant="underline" items={items.map((item) => ({ value: item.id, label: labelMap[item.id] || item.label }))} className="mb-6" />;
 }
 
 /* ── Main Component ── */
@@ -305,7 +267,7 @@ export default function ConversationDemo() {
                 <AgentAvatar color={a.color} label={a.label} />
                 <div>
                   <p className={`text-sm font-medium ${c.text}`}>{a.name}</p>
-                  <p className="font-mono text-[11px] text-text-secondary">
+                  <p className="font-mono text-xs text-text-secondary">
                     {a.shortId}
                   </p>
                 </div>
@@ -315,12 +277,11 @@ export default function ConversationDemo() {
         </div>
 
         {/* Conversation container — key forces remount on scenario change */}
-        <div className="rounded-2xl border border-glass-border bg-glass-bg backdrop-blur-xl">
+        <Card padding="none">
           <div
             ref={scrollRef}
             key={activeScenarioId}
-            className="flex max-h-[480px] min-h-[320px] flex-col gap-4 overflow-y-auto p-6"
-          >
+            className="flex max-h-[480px] min-h-[320px] flex-col gap-4 overflow-y-auto p-6" >
             <AnimatePresence>
               {visibleMessages.map((msg) => (
                 <DemoBubble
@@ -334,23 +295,20 @@ export default function ConversationDemo() {
             {/* Typing indicator */}
             {typingAgent && (
               <div
-                className={`flex gap-3 ${typingAgent === "left" ? "flex-row" : "flex-row-reverse"}`}
-              >
+                className={`flex gap-3 ${typingAgent === "left" ? "flex-row" : "flex-row-reverse"}`} >
                 <AgentAvatar
                   color={activeScenario.agents[typingAgent].color}
                   label={activeScenario.agents[typingAgent].label}
                 />
-                <div
-                  className={`rounded-xl border ${colorMap[activeScenario.agents[typingAgent].color].border} ${colorMap[activeScenario.agents[typingAgent].color].bgFaint}`}
-                >
+                <Card padding="none">
                   <TypingIndicator
                     color={activeScenario.agents[typingAgent].color}
                   />
-                </div>
+                </Card>
               </div>
             )}
           </div>
-        </div>
+        </Card>
 
         {/* Footer note */}
         <p className="mt-4 text-center font-mono text-xs text-text-secondary">

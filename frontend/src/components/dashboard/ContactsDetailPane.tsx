@@ -1,5 +1,9 @@
 "use client";
 
+import EmptyState from "@/components/ui/EmptyState";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import IconButton from "@/components/ui/IconButton";
 import { useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { ArrowLeft, MessageCircle, SlidersHorizontal, UserCircle, Users } from "lucide-react";
@@ -49,22 +53,22 @@ function resolveTarget(
 function Tag({ tone, children }: { tone: "cyan" | "gray" | "green"; children: React.ReactNode }) {
   const cls =
     tone === "gray"
-      ? "border-text-secondary/20 bg-text-secondary/10 text-text-secondary/70"
+      ? "border-text-secondary/20 bg-text-secondary/10 text-text-secondary"
       : tone === "green"
-        ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
-        : "border-neon-cyan/40 bg-neon-cyan/15 text-neon-cyan";
+        ? "border-neon-green/40 bg-success-soft text-success"
+        : "border-neon-cyan/40 bg-accent-soft text-accent-text";
   return (
-    <span className={`rounded-full border px-2 py-px text-xs font-medium ${cls}`}>
+    <Badge tone="neutral" >
       {children}
-    </span>
+    </Badge>
   );
 }
 
 function BigAvatar({ seed, tone = "cyan" }: { seed: string; tone?: "cyan" | "purple" }) {
   const cls =
     tone === "purple"
-      ? "border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan"
-      : "border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan";
+      ? "border-neon-cyan/25 bg-accent-soft text-accent-text"
+      : "border-neon-cyan/25 bg-accent-soft text-accent-text";
   return (
     <div className={`flex h-24 w-24 items-center justify-center rounded-3xl border text-3xl font-semibold ${cls}`}>
       {(seed || "?").charAt(0).toUpperCase()}
@@ -87,17 +91,17 @@ function ActionButton({
 }) {
   const cls =
     tone === "cyan"
-      ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan/20"
-      : "border-glass-border bg-glass-bg text-text-primary hover:border-neon-cyan/40 hover:text-neon-cyan";
+      ? "border-neon-cyan/40 bg-accent-soft text-accent-text hover:bg-accent-soft"
+      : "border-glass-border bg-glass-bg text-text-primary hover:border-neon-cyan/40 hover:text-accent-text";
   return (
-    <button
+    <Button variant="secondary" size="sm"
       onClick={onClick}
       disabled={disabled}
-      className={`liquid-action flex h-20 w-28 flex-col items-center justify-center gap-2 rounded-2xl border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${cls}`}
+      className={`flex w-28 flex-col items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60 `}
     >
       <Icon className="h-5 w-5" />
       <span className="text-xs font-medium">{label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -145,15 +149,11 @@ export default function ContactsDetailPane() {
   if (!target) {
     return (
       <div className="dashboard-main flex h-full w-full flex-1 items-center justify-center px-6">
-        <div className="liquid-empty-state max-w-md rounded-2xl border border-glass-border p-6 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40">
-            <UserCircle className="h-6 w-6 text-neon-cyan/80" />
-          </div>
-          <h2 className="text-lg font-semibold text-text-primary">{t.emptyTitle}</h2>
-          <p className="mt-2 text-sm text-text-secondary/70">
+        <EmptyState compact bordered title={<>{t.emptyTitle}</>} description={<>
             {t.emptyDescription}
-          </p>
-        </div>
+          </>} icon={<>
+            <UserCircle className="h-6 w-6 text-accent-text" />
+          </>} />
       </div>
     );
   }
@@ -207,7 +207,7 @@ export default function ContactsDetailPane() {
         />
       </div>
     ) : (
-      <div className="flex h-24 w-24 items-center justify-center rounded-3xl border border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan">
+      <div className="flex h-24 w-24 items-center justify-center rounded-3xl border border-neon-cyan/25 bg-accent-soft text-accent-text">
         <Users className="h-9 w-9" />
       </div>
     );
@@ -256,31 +256,31 @@ export default function ContactsDetailPane() {
 
   return (
     <div className="dashboard-main relative flex h-full w-full flex-1 flex-col">
-      <button
+      <IconButton size="sm" label="Back to contacts"
         type="button"
         onClick={() => setSelectedContactKey(null)}
-        className="liquid-action absolute left-2 top-2 hidden h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+        className="absolute left-2 top-2 hidden items-center justify-center max-md:inline-flex"
         aria-label="Back to contacts"
         title="Back to contacts"
       >
         <ArrowLeft className="h-5 w-5" />
-      </button>
+      </IconButton>
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-10">
         {avatar}
         <div className="mt-5 flex items-center gap-2">
           <h1 className="text-xl font-semibold text-text-primary">{title}</h1>
           {tag ? <Tag tone={tag.tone}>{tag.label}</Tag> : null}
         </div>
-        <p className="mt-2 text-sm text-text-secondary/70">
-          <span className={statusText.startsWith("●") && statusText.includes("Online") ? "text-neon-green" : ""}>
+        <p className="mt-2 text-sm text-text-secondary">
+          <span className={statusText.startsWith("●") && statusText.includes("Online") ? "text-success" : ""}>
             {statusText}
           </span>
         </p>
         {subtitle ? (
-          <p className="mt-1 font-mono text-xs text-text-secondary/55">{subtitle}</p>
+          <p className="mt-1 font-mono text-xs text-text-secondary">{subtitle}</p>
         ) : null}
         {bio ? (
-          <p className="mt-5 max-w-md text-center text-sm text-text-secondary/80">{bio}</p>
+          <p className="mt-5 max-w-md text-center text-sm text-text-secondary">{bio}</p>
         ) : null}
 
         <div className="mt-8 flex items-center gap-3">

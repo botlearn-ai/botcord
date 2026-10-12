@@ -7,6 +7,12 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import EmptyState from "@/components/ui/EmptyState";
+import Badge from "@/components/ui/Badge";
+import Alert from "@/components/ui/Alert";
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { walletPanel } from "@/lib/i18n/translations/dashboard";
@@ -185,38 +191,38 @@ function WalletPanel() {
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-text-primary">{t.wallet}</h1>
-            <p className="mt-1 text-sm text-text-secondary/70">{t.pageSubtitle}</p>
+            <p className="mt-1 text-sm text-text-secondary">{t.pageSubtitle}</p>
           </div>
-          <button
+          <IconButton size="sm" label={walletAmountsHidden ? "显示金额" : "隐藏金额"}
             type="button"
             onClick={toggleWalletAmountsHidden}
             title={walletAmountsHidden ? "显示金额" : "隐藏金额"}
             aria-label={walletAmountsHidden ? "显示金额" : "隐藏金额"}
-            className="liquid-action inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border text-text-secondary transition-colors hover:border-neon-cyan/30 hover:text-text-primary"
+            className="inline-flex shrink-0 items-center justify-center"
           >
             {walletAmountsHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
+          </IconButton>
         </div>
 
         <div className="space-y-6">
           {/* Keep independent sections usable while all-account totals settle. */}
           {walletsError && (
-            <div role="alert" className="flex items-center gap-3 text-sm text-red-400">
+            <Alert tone="danger" role="alert" className="flex items-center gap-3">
               {walletsError}
-              <button onClick={() => void loadAllWallets()} disabled={walletsLoading} className="liquid-action rounded border border-glass-border px-3 py-1">{tc.retry}</button>
-            </div>
+              <Button variant="secondary" size="sm" onClick={() => void loadAllWallets()} disabled={walletsLoading} >{tc.retry}</Button>
+            </Alert>
           )}
           {!walletsLoaded ? (
-            <div className="liquid-card flex min-h-[22rem] items-center justify-center rounded-2xl border border-glass-border p-6">
+            <Card padding="md" className="flex min-h-[22rem] items-center justify-center">
               <MobileBotCordLoading label={tc.loading} />
-            </div>
+            </Card>
           ) : (
-            <div className="liquid-card rounded-2xl border border-glass-border p-6">
+            <Card padding="md" className="">
               <div className="mb-1 text-xs font-medium uppercase tracking-wider text-text-secondary">
                 {t.totalDisposable}
               </div>
               <div className="mb-5 flex items-baseline gap-2">
-                <span className="font-mono text-4xl font-bold text-text-primary">
+                <span className="font-mono text-4xl font-semibold text-text-primary">
                   {showAmount(totalMinor, walletAmountsHidden)}
                 </span>
                 <span className="text-sm font-medium text-text-secondary">{assetCode}</span>
@@ -227,7 +233,7 @@ function WalletPanel() {
                   <div className="mb-1 text-xs font-medium uppercase tracking-wider text-text-secondary">
                     {t.humanShare}
                   </div>
-                  <div className="font-mono text-xl font-semibold text-neon-green">
+                  <div className="font-mono text-xl font-semibold text-success">
                     {showAmount(humanShareMinor, walletAmountsHidden)}
                   </div>
                 </div>
@@ -236,11 +242,11 @@ function WalletPanel() {
                     <span className="text-xs font-medium uppercase tracking-wider text-text-secondary">
                       {t.botShare}
                     </span>
-                    <span className="text-xs text-text-secondary/70">
+                    <span className="text-xs text-text-secondary">
                       {t.botShareCount.replace("{count}", String(ownedAgents.length))}
                     </span>
                   </div>
-                  <div className="font-mono text-xl font-semibold text-neon-cyan">
+                  <div className="font-mono text-xl font-semibold text-accent-text">
                     {showAmount(botShareMinor, walletAmountsHidden)}
                   </div>
                 </div>
@@ -281,7 +287,7 @@ function WalletPanel() {
                   }
                 />
               </div>
-            </div>
+            </Card>
 
           )}
 
@@ -368,20 +374,20 @@ function CtaButton({
   icon: React.ReactNode;
 }) {
   const palette = {
-    green: { hoverBorder: "hover:border-neon-green/30", hoverBg: "hover:bg-neon-green/5", iconColor: "text-neon-green" },
-    cyan: { hoverBorder: "hover:border-neon-cyan/30", hoverBg: "hover:bg-neon-cyan/5", iconColor: "text-neon-cyan" },
-    purple: { hoverBorder: "hover:border-neon-cyan/30", hoverBg: "hover:bg-neon-cyan/5", iconColor: "text-neon-cyan" },
+    green: { hoverBorder: "hover:border-neon-green/30", hoverBg: "hover:bg-success-soft", iconColor: "text-success" },
+    cyan: { hoverBorder: "hover:border-neon-cyan/30", hoverBg: "hover:bg-accent-soft", iconColor: "text-accent-text" },
+    purple: { hoverBorder: "hover:border-neon-cyan/30", hoverBg: "hover:bg-accent-soft", iconColor: "text-accent-text" },
   }[color];
   return (
-    <button
+    <Card as="button" variant="interactive" padding="md"
       onClick={onClick}
-      className={`liquid-action flex flex-col items-center gap-2 rounded-xl border border-glass-border p-4 transition-all ${palette.hoverBorder} ${palette.hoverBg}`}
+      className={`flex flex-col items-center gap-2  `}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={`h-6 w-6 ${palette.iconColor}`}>
         {icon}
       </svg>
       <span className="text-xs font-medium text-text-primary">{label}</span>
-    </button>
+    </Card>
   );
 }
 
@@ -403,42 +409,40 @@ function BotBalancesSection({
   onClickBot: (agentId: string) => void;
 }) {
   return (
-    <div className="liquid-card rounded-2xl border border-glass-border p-5">
+    <Card padding="md" className="">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-text-primary">{label}</h3>
       </div>
       {ownedAgents.length === 0 ? (
-        <div className="liquid-empty-state rounded-xl border border-dashed border-glass-border p-4 text-sm text-text-secondary">
-          {empty}
-        </div>
+        <EmptyState compact bordered title={<>{empty}</>} />
       ) : (
         <div className="space-y-2">
           {ownedAgents.map((agent) => {
             const w = botWallets[agent.agent_id];
             return (
-              <button
+              <Button variant="row"
                 key={agent.agent_id}
                 onClick={() => onClickBot(agent.agent_id)}
-                className="liquid-list-row flex w-full items-center gap-3 rounded-xl border border-glass-border px-3.5 py-3 text-left transition-colors hover:border-neon-cyan/30 hover:bg-neon-cyan/5"
+                className="flex w-full items-center gap-3"
               >
                 <BotAvatar agentId={agent.agent_id} alt={agent.display_name} avatarUrl={agent.avatar_url} size={36} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-text-primary">{agent.display_name}</div>
-                  <div className="truncate font-mono text-xs text-text-secondary/60">{agent.agent_id}</div>
+                  <div className="truncate font-mono text-xs text-text-secondary">{agent.agent_id}</div>
                 </div>
                 <div className="text-right">
                   <div className="font-mono text-base font-semibold text-text-primary">
                     {w ? showAmount(w.total_balance_minor, hidden) : "—"}
                   </div>
-                  <div className="text-xs text-text-secondary/60">{assetCode}</div>
+                  <div className="text-xs text-text-secondary">{assetCode}</div>
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary/40" />
-              </button>
+                <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary" />
+              </Button>
             );
           })}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -480,45 +484,43 @@ function MergedLedgerSection({
   txTypeLabels: { topup: string; transfer: string; withdrawal: string; subscription: string; other: string };
 }) {
   return (
-    <div className="liquid-card rounded-2xl border border-glass-border p-5">
+    <Card padding="md" className="">
       <div className="mb-3">
         <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
-        <p className="text-xs text-text-secondary/70">{hint}</p>
+        <p className="text-xs text-text-secondary">{hint}</p>
       </div>
 
       {entries.length === 0 && loading ? (
         <MobileBotCordLoading label={loadingMoreLabel} />
       ) : entries.length === 0 ? (
-        <div className="liquid-empty-state rounded-xl border border-dashed border-glass-border p-4 text-sm text-text-secondary">
-          {emptyLabel}
-        </div>
+        <EmptyState compact bordered title={<>{emptyLabel}</>} />
       ) : (
         <div className="liquid-tool-surface overflow-hidden rounded-xl border border-glass-border">
           {entries.map((entry) => {
             const isCredit = entry.direction === "credit";
             return (
-              <div
+              <Card padding="md"
                 key={entry.entry_id}
-                className="liquid-list-row flex items-center justify-between gap-4 border-b border-glass-border/40 px-4 py-3 last:border-b-0"
+                className="flex items-center justify-between gap-4"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className={`font-mono text-sm font-semibold ${isCredit ? "text-neon-green" : "text-text-primary"}`}>
+                    <span className={`font-mono text-sm font-semibold ${isCredit ? "text-success" : "text-text-primary"}`}>
                       {hidden ? "••••••" : `${isCredit ? "+" : "-"}${formatCoinAmount(entry.amount_minor)}`}
                     </span>
-                    <span className="rounded bg-glass-bg px-2 py-0.5 text-xs text-text-secondary">
+                    <Badge tone="neutral" >
                       {txTypeLabel(entry.tx_type, txTypeLabels)}
-                    </span>
+                    </Badge>
                   </div>
-                  <div className="mt-1 truncate text-xs text-text-secondary/70">
+                  <div className="mt-1 truncate text-xs text-text-secondary">
                     {new Date(entry.created_at).toLocaleString()}
                   </div>
                 </div>
                 <div className="text-right text-xs text-text-secondary">
                   <div className="truncate">{entry._account.display_name}</div>
-                  <div className="font-mono text-xs text-text-secondary/50">{assetCode}</div>
+                  <div className="font-mono text-xs text-text-secondary">{assetCode}</div>
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
@@ -526,10 +528,10 @@ function MergedLedgerSection({
 
       {hasMore ? (
         <div className="mt-3 flex justify-center">
-          <button
+          <Button variant="secondary" size="sm"
             onClick={onLoadMore}
             disabled={loading}
-            className="liquid-action inline-flex min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-glass-border px-4 py-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+            className="inline-flex min-w-[5.5rem] items-center justify-center gap-1.5 disabled:opacity-60"
           >
             {loading ? (
               <>
@@ -545,10 +547,10 @@ function MergedLedgerSection({
             ) : (
               loadMoreLabel
             )}
-          </button>
+          </Button>
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -597,20 +599,20 @@ function RecentWithdrawals({
   );
 
   return (
-    <div className="liquid-card rounded-2xl border border-glass-border p-5">
+    <Card padding="md" className="">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">{t.recentWithdrawals}</h3>
           <p className="text-xs text-text-secondary">{t.recentWithdrawalsHint}</p>
         </div>
-        <button
+        <Button variant="secondary" size="sm"
           onClick={onRefresh}
           disabled={isRefreshing}
-          className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 disabled:opacity-60"
         >
           {isRefreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           {isRefreshing ? t.refreshing : t.refresh}
-        </button>
+        </Button>
       </div>
 
       {loading && items.length === 0 ? (
@@ -620,13 +622,11 @@ function RecentWithdrawals({
           textClassName="text-sm text-text-secondary"
         />
       ) : error && items.length === 0 ? (
-        <div className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">
+        <Alert tone="danger" className="">
           {error}
-        </div>
+        </Alert>
       ) : items.length === 0 ? (
-        <div className="liquid-empty-state rounded-xl border border-dashed border-glass-border p-4 text-sm text-text-secondary">
-          {t.noWithdrawals}
-        </div>
+        <EmptyState compact bordered title={<>{t.noWithdrawals}</>} />
       ) : (
         <div className="space-y-3">
           {items.map((item) => {
@@ -659,15 +659,15 @@ function RecentWithdrawals({
 
                 {item.status === "pending" ? (
                   <div className="mt-3 flex justify-end">
-                    <button
+                    <Button variant="danger" size="sm"
                       type="button"
                       onClick={() => handleCancel(item.withdrawal_id)}
                       disabled={cancellingId === item.withdrawal_id}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-400/30 px-3 py-1.5 text-xs text-red-300 transition-colors hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {cancellingId === item.withdrawal_id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                       {cancellingId === item.withdrawal_id ? t.cancelling : t.cancelWithdrawal}
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
                 {item.review_note ? (
@@ -680,21 +680,21 @@ function RecentWithdrawals({
           })}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 function getWithdrawalStatusMeta(status: string, t: (typeof walletPanel)["en"]) {
   switch (status) {
     case "pending":
-      return { label: t.pendingReview, className: "bg-amber-500/15 text-amber-300" };
+      return { label: t.pendingReview, className: "bg-warning-soft text-warning" };
     case "approved":
     case "processing":
-      return { label: t.approved, className: "bg-sky-500/15 text-sky-300" };
+      return { label: t.approved, className: "bg-sky-500/15 text-accent-text" };
     case "completed":
-      return { label: t.completed, className: "bg-emerald-500/15 text-emerald-300" };
+      return { label: t.completed, className: "bg-emerald-500/15 text-success" };
     case "rejected":
-      return { label: t.rejected, className: "bg-red-500/15 text-red-300" };
+      return { label: t.rejected, className: "bg-danger-soft text-danger" };
     case "cancelled":
       return { label: t.cancelled, className: "bg-glass-bg/70 text-text-secondary" };
     default:

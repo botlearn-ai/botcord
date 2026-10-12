@@ -7,6 +7,7 @@
 
 "use client";
 
+import Badge from "@/components/ui/Badge";
 import { motion } from "framer-motion";
 import MarketingButton from "@/components/ui/MarketingButton";
 import CordField from "@/components/ui/CordField";
@@ -34,8 +35,7 @@ export default function HeroSection() {
           className="absolute inset-0"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.36, ease: [0, 0, 0, 1] }}
-        >
+          transition={{ duration: 0.36, ease: [0, 0, 0, 1] }} >
           <CordField className="h-full w-full" />
         </motion.div>
         <div
@@ -49,31 +49,28 @@ export default function HeroSection() {
 
       <div className="relative mx-auto max-w-4xl text-center">
         <motion.div {...enter(0)}>
-          <span className="inline-flex items-center gap-2 rounded-full border border-[var(--bc-border)] bg-[var(--bc-surface)] px-3 py-1 text-xs font-medium text-[var(--bc-text-secondary)]">
+          <Badge tone="neutral" className="items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--bc-brand)]" />
             {t.badge}
-          </span>
+          </Badge>
         </motion.div>
 
         <motion.h1
           className="mt-6 text-[40px] font-semibold leading-[1.05] tracking-[-0.04em] text-[var(--bc-text)] md:text-[56px]"
-          {...enter(0.06)}
-        >
+          {...enter(0.06)} >
           {t.titlePrefix}
           {t.titleGradient}
         </motion.h1>
 
         <motion.p
           className="mx-auto mt-6 max-w-2xl text-base leading-[1.6] text-[var(--bc-text-secondary)] md:text-lg"
-          {...enter(0.12)}
-        >
+          {...enter(0.12)} >
           {t.description}
         </motion.p>
 
         <motion.div
           className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row"
-          {...enter(0.18)}
-        >
+          {...enter(0.18)} >
           <MarketingButton href="/login" variant="primary">
             {t.getStarted} <span aria-hidden="true">→</span>
           </MarketingButton>
@@ -81,18 +78,17 @@ export default function HeroSection() {
 
         {/* Supported Agent Types */}
         <motion.div className="mt-8 flex flex-col items-center gap-3" {...enter(0.24)}>
-          <p className="text-xs font-medium text-[var(--bc-text-tertiary)]">
+          <p className="text-xs font-medium text-[var(--bc-text-secondary)]">
             {locale === "zh" ? "支持的 Agent 类型" : "Supported agent runtimes"}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             {RUNTIMES.map((name) => (
-              <span
+              <Badge tone="neutral"
                 key={name}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--bc-border)] bg-[var(--bc-surface)] px-3 py-1 text-xs font-medium text-[var(--bc-text-secondary)]"
-              >
+                className="items-center gap-1.5" >
                 <span className="h-1.5 w-1.5 rounded-full bg-[var(--bc-text-tertiary)]" />
                 {name}
-              </span>
+              </Badge>
             ))}
           </div>
         </motion.div>

@@ -1,5 +1,10 @@
 "use client";
 
+import Tooltip from "@/components/ui/Tooltip";
+import EmptyState from "@/components/ui/EmptyState";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 import { forwardRef, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "nextjs-toploader/app";
@@ -63,16 +68,16 @@ function SectionHeader({
         {icon}
         <div>
           <h2 className="text-base font-semibold text-text-primary">{title}</h2>
-          {subtitle ? <p className="text-xs text-text-secondary/70">{subtitle}</p> : null}
+          {subtitle ? <p className="text-xs text-text-secondary">{subtitle}</p> : null}
         </div>
       </div>
       {onShowAll ? (
-        <button
+        <Button variant="secondary" size="sm"
           onClick={onShowAll}
-          className="liquid-action inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+          className="inline-flex items-center gap-1"
         >
           {t.viewAll} <ArrowRight className="h-3 w-3" />
-        </button>
+        </Button>
       ) : null}
     </div>
   );
@@ -87,10 +92,10 @@ function BotActivityCard({ bot, stats, onClick }: { bot: UserAgent; stats: Agent
   const t = homePanelI18n[useLanguage()];
   const online = bot.ws_online;
   return (
-    <button
+    <Card as="button" variant="interactive" padding="md"
       type="button"
       onClick={onClick}
-      className="liquid-card w-full rounded-2xl border border-glass-border p-4 text-left transition-colors hover:border-neon-cyan/40 focus:outline-none focus:ring-2 focus:ring-neon-cyan/40"
+      className="w-full"
     >
       <div className="mb-3 flex items-center gap-2.5">
         <BotAvatar agentId={bot.agent_id} avatarUrl={bot.avatar_url} size={36} alt={bot.display_name} />
@@ -99,7 +104,7 @@ function BotActivityCard({ bot, stats, onClick }: { bot: UserAgent; stats: Agent
             <span className="truncate text-sm font-medium text-text-primary">{bot.display_name}</span>
             <span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-neon-green" : "bg-text-secondary/40"}`} />
           </div>
-          <div className="text-xs text-text-secondary/70">{online ? "Online" : "Offline"}</div>
+          <div className="text-xs text-text-secondary">{online ? "Online" : "Offline"}</div>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
@@ -108,17 +113,17 @@ function BotActivityCard({ bot, stats, onClick }: { bot: UserAgent; stats: Agent
         <Stat label={t.statsOpenTopics} value={stats?.topics_open ?? "—"} />
         <Stat label={t.statsCompletedTopics} value={stats?.topics_completed ?? "—"} />
       </div>
-    </button>
+    </Card>
   );
 }
 
 function CreateNewBotCard({ onClick }: { onClick: () => void }) {
   const t = homePanelI18n[useLanguage()];
   return (
-    <button
+    <Card as="button" variant="interactive" padding="md"
       type="button"
       onClick={onClick}
-      className="liquid-empty-state flex min-h-[148px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-glass-border/80 p-4 text-center opacity-85 transition-colors hover:border-text-secondary/45 hover:bg-glass-bg/35 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-text-secondary/25"
+      className="flex min-h-[148px] w-full flex-col items-center justify-center opacity-85 hover:opacity-100"
     >
       <div className="flex flex-col items-center">
         <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-glass-bg/45 text-text-secondary">
@@ -126,14 +131,14 @@ function CreateNewBotCard({ onClick }: { onClick: () => void }) {
         </div>
         <h3 className="text-sm font-medium text-text-secondary">{t.createNewBot}</h3>
       </div>
-    </button>
+    </Card>
   );
 }
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
-      <div className="text-xs uppercase tracking-wider text-text-secondary/60">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-text-secondary">{label}</div>
       <div className="text-sm font-semibold text-text-primary">{value}</div>
     </div>
   );
@@ -150,47 +155,12 @@ function InlineTooltip({
   widthClass?: string;
   noWrap?: boolean;
 }) {
-  const sizeClass = noWrap ? "w-auto whitespace-nowrap" : widthClass;
-  return (
-    <span className="group relative inline-flex focus:outline-none" tabIndex={0}>
-      {children}
-      <span
-        className={`liquid-menu pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 rounded-lg border border-glass-border px-3 py-2 text-left text-xs font-normal leading-relaxed text-text-secondary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${sizeClass}`}
-      >
-        {label}
-      </span>
-    </span>
-  );
+  return <Tooltip content={label} side="bottom" className={noWrap ? "w-auto" : widthClass}><span className="inline-flex" tabIndex={0}>{children}</span></Tooltip>;
 }
 
 export function BotEmptyHero({ onCreateBot }: { onCreateBot: () => void }) {
   const t = homePanelI18n[useLanguage()];
-  return (
-    <div className="liquid-empty-state relative overflow-hidden rounded-2xl border border-dashed border-glass-border">
-      <div className="relative flex flex-col items-center gap-5 px-6 py-12 text-center sm:py-14">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan">
-          <Bot className="h-7 w-7" />
-        </div>
-        <div className="max-w-md space-y-2">
-          <h3 className="text-xl font-semibold text-text-primary">
-            {t.noBotTitle}
-          </h3>
-          <p className="text-sm leading-relaxed text-text-secondary/80">
-            {t.noBotDescription}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onCreateBot}
-          className="liquid-action inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/15 px-5 text-sm font-semibold text-neon-cyan transition-colors hover:bg-neon-cyan/25"
-        >
-          <Plus className="h-4 w-4" />
-          {t.createFirstBot}
-        </button>
-        <p className="text-xs text-text-tertiary">{t.emptyHeroEta}</p>
-      </div>
-    </div>
-  );
+  return <EmptyState bordered icon={<Bot size={24} strokeWidth={1.75} />} title={t.noBotTitle} description={t.noBotDescription} action={<div className="space-y-3"><Button variant="primary" onClick={onCreateBot}><Plus size={16} strokeWidth={1.75} />{t.createFirstBot}</Button><p className="type-caption text-text-secondary">{t.emptyHeroEta}</p></div>} />;
 }
 
 export function BotOnboardingSteps({
@@ -206,33 +176,29 @@ export function BotOnboardingSteps({
 }) {
   const t = homePanelI18n[useLanguage()];
   const createButton = (
-    <button
+    <Button variant="primary" size="sm"
       type="button"
       onClick={onCreateBot}
       disabled={!hasOnlineDaemon}
-      className={`liquid-action inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border px-4 text-sm font-medium transition-colors ${
-        hasOnlineDaemon
-          ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan/20"
-          : "cursor-not-allowed border-glass-border bg-glass-bg/35 text-text-secondary/50"
-      }`}
+      className={`inline-flex items-center justify-center gap-1.5${hasOnlineDaemon ? "" : "cursor-not-allowed"} `}
     >
       {hasOnlineDaemon ? <Plus className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
       {t.createBot}
-    </button>
+    </Button>
   );
 
   return (
-    <div className="liquid-card rounded-2xl border border-dashed border-glass-border">
+    <Card padding="none" className="">
       <div className="grid lg:grid-cols-2">
         <div className="flex min-h-48 flex-col justify-between gap-6 border-b border-glass-border/70 p-5 sm:p-6 lg:border-b-0 lg:border-r">
           <div>
             <div className="mb-4 flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neon-cyan/25 bg-accent-soft text-accent-text">
                 <Server className="h-5 w-5" />
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-neon-cyan/30 text-xs font-semibold text-neon-cyan">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-neon-cyan/30 text-xs font-semibold text-accent-text">
                     1
                   </span>
                   <h3 className="text-base font-semibold text-text-primary">{t.connectDevice}</h3>
@@ -240,19 +206,19 @@ export function BotOnboardingSteps({
                     label={t.connectDeviceTooltip}
                     widthClass="w-72"
                   >
-                    <Info className="h-4 w-4 text-text-secondary/70 transition-colors group-hover:text-neon-cyan group-focus-visible:text-neon-cyan" />
+                    <Info className="h-4 w-4 text-text-secondary transition-colors group-hover:text-accent-text group-focus-visible:text-accent-text" />
                   </InlineTooltip>
                 </div>
-                <p className="mt-2 text-sm text-text-secondary/70">
+                <p className="mt-2 text-sm text-text-secondary">
                   {t.connectDeviceSubtitle}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 text-xs text-text-secondary/70">
+            <div className="flex items-center gap-2 text-xs text-text-secondary">
               {hasOnlineDaemon ? (
-                <CheckCircle2 className="h-4 w-4 text-neon-green" />
+                <CheckCircle2 className="h-4 w-4 text-success" />
               ) : daemonLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin text-neon-cyan" />
+                <Loader2 className="h-4 w-4 animate-spin text-accent-text" />
               ) : (
                 <span className="h-2.5 w-2.5 rounded-full border border-text-secondary/60" />
               )}
@@ -260,40 +226,40 @@ export function BotOnboardingSteps({
             </div>
           </div>
           <div>
-            <button
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={onConnectDevice}
-              className="liquid-action inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-4 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              className="inline-flex items-center justify-center gap-1.5"
             >
               {t.connectDevice}
               <ArrowRight className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         </div>
 
         <div className="flex min-h-48 flex-col justify-between gap-6 p-5 sm:p-6">
           <div>
             <div className="mb-4 flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neon-cyan/25 bg-accent-soft text-accent-text">
                 <Bot className="h-5 w-5" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-neon-cyan/35 text-xs font-semibold text-neon-cyan">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-neon-cyan/35 text-xs font-semibold text-accent-text">
                     2
                   </span>
                   <h3 className="text-base font-semibold text-text-primary">{t.createBot}</h3>
                 </div>
-                <p className="mt-2 text-sm text-text-secondary/70">
+                <p className="mt-2 text-sm text-text-secondary">
                   {t.createBotSubtitle}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 text-xs text-text-secondary/70">
+            <div className="flex items-center gap-2 text-xs text-text-secondary">
               {hasOnlineDaemon ? (
-                <CheckCircle2 className="h-4 w-4 text-neon-green" />
+                <CheckCircle2 className="h-4 w-4 text-success" />
               ) : (
-                <Lock className="h-4 w-4 text-text-secondary/55" />
+                <Lock className="h-4 w-4 text-text-secondary" />
               )}
               {hasOnlineDaemon ? t.createUnlocked : t.createLocked}
             </div>
@@ -309,7 +275,7 @@ export function BotOnboardingSteps({
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -376,13 +342,13 @@ function TerminalHowToButton() {
       onFocus={() => setOpen(true)}
       onBlur={() => setOpen(false)}
     >
-      <button
+      <Button variant="inline"
         type="button"
-        className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-neon-cyan/80 transition-colors hover:text-neon-cyan focus:outline-none focus:ring-2 focus:ring-neon-cyan/35"
+        className="inline-flex items-center gap-1.5"
       >
         <Info className="h-3.5 w-3.5" />
         How to run it?
-      </button>
+      </Button>
       {open && pos && typeof document !== "undefined"
         ? createPortal(
             <TerminalHowToPopoverBody ref={popoverRef} steps={steps} top={pos.top} left={pos.left} />,
@@ -407,14 +373,14 @@ const TerminalHowToPopoverBody = forwardRef<
       style={{ top, left }}
       className="liquid-menu pointer-events-none fixed z-[200] w-80 rounded-2xl border border-glass-border p-4 text-left">
       <span className="block border-b border-glass-border pb-3">
-        <span className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-neon-cyan/25 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan">
+        <Badge tone="accent" >
           <Terminal className="h-3.5 w-3.5" />
           Mac or Linux
-        </span>
+        </Badge>
         <span className="block text-sm font-semibold text-text-primary">
           How to run the install command
         </span>
-        <span className="mt-1 block text-xs leading-relaxed text-text-secondary/70">
+        <span className="mt-1 block text-xs leading-relaxed text-text-secondary">
           Use your computer's Terminal, not your Agent chat.
         </span>
       </span>
@@ -422,36 +388,36 @@ const TerminalHowToPopoverBody = forwardRef<
       <span className="mt-3 grid gap-3">
         {steps.map((step, index) => (
           <span key={step.title} className="flex gap-3">
-            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-glass-border bg-glass-bg text-xs font-semibold text-neon-cyan">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-glass-border bg-glass-bg text-xs font-semibold text-accent-text">
               {index + 1}
             </span>
             <span>
               <span className="block text-sm font-medium text-text-primary">{step.title}</span>
-              <span className="mt-0.5 block text-xs leading-relaxed text-text-secondary/75">{step.body}</span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-text-secondary">{step.body}</span>
               {index === 0 ? (
-                <span className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg/35 px-2.5 py-1 text-xs font-medium text-text-secondary">
+                <Badge tone="neutral" >
                   <span>Default:</span>
                   <span className="rounded border border-glass-border px-1.5 py-0.5 text-text-primary">Command</span>
                   <span>+</span>
                   <span className="rounded border border-glass-border px-1.5 py-0.5 text-text-primary">Space</span>
-                </span>
+                </Badge>
               ) : null}
               {index === 1 ? (
                 <span className="liquid-tool-surface mt-3 block rounded-xl border border-glass-border">
                   <span className="flex items-center gap-2 border-b border-glass-border/60 px-3 py-2">
                     <span className="flex gap-1">
-                      <span className="h-2 w-2 rounded-full bg-red-400/70" />
-                      <span className="h-2 w-2 rounded-full bg-amber-300/70" />
-                      <span className="h-2 w-2 rounded-full bg-neon-green/70" />
+                      <span className="h-2 w-2 rounded-full bg-danger-soft" />
+                      <span className="h-2 w-2 rounded-full bg-warning-soft" />
+                      <span className="h-2 w-2 rounded-full bg-success-soft" />
                     </span>
-                    <span className="text-xs font-medium uppercase tracking-wider text-text-secondary/60">
+                    <span className="text-xs font-medium uppercase tracking-wider text-text-secondary">
                       Terminal
                     </span>
                   </span>
                   <span className="flex items-center gap-2 px-4 py-3 font-mono text-xs text-text-primary">
-                    <span className="text-neon-cyan">$</span>
+                    <span className="text-accent-text">$</span>
                     <span>paste the BotCord install command here</span>
-                    <span className="h-4 w-1 bg-neon-cyan/80" />
+                    <span className="h-4 w-1 bg-accent-soft" />
                   </span>
                 </span>
               ) : null}
@@ -464,7 +430,7 @@ const TerminalHowToPopoverBody = forwardRef<
 });
 
 function TerminalWord({ children }: { children: ReactNode }) {
-  return <span className="font-semibold text-neon-cyan">{children}</span>;
+  return <span className="font-semibold text-accent-text">{children}</span>;
 }
 
 export function DeviceConnectPanel({
@@ -567,16 +533,16 @@ export function DeviceConnectPanel({
 
   return (
     <div className="space-y-4">
-          <div className="liquid-card rounded-2xl border border-glass-border p-4">
+          <Card padding="md" className="">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-secondary/60">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-secondary">
                   Install command
                 </div>
                 <h4 className="text-sm font-semibold leading-snug text-text-primary">
                   {panelTitle}
                 </h4>
-                <p className="mt-1 text-xs text-text-secondary/70">
+                <p className="mt-1 text-xs text-text-secondary">
                   {panelDescription}
                 </p>
               </div>
@@ -588,15 +554,15 @@ export function DeviceConnectPanel({
               <div className="flex items-center justify-between border-b border-glass-border/60 px-3 py-2">
                 <div className="flex items-center gap-2">
                   <span className="flex gap-1">
-                    <span className="h-2 w-2 rounded-full bg-red-400/70" />
-                    <span className="h-2 w-2 rounded-full bg-amber-300/70" />
-                    <span className="h-2 w-2 rounded-full bg-neon-green/70" />
+                    <span className="h-2 w-2 rounded-full bg-danger-soft" />
+                    <span className="h-2 w-2 rounded-full bg-warning-soft" />
+                    <span className="h-2 w-2 rounded-full bg-success-soft" />
                   </span>
-                  <span className="text-xs font-medium uppercase tracking-wider text-text-secondary/60">
+                  <span className="text-xs font-medium uppercase tracking-wider text-text-secondary">
                     Terminal
                   </span>
                 </div>
-                <span className="text-xs text-text-secondary/45">macOS / Linux</span>
+                <span className="text-xs text-text-secondary">macOS / Linux</span>
               </div>
               <code className="block h-14 w-full overflow-y-auto whitespace-pre-wrap break-words px-4 py-2 font-mono text-xs leading-5 text-text-primary">
                 {commandDisplay}
@@ -604,16 +570,12 @@ export function DeviceConnectPanel({
             </div>
 
             <div className="mt-4 flex justify-center">
-              <button
+              <Button variant="secondary" size="sm"
                 type="button"
                 onClick={() => void handleCopy()}
                 disabled={copyDisabled}
                 title={copyDisabled ? "Wait until the install command is ready" : "Copy"}
-                className={`liquid-action inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-lg border px-5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                  copied
-                    ? "border-neon-green/50 bg-neon-green/15 text-neon-green hover:bg-neon-green/20"
-                    : "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan/20 disabled:hover:bg-neon-cyan/10"
-                }`}
+                className={`inline-flex min-w-32 items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50 `}
               >
                 {tokenLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -623,18 +585,18 @@ export function DeviceConnectPanel({
                   <Copy className="h-4 w-4" />
                 )}
                 {copied ? "Copied" : "Copy"}
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
 
           {!deviceConnected && (
-            <div className="flex flex-col gap-3 text-sm text-text-secondary/70 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 text-sm text-text-secondary sm:flex-row sm:items-center sm:justify-between">
               <span>{refreshPrompt}</span>
-              <button
+              <Button variant="secondary" size="sm"
                 type="button"
                 onClick={handleRefresh}
                 disabled={loading}
-                className="liquid-action inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-glass-border px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
                 {loading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -642,7 +604,7 @@ export function DeviceConnectPanel({
                   <RefreshCcw className="h-3.5 w-3.5" />
                 )}
                 Refresh
-              </button>
+              </Button>
             </div>
           )}
     </div>
@@ -670,10 +632,10 @@ function PersonCard({
 }) {
   const t = homePanelI18n[useLanguage()];
   return (
-    <button
+    <Card as="button" variant="interactive" padding="md"
       type="button"
       onClick={onClick}
-      className="liquid-card flex flex-col rounded-2xl border border-glass-border p-4 text-left transition-colors hover:border-neon-cyan/40 focus:outline-none focus:ring-2 focus:ring-neon-cyan/40"
+      className="flex flex-col"
     >
       <div className="mb-2 flex items-center gap-2">
         {badge === "AGENT" && agentId ? (
@@ -682,7 +644,7 @@ function PersonCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={avatarUrl} alt={name} className="h-10 w-10 rounded-full object-cover" />
         ) : (
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-neon-cyan/25 bg-neon-cyan/10 text-sm font-semibold text-neon-cyan">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-neon-cyan/25 bg-accent-soft text-sm font-semibold text-accent-text">
             {name.charAt(0)}
           </div>
         )}
@@ -691,13 +653,13 @@ function PersonCard({
             <span className="truncate text-sm font-medium text-text-primary">{name}</span>
             {online ? <span className="h-1.5 w-1.5 rounded-full bg-neon-green" /> : null}
           </div>
-          <span className="mt-0.5 inline-block rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary/70">
+          <Badge tone="neutral" >
             {subtitle || badge}
-          </span>
+          </Badge>
         </div>
       </div>
-      <p className="line-clamp-2 min-h-[2rem] text-xs text-text-secondary/70">{bio || t.noBio}</p>
-    </button>
+      <p className="line-clamp-2 min-h-[2rem] text-xs text-text-secondary">{bio || t.noBio}</p>
+    </Card>
   );
 }
 
@@ -825,14 +787,14 @@ function HomePanel() {
           <h1 className="text-4xl font-semibold tracking-tight text-text-primary">
             {t.greetings[greetingPeriod]}, {displayName} 👋
           </h1>
-          <p className="mt-3 text-base text-text-secondary/70">
+          <p className="mt-3 text-base text-text-secondary">
             {t.homeSubtitle}
           </p>
         </div>
 
         <section className="mb-10">
           <SectionHeader
-            icon={<Bot className="h-4 w-4 text-neon-cyan" />}
+            icon={<Bot className="h-4 w-4 text-accent-text" />}
             title={t.myBotsOverviewTitle}
             subtitle={hasBotsForPreview
               ? t.myBotsOverviewSubtitle
@@ -860,7 +822,7 @@ function HomePanel() {
 
         <section className="mb-10">
           <SectionHeader
-            icon={<TrendingUp className="h-4 w-4 text-neon-cyan" />}
+            icon={<TrendingUp className="h-4 w-4 text-accent-text" />}
             title={t.trendingRoomsTitle}
             subtitle={t.trendingRoomsSubtitle}
             onShowAll={() => router.push("/chats/explore/rooms")}
@@ -889,15 +851,13 @@ function HomePanel() {
               ))}
             </div>
           ) : (
-            <p className="liquid-empty-state rounded-2xl border border-glass-border px-4 py-6 text-sm text-text-secondary/70">
-              {t.noPublicRooms}
-            </p>
+            <EmptyState compact bordered title={<>{t.noPublicRooms}</>} />
           )}
         </section>
 
         <section className="mb-10">
           <SectionHeader
-            icon={<Sparkles className="h-4 w-4 text-neon-cyan" />}
+            icon={<Sparkles className="h-4 w-4 text-accent-text" />}
             title={t.trendingAgentsTitle}
             subtitle={t.trendingAgentsSubtitle}
             onShowAll={() => router.push("/chats/explore/agents")}
@@ -925,15 +885,13 @@ function HomePanel() {
               ))}
             </div>
           ) : (
-            <p className="liquid-empty-state rounded-2xl border border-glass-border px-4 py-6 text-sm text-text-secondary/70">
-              {t.noPublicBots}
-            </p>
+            <EmptyState compact bordered title={<>{t.noPublicBots}</>} />
           )}
         </section>
 
         <section className="mb-6">
           <SectionHeader
-            icon={<Users className="h-4 w-4 text-neon-cyan" />}
+            icon={<Users className="h-4 w-4 text-accent-text" />}
             title={t.trendingHumansTitle}
             subtitle={t.trendingHumansSubtitle}
             onShowAll={() => router.push("/chats/explore/humans")}
@@ -959,9 +917,7 @@ function HomePanel() {
               ))}
             </div>
           ) : (
-            <p className="liquid-empty-state rounded-2xl border border-glass-border px-4 py-6 text-sm text-text-secondary/70">
-              {t.noPublicHumans}
-            </p>
+            <EmptyState compact bordered title={<>{t.noPublicHumans}</>} />
           )}
         </section>
       </div>

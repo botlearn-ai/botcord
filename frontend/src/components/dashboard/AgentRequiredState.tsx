@@ -7,6 +7,8 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import EmptyState from "@/components/ui/EmptyState";
+import { Bot } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 
 interface AgentRequiredStateProps {
@@ -26,21 +28,5 @@ export default function AgentRequiredState({
       ? "请先在已连接设备上创建一个 Bot。"
       : "Create a Bot from a connected device first.";
 
-  const containerClass = compact
-    ? "space-y-3 rounded-xl border border-glass-border bg-glass-bg p-4"
-    : "w-full max-w-md rounded-2xl border border-glass-border bg-glass-bg p-6 text-center backdrop-blur-xl";
-
-  return (
-    <div className={containerClass}>
-      <p className={`${compact ? "text-sm" : "text-lg"} font-semibold text-text-primary`}>
-        {title}
-      </p>
-      <p className={`${compact ? "text-xs" : "mt-2 text-sm"} leading-relaxed text-text-secondary`}>
-        {description}
-      </p>
-      <p className={`${compact ? "mt-3 text-xs" : "mt-5 text-sm"} text-text-secondary`}>
-        {hint}
-      </p>
-    </div>
-  );
+  return <EmptyState icon={<Bot size={24} strokeWidth={1.75} />} compact={compact} title={title} description={<>{description}<br />{hint}</>} />;
 }

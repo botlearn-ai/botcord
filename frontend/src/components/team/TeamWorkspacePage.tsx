@@ -1,33 +1,19 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+import Avatar from "@/components/ui/Avatar";
+import Badge from "@/components/ui/Badge";
+import { BotCordLoader } from "@/components/ui/BotCordLoader";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import Field from "@/components/ui/Field";
+import IconButton from "@/components/ui/IconButton";
+import SearchInput from "@/components/ui/SearchInput";
+import Tabs from "@/components/ui/Tabs";
 
+import LinkButton from "@/components/ui/LinkButton";
 import Select from "@/components/ui/Select";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
-import { useStore } from "zustand";
-import {
-  Bot,
-  Building2,
-  Hash,
-  Inbox,
-  Loader2,
-  LockKeyhole,
-  MessageCircle,
-  MessageSquare,
-  Plus,
-  RefreshCw,
-  Search,
-  Settings,
-  Users,
-} from "lucide-react";
+import UnreadBadge from "@/components/ui/UnreadBadge";
 import { useLanguage } from "@/lib/i18n";
-import {
-  createTeamSpaceStore,
-  type TeamSnapshot,
-  type TeamSpaceStore,
-} from "@/store/team-space-store";
-import { subscribeToPageReturn } from "@/lib/page-return";
-import { canManage, spaceError } from "@/lib/team-spaces";
 import {
   orgRoomPreviewMeta,
   orgRoomsApi,
@@ -37,21 +23,43 @@ import {
   orgRoomUnread,
   type OrgRoom,
 } from "@/lib/org-rooms";
+import { subscribeToPageReturn } from "@/lib/page-return";
+import { canManage, spaceError } from "@/lib/team-spaces";
+import {
+  createTeamSpaceStore,
+  type TeamSnapshot,
+  type TeamSpaceStore,
+} from "@/store/team-space-store";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
-import { useToDecide, useTeamAccessStore } from "@/store/useTeamAccessStore";
-import UnreadBadge from "@/components/ui/UnreadBadge";
+import { useTeamAccessStore, useToDecide } from "@/store/useTeamAccessStore";
+import {
+  Bot,
+  Building2,
+  Hash,
+  Inbox,
+  Loader2,
+  LockKeyhole,
+  MessageSquare,
+  Plus,
+  RefreshCw,
+  Settings,
+  Users,
+} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useStore } from "zustand";
+import TeamAgentsPage from "./TeamAgentsPage";
+import TeamConversationDialog from "./TeamConversationDialog";
+import TeamRoomMembersDialog from "./TeamRoomMembersDialog";
+import TeamRoomPane from "./TeamRoomPane";
 import TeamSpacesPage from "./TeamSpacesPage";
 import TeamWorkspaceSkeleton from "./TeamWorkspaceSkeleton";
-import TeamConversationDialog, { teamButton } from "./TeamConversationDialog";
-import TeamRoomPane from "./TeamRoomPane";
-import TeamRoomMembersDialog from "./TeamRoomMembersDialog";
-import TeamAgentsPage from "./TeamAgentsPage";
 
 /** "Alice: " / "我: " prefix for conversation previews (none when unknown). */
 export function previewSender(
   c: { last_message_author_name?: string | null; last_message_mine?: boolean },
-  zh: boolean
+  zh: boolean,
 ): string {
   if (c.last_message_mine) return zh ? "我: " : "You: ";
   return c.last_message_author_name ? `${c.last_message_author_name}: ` : "";
@@ -61,16 +69,27 @@ export function previewSender(
 export function listTime(iso: string, zh: boolean, now = new Date()): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return "";
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
   const day = 24 * 60 * 60 * 1000;
   if (at.getTime() >= startOfToday) {
-    return at.toLocaleTimeString(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    return at.toLocaleTimeString(zh ? "zh-CN" : "en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
   }
   if (at.getTime() >= startOfToday - day) return zh ? "昨天" : "Yesterday";
   if (at.getTime() >= startOfToday - 6 * day) {
     return at.toLocaleDateString(zh ? "zh-CN" : "en-US", { weekday: "short" });
   }
-  return at.toLocaleDateString(zh ? "zh-CN" : "en-US", { month: "numeric", day: "numeric" });
+  return at.toLocaleDateString(zh ? "zh-CN" : "en-US", {
+    month: "numeric",
+    day: "numeric",
+  });
 }
 
 /** One row of the Team conversation list (joined room/DM, or an open room to join). */
@@ -96,22 +115,29 @@ export function TeamRoomRow({
   const zh = useLanguage() === "zh";
   const t = (cn: string, en: string) => (zh ? cn : en);
   const agentDm =
-    room.space_kind === "dm" && room.participants.some((p) => p.kind === "agent");
+    room.space_kind === "dm" &&
+    room.participants.some((p) => p.kind === "agent");
   const icon = (
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border bg-glass-bg text-neon-cyan">
-      {agentDm ? (
-        <Bot size={19} />
-      ) : room.space_kind === "dm" ? (
-        <MessageCircle size={19} />
-      ) : room.space_visibility === "private" ? (
-        <LockKeyhole size={19} />
-      ) : (
-        <Hash size={19} />
-      )}
-    </span>
+    <Avatar
+      kind={agentDm ? "agent" : room.space_kind === "dm" ? "human" : "room"}
+      id={
+        room.participants.find((participant) => participant.kind === "agent")
+          ?.id ?? room.room_id
+      }
+      name={title}
+      size="md"
+    />
   );
   const name = (
-    <span className={`truncate text-sm ${unread > 0 ? "font-semibold" : "font-medium"}`}>
+    <span
+      className={`truncate text-sm ${unread > 0 ? "font-semibold" : "font-medium"}`}
+    >
+      {room.space_kind !== "dm" && room.space_visibility === "private" && (
+        <LockKeyhole
+          className="mr-1 inline h-4 w-4"
+          aria-label={t("私密房间", "Private room")}
+        />
+      )}
       {title}
     </span>
   );
@@ -128,8 +154,10 @@ export function TeamRoomRow({
             {room.member_count} {t("位成员 · 未加入", "members · not joined")}
           </p>
         </div>
-        <button
-          className="shrink-0 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan disabled:opacity-50"
+        <Button
+          variant="secondary"
+          size="sm"
+          className="shrink-0"
           disabled={joining != null}
           aria-label={t(`加入 ${title}`, `Join ${title}`)}
           onClick={() => onJoin()}
@@ -139,50 +167,50 @@ export function TeamRoomRow({
           ) : (
             t("加入", "Join")
           )}
-        </button>
+        </Button>
       </div>
     );
   }
   const at = room.last_message_at ?? room.created_at;
   return (
-    <Link
+    <LinkButton
+      variant="row"
       href={href}
       aria-current={selected ? "page" : undefined}
-      className={`mb-1 flex items-start gap-3 rounded-xl p-3 ${
-        selected ? "bg-neon-cyan/10" : "hover:bg-glass-bg"
-      }`}
+      className="mb-1"
     >
-      {icon}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          {name}
-          {agentDm && (
-            <span className="shrink-0 rounded bg-neon-cyan/10 px-1.5 text-xs font-medium text-neon-cyan">
-              Agent
-            </span>
-          )}
-          {at && (
-            <span className="ml-auto shrink-0 text-xs text-text-secondary tabular-nums">
-              {listTime(at, zh)}
-            </span>
-          )}
+      <span className="flex items-center gap-3">
+        {icon}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            {name}
+            {agentDm && <Badge tone="accent">Agent</Badge>}
+            {at && (
+              <span className="ml-auto shrink-0 text-xs text-text-secondary tabular-nums">
+                {listTime(at, zh)}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <p
+              className={`min-w-0 flex-1 truncate text-xs ${
+                unread > 0 ? "text-text-primary" : "text-text-secondary"
+              }`}
+            >
+              {room.last_message_preview
+                ? `${previewSender(orgRoomPreviewMeta(room, viewerNames), zh)}${room.last_message_preview}`
+                : t("暂无消息，开始讨论吧", "Start the conversation")}
+            </p>
+            {unread > 0 && (
+              <UnreadBadge
+                count={unread}
+                label={t(`${unread} 条未读`, `${unread} unread`)}
+              />
+            )}
+          </div>
         </div>
-        <div className="mt-1 flex items-center gap-2">
-          <p
-            className={`min-w-0 flex-1 truncate text-xs ${
-              unread > 0 ? "text-text-primary" : "text-text-secondary"
-            }`}
-          >
-            {room.last_message_preview
-              ? `${previewSender(orgRoomPreviewMeta(room, viewerNames), zh)}${room.last_message_preview}`
-              : t("暂无消息，开始讨论吧", "Start the conversation")}
-          </p>
-          {unread > 0 && (
-            <UnreadBadge count={unread} label={t(`${unread} 条未读`, `${unread} unread`)} />
-          )}
-        </div>
-      </div>
-    </Link>
+      </span>
+    </LinkButton>
   );
 }
 
@@ -200,7 +228,7 @@ export function teamView(value: string | null): TeamView {
 export function teamHref(
   space: string,
   view: TeamView = "messages",
-  conversation?: string
+  conversation?: string,
 ) {
   const params = new URLSearchParams({ space });
   if (view !== "messages") params.set("view", view);
@@ -223,7 +251,7 @@ export default function TeamWorkspacePage() {
   }, [load, requestedId, store]);
   useEffect(
     () => subscribeToPageReturn(() => void refresh(requestedId)),
-    [refresh, requestedId]
+    [refresh, requestedId],
   );
   const update = useCallback(() => {
     void load(requestedId, { background: true });
@@ -238,8 +266,8 @@ export default function TeamWorkspacePage() {
         teamHref(
           current.selected.id,
           teamView(query.get("view")),
-          query.get("conversation") ?? undefined
-        )
+          query.get("conversation") ?? undefined,
+        ),
       );
     }
   }, [
@@ -252,15 +280,15 @@ export default function TeamWorkspacePage() {
   if (loading || (!current && !error)) return <TeamWorkspaceSkeleton />;
   if (error)
     return (
-      <div role="alert" className="m-auto max-w-lg space-y-4 p-8 text-center">
+      <Alert tone="danger" className="space-y-4">
         <p>{spaceError(error, zh)}</p>
-        <button className={teamButton} onClick={() => void load(requestedId)}>
+        <Button variant="secondary" onClick={() => void load(requestedId)}>
           {zh ? "重试" : "Retry"}
-        </button>
-        <Link className={`${teamButton} ml-3`} href="/chats/team">
+        </Button>
+        <LinkButton variant="secondary" className="ml-3" href="/chats/team">
           {zh ? "返回我的组织" : "My organizations"}
-        </Link>
-      </div>
+        </LinkButton>
+      </Alert>
     );
   if (
     !current ||
@@ -325,7 +353,7 @@ export function TeamWorkspace({
         try {
           const response = await orgRoomsApi.list(
             space.id,
-            controller.current!.signal
+            controller.current!.signal,
           );
           if (mounted.current && version === generation.current) {
             setRooms(response.rooms);
@@ -334,7 +362,11 @@ export function TeamWorkspace({
             // Shared room components resolve the opened room via getRoomSummary.
             useDashboardChatStore
               .getState()
-              .setSpaceRooms(response.rooms.filter((r) => r.joined).map(orgRoomToDashboardRoom));
+              .setSpaceRooms(
+                response.rooms
+                  .filter((r) => r.joined)
+                  .map(orgRoomToDashboardRoom),
+              );
           }
         } catch (cause) {
           if (mounted.current && version === generation.current) {
@@ -352,7 +384,7 @@ export function TeamWorkspace({
       });
       return task;
     },
-    [space.id]
+    [space.id],
   );
   useEffect(() => {
     mounted.current = true;
@@ -389,7 +421,8 @@ export function TeamWorkspace({
     const store = useTeamAccessStore.getState();
     store.setActiveSpace(space.id);
     const onVisible = () => {
-      if (document.visibilityState === "visible") useTeamAccessStore.getState().resync();
+      if (document.visibilityState === "visible")
+        useTeamAccessStore.getState().resync();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -399,24 +432,34 @@ export function TeamWorkspace({
       }
     };
   }, [space.id]);
-  const title = (c: OrgRoom) => orgRoomTitle(c, t("成员已离开", "Member has left"));
+  const title = (c: OrgRoom) =>
+    orgRoomTitle(c, t("成员已离开", "Member has left"));
   const viewerNames = [snapshot.human?.display_name, user.display_name];
   const ownedAgentIds = (user.agents ?? []).map((a) => a.agent_id);
   // The open conversation is being read: don't count it as unread.
-  const unreadOf = (c: OrgRoom) => (c.room_id === selectedId ? 0 : orgRoomUnread(c));
+  const unreadOf = (c: OrgRoom) =>
+    c.room_id === selectedId ? 0 : orgRoomUnread(c);
   const inbox = view === "messages" || view === "rooms";
   const current = rooms.find((c) => c.room_id === selectedId);
-  const visible = orgRoomsForView(rooms, view === "rooms" ? "rooms" : "messages").filter(
+  const visible = orgRoomsForView(
+    rooms,
+    view === "rooms" ? "rooms" : "messages",
+  ).filter(
     (c) =>
       (!unreadOnly || unreadOf(c) > 0) &&
-      title(c).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
+      title(c).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
   );
   const unread = rooms.reduce((sum, c) => sum + unreadOf(c), 0);
-  const roomUnread = orgRoomsForView(rooms, "rooms").reduce((sum, c) => sum + unreadOf(c), 0);
+  const roomUnread = orgRoomsForView(rooms, "rooms").reduce(
+    (sum, c) => sum + unreadOf(c),
+    0,
+  );
   const openRoom = async (roomId: string, targetView: TeamView = view) => {
     await reload(true);
     void useDashboardSessionStore.getState().refreshHumanRooms();
-    router.push(teamHref(space.id, targetView === "rooms" ? "rooms" : "messages", roomId));
+    router.push(
+      teamHref(space.id, targetView === "rooms" ? "rooms" : "messages", roomId),
+    );
   };
   const join = async (c: OrgRoom) => {
     if (joining) return;
@@ -433,7 +476,7 @@ export function TeamWorkspace({
   };
   const activeUsers = members.users.filter((m) => m.status === "active").length;
   const activeAgents = members.agents.filter(
-    (m) => m.status === "active"
+    (m) => m.status === "active",
   ).length;
   const navigation = [
     {
@@ -462,7 +505,10 @@ export function TeamWorkspace({
       Icon: Bot,
       count: null,
       badge: accessRequests,
-      badgeLabel: t(`${accessRequests} 个权限申请待处理`, `${accessRequests} access requests need your action`),
+      badgeLabel: t(
+        `${accessRequests} 个权限申请待处理`,
+        `${accessRequests} access requests need your action`,
+      ),
     },
   ] as {
     id: TeamView;
@@ -480,15 +526,14 @@ export function TeamWorkspace({
       className="flex h-full min-h-0 flex-col md:flex-row"
       data-team-workspace="true"
     >
-      <aside className={`flex shrink-0 flex-col border-b border-glass-border bg-glass-bg md:w-52 md:border-b-0 md:border-r xl:w-56 ${mobileThreadOpen ? "max-md:hidden" : ""}`}>
+      <aside
+        className={`flex shrink-0 flex-col border-b border-glass-border bg-glass-bg md:w-52 md:border-b-0 md:border-r xl:w-56 ${mobileThreadOpen ? "max-md:hidden" : ""}`}
+      >
         <div className="flex h-[76px] shrink-0 items-center gap-3 border-b border-glass-border px-4">
           <div className="rounded-xl bg-neon-cyan/10 p-2.5 text-neon-cyan">
             <Building2 size={22} />
           </div>
-          <label className="min-w-0 flex-1">
-            <span className="mb-1 block text-xs text-text-secondary">
-              {t("当前组织", "Organization")}
-            </span>
+          <Field label={<>{t("当前组织", "Organization")}</>}>
             <Select
               aria-label={t("切换组织", "Switch organization")}
               value={space.id}
@@ -506,70 +551,79 @@ export function TeamWorkspace({
                   </option>
                 ))}
             </Select>
-          </label>
-          <Link
+          </Field>
+          <LinkButton
+            variant="secondary"
             href={teamHref(space.id, "settings")}
             aria-label={t("组织设置", "Organization settings")}
-            className={`rounded-lg p-2 md:hidden ${
-              view === "settings" ? "bg-neon-cyan/10 text-neon-cyan" : "text-text-secondary"
-            }`}
+            className="md:hidden"
           >
             <Settings size={18} />
-          </Link>
+          </LinkButton>
         </div>
         <nav
           className="hidden gap-1 p-3 md:flex md:flex-col"
           aria-label={t("团队导航", "Team navigation")}
         >
-          {navigation.map(({ id, label, Icon, count, unread: isUnread, badge, badgeLabel }) => (
-            <Link
-              key={id}
-              href={teamHref(space.id, id)}
-              aria-current={view === id ? "page" : undefined}
-              className={`flex min-w-max items-center gap-1.5 rounded-xl px-2 py-3 text-sm md:gap-3 md:px-3 ${
-                view === id
-                  ? "bg-neon-cyan/10 font-medium text-neon-cyan"
-                  : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-              }`}
-            >
-              <Icon size={18} />
-              <span className="flex-1">{label}</span>
-              {badge ? <UnreadBadge count={badge} label={badgeLabel} /> : null}
-              {count != null &&
-                (isUnread ? (
-                  <UnreadBadge count={count} />
-                ) : (
-                  <span className="rounded-full bg-glass-bg px-1.5 text-xs tabular-nums">
-                    {count > 99 ? "99+" : count}
-                  </span>
-                ))}
-            </Link>
-          ))}
-          <Link
+          {navigation.map(
+            ({
+              id,
+              label,
+              Icon,
+              count,
+              unread: isUnread,
+              badge,
+              badgeLabel,
+            }) => (
+              <LinkButton
+                variant="row"
+                key={id}
+                href={teamHref(space.id, id)}
+                aria-current={view === id ? "page" : undefined}
+              >
+                <span className="flex items-center gap-3">
+                  <Icon size={18} />
+                  <span className="flex-1">{label}</span>
+                  {badge ? (
+                    <UnreadBadge count={badge} label={badgeLabel} />
+                  ) : null}
+                  {count != null &&
+                    (isUnread ? (
+                      <UnreadBadge count={count} />
+                    ) : (
+                      <Badge>{count > 99 ? "99+" : count}</Badge>
+                    ))}
+                </span>
+              </LinkButton>
+            ),
+          )}
+          <LinkButton
+            variant="row"
             href={teamHref(space.id, "settings")}
             aria-current={view === "settings" ? "page" : undefined}
-            className={`flex items-center gap-1.5 rounded-xl px-2 py-3 text-sm md:mt-4 md:gap-3 md:px-3 ${
-              view === "settings"
-                ? "bg-neon-cyan/10 text-neon-cyan"
-                : "text-text-secondary hover:bg-glass-bg"
-            }`}
+            className="md:mt-4"
           >
-            <Settings size={18} />
-            <span className="whitespace-nowrap">{t("设置", "Settings")}</span>
-          </Link>
+            <span className="flex items-center gap-3">
+              <Settings size={18} />
+              <span className="whitespace-nowrap">{t("设置", "Settings")}</span>
+            </span>
+          </LinkButton>
         </nav>
         <div className="mt-auto hidden space-y-3 p-4 md:block">
-          <Link
-            className="flex items-center gap-2 text-xs text-text-secondary hover:text-neon-cyan"
+          <LinkButton
+            variant="inline"
             href={`/settings/spaces?space=${encodeURIComponent(space.id)}`}
           >
             <Plus size={14} />
             {t("创建或管理组织", "Manage organizations")}
-          </Link>
+          </LinkButton>
           <div className="flex items-center gap-2 border-t border-glass-border pt-4">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-neon-cyan/10 text-sm text-neon-cyan">
-              {user.display_name.slice(0, 1)}
-            </span>
+            <Avatar
+              kind="human"
+              id={user.id}
+              name={user.display_name}
+              size="sm"
+            />
             <div className="min-w-0">
               <p className="truncate text-xs font-medium">
                 {user.display_name}
@@ -578,8 +632,8 @@ export function TeamWorkspace({
                 {space.roles.includes("owner")
                   ? t("组织所有者", "Organization owner")
                   : canManage(space)
-                  ? t("管理员", "Administrator")
-                  : t("组织成员", "Organization member")}
+                    ? t("管理员", "Administrator")
+                    : t("组织成员", "Organization member")}
               </p>
             </div>
           </div>
@@ -598,17 +652,15 @@ export function TeamWorkspace({
                 {view === "rooms" ? t("房间", "Rooms") : t("消息", "Messages")}
               </h1>
               <div className="flex gap-1">
-                <button
-                  className="rounded-lg p-2 text-text-secondary hover:bg-glass-bg"
-                  aria-label={t("刷新消息", "Refresh conversations")}
+                <IconButton
+                  label={t("刷新消息", "Refresh conversations")}
                   disabled={loading || !messaging}
                   onClick={() => void reload()}
                 >
                   <RefreshCw size={16} />
-                </button>
-                <button
-                  className="rounded-lg bg-neon-cyan/10 p-2 text-neon-cyan disabled:opacity-40"
-                  aria-label={
+                </IconButton>
+                <IconButton
+                  label={
                     view === "rooms"
                       ? t("创建房间", "Create room")
                       : t("发起私聊", "New direct message")
@@ -617,51 +669,36 @@ export function TeamWorkspace({
                   onClick={() => setDialog(view === "rooms" ? "room" : "dm")}
                 >
                   <Plus size={18} />
-                </button>
+                </IconButton>
               </div>
             </header>
             <div className="space-y-3 px-4 pb-4">
-              <label className="flex items-center gap-2 rounded-xl border border-glass-border bg-glass-bg px-3 py-2">
-                <Search size={15} className="shrink-0 text-text-secondary" />
-                <input
-                  className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                  aria-label={t("搜索会话", "Search conversations")}
-                  placeholder={t("搜索会话名称", "Search conversations")}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </label>
-              <div className="flex gap-2">
-                {[false, true].map((only) => (
-                  <button
-                    key={String(only)}
-                    className={`rounded-lg px-3 py-1.5 text-xs ${
-                      unreadOnly === only
-                        ? "bg-neon-cyan/10 text-neon-cyan"
-                        : "text-text-secondary hover:bg-glass-bg"
-                    }`}
-                    aria-pressed={unreadOnly === only}
-                    onClick={() => setUnreadOnly(only)}
-                  >
-                    {only ? t("未读", "Unread") : t("全部", "All")}
-                  </button>
-                ))}
-              </div>
+              <SearchInput
+                label={t("搜索会话", "Search conversations")}
+                placeholder={t("搜索会话名称", "Search conversations")}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <Tabs
+                value={unreadOnly ? "unread" : "all"}
+                onValueChange={(value) => setUnreadOnly(value === "unread")}
+                ariaLabel={t("会话筛选", "Conversation filter")}
+                items={[
+                  { value: "all", label: t("全部", "All") },
+                  { value: "unread", label: t("未读", "Unread") },
+                ]}
+              />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
               {loading && (
-                <p
-                  role="status"
-                  className="flex items-center justify-center gap-2 py-8 text-xs text-text-secondary"
-                >
-                  <Loader2 size={16} className="animate-spin" />
-                  {t("正在加载会话…", "Loading conversations…")}
-                </p>
+                <BotCordLoader
+                  size="sm"
+                  className="w-full py-6"
+                  label={t("正在加载会话…", "Loading conversations…")}
+                />
               )}
               {error != null && (
-                <p role="alert" className="p-4 text-sm text-red-500">
-                  {spaceError(error, zh)}
-                </p>
+                <Alert tone="danger">{spaceError(error, zh)}</Alert>
               )}
               {!loading && !error && !visible.length && (
                 <div className="px-4 py-10 text-center text-text-secondary">
@@ -670,27 +707,29 @@ export function TeamWorkspace({
                     {search
                       ? t("没有匹配的会话", "No matching conversations")
                       : unreadOnly
-                      ? t("没有未读消息", "You’re all caught up")
-                      : !messaging
-                      ? t("团队消息暂不可用", "Team messaging is unavailable")
-                      : view === "rooms"
-                      ? t("还没有房间", "No rooms yet")
-                      : t("还没有会话", "No conversations yet")}
+                        ? t("没有未读消息", "You’re all caught up")
+                        : !messaging
+                          ? t(
+                              "团队消息暂不可用",
+                              "Team messaging is unavailable",
+                            )
+                          : view === "rooms"
+                            ? t("还没有房间", "No rooms yet")
+                            : t("还没有会话", "No conversations yet")}
                   </p>
                   {!search && !unreadOnly && messaging && (
-                    <button
-                      className="mt-4 text-sm text-neon-cyan"
+                    <Button
+                      variant="ghost"
+                      className="mt-4"
                       onClick={() => setDialog("room")}
                     >
                       {t("创建第一个房间", "Create your first room")}
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
               {joinError != null && (
-                <p role="alert" className="px-3 pb-2 text-xs text-red-500">
-                  {spaceError(joinError, zh)}
-                </p>
+                <Alert tone="danger">{spaceError(joinError, zh)}</Alert>
               )}
               {visible.map((c) => (
                 <TeamRoomRow
@@ -706,8 +745,10 @@ export function TeamWorkspace({
                 />
               ))}
             </div>
-            <button
-              className="m-3 flex items-center justify-center gap-2 rounded-xl border border-dashed border-glass-border py-3 text-xs text-text-secondary hover:text-neon-cyan disabled:opacity-40"
+            <Button
+              variant="ghost"
+              size="sm"
+
               disabled={!messaging}
               onClick={() => setDialog(view === "rooms" ? "dm" : "room")}
             >
@@ -715,7 +756,7 @@ export function TeamWorkspace({
               {view === "rooms"
                 ? t("发起私聊", "New direct message")
                 : t("创建房间", "Create room")}
-            </button>
+            </Button>
           </section>
           <main
             className={`relative min-h-0 min-w-0 flex-1 ${
@@ -735,32 +776,45 @@ export function TeamWorkspace({
             ) : current && !current.joined && !error ? (
               <div className="flex h-full flex-col items-center justify-center p-8 text-center">
                 <Hash size={36} className="mb-4 text-neon-cyan" />
-                <h2 className="max-w-lg break-words text-xl font-semibold">{title(current)}</h2>
+                <h2 className="max-w-lg break-words text-xl font-semibold">
+                  {title(current)}
+                </h2>
                 <p className="mt-2 text-sm text-text-secondary">
-                  {t("这是组织公开房间，加入后即可查看历史和发言。", "This organization room is open. Join to read its history and chat.")}
+                  {t(
+                    "这是组织公开房间，加入后即可查看历史和发言。",
+                    "This organization room is open. Join to read its history and chat.",
+                  )}
                 </p>
                 {joinError != null && (
-                  <p role="alert" className="mt-3 text-sm text-red-500">{spaceError(joinError, zh)}</p>
+                  <Alert tone="danger" className="mt-3">
+                    {spaceError(joinError, zh)}
+                  </Alert>
                 )}
                 <div className="mt-6 flex gap-3">
-                  <button className={teamButton} onClick={() => router.push(teamHref(space.id, view))}>
+                  <Button
+                    variant="secondary"
+                    onClick={() => router.push(teamHref(space.id, view))}
+                  >
                     {t("返回", "Back")}
-                  </button>
-                  <button
-                    className={`${teamButton} bg-neon-cyan/10 text-neon-cyan`}
+                  </Button>
+                  <Button
+                    variant="primary"
+
                     disabled={joining != null}
                     onClick={() => void join(current)}
                   >
-                    {joining === current.room_id && <Loader2 size={16} className="animate-spin" />}
+                    {joining === current.room_id && (
+                      <Loader2 size={16} className="animate-spin" />
+                    )}
                     {t("加入房间", "Join room")}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center overflow-y-auto p-8 text-center">
-                <div className="mb-6 rounded-3xl border border-glass-border bg-glass-bg p-6 text-neon-cyan">
+                <Card className="mb-6">
                   <MessageSquare size={40} strokeWidth={1.4} />
-                </div>
+                </Card>
                 <h2 className="max-w-lg break-words text-2xl font-semibold">
                   {selectedId
                     ? loading
@@ -768,53 +822,56 @@ export function TeamWorkspace({
                       : t("会话暂不可用", "Conversation unavailable")
                     : t(
                         `在 ${space.name} 开始协作`,
-                        `Collaborate in ${space.name}`
+                        `Collaborate in ${space.name}`,
                       )}
                 </h2>
                 <p className="mt-3 max-w-md text-sm leading-6 text-text-secondary">
                   {selectedId
                     ? t(
                         "从左侧选择会话，或刷新以确认访问权限。",
-                        "Select a conversation or refresh to check your access."
+                        "Select a conversation or refresh to check your access.",
                       )
                     : !messaging
-                    ? t(
-                        "团队消息服务尚未开放。你仍可管理成员与 Agent。",
-                        "Team messaging is not available yet. You can manage members and Agents."
-                      )
-                    : t(
-                        "在房间里讨论项目，或与组织成员私聊。",
-                        "Discuss projects in rooms or message a teammate directly."
-                      )}
+                      ? t(
+                          "团队消息服务尚未开放。你仍可管理成员与 Agent。",
+                          "Team messaging is not available yet. You can manage members and Agents.",
+                        )
+                      : t(
+                          "在房间里讨论项目，或与组织成员私聊。",
+                          "Discuss projects in rooms or message a teammate directly.",
+                        )}
                 </p>
                 <div className="mt-7 flex flex-wrap justify-center gap-3">
                   {selectedId ? (
-                    <button
-                      className={teamButton}
+                    <Button
+                      variant="secondary"
+
                       onClick={() => router.push(teamHref(space.id, view))}
                     >
                       {t("返回会话列表", "Back to conversations")}
-                    </button>
+                    </Button>
                   ) : (
                     <>
                       {messaging && (
-                        <button
-                          className={`${teamButton} bg-neon-cyan/10 text-neon-cyan`}
+                        <Button
+                          variant="primary"
+
                           onClick={() => setDialog("room")}
                         >
                           <Plus size={16} />
                           {t("创建房间", "Create room")}
-                        </button>
+                        </Button>
                       )}
-                      <Link
-                        className={teamButton}
+                      <LinkButton
+                        variant="secondary"
+
                         href={teamHref(space.id, "members")}
                       >
                         <Users size={16} />
                         {canManage(space)
                           ? t("邀请成员", "Invite teammates")
                           : t("查看成员", "View members")}
-                      </Link>
+                      </LinkButton>
                     </>
                   )}
                 </div>
@@ -844,9 +901,9 @@ export function TeamWorkspace({
                 ? t("组织成员", "Organization members")
                 : t("组织设置", "Organization settings")}
             </h1>
-            <Link className="text-sm text-neon-cyan" href={teamHref(space.id)}>
+            <LinkButton variant="inline" href={teamHref(space.id)}>
               {t("返回消息", "Back to messages")}
-            </Link>
+            </LinkButton>
           </header>
           <div className="p-4 sm:p-6">
             <TeamSpacesPage
@@ -872,7 +929,10 @@ export function TeamWorkspace({
             setDialog(null);
             setUnreadOnly(false);
             setSearch("");
-            await openRoom(created.room_id, created.kind === "room" ? "rooms" : "messages");
+            await openRoom(
+              created.room_id,
+              created.kind === "room" ? "rooms" : "messages",
+            );
           }}
         />
       )}
@@ -888,7 +948,9 @@ export function TeamWorkspace({
           onClose={() => setMembersOpen(false)}
           onChanged={() => {
             void reload(true);
-            useDashboardChatStore.getState().bumpRoomMembersVersion(current.room_id);
+            useDashboardChatStore
+              .getState()
+              .bumpRoomMembersVersion(current.room_id);
           }}
         />
       )}
@@ -897,28 +959,48 @@ export function TeamWorkspace({
           className="liquid-rail mt-auto flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 items-stretch justify-around border-t border-glass-border px-1 pt-1 pb-[env(safe-area-inset-bottom)] md:hidden"
           aria-label={t("团队导航", "Team navigation")}
         >
-          {navigation.map(({ id, label, Icon, count, unread: isUnread, badge, badgeLabel }) => (
-            <Link
-              key={id}
-              href={teamHref(space.id, id)}
-              aria-label={label}
-              aria-current={view === id ? "page" : undefined}
-              className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-xs ${
-                view === id ? "text-neon-cyan" : "text-text-secondary"
-              }`}
-            >
-              <span className="relative">
-                <Icon size={20} />
-                {isUnread && count != null && (
-                  <UnreadBadge count={count} size="sm" className="absolute -right-3 -top-1.5" />
-                )}
-                {badge ? (
-                  <UnreadBadge count={badge} label={badgeLabel} size="sm" className="absolute -right-3 -top-1.5" />
-                ) : null}
-              </span>
-              <span className="max-w-full truncate">{label}</span>
-            </Link>
-          ))}
+          {navigation.map(
+            ({
+              id,
+              label,
+              Icon,
+              count,
+              unread: isUnread,
+              badge,
+              badgeLabel,
+            }) => (
+              <LinkButton
+                variant="row"
+                key={id}
+                href={teamHref(space.id, id)}
+                aria-label={label}
+                aria-current={view === id ? "page" : undefined}
+                className="min-w-0 flex-1"
+              >
+                <span className="flex flex-col items-center gap-3">
+                  <span className="relative">
+                    <Icon size={20} />
+                    {isUnread && count != null && (
+                      <UnreadBadge
+                        count={count}
+                        size="sm"
+                        className="absolute -right-3 -top-1.5"
+                      />
+                    )}
+                    {badge ? (
+                      <UnreadBadge
+                        count={badge}
+                        label={badgeLabel}
+                        size="sm"
+                        className="absolute -right-3 -top-1.5"
+                      />
+                    ) : null}
+                  </span>
+                  <span className="max-w-full truncate">{label}</span>
+                </span>
+              </LinkButton>
+            ),
+          )}
         </nav>
       )}
     </div>

@@ -1,4 +1,11 @@
 "use client";
+import Card from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -89,7 +96,7 @@ function DeviceDetailDrawer() {
   /** Nested view — when set, drawer shows that bot's detail instead of device sections. */
   const [viewingBotId, setViewingBotId] = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  const panelRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const motionRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
   const closingRef = useRef(false);
 
@@ -117,18 +124,10 @@ function DeviceDetailDrawer() {
   }, [device?.id]);
 
   // Close on Escape.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeDrawer();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [closeDrawer, open]);
 
   useEffect(() => {
     if (!open || !device) return;
-    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
       direction: "right",
       contentSelector: "[data-overlay-section]",
     });
@@ -147,9 +146,9 @@ function DeviceDetailDrawer() {
     : "待清理";
   const statusColor =
     device.status === "online" ? "text-neon-green"
-    : device.status === "revoked" ? "text-red-400"
-    : device.status === "removal_pending" ? "text-yellow-400"
-    : "text-text-secondary/60";
+    : device.status === "revoked" ? "text-danger"
+    : device.status === "removal_pending" ? "text-warning"
+    : "text-text-secondary";
   const diagnosticResult = diagnosticResults[device.id];
   const diagnosticDownloadPath = diagnosticResult
     ? `/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`
@@ -195,20 +194,7 @@ function DeviceDetailDrawer() {
   return (
     <>
       {/* Backdrop */}
-      <div
-        ref={overlayRef}
-        className="liquid-scrim fixed inset-0 z-40 backdrop-blur-[2px] transition-opacity"
-        onClick={closeDrawer}
-        aria-hidden
-      />
-      {/* Drawer */}
-      <aside
-        ref={panelRef}
-        className="liquid-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border"
-        role="dialog"
-        aria-modal="true"
-        aria-label="设备详情"
-      >
+      <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeDrawer} ariaLabel="设备详情" placement="right" overlayClassName="z-40" className="max-w-md">
         {/* Drawer header */}
         <div className="liquid-toolbar flex items-center gap-3 border-b border-glass-border px-5 py-4" data-overlay-section>
           <div className="liquid-tool-surface flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-glass-border text-text-secondary">
@@ -220,40 +206,40 @@ function DeviceDetailDrawer() {
                 {device.label || (isCloud ? "BotCord Cloud Device" : device.id)}
               </h2>
               {isCloud ? (
-                <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-xs text-neon-cyan">
+                <Badge tone="accent" >
                   Cloud
-                </span>
+                </Badge>
               ) : null}
               <span
                 className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-xs ${
                   online
                     ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
-                    : "border-glass-border bg-glass-bg text-text-secondary/70"
+                    : "border-glass-border bg-glass-bg text-text-secondary"
                 }`}
             >
               <span className={`h-1 w-1 rounded-full ${online ? "bg-neon-green" : "bg-text-secondary/40"}`} />
               {online ? "Online" : "Offline"}
             </span>
           </div>
-          <p className="mt-1 font-mono text-xs text-text-secondary/55">{device.id}</p>
+          <p className="mt-1 font-mono text-xs text-text-secondary">{device.id}</p>
         </div>
-        <button
+        <IconButton label="刷新设备状态"
           onClick={() => void handleRefresh()}
           disabled={isRefreshing}
           title="刷新"
           aria-label="刷新设备状态"
-          className="liquid-action flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-40"
+          className="w-8 shrink-0"
         >
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-        </button>
-        <button
+        </IconButton>
+        <IconButton label="关闭"
           onClick={closeDrawer}
           title="关闭"
           aria-label="关闭"
-          className="liquid-action flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
+          className="w-8 shrink-0"
         >
           <X className="h-4 w-4" />
-        </button>
+        </IconButton>
       </div>
 
       {/* Scrollable content */}
@@ -267,19 +253,19 @@ function DeviceDetailDrawer() {
         />
       ) : (<>
       {/* Hosted bots */}
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+      <Card as="section" padding="none" className="p-4">
+        <h3 className="mb-3 text-xs font-semibold text-text-secondary">
           托管的 Bots · {hostedBots.length}
         </h3>
         {hostedBots.length === 0 ? (
-          <p className="text-xs text-text-secondary/55">这台设备还没有托管任何 Bot</p>
+          <p className="text-xs text-text-secondary">这台设备还没有托管任何 Bot</p>
         ) : (
           <div className="flex flex-col gap-1.5">
             {hostedBots.map((bot) => (
-              <button
+              <Button variant="secondary"
                 key={bot.agent_id}
                 onClick={() => setViewingBotId(bot.agent_id)}
-                className="liquid-list-row flex items-center gap-2.5 rounded-lg border border-glass-border px-2 py-1.5 text-left transition-colors hover:border-neon-cyan/40 hover:bg-neon-cyan/5"
+
               >
                 <BotAvatar
                   agentId={bot.agent_id}
@@ -289,46 +275,46 @@ function DeviceDetailDrawer() {
                 />
                 <span className="flex-1 truncate text-sm text-text-primary">{bot.display_name}</span>
                 {bot.is_default ? (
-                  <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-xs text-neon-cyan">
+                  <Badge tone="accent" >
                     默认
-                  </span>
+                  </Badge>
                 ) : null}
-                <ChevronRight className="h-3.5 w-3.5 text-text-secondary/45" />
-              </button>
+                <ChevronRight className="h-3.5 w-3.5 text-text-secondary" />
+              </Button>
             ))}
           </div>
         )}
-      </section>
+      </Card>
 
       {/* Device info */}
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+      <Card as="section" padding="none" className="p-4">
+        <h3 className="mb-3 text-xs font-semibold text-text-secondary">
           设备信息
         </h3>
         <div className="space-y-3 text-xs">
           <Row label="连接状态">
             <div className="flex items-center gap-2">
               <span className={`text-xs font-medium ${statusColor}`}>{statusLabel}</span>
-              <button
+              <IconButton label="检查连接"
                 onClick={() => void handleRefresh()}
                 disabled={isRefreshing}
                 title="检查连接"
-                className="liquid-action flex h-6 w-6 items-center justify-center rounded text-text-secondary/55 transition-colors hover:bg-glass-bg hover:text-text-secondary disabled:opacity-40"
+                className="w-6"
               >
                 <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
-              </button>
+              </IconButton>
             </div>
           </Row>
           {device.last_seen_at ? (
             <Row label="最后在线">
-              <span className="font-mono text-xs text-text-secondary/55">
+              <span className="font-mono text-xs text-text-secondary">
                 {new Date(device.last_seen_at).toLocaleString()}
               </span>
             </Row>
           ) : null}
           {device.created_at ? (
             <Row label="添加时间">
-              <span className="font-mono text-xs text-text-secondary/55">
+              <span className="font-mono text-xs text-text-secondary">
                 {new Date(device.created_at).toLocaleDateString()}
               </span>
             </Row>
@@ -339,22 +325,22 @@ function DeviceDetailDrawer() {
             </Row>
           ) : null}
         </div>
-      </section>
+      </Card>
 
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+      <Card as="section" padding="none" className="p-4">
+        <h3 className="mb-3 text-xs font-semibold text-text-secondary">
           {isCloud ? "云设备操作" : "设备操作"}
         </h3>
         <div className="space-y-3">
-          <p className="text-xs leading-relaxed text-text-secondary/65">
+          <p className="text-xs leading-relaxed text-text-secondary">
             {isCloud
               ? "重启会重新启动这台云设备上的 daemon，并重新连接所有托管 Bot。"
               : "重启会让在线 daemon 拉取最新版本，然后重新连接所有托管 Bot。"}
           </p>
-          <button
+          <Button variant="primary"
             onClick={() => void handleRestartDevice()}
             disabled={restartingId === device.id || (!isCloud && !online)}
-            className="liquid-action inline-flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
+
           >
             {restartingId === device.id ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -366,22 +352,22 @@ function DeviceDetailDrawer() {
               : isCloud
                 ? "重启云设备"
                 : "更新并重启 daemon"}
-          </button>
+          </Button>
           {!isCloud && !online ? (
-            <p className="text-xs text-text-secondary/55">
+            <p className="text-xs text-text-secondary">
               设备离线时，请在该设备终端运行下方重新启动命令。
             </p>
           ) : null}
         </div>
-      </section>
+      </Card>
 
       {/* Rename */}
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+      <Card as="section" padding="none" className="p-4">
+        <h3 className="mb-3 text-xs font-semibold text-text-secondary">
           设备名称
         </h3>
         <div className="flex gap-2">
-          <input
+          <Input
             value={editingName}
             onChange={(e) => {
               setEditingName(e.target.value);
@@ -392,32 +378,32 @@ function DeviceDetailDrawer() {
             }}
             maxLength={64}
             placeholder={device.id.slice(0, 18)}
-            className="liquid-input flex-1 rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary placeholder-text-secondary/40 outline-none focus:border-neon-cyan/40"
+            className="flex-1"
           />
-          <button
+          <Button variant="secondary"
             disabled={!editingName.trim() || editingName.trim() === device.label}
             onClick={() => void handleRename()}
-            className="liquid-action flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border text-text-secondary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan disabled:opacity-40"
+            className="w-9 shrink-0"
           >
             {nameSaved ? <Check className="h-4 w-4 text-neon-green" /> : <Check className="h-4 w-4" />}
-          </button>
+          </Button>
         </div>
-      </section>
+      </Card>
 
       {/* Restart command (collapsible) */}
       {!isCloud ? (
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <button
+      <Card as="section" padding="none" className="p-4">
+        <Button variant="ghost"
           onClick={() => setShowInstall((v) => !v)}
-          className="flex w-full items-center justify-between"
+          className="w-full"
         >
-          <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+          <span className="text-xs font-semibold text-text-secondary">
             重新启动命令
           </span>
           <ChevronDown
-            className={`h-4 w-4 text-text-secondary/60 transition-transform ${showInstall ? "rotate-180" : ""}`}
+            className={`h-4 w-4 text-text-secondary transition-transform ${showInstall ? "rotate-180" : ""}`}
           />
-        </button>
+        </Button>
         {showInstall ? (
           <div className="mt-3">
             <DaemonInstallCommand
@@ -433,27 +419,27 @@ function DeviceDetailDrawer() {
             />
           </div>
         ) : null}
-      </section>
+      </Card>
       ) : null}
 
       {/* Diagnostic log (collapsible) */}
       {!isCloud ? (
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <button
+      <Card as="section" padding="none" className="p-4">
+        <Button variant="ghost"
           onClick={() => setShowLogs((v) => !v)}
-          className="flex w-full items-center justify-between"
+          className="w-full"
         >
-          <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary">
             <Terminal className="h-3.5 w-3.5" />
             排障日志
           </span>
           <ChevronDown
-            className={`h-4 w-4 text-text-secondary/60 transition-transform ${showLogs ? "rotate-180" : ""}`}
+            className={`h-4 w-4 text-text-secondary transition-transform ${showLogs ? "rotate-180" : ""}`}
           />
-        </button>
+        </Button>
         {showLogs ? (
           <div className="mt-3 space-y-1.5">
-            <p className="text-xs leading-relaxed text-text-secondary/65">
+            <p className="text-xs leading-relaxed text-text-secondary">
               从真实 daemon API 收集诊断包。完整日志由后端生成并返回下载信息。
             </p>
             {diagnosticResult ? (
@@ -470,16 +456,16 @@ function DeviceDetailDrawer() {
                     </p>
                   ) : null}
                 </div>
-                <button
+                <IconButton label="转发日志到聊天"
                   type="button"
                   onClick={() => setForwardLogs(true)}
                   title="转发到聊天"
                   aria-label="转发日志到聊天"
-                className="liquid-action flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
+                className="w-7 shrink-0"
                 >
                   <Send className="h-3.5 w-3.5" />
-                </button>
-                <button
+                </IconButton>
+                <IconButton label="下载日志文件"
                   type="button"
                   onClick={() => void downloadApiFile(
                     diagnosticDownloadPath,
@@ -487,77 +473,77 @@ function DeviceDetailDrawer() {
                   )}
                   title="下载日志文件"
                   aria-label="下载日志文件"
-                  className="liquid-action flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neon-green/80 transition-colors hover:bg-neon-green/10 hover:text-neon-green"
+                  className="w-7 shrink-0"
                 >
                   <Download className="h-3.5 w-3.5" />
-                </button>
+                </IconButton>
               </div>
             ) : null}
             <div className="flex justify-end">
-              <button
+              <Button variant="ghost"
                 onClick={() => void collectDiagnostics(device.id)}
                 disabled={collectingDiagnosticsId === device.id}
-                className="text-xs text-text-secondary/60 transition-colors hover:text-neon-cyan"
+
               >
                 {collectingDiagnosticsId === device.id ? "收集中..." : "收集诊断包 →"}
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
-      </section>
+      </Card>
       ) : null}
 
       {/* Danger zone */}
       {!isCloud ? (
-      <section className="rounded-2xl border border-red-500/25 bg-red-500/5 p-5">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-red-300/85">
+      <section className="rounded-2xl border border-danger/25 bg-danger-soft p-5">
+        <h3 className="mb-3 text-xs font-semibold text-danger">
           危险操作
         </h3>
         {!confirmRemove ? (
-          <button
+          <Button variant="danger"
             onClick={() => setConfirmRemove(true)}
-            className="flex w-full items-center justify-between rounded-lg text-left text-xs text-red-300/85 transition-colors hover:text-red-200"
+            className="w-full"
           >
             <span className="flex items-center gap-2">
               <Trash2 className="h-3.5 w-3.5" />
               移除此设备
             </span>
-            <span className="text-text-secondary/55">
+            <span className="text-text-secondary">
               {hostedBots.length > 0 ? `${hostedBots.length} 个 Bot 在运行` : ""}
             </span>
-          </button>
+          </Button>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs font-semibold text-red-300">确认移除此设备？</p>
-            <p className="text-xs leading-relaxed text-text-secondary/70">
+            <p className="text-xs font-semibold text-danger">确认移除此设备？</p>
+            <p className="text-xs leading-relaxed text-text-secondary">
               {hostedBots.length > 0
                 ? `${hostedBots.length} 个 Bot 将移到「未关联设备」分组，云端身份和聊天记录都会保留。`
                 : "此设备没有托管的 Bot。移除后云端记录会保留。"}
             </p>
             {online ? (
-              <p className="text-xs leading-relaxed text-text-secondary/55">
+              <p className="text-xs leading-relaxed text-text-secondary">
                 设备在线 — 本地凭据将立即清理。
               </p>
             ) : (
-              <p className="text-xs leading-relaxed text-yellow-400/80">
+              <p className="text-xs leading-relaxed text-warning">
                 设备当前离线。本地凭据需等设备重新启动后才能清理。
               </p>
             )}
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <button
+              <Button variant="secondary"
                 onClick={() => setConfirmRemove(false)}
-                className="liquid-action rounded-lg border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg"
+
               >
                 取消
-              </button>
-              <button
+              </Button>
+              <Button variant="danger"
                 onClick={() => void handleRemoveDevice()}
                 disabled={removingId === device.id}
-                className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-500/25"
+
               >
                 {removingId === device.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                 {removingId === device.id ? "移除中..." : "移除设备"}
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -565,7 +551,7 @@ function DeviceDetailDrawer() {
       ) : null}
       </>)}
       </div>
-      </aside>
+      </DialogSurface>
       {forwardLogs && diagnosticResult ? (
         <ForwardModal
           quoteText=""
@@ -596,13 +582,13 @@ function BotDetailNested({
   if (!bot) {
     return (
       <div className="space-y-3">
-        <button
+        <Button variant="ghost"
           onClick={onBack}
-          className="inline-flex items-center gap-1.5 text-xs text-neon-cyan hover:underline"
+
         >
           <ArrowLeft className="h-3.5 w-3.5" /> 返回设备
-        </button>
-        <p className="text-sm text-text-secondary/70">Bot 不存在</p>
+        </Button>
+        <p className="text-sm text-text-secondary">Bot 不存在</p>
       </div>
     );
   }
@@ -610,34 +596,34 @@ function BotDetailNested({
   const online = bot.ws_online;
   return (
     <div className="space-y-4">
-      <button
+      <Button variant="ghost"
         onClick={onBack}
-        className="inline-flex items-center gap-1.5 rounded-md text-xs text-text-secondary/75 transition-colors hover:text-neon-cyan"
+
       >
         <ArrowLeft className="h-3.5 w-3.5" /> 返回设备详情
-      </button>
+      </Button>
 
       {/* Profile header */}
       <div className="flex flex-col items-center pt-2 text-center">
         <BotAvatar agentId={bot.agent_id} avatarUrl={bot.avatar_url} size={80} alt={bot.display_name} />
         <div className="mt-3 flex items-center gap-2">
           <h2 className="text-lg font-semibold text-text-primary">{bot.display_name}</h2>
-          <span className="rounded-full border border-neon-cyan/40 bg-neon-cyan/10 px-1.5 py-px text-xs font-medium text-neon-cyan">
+          <Badge tone="accent" >
             {bot.is_default ? "My Bot · 默认" : "My Bot"}
-          </span>
+          </Badge>
         </div>
-        <p className={`mt-1 text-xs ${online ? "text-neon-green" : "text-text-secondary/60"}`}>
+        <p className={`mt-1 text-xs ${online ? "text-neon-green" : "text-text-secondary"}`}>
           ● {online ? "Online" : "Offline"}
         </p>
-        <p className="mt-1 font-mono text-xs text-text-secondary/55">{bot.agent_id}</p>
+        <p className="mt-1 font-mono text-xs text-text-secondary">{bot.agent_id}</p>
         {bot.bio ? (
-          <p className="mt-3 max-w-xs text-xs text-text-secondary/80">{bot.bio}</p>
+          <p className="mt-3 max-w-xs text-xs text-text-secondary">{bot.bio}</p>
         ) : null}
       </div>
 
-      <section className="liquid-card rounded-2xl border border-glass-border p-4 text-xs text-text-secondary/70">
+      <Card as="section" padding="none" className="p-4">
         此处只展示真实设备绑定关系。Bot 对话、策略和自主任务请在 Bot 详情中管理。
-      </section>
+      </Card>
     </div>
   );
 }
@@ -645,7 +631,7 @@ function BotDetailNested({
 function Stat({ label, value, delta }: { label: string; value: number | string; delta?: string }) {
   return (
     <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
-      <div className="text-xs uppercase tracking-wider text-text-secondary/55">{label}</div>
+      <div className="text-xs text-text-secondary">{label}</div>
       <div className="flex items-baseline justify-center gap-1">
         <span className="text-sm font-semibold text-text-primary">{value}</span>
         {delta ? <span className="text-xs font-medium text-neon-green">{delta}</span> : null}
@@ -657,7 +643,7 @@ function Stat({ label, value, delta }: { label: string; value: number | string; 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-text-secondary/60">{label}</span>
+      <span className="text-text-secondary">{label}</span>
       {children}
     </div>
   );

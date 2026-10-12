@@ -7,9 +7,14 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Button from "@/components/ui/Button";
+import IconButton from "@/components/ui/IconButton";
 import { useState } from "react";
 import type { UserProfile } from "@/lib/types";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import Menu, { MenuTrigger, MenuContent, MenuItem, MenuSeparator } from "@/components/ui/Menu";
+import Avatar from "@/components/ui/Avatar";
+import UnreadBadge from "@/components/ui/UnreadBadge";
+import Badge from "@/components/ui/Badge";
 import { Building2, Compass, Languages, LogIn, LogOut, MoreHorizontal, Moon, Pencil, Settings, Sun, Wallet } from "lucide-react";
 import Link from "next/link";
 import HumanProfileEditModal from "./HumanProfileEditModal";
@@ -52,106 +57,80 @@ export default function AccountMenu({
 
   return (
     <>
-      <DropdownMenu.Root open={open} onOpenChange={setOpen}>
-        <DropdownMenu.Trigger asChild>
-          <button
-            className="liquid-menu relative flex h-10 w-10 max-md:h-12 max-md:w-12 max-md:flex-col max-md:border-0 max-md:shadow-none items-center justify-center rounded-2xl border border-glass-border/80 bg-deep-black-light text-sm font-bold text-neon-cyan shadow-[0_10px_30px_rgba(0,0,0,0.28)] transition-all hover:-translate-y-0.5 hover:border-neon-cyan/35 focus:outline-none focus:ring-2 focus:ring-neon-cyan/50"
+      <Menu open={open} onOpenChange={setOpen}>
+        <MenuTrigger asChild>
+          <Button variant="secondary" size="sm"
+            className="relative flex w-10 max-md:w-12 max-md:flex-col items-center justify-center"
             title={t.account}
             aria-label={locale === "zh" ? "账户与更多" : "Account and more"}
           >
             <span className="absolute inset-0 overflow-hidden rounded-[inherit] max-md:hidden">
-              {user?.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={user.avatar_url}
-                  alt={user.display_name || user.email || t.user}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.22),rgba(34,211,238,0.04)_58%,transparent_100%)]">
-                  {getAvatarSeed(user)}
-                </span>
-              )}
+              <Avatar kind="human" id={human?.human_id ?? user?.email ?? "account"} name={user?.display_name || user?.email || t.user} src={user?.avatar_url} size="md" />
             </span>
             <MoreHorizontal className="hidden h-5 w-5 max-md:block" />
             <span className="hidden mt-0.5 text-xs font-medium max-md:block">{locale === "zh" ? "更多" : "More"}</span>
             <span className="max-md:hidden absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-deep-black-light bg-neon-cyan" />
-            {pendingRequests > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[11px] font-bold text-[var(--color-on-accent)]">
-                {pendingRequests > 9 ? "9+" : pendingRequests}
-              </span>
-            )}
-          </button>
-        </DropdownMenu.Trigger>
+            {pendingRequests > 0 && <UnreadBadge count={pendingRequests} className="absolute -right-1 -top-1" />}
+          </Button>
+        </MenuTrigger>
 
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content
+
+          <MenuContent
             sideOffset={12}
             side="top"
             align="start"
-            className="liquid-menu z-[70] w-[300px] max-w-[calc(100vw-1rem)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto rounded-3xl border border-glass-border/80 bg-deep-black-light p-1.5 shadow-[0_28px_90px_rgba(0,0,0,0.55)] backdrop-blur-xl animate-in fade-in-80 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-100 data-[state=closed]:zoom-out-95"
+            className="w-[300px]"
           >
             <div className="md:hidden border-b border-glass-border mb-1 pb-1">
-              <DropdownMenu.Item asChild className="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm outline-none focus:bg-glass-bg">
+              <MenuItem asChild >
                 <Link href="/chats/explore"><Compass size={18} />{locale === "zh" ? "发现" : "Discover"}</Link>
-              </DropdownMenu.Item>
-              <DropdownMenu.Item asChild className="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm outline-none focus:bg-glass-bg">
+              </MenuItem>
+              <MenuItem asChild >
                 <Link href="/chats/wallet"><Wallet size={18} />{locale === "zh" ? "钱包" : "Wallet"}</Link>
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onSelect={(event) => { event.preventDefault(); setTheme(theme === "light" ? "dark" : "light"); }} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 text-sm outline-none focus:bg-glass-bg">
+              </MenuItem>
+              <MenuItem onSelect={(event) => { event.preventDefault(); setTheme(theme === "light" ? "dark" : "light"); }} >
                 {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
                 {locale === "zh" ? (theme === "light" ? "切换到深色模式" : "切换到浅色模式") : (theme === "light" ? "Switch to dark mode" : "Switch to light mode")}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onSelect={(event) => { event.preventDefault(); setLanguage(locale === "zh" ? "en" : "zh"); }} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 text-sm outline-none focus:bg-glass-bg">
+              </MenuItem>
+              <MenuItem onSelect={(event) => { event.preventDefault(); setLanguage(locale === "zh" ? "en" : "zh"); }} >
                 <Languages size={18} />{locale === "zh" ? "语言：中文 / English" : "Language: English / 中文"}
-              </DropdownMenu.Item>
+              </MenuItem>
             </div>
             {onLogin ? (
-              <DropdownMenu.Item onSelect={onLogin} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 text-sm outline-none focus:bg-glass-bg"><LogIn size={18} />{tc.login}</DropdownMenu.Item>
+              <MenuItem onSelect={onLogin} ><LogIn size={18} />{tc.login}</MenuItem>
             ) : <>
             <div className="relative mb-1 overflow-hidden rounded-2xl border border-glass-border bg-glass-bg px-3 py-3.5">
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/14 to-transparent" />
               <div className="flex items-center gap-3">
-                {user?.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={user.avatar_url}
-                    alt={user.display_name || user.email || t.user}
-                    className="h-12 w-12 shrink-0 rounded-2xl border border-white/10 object-cover shadow-[0_12px_30px_rgba(0,0,0,0.28)]"
-                  />
-                ) : (
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-glass-border bg-neon-cyan/10 text-base font-semibold text-neon-cyan shadow-[0_12px_30px_rgba(0,0,0,0.28)]">
-                    {getAvatarSeed(user)}
-                  </div>
-                )}
+                <Avatar kind="human" id={human?.human_id ?? user?.email ?? "account"} name={user?.display_name || user?.email || t.user} src={user?.avatar_url} size="lg" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <p className="min-w-0 flex-1 truncate text-[18px] font-semibold tracking-tight text-text-primary">
                       {user?.display_name || user?.email || t.user}
                     </p>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <span className="inline-flex items-center rounded-full bg-neon-cyan/10 px-2 py-0.5 text-xs font-medium text-neon-cyan/75">
+                      <Badge tone="accent" >
                         Human
-                      </span>
+                      </Badge>
                       {human && (
-                        <button
+                        <IconButton size="sm" label={locale === "zh" ? "编辑个人资料" : "Edit profile"}
                           type="button"
                           onClick={() => { setOpen(false); setEditProfileOpen(true); }}
                           title={locale === "zh" ? "编辑个人资料" : "Edit profile"}
-                          className="flex h-5 w-5 items-center justify-center rounded-md text-text-secondary/50 transition-colors hover:bg-white/8 hover:text-neon-cyan"
+                          className="flex items-center justify-center"
                         >
                           <Pencil className="h-3 w-3" />
-                        </button>
+                        </IconButton>
                       )}
                     </div>
                   </div>
-                  <p className="mt-1 text-xs text-text-secondary/78">
+                  <p className="mt-1 text-xs text-text-secondary">
                     {locale === "zh" ? "个人账户" : "Personal account"}
                   </p>
                 </div>
               </div>
               {human ? (
-                <div className="mt-3 inline-flex max-w-full items-center rounded-full border border-glass-border bg-glass-bg px-2.5 py-1 text-xs text-text-secondary/68">
+                <div className="mt-3 inline-flex max-w-full items-center rounded-full border border-glass-border bg-glass-bg px-2.5 py-1 text-xs text-text-secondary">
                   <span className="truncate" title={human.human_id}>
                     {human.human_id}
                   </span>
@@ -160,36 +139,37 @@ export default function AccountMenu({
             </div>
 
             {/* Identity switcher removed: user is always Human. Manage bots via /chats/bots. */}
-            <DropdownMenu.Item asChild className="flex cursor-pointer items-center rounded-md px-2 py-2 text-sm text-text-secondary outline-none focus:bg-neon-cyan/10 focus:text-neon-cyan">
+            <MenuItem asChild >
               <Link href="/settings/spaces"><Building2 className="mr-2 h-4 w-4" />{locale === "zh" ? "空间与组织" : "Spaces & organizations"}</Link>
-            </DropdownMenu.Item>
+            </MenuItem>
 
             {user?.beta_admin && (
               <>
-                <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
-                <DropdownMenu.Item
+                <MenuSeparator  />
+                <MenuItem
                   onClick={() => { window.location.href = "/admin"; }}
-                  className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-neon-cyan focus:bg-neon-cyan/10 focus:text-neon-cyan"
+
                 >
                   <Settings className="mr-2 h-4 w-4" />
                   <span>{locale === "zh" ? "管理后台" : "Admin"}</span>
-                </DropdownMenu.Item>
+                </MenuItem>
               </>
             )}
 
-            <DropdownMenu.Separator className="my-1 h-px bg-glass-border" />
+            <MenuSeparator  />
 
-            <DropdownMenu.Item
+            <MenuItem
+              danger
               onClick={onLogout}
-              className="relative flex cursor-pointer select-none items-center rounded-md px-2 py-1.5 text-sm outline-none transition-colors text-text-secondary focus:bg-red-500/10 focus:text-red-400"
+
             >
               <LogOut className="mr-2 h-4 w-4" />
               <span>{tc.logout}</span>
-            </DropdownMenu.Item>
+            </MenuItem>
             </>}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+          </MenuContent>
+
+      </Menu>
 
       {editProfileOpen && (
         <HumanProfileEditModal onClose={() => setEditProfileOpen(false)} />

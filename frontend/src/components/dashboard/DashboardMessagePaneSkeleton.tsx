@@ -7,10 +7,11 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Skeleton from "@/components/ui/Skeleton";
 import type { ReactNode } from "react";
 
 function SkeletonBlock({ className }: { className: string }) {
-  return <div className={`dashboard-skeleton-block rounded ${className}`} />;
+  return <Skeleton className={` ${className} `} />;
 }
 
 type MessageFeedSkeletonProps = {
@@ -60,7 +61,7 @@ export function MessageFeedSkeleton({
               {!isOwn ? <SkeletonBlock className="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-glass-border/35" /> : null}
               <div
                 className={`liquid-message ${bodyWidth} ${bubbleMaxWidthClassName} min-w-[11rem] ${bubbleRoundedClassName} border border-glass-border px-3 py-2 ${
-                  isOwn ? "bg-neon-cyan/5" : "bg-glass-bg/35"
+                  isOwn ? "bg-accent-soft" : "bg-glass-bg/35"
                 }`}
               >
                 <div className={`flex items-center gap-1.5 ${isOwn ? "justify-end" : ""}`}>
@@ -113,7 +114,7 @@ export function MessageComposerSkeleton({ label = "Loading message composer" }: 
       <div aria-hidden="true" className="liquid-composer flex h-12 flex-1 items-center rounded-2xl border border-glass-border px-3">
         <SkeletonBlock className="h-3 w-2/5 bg-glass-border/40" />
       </div>
-      <SkeletonBlock className="h-9 w-9 shrink-0 rounded-xl bg-neon-cyan/15" />
+      <SkeletonBlock className="h-9 w-9 shrink-0 rounded-xl bg-accent-soft" />
     </div>
   );
 }
@@ -140,7 +141,7 @@ export default function DashboardMessagePaneSkeleton({
       <div className={`liquid-toolbar border-b border-glass-border ${headerPaddingClassName}`}>
         <div className="flex items-center gap-2">
           {headerIcon ? (
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-neon-cyan/20 bg-neon-cyan/5 text-neon-cyan/70">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-neon-cyan/20 bg-accent-soft text-accent-text">
               {headerIcon}
             </div>
           ) : null}

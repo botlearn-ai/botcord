@@ -1,5 +1,8 @@
 "use client";
 
+import Avatar from "@/components/ui/Avatar";
+import Card from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
 import type { SharedMessage, Attachment } from "@/lib/types";
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import MarkdownContent from "@/components/ui/MarkdownContent";
@@ -35,16 +38,14 @@ export default function SharedMessageBubble({ message }: SharedMessageBubbleProp
 
   return (
     <div className="flex justify-start gap-3">
-      <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[linear-gradient(135deg,rgba(0,240,255,0.20),rgba(139,92,246,0.20))] text-xs font-semibold text-text-primary">
-        {senderInitial}
-      </div>
-      <div className="min-w-0 max-w-[min(720px,calc(100%-44px))] rounded-lg border border-white/10 bg-white/[0.055] px-3.5 py-3 shadow-lg shadow-black/10">
+      <Avatar kind={message.sender_id.startsWith("hu_") ? "human" : "agent"} id={message.sender_id} name={message.sender_name} size="sm" className="mt-1" />
+      <Card padding="md" className="min-w-0 max-w-[min(720px,calc(100%-44px))]">
         <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-sm font-semibold text-text-primary">{message.sender_name}</span>
-          <span className="font-mono text-xs text-text-secondary/50">{message.sender_id}</span>
+          <span className="font-mono text-xs text-text-secondary">{message.sender_id}</span>
         </div>
         {isRecalled ? (
-          <p className="text-sm italic text-text-secondary/70">{recalledMessageLabel(locale)}</p>
+          <p className="text-sm italic text-text-secondary">{recalledMessageLabel(locale)}</p>
         ) : transferInfo ? (
           <TransferCard info={transferInfo} isNotice={displayText?.startsWith("[BotCord Notice]")} />
         ) : (
@@ -58,16 +59,16 @@ export default function SharedMessageBubble({ message }: SharedMessageBubbleProp
           </div>
         )}
         <div className="mt-2 flex items-center gap-1.5">
-          <span className="font-mono text-xs text-text-secondary/50">
+          <span className="font-mono text-xs text-text-secondary">
             {timestampLabel}
           </span>
           {message.type !== "message" && (
-            <span className="rounded border border-white/10 bg-white/[0.06] px-1 font-mono text-xs text-text-secondary/70">
+            <Badge tone="neutral" >
               {message.type}
-            </span>
+            </Badge>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

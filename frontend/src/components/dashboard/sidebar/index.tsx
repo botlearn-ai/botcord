@@ -7,6 +7,9 @@
  * [PROTOCOL]: update header on changes
  */
 
+import DismissLayer from "@/components/ui/DismissLayer";
+import Button from "@/components/ui/Button";
+import IconButton from "@/components/ui/IconButton";
 import BrandMark from "@/components/ui/BrandMark";
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -421,7 +424,7 @@ function Sidebar({
               badge = (
                 <span
                   data-primary-nav-badge
-                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[11px] font-bold leading-none text-[var(--color-on-accent)] "
+                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-xs font-semibold leading-none text-[var(--color-on-accent)] "
                 >
                   {formatBadgeCount(unreadMessageCount)}
                 </span>
@@ -431,7 +434,7 @@ function Sidebar({
               badge = (
                 <span
                   data-primary-nav-badge
-                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[11px] font-bold text-[var(--color-on-accent)] "
+                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-xs font-semibold text-[var(--color-on-accent)] "
                 >
                   {formatBadgeCount(pendingContactRequests)}
                 </span>
@@ -458,26 +461,26 @@ function Sidebar({
         <div className="flex flex-col items-center gap-2 border-t border-glass-border pt-3 max-md:ml-1 max-md:shrink-0 max-md:gap-1 max-md:border-l max-md:border-t-0 max-md:pl-1 max-md:pt-0">
           <div className="flex flex-col items-center gap-2 max-md:hidden">
           <ThemeToggle />
-          <button
+          <Button variant="ghost" size="sm"
             onClick={() => setLanguage(locale === "zh" ? "en" : "zh")}
             aria-label="Toggle language"
-            className="flex h-10 w-12 items-center justify-center gap-0.5 rounded-xl text-xs font-medium leading-none transition-all duration-200 hover:bg-glass-bg max-md:w-10"
+            className="flex w-12 items-center justify-center gap-0.5 max-md:w-10"
           >
-            <span className={locale === "en" ? "text-text-primary" : "text-text-secondary/50"}>EN</span>
-            <span className="text-text-secondary/30">/</span>
-            <span className={locale === "zh" ? "text-text-primary" : "text-text-secondary/50"}>中</span>
-          </button>
+            <span className={locale === "en" ? "text-text-primary" : "text-text-secondary"}>EN</span>
+            <span className="text-text-secondary">/</span>
+            <span className={locale === "zh" ? "text-text-primary" : "text-text-secondary"}>中</span>
+          </Button>
 
           </div>
           {isGuest ? (
-            <button
+            <Button variant="ghost" size="sm"
               onClick={showLoginModal}
-              className="flex h-10 w-12 flex-col items-center justify-center rounded-xl text-neon-cyan transition-all duration-200 hover:bg-neon-cyan/10 max-md:hidden"
+              className="flex w-12 flex-col items-center justify-center max-md:hidden"
               title={tc.login}
             >
               <LogIn className="h-5 w-5" strokeWidth={1.75} />
               <span className="mt-0.5 text-xs font-medium leading-none">{tc.login}</span>
-            </button>
+            </Button>
           ) : null}
           <div className={isGuest ? "md:hidden" : ""}>
               <AccountMenu
@@ -526,11 +529,11 @@ function Sidebar({
       )}
 
       {mobileHideSecondary && mobileSecondaryRendered && (
-        <button
+        <DismissLayer
           ref={mobileSecondaryOverlayRef}
-          type="button"
-          aria-label="Close sidebar"
-          className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] top-0 z-30 hidden bg-black/45 backdrop-blur-sm max-md:block"
+
+          label="Close sidebar"
+          className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] top-0 z-30 hidden   max-md:block"
           onClick={onMobileSecondaryClose}
         />
       )}
@@ -556,7 +559,7 @@ function Sidebar({
         {/* Resize handle */}
         <div
           onMouseDown={handleResizeStart}
-          className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-neon-cyan/30 active:bg-neon-cyan/50 max-md:hidden"
+          className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-accent-soft active:bg-accent-soft max-md:hidden"
         />
         {/* Outer panel header — hidden on messages tab; MessagesPanel owns its own column header (Feishu-style). */}
         {visibleSidebarTab !== "messages" && (
@@ -564,30 +567,30 @@ function Sidebar({
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-text-primary">{tabTitles[visibleSidebarTab]}</h2>
             {isGuest && (
-              <p className="truncate text-xs text-text-secondary/60">{t.browseAsGuest}</p>
+              <p className="truncate text-xs text-text-secondary">{t.browseAsGuest}</p>
             )}
           </div>
           {mobileHideSecondary && (
-            <button
+            <IconButton size="sm" label="Close sidebar"
               type="button"
               onClick={onMobileSecondaryClose}
-              className="mr-1 hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+              className="mr-1 hidden shrink-0 items-center justify-center max-md:inline-flex"
               aria-label="Close sidebar"
               title="Close sidebar"
             >
               <X className="h-4 w-4" />
-            </button>
+            </IconButton>
           )}
           {visibleSidebarTab === "contacts" && !isGuest && (
             <div className="flex items-center gap-1">
-              <button
+              <IconButton size="sm" label="邀请新好友"
                 onClick={() => setShowAddFriend(true)}
                 title="邀请新好友"
                 aria-label="邀请新好友"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
+                className="flex items-center justify-center"
               >
                 <UserPlus className="h-4 w-4" />
-              </button>
+              </IconButton>
             </div>
           )}
         </div>

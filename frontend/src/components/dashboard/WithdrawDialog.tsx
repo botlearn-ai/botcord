@@ -1,4 +1,13 @@
 "use client";
+import Field from "@/components/ui/Field";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import Checkbox from "@/components/ui/Checkbox";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -9,7 +18,7 @@ import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupA
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useShallow } from "zustand/react/shallow";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import WalletAccountSelector from "./WalletAccountSelector";
 import DashboardSelect from "./DashboardSelect";
 
@@ -71,7 +80,7 @@ function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: Withdr
   const [closing, setClosing] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const errorRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
   const errorAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
@@ -145,17 +154,9 @@ function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: Withdr
   }, [closing, onClose, submitting]);
 
   useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; } });
     return () => cleanupAnime(animationRef.current);
   }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
 
   useEffect(() => {
     if (!error || !errorRef.current) return;
@@ -165,24 +166,13 @@ function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: Withdr
   }, [error]);
 
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center ${closing ? "pointer-events-none" : ""}`}
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        className="liquid-dialog relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<>{t.withdraw}</>} busy={submitting} overlayClassName="z-50" className="max-w-md">
+        <IconButton label="Close"
           onClick={closeWithMotion}
-          className="liquid-action absolute right-4 top-4 z-10 rounded-lg p-1 text-text-secondary hover:text-text-primary"
+          className="absolute right-4 z-10"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </svg>
-        </button>
+          <X aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+        </IconButton>
 
         <div className="shrink-0 px-6 pt-6 pb-3">
           <h3 className="text-lg font-semibold text-text-primary">{t.withdraw}</h3>
@@ -193,20 +183,20 @@ function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: Withdr
         <WalletAccountSelector value={selectedViewer} onChange={setSelectedViewer} />
 
         <form id="withdrawForm" onSubmit={handleSubmit} className="space-y-4">
-          <div className="liquid-card rounded-lg p-3">
+          <Card padding="none" className="p-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-text-secondary">{t.availableBalance}</span>
               <span className="font-mono text-sm font-semibold text-neon-green">
                 {formatCoinAmount(effectiveAvailable)}
               </span>
             </div>
-          </div>
+          </Card>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-text-secondary">
               {t.amountCoin}
             </label>
-            <input
+            <Input
               type="number"
               step="0.01"
               min="0.01"
@@ -214,15 +204,15 @@ function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: Withdr
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
-              className="liquid-input w-full rounded-lg border p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50"
+              className="w-full"
             />
-            <button
+            <Button variant="ghost"
               type="button"
               onClick={() => setAmount(String(availableMajor))}
-              className="mt-1 text-xs text-neon-cyan hover:underline"
+              className="mt-1"
             >
               {t.withdrawAll}
-            </button>
+            </Button>
           </div>
 
           <div>
@@ -235,7 +225,7 @@ function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: Withdr
                 if (value) setDestinationType(value as "bank" | "usdt_trc20" | "paypal");
               }}
               placeholder={t.destinationType}
-              buttonClassName="liquid-input min-h-11 p-3 focus:border-neon-cyan/50 focus:ring-neon-cyan/40"
+
               options={[
                 { value: "bank", label: t.destinationTypeBank },
                 { value: "usdt_trc20", label: t.destinationTypeUsdt },
@@ -315,36 +305,27 @@ function WithdrawDialog({ viewer, onClose, onSuccess, availableBalance }: Withdr
             placeholder="Telegram / email / memo"
           />
 
-          <div className="liquid-card rounded-lg p-3">
+          <Card padding="none" className="p-3">
             <p className="text-xs text-text-secondary">{t.reviewNotice}</p>
-            <label className="mt-3 flex items-start gap-2 text-xs text-text-primary">
-              <input
-                type="checkbox"
-                checked={confirmed}
-                onChange={(e) => setConfirmed(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span>{t.confirmReview}</span>
-            </label>
-          </div>
+            <Checkbox checked={confirmed} onCheckedChange={(checked) => setConfirmed(checked)} label={<><span>{t.confirmReview}</span></>} />
+          </Card>
 
-          {error && <p ref={errorRef} className="text-sm text-red-400">{error}</p>}
+          {error && <Alert tone="danger" ref={errorRef} >{error}</Alert>}
         </form>
         </div>
 
         <div className="liquid-toolbar shrink-0 border-t px-6 py-4">
-          <button
+          <Button variant="primary"
             form="withdrawForm"
             type="submit"
             disabled={submitting}
-            className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 py-2.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-40"
+            className="w-full"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {submitting ? t.submitting : t.submitWithdraw}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }
 
@@ -362,17 +343,17 @@ function FormField({
   disabled?: boolean;
 }) {
   return (
-    <div>
-      <label className="mb-1 block text-xs font-medium text-text-secondary">{label}</label>
-      <input
+    <Field label={<>{label}</>}>
+
+      <Input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="liquid-input w-full rounded-lg border p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none focus:border-neon-cyan/50 disabled:opacity-60"
+        className="w-full"
       />
-    </div>
+    </Field>
   );
 }
 

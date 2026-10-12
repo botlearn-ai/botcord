@@ -28,12 +28,13 @@ const SIZE_MAP = {
   md: "h-2.5 w-2.5",
 } as const;
 
+// Presence is independent of runtime progress: keep these business states intact.
 const COLOR_MAP: Record<AgentEffectiveStatus, string> = {
-  offline: "bg-white/25",
-  online: "bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.8)]",
-  busy: "bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.7)]",
-  away: "bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.7)]",
-  working: "bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.8)] animate-pulse",
+  offline: "bg-text-tertiary",
+  online: "bg-accent",
+  busy: "bg-warning",
+  away: "bg-text-secondary",
+  working: "bg-accent",
 };
 
 const LABEL_MAP: Record<AgentEffectiveStatus, string> = {
@@ -66,7 +67,7 @@ export function PresenceDot({
       aria-label={status}
       title={title ?? LABEL_MAP[status]}
       className={clsx(
-        "inline-block rounded-full ring-1 ring-deep-black",
+        "inline-block rounded-full ring-1 ring-surface",
         SIZE_MAP[size],
         COLOR_MAP[status],
         className,

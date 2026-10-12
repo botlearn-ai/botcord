@@ -8,6 +8,10 @@
  * [PROTOCOL]: update header on changes
  */
 
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+import { Input } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, ShieldCheck } from "lucide-react";
@@ -170,7 +174,7 @@ export default function ActivatePage() {
     <div className="min-h-screen bg-deep-black text-text-primary">
       <div className="mx-auto max-w-2xl px-6 py-16">
         <header className="mb-10">
-          <h1 className="text-2xl font-bold text-text-primary sm:text-3xl">
+          <h1 className="text-2xl font-semibold text-text-primary sm:text-3xl">
             Activate a daemon
           </h1>
           <p className="mt-2 text-sm text-text-secondary">
@@ -179,7 +183,7 @@ export default function ActivatePage() {
           </p>
         </header>
 
-        <section className="rounded-2xl border border-glass-border bg-glass-bg p-6 backdrop-blur-xl">
+        <Card as="section" padding="lg" >
           <div className="mb-4 flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-neon-cyan" />
             <h2 className="text-base font-semibold text-text-primary">
@@ -196,7 +200,7 @@ export default function ActivatePage() {
               <label htmlFor="user-code" className="mb-1 block text-xs text-text-secondary">
                 Device code
               </label>
-              <input
+              <Input
                 id="user-code"
                 type="text"
                 inputMode="text"
@@ -205,57 +209,54 @@ export default function ActivatePage() {
                 placeholder="ABCD-EFGH"
                 value={userCode}
                 onChange={(e) => onUserCodeChange(e.target.value)}
-                className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 font-mono text-base tracking-widest text-text-primary placeholder-text-tertiary outline-none focus:border-neon-cyan/50"
                 maxLength={9}
               />
             </div>
 
             <div>
               <label htmlFor="device-label" className="mb-1 block text-xs text-text-secondary">
-                Device name <span className="text-text-tertiary">(optional)</span>
+                Device name <span className="text-text-secondary">(optional)</span>
               </label>
-              <input
+              <Input
                 id="device-label"
                 type="text"
                 placeholder="e.g. MacBook Pro"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                className="w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2 text-sm text-text-primary placeholder-text-tertiary outline-none focus:border-neon-cyan/50"
                 maxLength={64}
               />
             </div>
 
             {prefilledFromUrl && !approveOk && (
-              <p className="rounded-xl border border-neon-cyan/30 bg-neon-cyan/10 px-4 py-2 text-xs text-neon-cyan">
+              <Alert>
                 Code pre-filled from URL — review and click Authorize.
-              </p>
+              </Alert>
             )}
 
             {approveError && (
-              <p className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300">
+              <Alert tone="danger" >
                 {approveError}
-              </p>
+              </Alert>
             )}
             {approveOk && (
-              <p className="rounded-xl border border-neon-green/30 bg-neon-green/10 px-4 py-2 text-sm text-neon-green">
+              <Alert tone="success" >
                 Done — your daemon should be online in a few seconds.
-              </p>
+              </Alert>
             )}
 
-            <button
+            <Button variant="primary"
               type="submit"
               disabled={approving || userCode.replace(/-/g, "").length < 4}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-neon-cyan/10 px-4 py-2.5 text-sm font-semibold text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
+              className="w-full" >
               {approving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <ShieldCheck className="h-4 w-4" />
               )}
               Authorize this device
-            </button>
+            </Button>
           </form>
-        </section>
+        </Card>
       </div>
     </div>
   );

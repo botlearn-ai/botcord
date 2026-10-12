@@ -5,6 +5,15 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 "use client";
+import Badge from "@/components/ui/Badge";
+import Avatar from "@/components/ui/Avatar";
+import Skeleton from "@/components/ui/Skeleton";
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -57,20 +66,12 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
   }, [onClose]);
 
   useEffect(() => {
-    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
       direction: "center",
       contentSelector: "[data-overlay-section]",
     });
     return () => cleanupAnime(motionRef.current);
   }, []);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWithAnimation();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [closeWithAnimation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,34 +161,22 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
   };
 
   return (
-    <div
-      ref={overlayRef}
-      className="liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 py-6 backdrop-blur-sm"
-      onClick={closeWithAnimation}
-    >
-      <div
-        ref={panelRef}
-        className="liquid-dialog relative w-full max-w-2xl overflow-hidden rounded-3xl border"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="share-modal-title"
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithAnimation} title={<>{roomName}</>} busy={closingRef.current} overlayClassName="z-50" className="max-w-2xl overflow-hidden">
         <div className="relative flex max-h-[90vh] flex-col overflow-hidden">
-          <button
+          <IconButton label={common[locale].close}
             onClick={closeWithAnimation}
-            className="liquid-action absolute right-3 top-3 z-10 rounded-full p-2 text-text-secondary transition-colors hover:text-text-primary"
+            className="absolute right-3 z-10"
             aria-label={common[locale].close}
             title={common[locale].close}
           >
             <X className="h-4 w-4" />
-          </button>
+          </IconButton>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
             {error ? (
-              <div className="mb-5 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              <Alert tone="danger" className="mb-5">
                 {error}
-              </div>
+              </Alert>
             ) : null}
 
             <section className="w-full" data-overlay-section>
@@ -195,55 +184,41 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
                 className="relative h-56 overflow-hidden rounded-3xl border border-glass-border"
                 style={{ backgroundImage: roomVisualTheme.patternUrl, backgroundRepeat: "repeat" }}
               >
-                <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(7,10,22,0.18),rgba(7,10,22,0.82))]" />
+                <div className="absolute inset-0 bg-surface/90" />
                 <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-5">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.28em] text-neon-cyan/80">{t.shareRoom}</p>
+                    <p className="text-xs font-semibold text-neon-cyan/80">{t.shareRoom}</p>
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
-                    <span className="liquid-card rounded-full px-3 py-1 text-xs font-medium text-text-primary">{visibilityLabel}</span>
-                    <span className="liquid-card rounded-full px-3 py-1 text-xs font-medium text-text-primary">{accessLabel}</span>
+                    <Badge >{visibilityLabel}</Badge>
+                    <Badge >{accessLabel}</Badge>
                   </div>
                 </div>
                 <div className="absolute inset-x-0 bottom-0 p-5">
                   <div className="space-y-4">
                     <div className="flex items-center gap-4">
-                      <div
-                        className="liquid-card flex h-16 w-16 items-center justify-center rounded-2xl text-lg font-bold text-text-primary"
-                        style={{ background: roomVisualTheme.accentDim, boxShadow: `0 0 0 1px ${roomVisualTheme.accent}55` }}
-                      >
-                        {roomInitials}
-                      </div>
+                      <Avatar kind="room" id={roomId} name={roomName} size="xl" />
                       <div className="min-w-0">
-                        <h2 id="share-modal-title" className="truncate text-[34px] font-semibold leading-none text-text-primary">{roomName}</h2>
+                        <h2 id="share-modal-title" className="truncate text-4xl font-semibold leading-none text-text-primary">{roomName}</h2>
                         <p className="mt-3 text-sm leading-6 text-text-secondary">{t.createShareAssets}</p>
                       </div>
                     </div>
                     {membersLoading ? (
                       <div className="flex items-center gap-2 overflow-hidden" aria-hidden="true">
                         {Array.from({ length: memberSkeletonCount }, (_, index) => (
-                          <div
-                            key={`member-skeleton-${index}`}
-                            className="liquid-card h-10 w-10 shrink-0 animate-pulse rounded-full"
-                          />
+                          <Skeleton shape="circle" height={40} width={40} key={`member-skeleton-${index}`} />
                         ))}
-                        <div className="liquid-card h-10 w-16 shrink-0 animate-pulse rounded-full" />
+                        <Skeleton shape="circle" height={40} width={64} />
                       </div>
                     ) : visibleMembers.length > 0 ? (
                       <div className="flex items-center gap-2 overflow-hidden">
                         {visibleMembers.map((member, index) => (
-                          <div
-                            key={member.agent_id}
-                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${memberAvatarTones[index % memberAvatarTones.length]} text-xs font-semibold text-text-primary`}
-                            title={member.display_name}
-                          >
-                            {initialsFromName(member.display_name || member.agent_id)}
-                          </div>
+                          <Avatar key={member.agent_id} kind="agent" id={member.agent_id} name={member.display_name || member.agent_id} size="md" />
                         ))}
                         {remainingMembers > 0 ? (
-                          <div className="liquid-card flex h-10 shrink-0 items-center justify-center rounded-full px-3 text-xs font-semibold text-text-primary">
+                          <Card padding="none" className="flex h-10 shrink-0 items-center justify-center px-3">
                             +{remainingMembers}
-                          </div>
+                          </Card>
                         ) : null}
                       </div>
                     ) : null}
@@ -254,9 +229,9 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
               <div className="space-y-4 px-1 pt-5" data-overlay-section>
                 {!canInvite ? (
                   <div className="space-y-3">
-                    <button
+                    <Button variant="row"
                       onClick={() => void handleCopyText(typeof window !== "undefined" ? window.location.href : "", "plain-link")}
-                      className="liquid-list-row flex w-full items-start justify-between gap-4 rounded-2xl px-4 py-4 text-left transition-colors"
+                      className="w-full"
                     >
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5 rounded-xl bg-neon-cyan/12 p-2 text-neon-cyan">
@@ -267,28 +242,28 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
                           <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyCurrentUrlDescription}</p>
                         </div>
                       </div>
-                      <span className="liquid-card shrink-0 rounded-full px-3 py-1 text-xs font-medium text-text-primary/90">
+                      <Badge >
                         {copiedField === "plain-link" ? tc.copied : tc.copy}
-                      </span>
-                    </button>
+                      </Badge>
+                    </Button>
                   </div>
                 ) : !shareData ? (
                     <div className="space-y-3">
                       <p className="text-sm leading-6 text-text-secondary">{t.shareSetupDescription}</p>
-                      <button
+                      <Button variant="primary"
                         onClick={handleCreate}
                         disabled={loading}
-                        className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-neon-cyan/35 bg-neon-cyan/15 px-4 py-3 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full"
                       >
                         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                         {loading ? t.creating : t.createShareLink}
-                      </button>
+                      </Button>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <button
+                      <Button variant="row"
                         onClick={() => void handleCopyPlainLink()}
-                        className="liquid-list-row flex w-full items-start justify-between gap-4 rounded-2xl px-4 py-4 text-left transition-colors"
+                        className="w-full"
                       >
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 rounded-xl bg-neon-cyan/12 p-2 text-neon-cyan">
@@ -298,30 +273,29 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
                             <p className="text-sm font-medium text-text-primary">{t.copyPlainLinkChannelTitle}</p>
                             <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyPlainLinkChannelDescription}</p>
                             {plainLinkUrl ? (
-                              <p className="mt-2 max-w-[18rem] truncate text-xs leading-5 text-text-secondary/80">{plainLinkUrl}</p>
+                              <p className="mt-2 max-w-[18rem] truncate text-xs leading-5 text-text-secondary">{plainLinkUrl}</p>
                             ) : null}
                           </div>
                         </div>
-                        <span className="liquid-card shrink-0 rounded-full px-3 py-1 text-xs font-medium text-text-primary/90">
+                        <Badge >
                           {copiedField === "plain-link" ? tc.copied : tc.copy}
-                        </span>
-                      </button>
+                        </Badge>
+                      </Button>
                     </div>
                   )
                 }
 
-                <div className="liquid-card rounded-2xl px-4 py-4">
-                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                <Card padding="none" className="px-4 py-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-text-secondary">
                     {entryType === "private_invite" || roomVisibility === "private" ? <Lock className="h-3.5 w-3.5" /> : <Globe2 className="h-3.5 w-3.5" />}
                     {distributionLabel}
                   </div>
                   <p className="mt-2 text-sm leading-6 text-text-secondary">{statusNote}</p>
-                </div>
+                </Card>
               </div>
             </section>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }

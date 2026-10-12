@@ -6,6 +6,8 @@
  */
 "use client";
 
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -83,7 +85,7 @@ export default function JoinRequestsPanel({ roomId }: JoinRequestsPanelProps) {
 
   if (requests.length === 0) {
     return (
-      <p className="px-2 py-1 text-xs text-text-secondary/60">
+      <p className="px-2 py-1 text-xs text-text-secondary">
         {t.noJoinRequests}
       </p>
     );
@@ -96,9 +98,9 @@ export default function JoinRequestsPanel({ roomId }: JoinRequestsPanelProps) {
         const isAccepting = isProcessing && processingAction === "accept";
         const isRejecting = isProcessing && processingAction === "reject";
         return (
-          <div
+          <Card padding="sm"
             key={req.request_id}
-            className="liquid-card rounded-lg border border-glass-border px-3 py-2"
+            className=""
           >
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -108,30 +110,30 @@ export default function JoinRequestsPanel({ roomId }: JoinRequestsPanelProps) {
                 <CopyableId value={req.agent_id} />
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <button
+                <Button variant="secondary" size="sm"
                   onClick={() => void handleAccept(req.request_id)}
                   disabled={isProcessing}
-                  className="inline-flex items-center gap-1 rounded border border-neon-green/40 bg-neon-green/10 px-2 py-1 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 disabled:opacity-50"
                 >
                   {isAccepting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                   {isAccepting ? t.accepting : t.accept}
-                </button>
-                <button
+                </Button>
+                <Button variant="danger" size="sm"
                   onClick={() => void handleReject(req.request_id)}
                   disabled={isProcessing}
-                  className="inline-flex items-center gap-1 rounded border border-red-400/40 bg-red-400/10 px-2 py-1 text-xs font-medium text-red-400 transition-colors hover:bg-red-400/20 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 disabled:opacity-50"
                 >
                   {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                   {isRejecting ? t.rejecting : t.reject}
-                </button>
+                </Button>
               </div>
             </div>
             {req.message && (
-              <p className="mt-1 text-xs text-text-secondary/80 line-clamp-2">
+              <p className="mt-1 text-xs text-text-secondary line-clamp-2">
                 {req.message}
               </p>
             )}
-          </div>
+          </Card>
         );
       })}
     </div>

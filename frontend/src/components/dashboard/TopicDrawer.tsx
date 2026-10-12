@@ -1,4 +1,8 @@
 "use client";
+import EmptyState from "@/components/ui/EmptyState";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -8,7 +12,7 @@ import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { animeStagger, cleanupAnime, createTimelineIfMotion } from "@/lib/anime";
@@ -23,9 +27,9 @@ import type { DashboardMessage } from "@/lib/types";
 
 const topicStatusColors: Record<string, { color: string; icon: string }> = {
   open:      { color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",    icon: "●" },
-  completed: { color: "text-green-400 bg-green-400/10 border-green-400/30",    icon: "✔" },
-  failed:    { color: "text-red-400 bg-red-400/10 border-red-400/30",          icon: "✗" },
-  expired:   { color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30", icon: "⏱" },
+  completed: { color: "text-success bg-success-soft border-success/30",    icon: "✔" },
+  failed:    { color: "text-danger bg-danger-soft border-danger/30",          icon: "✗" },
+  expired:   { color: "text-warning bg-warning-soft border-warning/30", icon: "⏱" },
 };
 
 const EMPTY_MESSAGES: DashboardMessage[] = [];
@@ -38,6 +42,14 @@ function getDrawerParts(drawer: HTMLElement | null): HTMLElement[] {
 export default withDashboardOverlayPortal(TopicDrawer);
 
 function TopicDrawer() {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsDesktop(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const locale = useLanguage();
   const t = messageList[locale];
 
@@ -54,7 +66,7 @@ function TopicDrawer() {
   const activeAgentId = useDashboardSessionStore((s) => s.activeAgentId);
 
   const overlayRef = useRef<HTMLDivElement>(null);
-  const drawerRef = useRef<HTMLElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<ReturnType<typeof createTimelineIfMotion>>(null);
   const closingRef = useRef(false);
@@ -200,16 +212,6 @@ function TopicDrawer() {
     }
   }, [setOpenedTopicId]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeDrawer();
-    };
-    if (openedTopicId) {
-      window.addEventListener("keydown", onKey);
-      return () => window.removeEventListener("keydown", onKey);
-    }
-  }, [closeDrawer, openedTopicId]);
-
   if (!openedRoomId || !openedTopicId) return null;
 
   const sc = topicStatus ? topicStatusColors[topicStatus] : null;
@@ -219,19 +221,11 @@ function TopicDrawer() {
 
   return (
     <>
-      <div
-        ref={overlayRef}
-        onClick={closeDrawer}
-        className="liquid-scrim fixed inset-0 z-30 backdrop-blur-sm md:hidden"
-      />
-      <aside
-        ref={drawerRef}
-        className="liquid-drawer fixed right-0 top-0 z-40 flex h-full w-full max-w-[480px] flex-col border-l md:w-[440px]"
-      >
+      <DialogSurface modal={!isDesktop} overlayRef={overlayRef} panelRef={drawerRef} onClose={closeDrawer} title={<>{topicName}</>} placement="right" overlayClassName="z-30 md:pointer-events-none md:bg-transparent" className="pointer-events-auto max-w-[480px] md:w-[440px]">
         <header data-topic-drawer-part className="flex items-start gap-2 border-b border-glass-border/60 px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-xs uppercase tracking-wide text-text-secondary/60">{t.topic || "Topic"}</span>
+              <span className="text-xs text-text-secondary">{t.topic || "Topic"}</span>
               {sc && statusLabel && (
                 <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-px text-xs font-medium ${sc.color}`}>
                   <span className="text-xs">{sc.icon}</span>
@@ -244,20 +238,18 @@ function TopicDrawer() {
               <p className="mt-1 truncate text-xs text-neon-cyan/80">🎯 {topicGoal}</p>
             )}
           </div>
-          <button
+          <IconButton label="Close topic"
             onClick={closeDrawer}
-            className="liquid-action rounded-md p-1 text-text-secondary transition-colors hover:text-text-primary"
+
             aria-label="Close topic"
           >
             <X className="h-4 w-4" />
-          </button>
+          </IconButton>
         </header>
 
         <div data-topic-drawer-part className="flex-1 overflow-y-auto px-3 py-3">
           {topicMessages.length === 0 ? (
-            <div className="liquid-empty-state flex h-full items-center justify-center rounded-xl text-sm text-text-secondary">
-              {t.noMessages}
-            </div>
+            <EmptyState compact bordered title={<>{t.noMessages}</>} />
           ) : (
             topicMessages.map((msg) => (
               <MessageBubble
@@ -275,7 +267,7 @@ function TopicDrawer() {
         <div data-topic-drawer-part className="border-t border-glass-border/60 px-3 py-3">
           <RoomHumanComposer roomId={openedRoomId} topicId={openedTopicId} />
         </div>
-      </aside>
+      </DialogSurface>
     </>
   );
 }

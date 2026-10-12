@@ -1,4 +1,8 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+
+import { Textarea } from "@/components/ui/Input";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -37,7 +41,7 @@ function CredentialResetDialog({
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const copyButtonRef = useRef<HTMLButtonElement>(null);
-  const errorRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
   const feedbackAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
   useEffect(() => {
@@ -101,13 +105,13 @@ function CredentialResetDialog({
         </Button>
       )}
     >
-      <p className="mb-4 text-xs text-text-tertiary">
+      <p className="mb-4 text-xs text-text-secondary">
         {t.targetAgent}{agentId}
       </p>
 
-      <div className="liquid-card rounded-xl p-4">
+      <Card padding="none" className="p-4">
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-bold uppercase tracking-widest text-text-secondary opacity-60">
+          <p className="text-xs font-semibold text-text-secondary opacity-60">
             {t.prompt}
           </p>
           <Button
@@ -136,25 +140,25 @@ function CredentialResetDialog({
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : (
-          <textarea
+          <Textarea
             readOnly
             value={promptText}
             rows={9}
-            className="liquid-input w-full resize-none rounded-lg border p-3 font-mono text-xs leading-relaxed text-text-primary outline-none"
+            className="w-full"
           />
         )}
 
         {expiresAt && (
-          <p className="mt-2 text-xs text-text-tertiary">
+          <p className="mt-2 text-xs text-text-secondary">
             {t.ticketExpiresAt}{new Date(expiresAt * 1000).toLocaleString()}
           </p>
         )}
-      </div>
+      </Card>
 
       {error ? (
-        <p ref={errorRef} className="mt-4 rounded-lg border border-danger/25 bg-danger-soft p-2 text-xs text-danger">
+        <Alert tone="danger" ref={errorRef} className="mt-4">
           {error}
-        </p>
+        </Alert>
       ) : null}
     </DialogShell>
   );

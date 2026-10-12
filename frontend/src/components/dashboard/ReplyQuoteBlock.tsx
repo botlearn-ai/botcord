@@ -40,13 +40,13 @@ export default function ReplyQuoteBlock({ preview, onJump, className }: ReplyQuo
       className={`${baseClass} ${interactive} ${className ?? ""}`}
       aria-label={preview.deleted ? "Replied message (deleted)" : `Replying to ${senderLabel}`}
     >
-      <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-neon-cyan/70" />
+      <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-accent-text" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium text-neon-cyan/90">
+        <div className="truncate text-xs font-medium text-accent-text">
           {preview.deleted ? "（消息已删除）" : senderLabel}
         </div>
         {!preview.deleted && preview.text_preview && (
-          <div className="truncate text-xs text-text-secondary/80">
+          <div className="truncate text-xs text-text-secondary">
             {preview.text_preview}
           </div>
         )}

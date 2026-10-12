@@ -1,4 +1,9 @@
 "use client";
+import Card from "@/components/ui/Card";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
 
 import { memo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "nextjs-toploader/app";
@@ -63,7 +68,7 @@ function PeerBotDetailDrawer() {
       ) ?? null
     : null;
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  const panelRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const motionRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
   const closingRef = useRef(false);
 
@@ -79,18 +84,9 @@ function PeerBotDetailDrawer() {
   }, [setPeerBotAgentId]);
 
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeDrawer();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [closeDrawer, open]);
-
-  useEffect(() => {
     closingRef.current = false;
     if (!open || (!peer && !contact)) return;
-    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
       direction: "right",
       contentSelector: "[data-overlay-section]",
     });
@@ -130,19 +126,7 @@ function PeerBotDetailDrawer() {
 
   return (
     <>
-      <div
-        ref={overlayRef}
-        className="liquid-scrim fixed inset-0 z-40 backdrop-blur-[2px]"
-        onClick={closeDrawer}
-        aria-hidden
-      />
-      <aside
-        ref={panelRef}
-        className="liquid-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Bot 详情"
-      >
+      <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeDrawer} ariaLabel="Bot 详情" placement="right" overlayClassName="z-40" className="max-w-md">
         {/* Header */}
         <div className="liquid-toolbar flex items-center justify-between border-b border-glass-border px-5 py-4" data-overlay-section>
           <div className="flex min-w-0 items-center gap-3">
@@ -150,75 +134,75 @@ function PeerBotDetailDrawer() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="truncate text-base font-semibold text-text-primary">{displayName}</h2>
-                <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary/70">
+                <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary">
                   {ownerName ? `${ownerName} 的 Bot` : "外部 Bot"}
                 </span>
               </div>
-              <p className={`text-xs ${online ? "text-neon-green" : "text-text-secondary/60"}`}>
+              <p className={`text-xs ${online ? "text-neon-green" : "text-text-secondary"}`}>
                 ● {online ? "Online" : "Offline"}
               </p>
             </div>
           </div>
-          <button
+          <IconButton label="关闭"
             onClick={closeDrawer}
             title="关闭"
             aria-label="关闭"
-            className="liquid-action flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="w-8 shrink-0"
           >
             <X className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
 
         {/* Body */}
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4" data-overlay-section>
-          <section className="liquid-card rounded-2xl border border-glass-border p-4">
-            <p className="font-mono text-xs text-text-secondary/55">{agentId}</p>
+          <Card as="section" padding="none" className="p-4">
+            <p className="font-mono text-xs text-text-secondary">{agentId}</p>
             {bio ? (
               <p className="mt-2 text-sm text-text-primary/85">{bio}</p>
             ) : (
-              <p className="mt-2 text-xs text-text-secondary/55">暂无简介</p>
+              <p className="mt-2 text-xs text-text-secondary">暂无简介</p>
             )}
-          </section>
+          </Card>
 
-          <section className="liquid-card rounded-2xl border border-glass-border p-4">
+          <Card as="section" padding="none" className="p-4">
             <Row label="主人" value={ownerName ?? "—"} />
             <Row label="消息策略" value={policy ? POLICY_LABEL[policy] ?? policy : "—"} />
             <Row label="注册时间" value={formatDate(createdAt ?? undefined)} last />
-          </section>
+          </Card>
 
-          <p className="text-xs text-text-secondary/55">
+          <p className="text-xs text-text-secondary">
             这是别人的 Bot，只能看到公开信息。要查看活跃度、自主任务等，需要其主人开启分享。
           </p>
         </div>
 
         {/* Footer actions */}
         <div className="grid grid-cols-2 gap-2 border-t border-glass-border px-5 py-4" data-overlay-section>
-          <button
+          <Button variant="primary"
             onClick={handleMessage}
-            className="liquid-action col-span-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+            className="col-span-2"
           >
             <MessageCircle className="h-4 w-4" />
             打开对话
-          </button>
+          </Button>
           {alreadyContact ? (
-            <button
+            <Button variant="secondary"
               disabled
-              className="liquid-tool-surface inline-flex items-center justify-center gap-1.5 rounded-lg border border-glass-border px-3 py-2 text-sm font-medium text-text-secondary/70"
+
             >
               <UserCheck className="h-4 w-4" />
               已是联系人
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button variant="secondary"
               onClick={() => void handleAddContact()}
-              className="liquid-action inline-flex items-center justify-center gap-1.5 rounded-lg border border-glass-border px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan"
+
             >
               <UserPlus className="h-4 w-4" />
               加为联系人
-            </button>
+            </Button>
           )}
         </div>
-      </aside>
+      </DialogSurface>
     </>
   );
 }
@@ -230,7 +214,7 @@ function Row({ label, value, last }: { label: string; value: string; last?: bool
         last ? "" : "border-b border-glass-border/50"
       }`}
     >
-      <span className="text-xs text-text-secondary/70">{label}</span>
+      <span className="text-xs text-text-secondary">{label}</span>
       <span className="text-sm text-text-primary">{value}</span>
     </div>
   );

@@ -1,5 +1,11 @@
 "use client";
 
+import DialogShell, { useDialogClose } from "@/components/ui/DialogShell";
+import Alert from "@/components/ui/Alert";
+import Field from "@/components/ui/Field";
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import { useLanguage, chatPane } from "@/lib/i18n";
@@ -16,7 +22,6 @@ import { dashboardReplyTargetId } from "@/lib/dashboard-message-actions";
 import { useMentionCandidates } from "@/hooks/useMentionCandidates";
 import { CornerUpLeft, Loader2, X } from "lucide-react";
 import DashboardSelect from "./DashboardSelect";
-import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 
 interface RoomHumanComposerProps {
@@ -35,7 +40,16 @@ interface RoomTransferDialogProps {
   onSuccess: () => void;
 }
 
-function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSuccess }: RoomTransferDialogProps) {
+function RoomTransferDialog(props: RoomTransferDialogProps) {
+  const locale = useLanguage();
+  const [busy, setBusy] = useState(false);
+  const succeeded = useRef(false);
+  return <DialogShell title={transferDialog[locale].transfer} description={locale === "zh" ? "向当前群成员转账 COIN" : "Send COIN to a member in this group"} busy={busy} onClose={() => { props.onClose(); if (succeeded.current) props.onSuccess(); }}>
+    <RoomTransferContent {...props} onSuccess={() => { succeeded.current = true; }} setBusy={setBusy} />
+  </DialogShell>;
+}
+
+function RoomTransferContent({ roomId, members, senderIdentity, onSuccess, setBusy }: RoomTransferDialogProps & { setBusy: (busy: boolean) => void }) {
   const locale = useLanguage();
   const t = transferDialog[locale];
   const senderId = senderIdentity?.id ?? "";
@@ -44,9 +58,7 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
   const [memo, setMemo] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const closeDialog = useDialogClose();
 
   const recipientOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -66,27 +78,10 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
       });
   }, [members, senderId]);
 
-  const closeWithMotion = useCallback((afterClose?: () => void) => {
-    cleanupAnime(animationRef.current);
-    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
-      onComplete: () => {
-        onClose();
-        afterClose?.();
-      },
-    });
-  }, [onClose]);
-
-  useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWithMotion();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      cleanupAnime(animationRef.current);
-    };
-  }, [closeWithMotion]);
+  const closeWithMotion = (afterClose?: () => void) => {
+    afterClose?.();
+    closeDialog();
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -113,6 +108,7 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
     const amountCoin = Number.parseInt(normalizedAmount, 10);
 
     setSubmitting(true);
+    setBusy(true);
     try {
       await api.createTransfer({
         to_agent_id: recipientId,
@@ -126,59 +122,31 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
       setError(err instanceof ApiError ? err.message : t.transferFailed);
     } finally {
       setSubmitting(false);
+      setBusy(false);
     }
   };
 
   return (
-    <div
-      ref={overlayRef}
-      className="liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm"
-      onClick={() => closeWithMotion()}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-dialog relative w-full max-w-md rounded-xl border border-glass-border p-5 backdrop-blur-xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={() => closeWithMotion()}
-          className="absolute right-3 top-3 rounded p-1 text-text-secondary hover:text-text-primary"
-          aria-label="Close transfer dialog"
-        >
-          <X className="h-4 w-4" />
-        </button>
-
-        <div className="mb-5">
-          <h3 className="text-lg font-semibold text-text-primary">{t.transfer}</h3>
-          <p className="text-xs text-text-secondary">{locale === "zh" ? "向当前群成员转账 COIN" : "Send COIN to a member in this group"}</p>
-        </div>
-
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary">
+          <Field label={<>
               {locale === "zh" ? "接收方" : "Recipient"}
-            </label>
-            <DashboardSelect
+            </>}>
+<DashboardSelect
               value={recipientId || null}
               onChange={(value) => setRecipientId(value ?? "")}
               placeholder={recipientOptions.length > 0 ? t.pickRecipientDefault : (locale === "zh" ? "当前群没有可选接收方" : "No eligible recipients in this group")}
               disabled={recipientOptions.length === 0}
-              buttonClassName="min-h-11 bg-deep-black-light p-3"
               options={recipientOptions.map((option) => ({
                 value: option.id,
                 label: option.label,
               }))}
             />
-          </div>
+</Field>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary">
+          <Field label={<>
               {t.amountCoin}
-            </label>
-            <input
+            </>}>
+<Input
               type="number"
               step="1"
               min="1"
@@ -187,46 +155,43 @@ function RoomTransferDialog({ roomId, members, senderIdentity, onClose, onSucces
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
               placeholder="1"
-              className="liquid-input w-full rounded-lg border border-glass-border p-3 font-mono text-sm text-text-primary placeholder-text-secondary/50 outline-none"
+              className="w-full"
             />
-          </div>
+</Field>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary">
+          <Field label={<>
               {t.memoOptional}
-            </label>
-            <input
+            </>}>
+<Input
               type="text"
               value={memo}
               onChange={(event) => setMemo(event.target.value)}
               placeholder={t.memoPlaceholder}
-              className="liquid-input w-full rounded-lg border border-glass-border p-3 text-sm text-text-primary placeholder-text-secondary/50 outline-none"
+              className="w-full"
             />
-          </div>
+</Field>
 
-          {error ? <p className="text-sm text-red-400">{error}</p> : null}
+          {error ? <Alert tone="danger">{error}</Alert> : null}
 
           <div className="flex items-center justify-end gap-2 pt-1">
-            <button
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={() => closeWithMotion()}
               disabled={submitting}
-              className="rounded-lg border border-glass-border px-4 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary disabled:opacity-40"
+              className="disabled:opacity-40"
             >
               {locale === "zh" ? "取消" : "Cancel"}
-            </button>
-            <button
+            </Button>
+            <Button variant="primary" size="sm"
               type="submit"
               disabled={submitting || recipientOptions.length === 0}
-              className="inline-flex items-center gap-2 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-40"
+              className="inline-flex items-center gap-2 disabled:opacity-40"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {submitting ? t.sending : t.sendTransfer}
-            </button>
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
   );
 }
 
@@ -433,7 +398,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
 
   if (sendDenied) {
     return (
-      <p className="text-center text-xs text-text-secondary/50">
+      <p className="text-center text-xs text-text-secondary">
         {chatPane[locale].memberSendDenied}
       </p>
     );
@@ -442,7 +407,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
   return (
     <div className="flex flex-col gap-1">
       {isObserverMode && activeAgentId && (
-        <p className="text-xs text-text-secondary/60 px-1">
+        <p className="text-xs text-text-secondary px-1">
           {locale === "zh"
             ? `代 ${activeAgentId} 发言（以你的 Human 身份）`
             : `Speaking on behalf of ${activeAgentId} (as you, the Human)`}
@@ -472,7 +437,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
           close: locale === "zh" ? "关闭操作菜单" : "Close actions",
         }}
       />
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
       {transferOpen ? (
         <PortaledRoomTransferDialog
           roomId={roomId}
@@ -503,24 +468,24 @@ function ReplyingToBar({ target, locale, onCancel }: ReplyingToBarProps) {
   const cancelLabel = locale === "zh" ? "取消引用" : "Cancel reply";
   return (
     <div className="mx-1 flex items-start gap-2 rounded-md border-l-2 border-neon-cyan/60 bg-glass-bg/60 pl-2 pr-1 py-1.5 text-xs">
-      <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-neon-cyan/80" />
+      <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-accent-text" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium text-neon-cyan/90">
+        <div className="truncate text-xs font-medium text-accent-text">
           {replyingLabel} · {name}
         </div>
         {preview && (
-          <div className="truncate text-xs text-text-secondary/80">{preview}</div>
+          <div className="truncate text-xs text-text-secondary">{preview}</div>
         )}
       </div>
-      <button
+      <IconButton size="sm" label={cancelLabel}
         type="button"
         onClick={onCancel}
-        className="rounded p-0.5 text-text-secondary/60 hover:bg-glass-bg hover:text-text-secondary transition-colors"
+
         aria-label={cancelLabel}
         title={cancelLabel}
       >
         <X className="h-3.5 w-3.5" />
-      </button>
+      </IconButton>
     </div>
   );
 }

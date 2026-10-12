@@ -1,5 +1,6 @@
 "use client";
 
+import Button from "@/components/ui/Button";
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { animateIfMotion, cleanupAnime } from "@/lib/anime";
@@ -29,7 +30,7 @@ export function PrimaryNavButton({
   title,
 }: PrimaryNavButtonProps) {
   // VI v1.0 has a single accent, so every tone renders the same active state.
-  const activeClass = "bg-neon-cyan/15 text-neon-cyan";
+  const activeClass = "bg-accent-soft text-accent-text";
   const indicatorClass = "bg-neon-cyan";
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const previousActiveRef = useRef(active);
@@ -75,18 +76,14 @@ export function PrimaryNavButton({
   }, [badge]);
 
   return (
-    <button
+    <Button variant="row"
+      disabled={disabled}
+      aria-pressed={active}
       ref={buttonRef}
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       aria-label={label}
-      className={`${mobileHidden ? "max-md:hidden" : ""} liquid-nav-button group relative flex h-12 w-14 flex-col items-center justify-center rounded-xl transition-all duration-200 max-md:h-12 max-md:min-w-0 max-md:flex-1 max-md:px-1 ${
-        disabled
-          ? "text-text-secondary/45 hover:bg-neon-cyan/10 hover:text-neon-cyan"
-          : active
-          ? activeClass
-          : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-      }`}
+      className={`${mobileHidden ? "max-md:hidden" : ""} group relative flex w-14 flex-col items-center justify-center max-md:min-w-0 max-md:flex-1 `}
       title={title}
     >
       <span
@@ -98,7 +95,7 @@ export function PrimaryNavButton({
       {badge}
       {icon}
       <span className="mt-0.5 max-w-full truncate text-[11px] font-medium leading-none">{mobileLabel ? <><span className="max-md:hidden">{label}</span><span className="hidden max-md:inline">{mobileLabel}</span></> : label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -120,15 +117,13 @@ export function SecondaryNavButton({
   tone,
 }: SecondaryNavButtonProps) {
   const activeClass = tone === "purple"
-    ? "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan"
-    : "border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan";
+    ? "border-neon-cyan/60 bg-accent-soft text-accent-text"
+    : "border-neon-cyan/60 bg-accent-soft text-accent-text";
 
   return (
-    <button
+    <Button variant="row" aria-pressed={active}
       onClick={onClick}
-      className={`${className} w-full rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors ${
-        active ? activeClass : "border-glass-border text-text-secondary hover:text-text-primary"
-      }`}
+      className={className}
     >
       {badge ? (
         <span className="flex items-center justify-between gap-3">
@@ -138,6 +133,6 @@ export function SecondaryNavButton({
       ) : (
         children
       )}
-    </button>
+    </Button>
   );
 }

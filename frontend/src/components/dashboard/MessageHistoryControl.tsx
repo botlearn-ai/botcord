@@ -19,10 +19,10 @@ export default function MessageHistoryControl({
 }) {
   return (
     <div className="mb-3 text-center text-xs text-text-secondary">
-      <button type="button" onClick={onLoad} className="message-history-load min-h-11 items-center justify-center rounded-lg px-4 font-medium text-neon-cyan hover:bg-neon-cyan/10">
+      <Button variant="ghost" size="sm" type="button" onClick={onLoad} className="items-center justify-center">
         {loadLabel}
-      </button>
+      </Button>
       <span className="message-history-scroll">{scrollLabel}</span>
     </div>
   );
-}
+}import Button from "@/components/ui/Button";

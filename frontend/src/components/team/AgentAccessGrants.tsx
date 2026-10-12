@@ -1,16 +1,13 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+import Badge from "@/components/ui/Badge";
+import { BotCordLoader } from "@/components/ui/BotCordLoader";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import Field from "@/components/ui/Field";
+import { Input, Textarea } from "@/components/ui/Input";
 
 import Select from "@/components/ui/Select";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, UserPlus } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
-import {
-  spaceError,
-  teamSpacesApi,
-  type AgentAccessGrant,
-  type AgentAccessRole,
-  type SpaceUser,
-} from "@/lib/team-spaces";
 import {
   GRANT_DURATIONS,
   MAX_ALLOWED_COMMANDS,
@@ -21,13 +18,17 @@ import {
   parseAllowedCommands,
   type GrantDuration,
 } from "@/lib/agent-access";
+import { useLanguage } from "@/lib/i18n";
+import {
+  spaceError,
+  teamSpacesApi,
+  type AgentAccessGrant,
+  type AgentAccessRole,
+  type SpaceUser,
+} from "@/lib/team-spaces";
 import { useConfirm } from "@/store/useConfirmStore";
-
-const input =
-  "w-full rounded-xl border border-glass-border bg-deep-black px-3 py-2.5 text-sm text-text-primary outline-none focus:border-neon-cyan focus:ring-2 focus:ring-neon-cyan/20 disabled:opacity-50";
-const button =
-  "inline-flex items-center justify-center gap-2 rounded-xl border border-glass-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-neon-cyan/10 focus-visible:outline-2 focus-visible:outline-neon-cyan disabled:cursor-not-allowed disabled:opacity-50";
-const primary = `${button} border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan`;
+import { Loader2, UserPlus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Owner-side panel: grant organization members access to one of your Agents. */
 export default function AgentAccessGrants({
@@ -54,27 +55,38 @@ export default function AgentAccessGrants({
   const [grants, setGrants] = useState<AgentAccessGrant[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(
+    null,
+  );
   const [grantee, setGrantee] = useState("");
   const [role, setRole] = useState<AgentAccessRole>("consultant");
   const [duration, setDuration] = useState<GrantDuration>("none");
   const [workspacePath, setWorkspacePath] = useState("");
   const [commands, setCommands] = useState("");
-  const candidates = users.filter((u) => u.status === "active" && u.user_id !== userId);
+  const candidates = users.filter(
+    (u) => u.status === "active" && u.user_id !== userId,
+  );
   const commandCount = parseAllowedCommands(commands).length;
   const pathValid = isValidWorkspacePath(workspacePath);
 
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const { grants: next } = await teamSpacesApi.accessGrants(spaceId, agentId, signal);
-      if (mounted.current) setGrants(next.filter((g) => !g.revoked_at));
-    } catch (cause) {
-      if (mounted.current && !signal?.aborted)
-        setNotice({ error: true, text: spaceError(cause, zh) });
-    } finally {
-      if (mounted.current) setLoading(false);
-    }
-  }, [spaceId, agentId, zh]);
+  const reload = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const { grants: next } = await teamSpacesApi.accessGrants(
+          spaceId,
+          agentId,
+          signal,
+        );
+        if (mounted.current) setGrants(next.filter((g) => !g.revoked_at));
+      } catch (cause) {
+        if (mounted.current && !signal?.aborted)
+          setNotice({ error: true, text: spaceError(cause, zh) });
+      } finally {
+        if (mounted.current) setLoading(false);
+      }
+    },
+    [spaceId, agentId, zh],
+  );
   useEffect(() => {
     mounted.current = true;
     const controller = new AbortController();
@@ -97,7 +109,8 @@ export default function AgentAccessGrants({
       onChanged?.();
       await reload();
     } catch (cause) {
-      if (mounted.current) setNotice({ error: true, text: spaceError(cause, zh) });
+      if (mounted.current)
+        setNotice({ error: true, text: spaceError(cause, zh) });
     } finally {
       locked.current = false;
       if (mounted.current) setBusy(false);
@@ -118,7 +131,7 @@ export default function AgentAccessGrants({
     "—";
 
   return (
-    <div className="w-full space-y-4 rounded-xl border border-glass-border bg-deep-black/40 p-4">
+    <Card className="w-full space-y-4">
       <p className="text-xs leading-5 text-text-secondary">
         {t(
           "授权后，对方可在私信中直接与该 Agent 对话。咨询者只能提问和读代码；协作者可在独立副本中修改代码，改动会提交到 guest/<授权> 分支，由你审核后合并。",
@@ -126,20 +139,18 @@ export default function AgentAccessGrants({
         )}
       </p>
       {notice && (
-        <p
-          role={notice.error ? "alert" : "status"}
-          className={`text-sm ${notice.error ? "text-red-500" : "text-neon-cyan"}`}
-        >
-          {notice.text}
-        </p>
+        <Alert tone={notice.error ? "danger" : "success"}>{notice.text}</Alert>
       )}
       <div>
-        <h4 className="mb-2 text-sm font-medium">{t("已授权成员", "Members with access")}</h4>
+        <h4 className="mb-2 text-sm font-medium">
+          {t("已授权成员", "Members with access")}
+        </h4>
         {loading ? (
-          <p role="status" className="flex items-center gap-2 text-xs text-text-secondary">
-            <Loader2 size={14} className="animate-spin" />
-            {t("正在加载授权…", "Loading access…")}
-          </p>
+          <BotCordLoader
+            size="sm"
+            className="w-full py-6"
+            label={t("正在加载授权…", "Loading access…")}
+          />
         ) : grants.length === 0 ? (
           <p className="text-xs text-text-secondary">
             {t("还没有授权任何成员。", "No one has access yet.")}
@@ -147,13 +158,18 @@ export default function AgentAccessGrants({
         ) : (
           <ul className="divide-y divide-glass-border">
             {grants.map((grant) => (
-              <li key={grant.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <li
+                key={grant.id}
+                className="flex flex-wrap items-center justify-between gap-3 py-3"
+              >
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="break-words font-medium">{nameOf(grant)}</span>
-                    <span className="rounded-md bg-neon-cyan/10 px-1.5 py-0.5 text-xs text-neon-cyan">
-                      {grantRoleLabel(grant.role, zh)}
+                    <span className="break-words font-medium">
+                      {nameOf(grant)}
                     </span>
+                    <Badge tone="accent">
+                      {grantRoleLabel(grant.role, zh)}
+                    </Badge>
                   </p>
                   <p className="mt-1 break-all text-xs text-text-secondary">
                     {grantExpiryLabel(grant, zh)}
@@ -165,56 +181,69 @@ export default function AgentAccessGrants({
                       : ""}
                   </p>
                 </div>
-                <button
-                  className={`${button} text-red-500`}
+                <Button
+                  variant="danger"
+
                   disabled={busy}
                   onClick={() =>
-                    void run(async () => {
-                      const accepted = await confirm({
-                        title: `${t("撤销授权", "Revoke access")}: ${nameOf(grant)}`,
-                        message: t(
-                          `对方将无法继续与 ${agentName} 对话，历史消息保留。`,
-                          `They will no longer be able to talk to ${agentName}. Message history is kept.`,
-                        ),
-                        confirmLabel: t("撤销", "Revoke"),
-                        tone: "danger",
-                      });
-                      if (!accepted || !mounted.current) return false;
-                      await teamSpacesApi.revokeAccess(spaceId, grant.id);
-                    }, t("授权已撤销。", "Access revoked."))
+                    void run(
+                      async () => {
+                        const accepted = await confirm({
+                          title: `${t("撤销授权", "Revoke access")}: ${nameOf(grant)}`,
+                          message: t(
+                            `对方将无法继续与 ${agentName} 对话，历史消息保留。`,
+                            `They will no longer be able to talk to ${agentName}. Message history is kept.`,
+                          ),
+                          confirmLabel: t("撤销", "Revoke"),
+                          tone: "danger",
+                        });
+                        if (!accepted || !mounted.current) return false;
+                        await teamSpacesApi.revokeAccess(spaceId, grant.id);
+                      },
+                      t("授权已撤销。", "Access revoked."),
+                    )
                   }
                 >
                   {t("撤销", "Revoke")}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
         )}
       </div>
       <div className="border-t border-glass-border pt-3">
-        <h4 className="mb-2 text-sm font-medium">{t("授权新成员", "Give someone access")}</h4>
+        <h4 className="mb-2 text-sm font-medium">
+          {t("授权新成员", "Give someone access")}
+        </h4>
         <form
           className="space-y-3"
           aria-label={`${t("授权成员使用", "Grant access")}: ${agentName}`}
           onSubmit={(e) => {
             e.preventDefault();
-            void run(async () => {
-              await teamSpacesApi.grantAccess(
-                spaceId,
-                agentId,
-                buildGrantInput({ userId: grantee, role, duration, workspacePath, commands }),
-              );
-              setGrantee("");
-              setWorkspacePath("");
-              setCommands("");
-            }, t("授权已创建。", "Access granted."));
+            void run(
+              async () => {
+                await teamSpacesApi.grantAccess(
+                  spaceId,
+                  agentId,
+                  buildGrantInput({
+                    userId: grantee,
+                    role,
+                    duration,
+                    workspacePath,
+                    commands,
+                  }),
+                );
+                setGrantee("");
+                setWorkspacePath("");
+                setCommands("");
+              },
+              t("授权已创建。", "Access granted."),
+            );
           }}
         >
           <div className="grid gap-3">
-            <label className="space-y-1.5 text-sm">
-              <span>{t("组织成员", "Member")}</span>
+            <Field label={<>{t("组织成员", "Member")}</>}>
               <Select
-
                 value={grantee}
                 onChange={(e) => setGrantee(e.target.value)}
                 disabled={busy || !candidates.length}
@@ -231,27 +260,29 @@ export default function AgentAccessGrants({
                   </option>
                 ))}
               </Select>
-            </label>
-            <label className="space-y-1.5 text-sm">
-              <span>{t("角色", "Role")}</span>
+            </Field>
+            <Field label={<>{t("角色", "Role")}</>}>
               <Select
-
                 value={role}
                 onChange={(e) => setRole(e.target.value as AgentAccessRole)}
                 disabled={busy}
               >
                 <option value="consultant">
-                  {t("咨询者（只读：提问、读代码）", "Consultant (read-only: ask, read code)")}
+                  {t(
+                    "咨询者（只读：提问、读代码）",
+                    "Consultant (read-only: ask, read code)",
+                  )}
                 </option>
                 <option value="collaborator">
-                  {t("协作者（可在独立副本改代码）", "Collaborator (edits in an isolated copy)")}
+                  {t(
+                    "协作者（可在独立副本改代码）",
+                    "Collaborator (edits in an isolated copy)",
+                  )}
                 </option>
               </Select>
-            </label>
-            <label className="space-y-1.5 text-sm">
-              <span>{t("有效期", "Duration")}</span>
+            </Field>
+            <Field label={<>{t("有效期", "Duration")}</>}>
               <Select
-
                 value={duration}
                 onChange={(e) => setDuration(e.target.value as GrantDuration)}
                 disabled={busy}
@@ -262,14 +293,33 @@ export default function AgentAccessGrants({
                   </option>
                 ))}
               </Select>
-            </label>
+            </Field>
           </div>
           {role === "collaborator" && (
             <div className="grid gap-3">
-              <label className="space-y-1.5 text-sm">
-                <span>{t("项目仓库路径（可选）", "Repository path (optional)")}</span>
-                <input
-                  className={input}
+              <Field
+                label={
+                  <>{t("项目仓库路径（可选）", "Repository path (optional)")}</>
+                }
+                hint={
+                  <>
+                    <span
+                      className={`block text-xs ${pathValid ? "text-text-secondary" : "text-danger"}`}
+                    >
+                      {pathValid
+                        ? t(
+                            "你机器上的 git 仓库，绝对路径或 ~/ 开头；留空则使用临时目录。",
+                            "A git repository on your machine (absolute or ~/). Leave empty for a temporary directory.",
+                          )
+                        : t(
+                            "路径必须以 / 或 ~/ 开头。",
+                            "The path must start with / or ~/.",
+                          )}
+                    </span>
+                  </>
+                }
+              >
+                <Input
                   value={workspacePath}
                   onChange={(e) => setWorkspacePath(e.target.value)}
                   maxLength={1024}
@@ -277,45 +327,57 @@ export default function AgentAccessGrants({
                   disabled={busy}
                   aria-invalid={!pathValid}
                 />
-                <span className={`block text-xs ${pathValid ? "text-text-secondary" : "text-red-500"}`}>
-                  {pathValid
-                    ? t(
-                        "你机器上的 git 仓库，绝对路径或 ~/ 开头；留空则使用临时目录。",
-                        "A git repository on your machine (absolute or ~/). Leave empty for a temporary directory.",
-                      )
-                    : t("路径必须以 / 或 ~/ 开头。", "The path must start with / or ~/.")}
-                </span>
-              </label>
-              <label className="space-y-1.5 text-sm">
-                <span>{t("允许执行的命令（可选）", "Allowed commands (optional)")}</span>
-                <textarea
-                  className={`${input} min-h-[76px] resize-y`}
+              </Field>
+              <Field
+                label={
+                  <>
+                    {t("允许执行的命令（可选）", "Allowed commands (optional)")}
+                  </>
+                }
+                hint={
+                  <>
+                    <span
+                      className={`block text-xs ${commandCount > MAX_ALLOWED_COMMANDS ? "text-danger" : "text-text-secondary"}`}
+                    >
+                      {t(
+                        `逗号或换行分隔，最多 ${MAX_ALLOWED_COMMANDS} 条（当前 ${commandCount}）。`,
+                        `Separate with commas or new lines, up to ${MAX_ALLOWED_COMMANDS} (${commandCount} now).`,
+                      )}
+                    </span>
+                  </>
+                }
+              >
+                <Textarea
+                  className="min-h-[76px] resize-y"
                   value={commands}
                   onChange={(e) => setCommands(e.target.value)}
                   placeholder={"npm test\nnpm run lint"}
                   disabled={busy}
                   aria-invalid={commandCount > MAX_ALLOWED_COMMANDS}
                 />
-                <span
-                  className={`block text-xs ${commandCount > MAX_ALLOWED_COMMANDS ? "text-red-500" : "text-text-secondary"}`}
-                >
-                  {t(
-                    `逗号或换行分隔，最多 ${MAX_ALLOWED_COMMANDS} 条（当前 ${commandCount}）。`,
-                    `Separate with commas or new lines, up to ${MAX_ALLOWED_COMMANDS} (${commandCount} now).`,
-                  )}
-                </span>
-              </label>
+              </Field>
             </div>
           )}
-          <button
-            className={primary}
-            disabled={busy || !grantee || !pathValid || commandCount > MAX_ALLOWED_COMMANDS}
+          <Button
+            type="submit"
+            variant="primary"
+
+            disabled={
+              busy ||
+              !grantee ||
+              !pathValid ||
+              commandCount > MAX_ALLOWED_COMMANDS
+            }
           >
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+            {busy ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <UserPlus size={16} />
+            )}
             {t("授权", "Grant access")}
-          </button>
+          </Button>
         </form>
       </div>
-    </div>
+    </Card>
   );
 }

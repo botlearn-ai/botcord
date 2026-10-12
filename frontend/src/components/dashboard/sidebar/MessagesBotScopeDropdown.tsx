@@ -1,5 +1,7 @@
 "use client";
 
+import UnreadBadge from "@/components/ui/UnreadBadge";
+import Button from "@/components/ui/Button";
 import { useMemo } from "react";
 import { Sparkles } from "lucide-react";
 import { useShallow } from "zustand/shallow";
@@ -48,7 +50,7 @@ export default function MessagesBotScopeDropdown({ rooms }: Props) {
         count={counts["all"] ?? 0}
         onClick={() => setMessagesBotScope("all")}
         avatar={
-          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-text-secondary/25 bg-text-secondary/10 text-text-secondary/90">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full border border-text-secondary/25 bg-text-secondary/10 text-text-secondary">
             <Sparkles className="h-4 w-4" />
           </div>
         }
@@ -81,10 +83,10 @@ function Item({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button variant="row" aria-pressed={active}
       onClick={onClick}
       title={`${label} (${count})`}
-      className="flex w-[68px] shrink-0 flex-col items-center gap-2 px-0.5 pt-0.5 outline-none"
+      className="flex w-[68px] shrink-0 flex-col items-center gap-2"
     >
       <span
         className={`relative flex h-9 w-9 items-center justify-center rounded-full transition-all ${
@@ -94,23 +96,15 @@ function Item({
         }`}
       >
         {avatar}
-        {count > 0 ? (
-          <span className={`absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-none ${
-            active
-              ? "bg-neon-cyan text-deep-black"
-              : "bg-glass-bg text-text-secondary/80 ring-1 ring-glass-border"
-          }`}>
-            {count > 99 ? "99+" : count}
-          </span>
-        ) : null}
+        {count > 0 && <UnreadBadge count={count} className="absolute -right-1 -top-1" />}
       </span>
       <span
         className={`line-clamp-2 w-full break-words text-center text-xs leading-tight ${
-          active ? "font-medium text-neon-cyan" : "text-text-secondary/75"
+          active ? "font-medium text-accent-text" : "text-text-secondary"
         }`}
       >
         {label}
       </span>
-    </button>
+    </Button>
   );
 }

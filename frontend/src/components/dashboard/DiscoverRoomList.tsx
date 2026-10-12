@@ -6,6 +6,9 @@
  */
 "use client";
 
+import Card from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { roomList } from '@/lib/i18n/translations/dashboard';
@@ -62,9 +65,9 @@ export default function DiscoverRoomList() {
       {discoverRooms.map((room) => {
         const isJoining = joiningRoomId === room.room_id;
         return (
-          <div
+          <Card padding="sm"
             key={room.room_id}
-            className="liquid-list-row border-l-2 border-transparent px-4 py-2.5"
+            className=""
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 min-w-0">
@@ -85,8 +88,8 @@ export default function DiscoverRoomList() {
               </p>
             )}
             {room.rule && (
-              <p className="mt-0.5 truncate text-xs text-text-secondary/80">
-                <span className="text-text-secondary/60">{t.rule}</span>
+              <p className="mt-0.5 truncate text-xs text-text-secondary">
+                <span className="text-text-secondary">{t.rule}</span>
                 {room.rule}
               </p>
             )}
@@ -101,26 +104,26 @@ export default function DiscoverRoomList() {
             ) : room.join_policy === "invite_only" ? (
               <InviteOnlyJoinButton roomId={room.room_id} />
             ) : (
-              <button
+              <Button variant="secondary" size="sm"
                 onClick={() => void joinRoom(room.room_id)}
                 disabled={isJoining}
-                className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
+                className="mt-1.5 inline-flex items-center gap-1.5 disabled:opacity-40"
               >
                 {isJoining ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                 {isJoining ? t.joining : t.join}
-              </button>
+              </Button>
             )}
-          </div>
+          </Card>
         );
       })}
-      <button
+      <Button variant="ghost" size="sm"
         onClick={() => void loadDiscoverRooms()}
         disabled={discoverLoading}
-        className="inline-flex w-full items-center justify-center gap-1.5 py-2 text-xs text-text-secondary hover:text-neon-cyan disabled:opacity-60"
+        className="inline-flex w-full items-center justify-center gap-1.5 disabled:opacity-60"
       >
         {discoverLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
         {tc.refresh}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -163,38 +166,38 @@ function InviteOnlyJoinButton({ roomId }: { roomId: string }) {
   if (status === "accepted") {
     const isJoining = joiningRoomId === roomId;
     return (
-      <button
+      <Button variant="secondary" size="sm"
         onClick={() => void joinRoom(roomId)}
         disabled={isJoining}
-        className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-neon-cyan/40 px-3 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
+        className="mt-1.5 inline-flex items-center gap-1.5 disabled:opacity-40"
       >
         {isJoining ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
         {isJoining ? t.joining : t.join}
-      </button>
+      </Button>
     );
   }
   if (status === "pending") {
     return (
-      <span className="mt-1.5 inline-block rounded border border-amber-400/40 bg-amber-400/10 px-3 py-0.5 text-xs font-medium text-amber-400">
+      <Badge tone="warning" className="mt-1.5">
         {t.requestPending}
-      </span>
+      </Badge>
     );
   }
   if (status === "rejected") {
     return (
-      <span className="mt-1.5 inline-block rounded border border-red-400/40 bg-red-400/10 px-3 py-0.5 text-xs font-medium text-red-400">
+      <Badge tone="danger" className="mt-1.5">
         {t.requestRejected}
-      </span>
+      </Badge>
     );
   }
   return (
-    <button
+    <Button variant="secondary" size="sm"
       onClick={() => void handleRequest()}
       disabled={status === "sending"}
-      className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-amber-400/40 px-3 py-0.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/10 disabled:opacity-40"
+      className="mt-1.5 inline-flex items-center gap-1.5 disabled:opacity-40"
     >
       {status === "sending" ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
       {status === "sending" ? t.joining : t.requestToJoin}
-    </button>
+    </Button>
   );
 }

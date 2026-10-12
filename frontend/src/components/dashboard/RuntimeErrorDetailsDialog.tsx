@@ -76,7 +76,7 @@ function RuntimeErrorDetailsDialog({
       )}
     >
       <div>
-        <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-text-secondary">Message</p>
+        <p className="mb-1.5 text-xs font-medium text-text-secondary">Message</p>
         <div className="whitespace-pre-wrap break-words rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-sm leading-relaxed text-warning">
           {message || "Runtime error"}
         </div>

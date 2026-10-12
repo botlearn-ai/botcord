@@ -17,7 +17,7 @@ beforeEach(() => usePolicyStore.setState({ globalByAgent: {}, globalLoading: {} 
 describe("bot policy tab loading", () => {
   it("shows a placeholder before first policy response", () => {
     usePolicyStore.setState({ globalLoading: { ag_1: true } });
-    expect(render()).toContain("animate-pulse");
+    expect(render()).toContain("dashboard-skeleton-block");
   });
   it("keeps cached settings visible during background refresh", () => {
     usePolicyStore.setState({
@@ -28,7 +28,7 @@ describe("bot policy tab loading", () => {
       } },
     });
     const html = render();
-    expect(html).not.toContain("animate-pulse");
+    expect(html).not.toContain("dashboard-skeleton-block");
     expect(html).toContain('name="contact_policy_ag_1"');
   });
   it("does not show another agent's cached policy", () => {
@@ -36,6 +36,6 @@ describe("bot policy tab loading", () => {
       contact_policy: "open", allow_agent_sender: true, allow_human_sender: true,
       room_invite_policy: "open", default_attention: "always", attention_keywords: [],
     } } });
-    expect(render()).toContain("animate-pulse");
+    expect(render()).toContain("dashboard-skeleton-block");
   });
 });

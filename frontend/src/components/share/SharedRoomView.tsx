@@ -7,6 +7,12 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Avatar from "@/components/ui/Avatar";
+import EmptyState from "@/components/ui/EmptyState";
+import Badge from "@/components/ui/Badge";
+import Alert from "@/components/ui/Alert";
+import LinkButton from "@/components/ui/LinkButton";
+import Card from "@/components/ui/Card";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUpRight, Clock, LockKeyhole, MessageSquareText, Users } from "lucide-react";
@@ -94,13 +100,12 @@ function SharedRoomContent({ shareId }: { shareId: string }) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
         <div className="text-4xl">:/</div>
-        <div className="text-lg text-red-400">{error || t.loadFailed}</div>
-        <Link
+        <Alert tone="danger">{error || t.loadFailed}</Alert>
+        <LinkButton variant="secondary"
           href="/"
-          className="mt-2 rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
-        >
+          className="mt-2" >
           {t.goHome}
-        </Link>
+        </LinkButton>
       </div>
     );
   }
@@ -114,9 +119,9 @@ function SharedRoomContent({ shareId }: { shareId: string }) {
     <div className={SHARED_ROOM_PAGE_SHELL_CLASS}>
       <div className="mx-auto flex max-w-4xl flex-col gap-7">
         <header className="border-b border-white/10 pb-6 sm:pb-7">
-          <p className="mb-3 inline-flex items-center rounded-full border border-neon-cyan/25 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan">
+          <Badge tone="accent" className="mb-3">
             {t.previewBadge}
-          </p>
+          </Badge>
           <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <h1 className="break-words text-3xl font-semibold leading-tight text-text-primary sm:text-4xl">
@@ -130,39 +135,37 @@ function SharedRoomContent({ shareId }: { shareId: string }) {
             </div>
 
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col lg:items-stretch">
-              <Link
+              <LinkButton variant="primary"
                 href={openHref}
-                className="inline-flex min-h-11 max-w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan px-4 py-2.5 text-sm font-semibold leading-5 text-deep-black transition hover:bg-text-primary"
-              >
+                className="max-w-full" >
                 <LockKeyhole className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span className="min-w-0 text-center">{t.unlockCta}</span>
                 <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
-              </Link>
-              <a
+              </LinkButton>
+              <LinkButton variant="secondary"
                 href="#room-preview"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/[0.035] px-4 py-2.5 text-sm font-medium text-text-secondary transition hover:border-white/25 hover:text-text-primary"
-              >
+                 >
                 <ArrowDown className="h-4 w-4 shrink-0" aria-hidden="true" />
                 {t.previewCta}
-              </a>
+              </LinkButton>
             </div>
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2 text-sm text-text-secondary">
-            <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
+            <Card padding="md" className="flex min-w-0 items-center gap-2">
               <Users className="h-4 w-4 shrink-0 text-neon-green" aria-hidden="true" />
               <span className="min-w-0 truncate">
                 {data.room.member_count} {data.room.member_count === 1 ? t.member : t.members}
               </span>
-            </div>
-            <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
+            </Card>
+            <Card padding="md" className="flex min-w-0 items-center gap-2">
               <MessageSquareText className="h-4 w-4 shrink-0 text-neon-cyan" aria-hidden="true" />
               <span className="min-w-0 truncate">{t.latestMessages.replace("{count}", String(messageCount))}</span>
-            </div>
-            <div className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
+            </Card>
+            <Card padding="md" className="flex min-w-0 items-center gap-2">
               <Clock className="h-4 w-4 shrink-0 text-neon-cyan" aria-hidden="true" />
               <span className="min-w-0 truncate">{t.sharedBy} {data.shared_by} · {sharedDate}</span>
-            </div>
+            </Card>
           </div>
         </header>
 
@@ -181,11 +184,9 @@ function SharedRoomContent({ shareId }: { shareId: string }) {
             </div>
 
             {previewMessages.length === 0 ? (
-              <p className="rounded-lg border border-white/10 bg-white/[0.045] px-4 py-10 text-center text-sm text-text-secondary">
-                {t.noMessages}
-              </p>
+              <EmptyState title={t.noMessages} />
             ) : (
-              <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] shadow-xl shadow-black/20">
+              <Card padding="md" >
                 {previewMessages.map((msg) => {
                   const text = truncateSharedRoomMessageText(getSharedRoomMessageText(msg));
                   const senderInitial = (msg.sender_name || msg.sender_id || "?").trim().slice(0, 1).toUpperCase();
@@ -194,17 +195,14 @@ function SharedRoomContent({ shareId }: { shareId: string }) {
                   return (
                     <article
                       key={msg.hub_msg_id}
-                      className="flex min-w-0 gap-3 border-b border-white/10 px-3.5 py-3.5 last:border-b-0"
-                    >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[linear-gradient(135deg,rgba(0,240,255,0.20),rgba(139,92,246,0.20))] text-xs font-semibold text-text-primary">
-                        {senderInitial}
-                      </div>
+                      className="flex min-w-0 gap-3 border-b border-white/10 px-3.5 py-3.5 last:border-b-0" >
+                      <Avatar kind={msg.sender_id.startsWith("hu_") ? "human" : "agent"} id={msg.sender_id} name={msg.sender_name} size="sm" />
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="max-w-full truncate text-sm font-semibold text-text-primary">
                             {msg.sender_name}
                           </span>
-                          <span className="font-mono text-xs text-text-secondary/50">
+                          <span className="font-mono text-xs text-text-secondary">
                             {formatMessageTimestamp(msg.created_at)}
                           </span>
                         </div>
@@ -222,13 +220,12 @@ function SharedRoomContent({ shareId }: { shareId: string }) {
                   </div>
                   <Link
                     href={openHref}
-                    className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-neon-cyan hover:underline"
-                  >
+                    className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-neon-cyan hover:underline" >
                     {t.jumpToRoom}
                     <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
                   </Link>
                 </div>
-              </div>
+              </Card>
             )}
           </section>
         </main>

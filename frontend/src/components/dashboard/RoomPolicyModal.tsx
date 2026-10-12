@@ -1,4 +1,13 @@
 "use client";
+import Badge from "@/components/ui/Badge";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import Checkbox from "@/components/ui/Checkbox";
 
 /**
  * [INPUT]: agentId + roomId; usePolicyStore for effective + override state
@@ -165,32 +174,18 @@ export default function RoomPolicyModal({
 
   useEffect(() => {
     if (!mounted) return;
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
       contentSelector: "[data-motion-item]",
     });
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWithMotion();
-    };
-    document.addEventListener("keydown", onKeyDown);
+
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+
       cleanupAnime(animationRef.current);
     };
   }, [closeWithMotion, mounted]);
 
   const modal = (
-    <div
-      ref={overlayRef}
-      className="liquid-scrim fixed inset-0 z-[80] flex items-center justify-center px-4 py-6 backdrop-blur"
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-dialog max-h-[calc(100vh-48px)] w-full max-w-lg overflow-y-auto rounded-2xl border p-5"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<>本房间回复策略</>} overlayClassName="z-[80]" className="max-w-lg overflow-y-auto p-5">
         <div data-motion-item className="mb-4 flex items-start justify-between">
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
@@ -202,57 +197,57 @@ export default function RoomPolicyModal({
               在当前房间是否被唤醒；不影响谁能发消息到房间。
             </p>
           </div>
-          <button
+          <IconButton label="关闭"
             type="button"
             onClick={closeWithMotion}
-            className="liquid-action rounded p-1 text-text-secondary transition-colors hover:text-text-primary"
+
             aria-label="关闭"
           >
             <X className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
 
         {loading && !data ? (
-          <div data-motion-item className="liquid-card flex items-center gap-2 rounded-xl border px-3 py-3 text-sm text-text-secondary">
+          <Card padding="none" data-motion-item className="flex items-center gap-2 px-3 py-3">
             <MobileBotCordLoading
               label="加载中…"
               size="sm"
               className="justify-start"
               textClassName="text-sm text-text-secondary"
             />
-          </div>
+          </Card>
         ) : error && !data ? (
-          <div data-motion-item className="rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-3 text-sm text-red-300">
+          <Alert tone="danger" data-motion-item >
             加载失败：{error}
-          </div>
+          </Alert>
         ) : data && effective ? (
           isDM ? (
-            <div data-motion-item className="liquid-card rounded-xl border border-neon-cyan/25 bg-neon-cyan/5 px-4 py-4">
+            <Card padding="none" data-motion-item className="px-4 py-4">
               <div className="text-sm font-medium text-neon-cyan">私聊始终唤醒</div>
               <p className="mt-1 text-xs text-text-secondary">
                 DM 房间当前强制使用所有消息唤醒，不能在房间级静音或覆盖。
               </p>
-            </div>
+            </Card>
           ) : (
             <>
               <EffectiveBadge effective={effective} hasOverride={hasOverride} />
 
               <div data-motion-item className="mt-4">
-                <div className="mb-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
+                <div className="mb-2 text-xs font-medium text-text-secondary">
                   快速静音
                 </div>
                 <div className="flex flex-wrap gap-2">
-                <button
+                <Button variant="secondary"
                   type="button"
                   onClick={() =>
                     void apply(() => snoozeRoom(agentId, roomId, 60))
                   }
                   disabled={busy}
-                  className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors disabled:opacity-50"
+
                 >
                   静音 1 小时
-                </button>
-                <button
+                </Button>
+                <Button variant="secondary"
                   type="button"
                   onClick={() =>
                     void apply(() =>
@@ -260,21 +255,21 @@ export default function RoomPolicyModal({
                     )
                   }
                   disabled={busy}
-                  className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors disabled:opacity-50"
+
                 >
                   静音到今天结束
-                </button>
-                <button
+                </Button>
+                <Button variant="secondary"
                   type="button"
                   onClick={() =>
                     void apply(() => snoozeRoom(agentId, roomId, 7 * 24 * 60))
                   }
                   disabled={busy}
-                  className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors disabled:opacity-50"
+
                 >
                   静音 7 天
-                </button>
-                <button
+                </Button>
+                <Button variant="secondary"
                   type="button"
                   onClick={() =>
                     void apply(() =>
@@ -282,21 +277,21 @@ export default function RoomPolicyModal({
                     )
                   }
                   disabled={busy}
-                  className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors disabled:opacity-50"
+
                 >
                   永久静音
-                </button>
+                </Button>
                 </div>
               </div>
 
-              <div data-motion-item className="liquid-card mt-4 rounded-xl border p-3">
-                <button
+              <Card padding="none" data-motion-item className="mt-4 p-3">
+                <Button variant="ghost"
                   type="button"
                   onClick={() => setExpanded((v) => !v)}
-                  className="text-sm font-medium text-neon-cyan transition-colors hover:text-neon-cyan/80"
+
                 >
                   {expanded ? "收起本房间专属策略" : "设置本房间专属策略"}
-                </button>
+                </Button>
 
                 {expanded ? (
                   <OverrideForm
@@ -318,11 +313,11 @@ export default function RoomPolicyModal({
                     }
                   />
                 ) : null}
-              </div>
+              </Card>
 
               {hasOverride ? (
                 <div data-motion-item className="mt-4">
-                  <button
+                  <Button variant="secondary"
                     type="button"
                     onClick={() =>
                       void apply(() => deleteRoomOverride(agentId, roomId)).then(
@@ -333,21 +328,20 @@ export default function RoomPolicyModal({
                       )
                     }
                     disabled={busy}
-                    className="liquid-action rounded-lg px-3 py-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+
                   >
                     恢复默认（继承全局）
-                  </button>
+                  </Button>
                 </div>
               ) : null}
 
               {error ? (
-                <p className="mt-3 text-xs text-red-300">{error}</p>
+                <Alert tone="danger" className="mt-3">{error}</Alert>
               ) : null}
             </>
           )
         ) : null}
-      </div>
-    </div>
+      </DialogSurface>
   );
 
   if (!mounted) return null;
@@ -370,7 +364,7 @@ function EffectiveBadge({
         ? "本房间专属"
         : "继承全局";
   return (
-    <div className="liquid-card rounded-xl border px-3 py-3">
+    <Card padding="none" className="px-3 py-3">
       <div className="text-xs text-text-secondary">当前</div>
       <div className="mt-1 flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-text-primary">
@@ -386,20 +380,20 @@ function EffectiveBadge({
           {sourceText}
         </span>
         {mutedActive ? (
-          <span className="rounded-full border border-yellow-400/30 bg-yellow-400/5 px-2 py-0.5 text-xs text-yellow-300">
+          <Badge tone="warning" >
             静音至 {new Date(effective.muted_until!).toLocaleString()}
-          </span>
+          </Badge>
         ) : null}
       </div>
       {effective.mode === "keyword" && effective.keywords.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {effective.keywords.map((k) => (
-            <span
+            <Badge
               key={k}
-              className="liquid-card rounded-full border px-2 py-0.5 text-xs text-text-secondary"
+
             >
               {k}
-            </span>
+            </Badge>
           ))}
         </div>
       ) : null}
@@ -408,7 +402,7 @@ function EffectiveBadge({
           ? "此房间正在使用专属策略；修改 Bot 默认回复不会覆盖这里。"
           : "此房间继承 Bot 默认房间回复策略。"}
       </p>
-    </div>
+    </Card>
   );
 }
 
@@ -493,7 +487,7 @@ function OverrideForm({
         <div className="mt-3 flex flex-col gap-2">
           <div className="flex flex-wrap gap-1.5">
             {keywords.length === 0 ? (
-              <span className="text-xs text-text-tertiary">尚未配置关键词</span>
+              <span className="text-xs text-text-secondary">尚未配置关键词</span>
             ) : (
               keywords.map((k) => (
                 <span
@@ -501,20 +495,20 @@ function OverrideForm({
                   className="inline-flex items-center gap-1 rounded-full border border-neon-cyan/30 bg-neon-cyan/5 px-2 py-0.5 text-xs text-neon-cyan"
                 >
                   {k}
-                  <button
+                  <IconButton label={`移除关键词 ${k}`}
                     type="button"
                     onClick={() => setKeywords((prev) => prev.filter((v) => v !== k))}
-                    className="rounded-full p-0.5 hover:bg-neon-cyan/10"
+
                     aria-label={`移除关键词 ${k}`}
                     disabled={busy}
                   >
                     <X className="h-3 w-3" />
-                  </button>
+                  </IconButton>
                 </span>
               ))
             )}
           </div>
-          <input
+          <Input
             type="text"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -527,13 +521,13 @@ function OverrideForm({
             onBlur={addKeyword}
             disabled={busy}
             placeholder="输入关键词后按回车添加"
-            className="liquid-input rounded-xl border border-glass-border px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
+
           />
         </div>
       ) : null}
 
       {mode === "allowed_senders" ? (
-        <div className="liquid-card mt-3 rounded-xl border p-2">
+        <Card padding="none" className="mt-3 p-2">
           {membersLoading ? (
             <div className="flex items-center gap-2 px-1 py-2 text-xs text-text-secondary">
               <MobileBotCordLoading
@@ -544,21 +538,14 @@ function OverrideForm({
               />
             </div>
           ) : members.length === 0 ? (
-            <p className="px-1 py-2 text-xs text-text-tertiary">未能加载房间成员</p>
+            <p className="px-1 py-2 text-xs text-text-secondary">未能加载房间成员</p>
           ) : (
             <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
               {members.map((member) => {
                 const checked = allowedSenderIds.includes(member.agent_id);
                 return (
-                  <label
-                    key={member.agent_id}
-                    className="liquid-list-row flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-text-primary"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        if (e.target.checked) {
+                  <Checkbox checked={checked} onCheckedChange={(checked) => {
+                        if (checked) {
                           setAllowedSenderIds((prev) =>
                             prev.includes(member.agent_id)
                               ? prev
@@ -569,25 +556,19 @@ function OverrideForm({
                             prev.filter((id) => id !== member.agent_id),
                           );
                         }
-                      }}
-                      className="accent-neon-cyan"
-                      disabled={busy}
-                    />
-                    <span className="min-w-0 flex-1 truncate">{member.display_name}</span>
-                    <span className="shrink-0 text-xs text-text-tertiary">
+                      }} disabled={busy} label={<><span className="min-w-0 flex-1 truncate">{member.display_name}</span><span className="shrink-0 text-xs text-text-secondary">
                       {member.participant_type === "human" ? "人" : "Agent"}
-                    </span>
-                  </label>
+                    </span></>} />
                 );
               })}
             </div>
           )}
-        </div>
+        </Card>
       ) : null}
 
       <div className="mt-3 flex justify-end">
         {currentMode !== mode || mode === "keyword" ? (
-          <button
+          <Button variant="secondary"
             type="button"
             onClick={() => {
               setMode(currentMode);
@@ -595,21 +576,21 @@ function OverrideForm({
               setAllowedSenderIds(currentAllowedSenderIds);
             }}
             disabled={busy}
-            className="liquid-action mr-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+            className="mr-2"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             撤销更改
-          </button>
+          </Button>
         ) : null}
-        <button
+        <Button variant="primary"
           type="button"
           onClick={() => onApply(mode, keywords, allowedSenderIds)}
           disabled={busy}
-          className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:opacity-50"
+
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           应用到本房间
-        </button>
+        </Button>
       </div>
     </div>
   );

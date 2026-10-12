@@ -4,11 +4,11 @@
  * [POS]: UI feedback primitive; transient notifications use Toast
  * [PROTOCOL]: Keep the public API aligned with COMPONENTS.md
  */
-import type { HTMLAttributes, ReactNode } from "react";
+import type { HTMLAttributes, ReactNode, Ref } from "react";
 import { AlertTriangle, CheckCircle2, Info, CircleAlert } from "lucide-react";
 import { clsx } from "clsx";
 export type AlertTone = "neutral" | "success" | "warning" | "danger";
-export interface AlertProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> { tone?: AlertTone; title?: ReactNode; actions?: ReactNode }
+export interface AlertProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> { ref?: Ref<HTMLDivElement>; tone?: AlertTone; title?: ReactNode; actions?: ReactNode }
 const tones = {
   neutral: "border-border bg-surface-sunken text-text-primary",
   success: "border-success/30 bg-success-soft text-success",

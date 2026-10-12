@@ -7,6 +7,10 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import EmptyState from "@/components/ui/EmptyState";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import { useEffect, useMemo } from "react";
 import { Lock } from "lucide-react";
 import { useStore } from "zustand";
@@ -64,7 +68,7 @@ export default function PaidRoomPreview({
   return (
     <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-8 text-center">
       <div className="w-full max-w-xl">
-        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-neon-cyan/20 bg-accent-soft text-accent-text">
           <Lock className="h-5 w-5" />
         </div>
         <h3 className="mt-4 text-sm font-semibold text-text-primary">{t.subscriptionRequired}</h3>
@@ -75,53 +79,51 @@ export default function PaidRoomPreview({
         <div className="mt-6 text-left">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-medium text-text-primary">{t.previewMessages}</p>
-            <p className="text-xs text-text-secondary/70">{t.previewMessagesHint}</p>
+            <p className="text-xs text-text-secondary">{t.previewMessagesHint}</p>
           </div>
 
           {loading ? (
-            <div className="liquid-empty-state flex items-center justify-center rounded-lg border border-glass-border px-3 py-5 text-xs text-text-secondary">
+            <Card padding="md" className="flex flex-col items-center justify-center">
               <MobileBotCordLoading
                 label={t.loadingPreviewMessages}
                 size="sm"
                 textClassName="text-xs text-text-secondary"
               />
-            </div>
+            </Card>
           ) : error && messages === null ? (
-            <div role="alert" className="rounded-lg border border-glass-border px-3 py-5 text-center text-xs text-text-secondary">
+            <Alert tone="danger" role="alert" className="">
               <p>{locale === "zh" ? "预览加载失败" : "Unable to load previews"}</p>
-              <button type="button" onClick={() => void load()} className="mt-2 text-neon-cyan hover:underline">
+              <Button variant="ghost" size="sm" type="button" onClick={() => void load()} className="mt-2">
                 {locale === "zh" ? "重试" : "Retry"}
-              </button>
-            </div>
+              </Button>
+            </Alert>
           ) : previewMessages.length > 0 ? (
             <div className="space-y-2">
               {previewMessages.map(({ message, text }) => (
-                <div
+                <Card padding="sm"
                   key={message.hub_msg_id}
-                  className="liquid-card rounded-lg border border-glass-border px-3 py-2.5"
+                  className=""
                 >
-                  <div className="mb-1 flex min-w-0 items-center gap-2 text-xs text-text-secondary/70">
-                    <span className="truncate font-medium text-neon-cyan/90">{senderName(message)}</span>
-                    <span className="shrink-0 text-text-secondary/40">/</span>
+                  <div className="mb-1 flex min-w-0 items-center gap-2 text-xs text-text-secondary">
+                    <span className="truncate font-medium text-accent-text">{senderName(message)}</span>
+                    <span className="shrink-0 text-text-secondary">/</span>
                     <span className="shrink-0">{timeLabel(message.created_at)}</span>
                   </div>
                   <p className="line-clamp-2 text-xs leading-relaxed text-text-primary/85">{text}</p>
-                </div>
+                </Card>
               ))}
             </div>
           ) : (
-            <div className="liquid-empty-state rounded-lg border border-glass-border px-3 py-5 text-center text-xs text-text-secondary">
-              {t.noPreviewMessages}
-            </div>
+            <EmptyState compact bordered title={<>{t.noPreviewMessages}</>} />
           )}
         </div>
 
         {error && messages !== null ? (
           <p role="status" className="mt-3 text-xs text-text-secondary">
             {locale === "zh" ? "暂时无法更新预览。" : "Unable to refresh previews. "}
-            <button type="button" onClick={() => void load()} className="ml-1 text-neon-cyan hover:underline">
+            <Button variant="ghost" size="sm" type="button" onClick={() => void load()} className="ml-1">
               {locale === "zh" ? "重试" : "Retry"}
-            </button>
+            </Button>
           </p>
         ) : null}
 

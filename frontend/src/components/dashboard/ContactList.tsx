@@ -1,5 +1,7 @@
 "use client";
 
+import EmptyState from "@/components/ui/EmptyState";
+import Button from "@/components/ui/Button";
 import { useLanguage } from '@/lib/i18n';
 import { contactList } from '@/lib/i18n/translations/dashboard';
 import CopyableId from "@/components/ui/CopyableId";
@@ -30,9 +32,7 @@ export default function ContactList() {
 
   if (contacts.length === 0) {
     return (
-      <div className="liquid-empty-state m-3 p-4 text-center text-xs text-text-secondary">
-        {t.noContacts}
-      </div>
+      <EmptyState compact bordered title={<>{t.noContacts}</>} />
     );
   }
 
@@ -46,10 +46,10 @@ export default function ContactList() {
         const initials = initialsFromName(hasRealName ? primaryName : contact.contact_agent_id);
         const avatarBorder = isHuman ? "border-neon-green/30" : "border-neon-cyan/30";
         const avatarFallback = isHuman
-          ? "border-neon-green/30 bg-neon-green/10 text-neon-green"
-          : "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan";
+          ? "border-neon-green/30 bg-success-soft text-success"
+          : "border-neon-cyan/30 bg-accent-soft text-accent-text";
         return (
-          <button
+          <Button variant="row"
             key={contact.contact_agent_id}
             onClick={() => {
               if (isHuman) {
@@ -58,7 +58,7 @@ export default function ContactList() {
                 void selectAgent(contact.contact_agent_id);
               }
             }}
-            className="liquid-list-row w-full border-l-2 border-transparent px-4 py-2.5 text-left transition-colors"
+            className="w-full"
           >
             <div className="flex items-center gap-2.5">
               {contact.avatar_url ? (
@@ -83,7 +83,7 @@ export default function ContactList() {
                 <CopyableId value={contact.contact_agent_id} className="mt-0.5" />
               </div>
             </div>
-          </button>
+          </Button>
         );
       })}
     </div>

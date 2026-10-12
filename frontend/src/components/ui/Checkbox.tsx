@@ -18,10 +18,12 @@ export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement
   /** Clicking an indeterminate box reports true. */
   onCheckedChange: (checked: boolean) => void;
   label?: ReactNode;
+  /** Set false inside an existing label to avoid nested label elements. */
+  wrapLabel?: boolean;
 }
 
 const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(
-  { checked, onCheckedChange, label, disabled, className, ...rest },
+  { checked, onCheckedChange, label, wrapLabel = true, disabled, className, ...rest },
   ref,
 ) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -34,9 +36,10 @@ const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(
   });
 
   const Icon = indeterminate ? Minus : Check;
+  const Wrapper = wrapLabel ? "label" : "span";
 
   return (
-    <label
+    <Wrapper
       className={clsx(
         "bc-touch-target inline-flex items-center gap-2 text-sm text-text-primary",
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
@@ -72,7 +75,7 @@ const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(
         />
       </span>
       {label != null ? <span>{label}</span> : null}
-    </label>
+    </Wrapper>
   );
 });
 

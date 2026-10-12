@@ -7,6 +7,9 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import EmptyState from "@/components/ui/EmptyState";
+import Badge from "@/components/ui/Badge";
+import Card from "@/components/ui/Card";
 import { useEffect, useMemo, useRef } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { roomList, messagesGrouping } from '@/lib/i18n/translations/dashboard';
@@ -271,7 +274,7 @@ export default function RoomList({
     void useDashboardChatStore.getState().prefetchRoomMessages(room.room_id);
   };
 
-  const handleRoomKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, room: DashboardRoom) => {
+  const handleRoomKeyDown = (event: React.KeyboardEvent<HTMLElement>, room: DashboardRoom) => {
     if (event.target !== event.currentTarget) {
       return;
     }
@@ -292,7 +295,7 @@ export default function RoomList({
     router.push("/chats/messages");
   };
 
-  const handleUserChatKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleUserChatKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget) {
       return;
     }
@@ -310,7 +313,7 @@ export default function RoomList({
   return (
     <div className="py-2">
       {showUserChatEntry && (
-        <div
+        <Card variant="interactive" padding="sm"
           ref={userChatEntryRef}
           role="button"
           tabIndex={0}
@@ -319,20 +322,14 @@ export default function RoomList({
           title={t.userChatTooltip}
           onClick={handleSelectUserChat}
           onKeyDown={handleUserChatKeyDown}
-          className={`liquid-list-row liquid-room-row relative mx-2 my-1 rounded-2xl px-3 py-3 text-left transition-[transform,background-color,border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
-            messagesPane === "user-chat"
-              ? "liquid-room-row-selected"
-              : isOwnerChatEmpty
-                ? "liquid-room-row-attention"
-                : ""
-          }`}
+          className={`relative mx-2 my-1  `}
         >
           <div className="flex items-center gap-3">
-            <div className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-neon-cyan ${
-              isOwnerChatEmpty ? "border-neon-cyan/50 bg-neon-cyan/15" : "border-neon-cyan/30 bg-neon-cyan/10"
+            <div className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-accent-text ${
+              isOwnerChatEmpty ? "border-neon-cyan/50 bg-accent-soft" : "border-neon-cyan/30 bg-accent-soft"
             }`}>
               {isOwnerChatEmpty && (
-                <div className="absolute inset-0 rounded-xl bg-neon-cyan/15 blur-md" />
+                <div className="absolute inset-0 rounded-xl bg-accent-soft blur-md" />
               )}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="relative h-5 w-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
@@ -340,29 +337,27 @@ export default function RoomList({
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <span className={`truncate text-sm font-medium flex items-center gap-2 ${messagesPane === "user-chat" ? "text-neon-cyan" : "text-text-primary"}`}>
+                <span className={`truncate text-sm font-medium flex items-center gap-2 ${messagesPane === "user-chat" ? "text-accent-text" : "text-text-primary"}`}>
                   {t.userChatTitle}
-                  <span className="rounded-full border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.14em] text-neon-cyan">
+                  <Badge tone="accent" >
                     {t.userChatBadge}
-                  </span>
+                  </Badge>
                   {isOwnerChatEmpty && (
-                    <span className="rounded-full bg-neon-green/20 border border-neon-green/40 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-neon-green">
+                    <Badge tone="success" >
                       {t.userChatOnboardingBadge}
-                    </span>
+                    </Badge>
                   )}
                 </span>
               </div>
-              <p className={`mt-0.5 truncate text-xs ${isOwnerChatEmpty ? "text-neon-cyan/70" : "text-text-secondary"}`}>
+              <p className={`mt-0.5 truncate text-xs ${isOwnerChatEmpty ? "text-accent-text" : "text-text-secondary"}`}>
                 {isOwnerChatEmpty ? t.userChatOnboardingPreview : t.userChatPreview}
               </p>
             </div>
           </div>
-        </div>
+        </Card>
       )}
       {displayRooms.length === 0 && !showUserChatEntry && (
-        <div className="liquid-empty-state m-3 p-4 text-center text-xs text-text-secondary">
-          {t.noRooms}
-        </div>
+        <EmptyState compact bordered title={<>{t.noRooms}</>} />
       )}
       {displayRooms.map((room) => {
         const ownerChatAgentId = isOwnerChatRoom(room.room_id) ? room._originAgent?.agent_id || room.owner_id : null;
@@ -416,7 +411,7 @@ export default function RoomList({
           : null;
 
         return (
-          <div
+          <Card variant="interactive" padding="sm"
             key={room.room_id}
             data-room-list-row="true"
             role="button"
@@ -428,11 +423,7 @@ export default function RoomList({
             onTouchStart={() => prefetchRoom(room)}
             onFocus={() => prefetchRoom(room)}
             onKeyDown={(event) => handleRoomKeyDown(event, room)}
-            className={`liquid-list-row liquid-room-row mx-2 my-1 rounded-2xl px-3 py-3 text-left transition-[transform,background-color,border-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-cyan/60 ${
-              isSelected
-                ? "liquid-room-row-selected"
-                : ""
-            }`}
+            className={`mx-2 my-1  `}
           >
             <div className="flex items-center gap-3">
               {isGroup && room.members_preview && room.members_preview.length >= 2 ? (
@@ -450,7 +441,7 @@ export default function RoomList({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className={`min-w-0 truncate text-sm font-medium ${isSelected ? "text-neon-cyan" : "text-text-primary"}`}>
+                    <span className={`min-w-0 truncate text-sm font-medium ${isSelected ? "text-accent-text" : "text-text-primary"}`}>
                       {displayName}
                     </span>
                     {!isGroup && room.peer_type === "agent" ? (
@@ -459,9 +450,9 @@ export default function RoomList({
                         const isMyBot = room.owner_id && ownedAgentIds.has(room.owner_id);
                         if (isMyBot) {
                           return (
-                            <span className="shrink-0 rounded-full border border-neon-cyan/40 bg-neon-cyan/15 px-1.5 py-px text-xs font-medium text-neon-cyan">
+                            <Badge tone="accent" >
                               My Bot
-                            </span>
+                            </Badge>
                           );
                         }
                         // Third-party bot — show "<owner> 的 Bot" if we know the owner.
@@ -469,15 +460,15 @@ export default function RoomList({
                         const ownerName = peerAgent?.owner_display_name;
                         const label = ownerName ? tGroup.ownedBotOf(ownerName) : tGroup.externalBot;
                         return (
-                          <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary/70">
+                          <Badge tone="neutral" >
                             {label}
-                          </span>
+                          </Badge>
                         );
                       })()
                     ) : !isGroup && room.peer_type === "human" ? (
-                      <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary/70">
+                      <Badge tone="neutral" >
                         HUMAN
-                      </span>
+                      </Badge>
                     ) : null}
                   </span>
                   <div className="flex shrink-0 items-center gap-2">
@@ -485,7 +476,7 @@ export default function RoomList({
                       <UnreadBadge count={unreadCount} />
                     )}
                     {messageTime && (
-                      <span className="text-xs text-text-secondary/80">
+                      <span className="text-xs text-text-secondary">
                         {messageTime}
                       </span>
                     )}
@@ -502,13 +493,13 @@ export default function RoomList({
                   </p>
                 </div>
                 {metaLine && (
-                  <p className="mt-1 truncate text-xs text-neon-cyan/70">
+                  <p className="mt-1 truncate text-xs text-accent-text">
                     {metaLine}
                   </p>
                 )}
               </div>
             </div>
-          </div>
+          </Card>
         );
       })}
     </div>

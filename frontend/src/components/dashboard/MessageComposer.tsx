@@ -1,5 +1,9 @@
 "use client";
 
+import Badge from "@/components/ui/Badge";
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
+import { Textarea } from "@/components/ui/Input";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import ComposerPopover from "./ComposerPopover";
@@ -526,7 +530,7 @@ export default function MessageComposer({
   return (
     <div onDrop={handleDrop} onDragOver={handleDragOver} className="liquid-composer rounded-2xl border border-glass-border p-1.5">
       {hasLengthError && (
-        <p className="mb-1 px-1 text-xs leading-4 text-red-400">
+        <p className="mb-1 px-1 text-xs leading-4 text-danger">
           Message cannot exceed {MESSAGE_MAX_LENGTH.toLocaleString()} characters.
         </p>
       )}
@@ -540,17 +544,17 @@ export default function MessageComposer({
               {pf.preview ? (
                 <img src={pf.preview} alt={pf.file.name} className="w-8 h-8 rounded object-cover shrink-0" />
               ) : (
-                <FileText className="w-4 h-4 text-zinc-400 shrink-0" />
+                <FileText className="w-4 h-4 text-text-secondary shrink-0" />
               )}
               <span className="truncate">{pf.file.name}</span>
-              <button
+              <IconButton size="sm" label="Remove attachment"
                 type="button"
                 onClick={() => removeFile(idx)}
-                className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-600 text-zinc-200 transition-colors hover:bg-red-500 max-md:h-11 max-md:w-11"
+                className="ml-1 flex shrink-0 items-center justify-center"
                 aria-label="Remove attachment"
               >
                 <X className="w-3 h-3" />
-              </button>
+              </IconButton>
             </div>
           ))}
         </div>
@@ -571,61 +575,61 @@ export default function MessageComposer({
               {actionMenuOpen && (
                 <ComposerPopover anchorRef={composerRowRef} onClose={() => setActionMenuOpen(false)} className="w-44 p-1">
                   {allowAttachments && (
-                    <button
+                    <Button variant="row"
                       type="button"
                       onClick={() => {
                         setActionMenuOpen(false);
                         fileInputRef.current?.click();
                       }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg"
+                      className="flex w-full items-center gap-2"
                     >
-                      <FileUp className="h-4 w-4 text-zinc-400" />
+                      <FileUp className="h-4 w-4 text-text-secondary" />
                       <span>{actionLabels?.file ?? "File"}</span>
-                    </button>
+                    </Button>
                   )}
                   {onTransfer && (
-                    <button
+                    <Button variant="row"
                       type="button"
                       onClick={() => {
                         setActionMenuOpen(false);
                         onTransfer();
                       }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg"
+                      className="flex w-full items-center gap-2"
                     >
-                      <Coins className="h-4 w-4 text-zinc-400" />
+                      <Coins className="h-4 w-4 text-text-secondary" />
                       <span>{actionLabels?.transfer ?? "Transfer"}</span>
-                    </button>
+                    </Button>
                   )}
                 </ComposerPopover>
               )}
-              <button
+              <IconButton size="sm" label={actionLabels?.add ?? "Open actions"}
                 type="button"
                 onClick={() => setActionMenuOpen((open) => !open)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan"
+                className="flex shrink-0 items-center justify-center"
                 title={actionLabels?.add ?? "Add"}
                 aria-label={actionLabels?.add ?? "Open actions"}
                 aria-expanded={actionMenuOpen}
               >
                 <Plus className="h-4 w-4" />
-              </button>
+              </IconButton>
             </div>
           </>
         )}
         <div className="relative min-w-0 flex-1 max-md:order-first max-md:basis-full">
           {pickedMentions.length > 0 && (
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
-              <div className="whitespace-pre-wrap break-words border border-transparent px-3 py-2 text-base md:text-sm [@media(pointer:coarse)]:text-base text-text-primary" style={{ transform: `translateY(-${inputScrollTop}px)`, overflowWrap: "break-word" }}>
+              <div className="whitespace-pre-wrap break-words px-3 py-2 text-sm leading-relaxed [@media(pointer:coarse)]:text-base text-text-primary" style={{ transform: `translateY(-${inputScrollTop}px)`, overflowWrap: "break-word" }}>
                 {pickedMentions.map((mention, index) => (
                   <span key={`${mention.start}:${mention.agent_id}`}>
                     {text.slice(index === 0 ? 0 : pickedMentions[index - 1].end, mention.start)}
-                    <span className="rounded bg-neon-cyan/10 text-neon-cyan">{text.slice(mention.start, mention.end)}</span>
+                    <span className="rounded bg-accent-soft text-accent-text">{text.slice(mention.start, mention.end)}</span>
                   </span>
                 ))}
                 {text.slice(pickedMentions[pickedMentions.length - 1].end)}{"\n"}
               </div>
             </div>
           )}
-        <textarea
+        <Textarea variant="message"
           ref={inputRef}
           id={inputId}
           name={MESSAGE_COMPOSER_TEXTAREA_NAME}
@@ -646,13 +650,7 @@ export default function MessageComposer({
           aria-invalid={hasLengthError || undefined}
           style={pickedMentions.length > 0 ? { color: "transparent", caretColor: "var(--color-text-primary)", background: "transparent" } : undefined}
           onScroll={(event) => setInputScrollTop(event.currentTarget.scrollTop)}
-          className={`liquid-input relative block w-full min-w-0 min-h-11 resize-none rounded-xl border px-3 py-2 text-base md:text-sm [@media(pointer:coarse)]:text-base text-text-primary placeholder-text-secondary/65 focus:outline-none ${
-            hasLengthError
-              ? "border-red-500/70 focus:border-red-500/80"
-              : emptyState
-              ? "border-cyan-500/40 animate-[pulse-border_2s_ease-in-out_infinite]"
-              : "border-zinc-700"
-          }`}
+          className={`relative block w-full min-w-0 `}
           aria-label={placeholder}
           enterKeyHint="enter"
           placeholder={placeholder}
@@ -711,15 +709,15 @@ export default function MessageComposer({
                       : "other";
               const KindIcon = kind === "bot" ? Bot : kind === "user" ? User : kind === "room" ? Hash : AtSign;
               const iconClass = kind === "bot"
-                ? "text-cyan-400"
+                ? "text-accent-text"
                 : kind === "user"
-                  ? "text-emerald-400"
+                  ? "text-success"
                   : kind === "room"
-                    ? "text-amber-400"
-                    : "text-zinc-400";
+                    ? "text-warning"
+                    : "text-text-secondary";
               const kindLabel = kind === "bot" ? "Bot" : kind === "user" ? "User" : kind === "room" ? "Room" : kind === "all" ? "All" : "";
               return (
-                <button
+                <Button variant="row"
                   ref={(node) => { mentionOptionRefs.current[i] = node; }}
                   type="button"
                   key={s.agent_id}
@@ -733,37 +731,33 @@ export default function MessageComposer({
                   }}
                   onClick={() => commitMention(s)}
                   onMouseEnter={() => setMentionIndex(i)}
-                  className={`flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs transition-colors ${
-                    i === mentionIndex
-                      ? "bg-neon-cyan/15 text-neon-cyan"
-                      : "text-text-primary hover:bg-glass-bg"
-                  }`}
+                  className={`flex w-full items-center gap-2 `}
                 >
                   <KindIcon className={`h-3.5 w-3.5 shrink-0 ${iconClass}`} />
                   <span className="truncate font-medium">{s.display_name}</span>
                   {kindLabel && (
-                    <span className={`shrink-0 rounded px-1 py-px text-xs font-medium uppercase tracking-wide ${iconClass} bg-glass-bg`}>
+                    <Badge tone="neutral" >
                       {kindLabel}
-                    </span>
+                    </Badge>
                   )}
-                  <span className="ml-auto max-w-[35%] truncate font-mono text-xs text-zinc-500">{s.id ?? s.agent_id}</span>
-                </button>
+                  <span className="ml-auto max-w-[35%] truncate font-mono text-xs text-text-secondary">{s.id ?? s.agent_id}</span>
+                </Button>
               );
             })}
           </div>
           </ComposerPopover>
         )}
-        <button
+        <IconButton size="sm" label="Send message"
           ref={sendButtonRef}
           type="button"
           onMouseDown={(event) => event.preventDefault()}
           onClick={handleSendClick}
           disabled={!canSend}
-          className="liquid-send-button max-md:ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neon-cyan/15 text-neon-cyan transition-colors hover:bg-neon-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
+          className="max-md:ml-auto flex shrink-0 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="Send message"
         >
           <Send ref={sendIconRef} className="w-4 h-4" />
-        </button>
+        </IconButton>
       </div>
     </div>
   );

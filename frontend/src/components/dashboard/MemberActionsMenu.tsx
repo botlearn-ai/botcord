@@ -7,10 +7,15 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import DialogShell, { useDialogClose } from "@/components/ui/DialogShell";
+import Menu, { MenuTrigger, MenuContent, MenuItem } from "@/components/ui/Menu";
+import IconButton from "@/components/ui/IconButton";
+import { MoreHorizontal } from "lucide-react";
+import Tabs from "@/components/ui/Tabs";
+import Button from "@/components/ui/Button";
+import { useState } from "react";
 import type { PublicRoomMember } from "@/lib/types";
 import { humansApi } from "@/lib/api";
-import { animateIfMotion, animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import { useLanguage } from "@/lib/i18n";
 import { agentBrowser } from "@/lib/i18n/translations/dashboard";
 import { useConfirm } from "@/store/useConfirmStore";
@@ -35,8 +40,6 @@ export default function MemberActionsMenu({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [permOpen, setPermOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const menuAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
 
   const isOwner = viewerRole === "owner";
   const isOwnerTarget = member.role === "owner";
@@ -49,18 +52,6 @@ export default function MemberActionsMenu({
   // include Remove here too for a single unified surface.
   const canRemove = !isOwnerTarget && (isOwner || (viewerRole === "admin" && !isAdminTarget));
 
-  useEffect(() => {
-    if (!open || !menuRef.current) return;
-    cleanupAnime(menuAnimationRef.current);
-    menuAnimationRef.current = animateIfMotion(menuRef.current, {
-      opacity: [0, 1],
-      translateY: [-4, 0],
-      scale: [0.98, 1],
-      duration: 150,
-      ease: "out(3)",
-    });
-    return () => cleanupAnime(menuAnimationRef.current);
-  }, [open]);
 
   if (!canPromoteDemote && !canEditPerms && !canRemove) return null;
 
@@ -92,42 +83,14 @@ export default function MemberActionsMenu({
 
   return (
     <div className="relative ml-1 shrink-0">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        disabled={busy}
-        title={t.memberActions}
-        className="rounded px-1 py-0.5 text-[12px] leading-none text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-40"
-      >
-        ⋯
-      </button>
-      {open && (
-        <div ref={menuRef} className="liquid-menu absolute right-0 z-20 mt-1 min-w-[140px] rounded-md border border-glass-border p-1 shadow-lg">
-          {canPromoteDemote && (
-            <button
-              onClick={toggleRole}
-              className="block w-full rounded px-2 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg"
-            >
-              {member.role === "admin" ? t.demoteToMember : t.promoteToAdmin}
-            </button>
-          )}
-          {canEditPerms && (
-            <button
-              onClick={() => { setPermOpen(true); setOpen(false); }}
-              className="block w-full rounded px-2 py-1.5 text-left text-xs text-text-primary hover:bg-glass-bg"
-            >
-              {t.editPermissions}
-            </button>
-          )}
-          {canRemove && (
-            <button
-              onClick={doRemove}
-              className="block w-full rounded px-2 py-1.5 text-left text-xs text-red-300 hover:bg-red-500/10"
-            >
-              {t.removeMember}
-            </button>
-          )}
-        </div>
-      )}
+      <Menu open={open} onOpenChange={setOpen}>
+        <MenuTrigger asChild><IconButton label={t.memberActions} size="sm" disabled={busy}><MoreHorizontal size={16} strokeWidth={1.75} /></IconButton></MenuTrigger>
+        <MenuContent align="end">
+          {canPromoteDemote && <MenuItem disabled={busy} onSelect={() => void toggleRole()}>{member.role === "admin" ? t.demoteToMember : t.promoteToAdmin}</MenuItem>}
+          {canEditPerms && <MenuItem disabled={busy} onSelect={() => { setPermOpen(true); setOpen(false); }}>{t.editPermissions}</MenuItem>}
+          {canRemove && <MenuItem danger disabled={busy} onSelect={() => void doRemove()}>{t.removeMember}</MenuItem>}
+        </MenuContent>
+      </Menu>
       {permOpen && (
         <PortaledPermissionsDialog
           roomId={roomId}
@@ -145,14 +108,15 @@ export default function MemberActionsMenu({
 // Inline permissions dialog. Tri-state per field: null (default), true, false.
 // ---------------------------------------------------------------------------
 
-function PermissionsDialog({
-  roomId, member, onClose, onSaved, onError,
+function PermissionsContent({
+  roomId, member, onClose, onSaved, onError, setBusy,
 }: {
   roomId: string;
   member: PublicRoomMember;
   onClose: () => void;
   onSaved: () => void;
   onError: (msg: string) => void;
+  setBusy: (busy: boolean) => void;
 }) {
   const locale = useLanguage();
   const t = agentBrowser[locale];
@@ -162,14 +126,12 @@ function PermissionsDialog({
   const [canSend, setCanSend] = useState<boolean | null>(member.can_send ?? null);
   const [canInvite, setCanInvite] = useState<boolean | null>(member.can_invite ?? null);
   const [saving, setSaving] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
+  const closeWithMotion = useDialogClose();
 
   const save = async () => {
     if (saving) return;
     setSaving(true);
+    setBusy(true);
     try {
       await humansApi.setRoomMemberPermissions(roomId, member.agent_id, {
         can_send: canSend,
@@ -181,66 +143,40 @@ function PermissionsDialog({
       onError(e?.message || t.permSaveFailed);
     } finally {
       setSaving(false);
+      setBusy(false);
     }
   };
 
-  const closeWithMotion = useCallback(() => {
-    if (saving || closing) return;
-    setClosing(true);
-    cleanupAnime(animationRef.current);
-    animationRef.current = animateOverlayPanelExit(overlayRef.current, panelRef.current, {
-      onComplete: onClose,
-    });
-  }, [closing, onClose, saving]);
-
-  useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
-    return () => cleanupAnime(animationRef.current);
-  }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
-
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-30 flex items-center justify-center ${closing ? "pointer-events-none" : ""}`}
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        className="liquid-dialog w-[320px] rounded-lg border border-glass-border p-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="mb-3 text-sm font-semibold text-text-primary">
-          {t.permissionsTitle} — {member.display_name}
-        </h3>
+    <>
         <TriToggle label={t.permCanSend} value={canSend} onChange={setCanSend} t={t} />
         <TriToggle label={t.permCanInvite} value={canInvite} onChange={setCanInvite} t={t} />
         <div className="mt-4 flex justify-end gap-2">
-          <button
+          <Button variant="secondary" size="sm"
             onClick={closeWithMotion}
             disabled={saving}
-            className="rounded border border-glass-border px-3 py-1.5 text-xs text-text-secondary hover:bg-glass-bg"
+
           >
             {t.permCancel}
-          </button>
-          <button
+          </Button>
+          <Button variant="secondary" size="sm"
             onClick={save}
             disabled={saving}
-            className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+            className="disabled:opacity-50"
           >
             {saving ? "…" : t.permSave}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+    </>
   );
+}
+
+function PermissionsDialog(props: { roomId: string; member: PublicRoomMember; onClose: () => void; onSaved: () => void; onError: (message: string) => void }) {
+  const locale = useLanguage();
+  const [busy, setBusy] = useState(false);
+  return <DialogShell title={`${agentBrowser[locale].permissionsTitle} — ${props.member.display_name}`} size="sm" busy={busy} onClose={props.onClose}>
+    <PermissionsContent {...props} setBusy={setBusy} />
+  </DialogShell>;
 }
 
 const PortaledPermissionsDialog = withDashboardOverlayPortal(PermissionsDialog, "nested");
@@ -253,23 +189,16 @@ function TriToggle({
   onChange: (v: boolean | null) => void;
   t: { permUseDefault: string; permAllow: string; permDeny: string };
 }) {
-  const base = "px-2 py-1 text-xs rounded border transition-colors";
-  const sel = "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan";
-  const off = "border-glass-border text-text-secondary hover:bg-glass-bg";
   return (
     <div className="mb-3">
-      <p className="mb-1 text-xs text-text-secondary">{label}</p>
-      <div className="flex gap-1">
-        <button className={`${base} ${value === null ? sel : off}`} onClick={() => onChange(null)}>
-          {t.permUseDefault}
-        </button>
-        <button className={`${base} ${value === true ? sel : off}`} onClick={() => onChange(true)}>
-          {t.permAllow}
-        </button>
-        <button className={`${base} ${value === false ? sel : off}`} onClick={() => onChange(false)}>
-          {t.permDeny}
-        </button>
-      </div>
+      <p className="mb-1 type-caption text-text-secondary">{label}</p>
+      <Tabs
+        ariaLabel={label}
+        value={value === null ? "default" : value ? "allow" : "deny"}
+        onValueChange={(next) => onChange(next === "default" ? null : next === "allow")}
+        size="sm"
+        items={[{ value: "default", label: t.permUseDefault }, { value: "allow", label: t.permAllow }, { value: "deny", label: t.permDeny }]}
+      />
     </div>
   );
 }
