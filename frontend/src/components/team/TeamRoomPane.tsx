@@ -7,6 +7,7 @@
  * pane claims `openedRoomId` while mounted and polls messages itself (the
  * personal 5s poll is off in Team mode).
  */
+import LinkButton from "@/components/ui/LinkButton";
 import MessageList from "@/components/dashboard/MessageList";
 import RoomHeader from "@/components/dashboard/RoomHeader";
 import RoomHumanComposer from "@/components/dashboard/RoomHumanComposer";
@@ -28,6 +29,7 @@ export default function TeamRoomPane({
   roomId,
   title,
   allowHumanSend,
+  isDirect = false,
   onBack,
   onOpenMembers,
 }: {
@@ -35,12 +37,14 @@ export default function TeamRoomPane({
   roomId: string;
   title: string;
   allowHumanSend: boolean;
+  isDirect?: boolean;
   onBack: () => void;
   onOpenMembers: () => void;
 }) {
   const zh = useLanguage() === "zh";
   const opened = useDashboardUIStore((s) => s.openedRoomId === roomId);
   const agentAccess = useRoomAgentAccess(spaceId, roomId);
+  const accessDenied = isDirect && agentAccess.some((a) => a.my_capability === "deny");
 
   useEffect(() => {
     const ui = useDashboardUIStore.getState();
@@ -82,7 +86,14 @@ export default function TeamRoomPane({
           {opened && <MessageList key={roomId} />}
         </div>
         <div className="team-room-composer shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2">
-          {allowHumanSend ? (
+          {accessDenied ? (
+            <div className="space-y-2 text-center text-sm text-text-secondary" role="status">
+              <p>{zh ? "你没有使用该 Agent 的有效授权。" : "You don't have active access to this Agent."}</p>
+              <LinkButton variant="inline" href={`/chats/team?space=${encodeURIComponent(spaceId)}&view=agents`}>
+                {zh ? "前往 Agent 页面申请权限" : "Go to Agents to request access"}
+              </LinkButton>
+            </div>
+          ) : allowHumanSend ? (
             <>
               <RoomReplyHints agents={agentAccess} />
               <RoomHumanComposer roomId={roomId} />

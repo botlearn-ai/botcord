@@ -1,4 +1,5 @@
 "use client";
+import { useAccessChanges } from "@/store/useTeamAccessStore";
 import Disclosure from "@/components/ui/Disclosure";
 
 import { useLanguage } from "@/lib/i18n";
@@ -21,6 +22,9 @@ export function useRoomAgentAccess(
   const membersVersion = useDashboardChatStore(
     (s) => s.roomMemberVersions[roomId] ?? 0,
   );
+  const accessVersion = useAccessChanges(spaceId);
+  const revokedSends = useDashboardChatStore((s) => (s.messages[roomId] ?? [])
+    .filter((m) => m.send_error === "agent_access_revoked").length);
   const [agents, setAgents] = useState<RoomAgentAccess[]>([]);
   useEffect(() => {
     const controller = new AbortController();
@@ -32,7 +36,7 @@ export function useRoomAgentAccess(
       // Advisory UI: keep the last known state rather than block the room.
       .catch(() => undefined);
     return () => controller.abort();
-  }, [spaceId, roomId, membersVersion]);
+  }, [spaceId, roomId, membersVersion, accessVersion, revokedSends]);
   return agents;
 }
 
@@ -87,6 +91,7 @@ export function RoomAgentChips({ agents }: { agents: RoomAgentAccess[] }) {
 export function RoomReplyHints({ agents }: { agents: RoomAgentAccess[] }) {
   const zh = useLanguage() === "zh";
   const hints = agents
+    .filter((a) => a.my_capability !== "deny")
     .map((a) => replyModeHint(a.display_name, a.reply_mode, a.keywords, zh))
     .filter((hint): hint is string => Boolean(hint));
   if (!hints.length) return null;

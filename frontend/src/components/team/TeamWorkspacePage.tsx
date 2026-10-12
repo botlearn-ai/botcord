@@ -770,6 +770,7 @@ export function TeamWorkspace({
                 roomId={current.room_id}
                 title={title(current)}
                 allowHumanSend={current.allow_human_send !== false}
+                isDirect={current.space_kind === "dm"}
                 onBack={() => router.push(teamHref(space.id, view))}
                 onOpenMembers={() => setMembersOpen(true)}
               />

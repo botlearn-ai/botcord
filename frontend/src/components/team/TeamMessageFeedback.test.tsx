@@ -44,3 +44,11 @@ describe("team message feedback", () => {
     expect(renderToStaticMarkup(<TeamMessageFeedback message={base} />)).toBe("");
   });
 });
+
+it("explains revoked access without offering an ineffective retry", () => {
+  const html = render({ send_status: "failed", send_error: "agent_access_revoked", reply_activity: [] });
+  expect(html).toContain("你对该 Agent 的使用授权已被撤销或过期");
+  expect(html).not.toContain("agent_access_revoked");
+  expect(html).not.toContain("<button");
+  expect(render({ send_status: "failed", send_error: "Network unavailable" })).toContain("重试");
+});

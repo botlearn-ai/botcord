@@ -204,11 +204,11 @@ function formatBytes(value?: number): string {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function scopeLabel(scope: AgentRuntimeFile["scope"]): string {
-  if (scope === "memory") return "Memory";
+function scopeLabel(scope: AgentRuntimeFile["scope"], zh: boolean): string {
+  if (scope === "memory") return zh ? "记忆" : "Memory";
   if (scope === "hermes") return "Hermes";
   if (scope === "openclaw") return "OpenClaw";
-  return "Workspace";
+  return zh ? "工作目录" : "Workspace";
 }
 
 function runtimeFilesErrorMessage(data: any, status: number, t: BotDetailDrawerCopy): string {
@@ -311,24 +311,26 @@ function AgentSettingsDrawer({
     avatar: locale === "zh" ? "头像" : "Avatar",
     chooseAvatar: locale === "zh" ? "选择头像" : "Choose avatar",
     saveProfile: locale === "zh" ? "保存资料" : "Save profile",
-    deleteAgent: locale === "zh" ? "删除 Agent" : "Delete Agent",
-    policyTab: locale === "zh" ? "权限与回复" : "Permissions",
-    filesTab: locale === "zh" ? "文件/记忆" : "Files / Memory",
-    skillsTab: locale === "zh" ? "Skills" : "Skills",
-    directContact: locale === "zh" ? "直接联系" : "Direct contact",
-    allowedSources: locale === "zh" ? "允许来源" : "Allowed sources",
-    allOff: locale === "zh" ? "全部关闭" : "All off",
-    contactMe: locale === "zh" ? "直接联系我" : "Contact me directly",
+    deleteAgent: hostingKind === "cloud"
+      ? (locale === "zh" ? "删除" : "Delete")
+      : (locale === "zh" ? "解除绑定" : "Unbind"),
+    policyTab: locale === "zh" ? "使用规则" : "Permissions",
+    filesTab: locale === "zh" ? "文件记忆" : "Files / Memory",
+    skillsTab: locale === "zh" ? "技能" : "Skills",
+    directContact: locale === "zh" ? "私聊权限" : "Direct contact",
+    allowedSources: locale === "zh" ? "消息来源" : "Allowed sources",
+    allOff: locale === "zh" ? "全部拒绝" : "All off",
+    contactMe: locale === "zh" ? "私聊权限" : "Contact me directly",
     contactMeDesc: locale === "zh"
-      ? "Hub 准入权限：控制谁可以把私聊消息送到这个 Bot。Blocklist 仍然拥有最高优先级。"
+      ? "设置谁能发来私聊消息。黑名单中的用户始终无法联系。"
       : "Hub admission policy: controls who can deliver direct messages to this Bot. Blocklist still has the highest priority.",
-    senderTypes: locale === "zh" ? "允许的发送者类型" : "Allowed sender types",
-    agentSenderHint: locale === "zh" ? "其他 bot / agent" : "other bots / agents",
-    humanSenderHint: locale === "zh" ? "人类用户 / dashboard" : "human users / dashboard",
-    inviteMe: locale === "zh" ? "谁能邀请我进房间" : "Who can invite me to rooms",
-    keywordEmpty: locale === "zh" ? "尚未配置关键词" : "No keywords configured",
+    senderTypes: locale === "zh" ? "消息来源" : "Allowed sender types",
+    agentSenderHint: locale === "zh" ? "其他 Agent" : "other bots / agents",
+    humanSenderHint: locale === "zh" ? "真人用户" : "human users / dashboard",
+    inviteMe: locale === "zh" ? "房间邀请" : "Who can invite me to rooms",
+    keywordEmpty: locale === "zh" ? "尚未添加关键词" : "No keywords configured",
     dmReplyNote: locale === "zh"
-      ? "私聊 DM 当前强制始终唤醒；房间消息会先看房间级覆盖，没有覆盖时继承这里的默认策略。"
+      ? "私聊消息始终触发处理。房间有单独设置时，以房间设置为准。否则使用此处设置。"
       : "DMs always wake the Bot. Room messages use room-level overrides first, then inherit this default policy.",
   };
   const refreshUserProfile = useDashboardSessionStore((s) => s.refreshUserProfile);
@@ -672,7 +674,7 @@ function AgentSettingsDrawer({
                       label={labels.allowedSources}
                       value={[
                         policy.allow_agent_sender ? "Agent" : null,
-                        policy.allow_human_sender ? "Human" : null,
+                        policy.allow_human_sender ? (locale === "zh" ? "真人用户" : "Human") : null,
                       ].filter(Boolean).join(" + ") || labels.allOff}
                       tone={policy.allow_agent_sender || policy.allow_human_sender ? "green" : "red"}
                     />
@@ -707,7 +709,7 @@ function AgentSettingsDrawer({
                           <span className="ml-2 text-xs text-text-secondary">{labels.agentSenderHint}</span>
                         </span></>} />
                       <Checkbox checked={policy.allow_human_sender} onCheckedChange={(checked) => void applyPolicy({ allow_human_sender: checked })} disabled={policySaving} label={<><span>
-                          Human
+                          {locale === "zh" ? "真人用户" : "Human"}
                           <span className="ml-2 text-xs text-text-secondary">{labels.humanSenderHint}</span>
                         </span></>} />
                     </div>
@@ -832,7 +834,7 @@ function AgentSettingsDrawer({
                           <div className="min-w-0">
                             <div className="truncate text-sm text-text-primary">{file.name}</div>
                             <div className="mt-0.5 flex flex-wrap gap-1.5 text-xs text-text-secondary">
-                              <span>{scopeLabel(file.scope)}</span>
+                              <span>{scopeLabel(file.scope, locale === "zh")}</span>
                               {file.profile ? <span>{file.profile}</span> : null}
                               {size ? <span>{size}</span> : null}
                             </div>

@@ -55,8 +55,8 @@ type ScheduleSessionPolicy = "fresh_per_run" | "reuse_per_schedule";
 const DEFAULT_SESSION_POLICY: ScheduleSessionPolicy = "fresh_per_run";
 const LEGACY_SESSION_POLICY: ScheduleSessionPolicy = "reuse_per_schedule";
 const SESSION_POLICY_OPTIONS: Array<{ value: ScheduleSessionPolicy; label: string }> = [
-  { value: "fresh_per_run", label: "每次独立" },
-  { value: "reuse_per_schedule", label: "持续工作流" },
+  { value: "fresh_per_run", label: "新建对话" },
+  { value: "reuse_per_schedule", label: "沿用对话" },
 ];
 
 function formatTime(value?: string | null): string {
@@ -93,7 +93,7 @@ function scheduleLabel(schedule: AgentSchedule["schedule"]): string {
 
 function sessionPolicyLabel(policy?: ScheduleSessionPolicy): string {
   const value = policy ?? LEGACY_SESSION_POLICY;
-  return SESSION_POLICY_OPTIONS.find((item) => item.value === value)?.label ?? "持续工作流";
+  return SESSION_POLICY_OPTIONS.find((item) => item.value === value)?.label ?? "沿用对话";
 }
 
 function statusClass(status?: string): string {
@@ -168,7 +168,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
         setRunsBySchedule((previous) => ({ ...previous, [id]: runs }));
       }, isCurrent);
     } catch (err) {
-      if (isCurrent()) setError(err instanceof Error ? err.message : "读取 schedule 失败");
+      if (isCurrent()) setError(err instanceof Error ? err.message : "读取任务失败");
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -301,8 +301,8 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-text-primary">自主执行</h3>
-          <p className="text-xs text-text-secondary">配置 Agent 定期主动推进目标。</p>
+          <h3 className="text-sm font-semibold text-text-primary">定时任务</h3>
+          <p className="text-xs text-text-secondary">按设定时间执行任务。</p>
         </div>
         <Button variant="secondary"
           type="button"
@@ -322,7 +322,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
       ) : null}
 
       {schedules.length === 0 && !loading ? (
-        <EmptyState compact bordered title={<>暂无 schedule</>} />
+        <EmptyState compact bordered title={<>还没有定时任务</>} />
       ) : (
         <div className="space-y-3">
           {schedules.map((schedule) => {
@@ -368,7 +368,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                       onClick={() => void runSchedule(schedule.id)}
                       disabled={saving || isRunningThisSchedule}
                       className="w-8"
-                      title={isRunningThisSchedule ? "正在运行" : "立即运行"}
+                      title={isRunningThisSchedule ? "执行中" : "立即执行"}
                     >
                       {isRunningThisSchedule ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -389,7 +389,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                 </div>
                 {lastRun ? (
                   <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${statusClass(lastRun.status)}`}>
-                    最近运行：{lastRun.status} · {formatTime(lastRun.completed_at || lastRun.scheduled_for)}
+                    最近执行：{lastRun.status} · {formatTime(lastRun.completed_at || lastRun.scheduled_for)}
                     {lastRun.error ? ` · ${lastRun.error}` : ""}
                   </div>
                 ) : null}
@@ -403,7 +403,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
             {editingScheduleId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {editingScheduleId ? "编辑 schedule" : "新建 schedule"}
+            {editingScheduleId ? "编辑任务" : "新建任务"}
           </div>
           {editingScheduleId ? (
             <Button variant="secondary"
@@ -432,7 +432,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                 onClick={() => setScheduleMode(mode)}
 
               >
-                {mode === "every" ? "间隔" : mode === "daily" ? "每天" : "每周"}
+                {mode === "every" ? "固定间隔" : mode === "daily" ? "每天" : "每周"}
               </Button>
             ))}
           </div>
@@ -451,7 +451,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
           ) : (
             <div className="grid gap-3">
               <label className="grid gap-1 text-xs text-text-secondary">
-                时间
+                执行时间
                 <Input
                   type="time"
                   value={time}
@@ -476,7 +476,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
             </div>
           )}
           <div className="grid gap-1">
-            <div className="text-xs text-text-secondary">运行方式</div>
+            <div className="text-xs text-text-secondary">对话方式</div>
             <div className="grid grid-cols-2 gap-2">
               {SESSION_POLICY_OPTIONS.map((option) => (
                 <Button aria-pressed={sessionPolicy === option.value} variant="row"

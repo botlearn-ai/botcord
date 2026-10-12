@@ -1,4 +1,5 @@
 "use client";
+import { chatPane } from "@/lib/i18n/translations/dashboard";
 import Alert from "@/components/ui/Alert";
 import Avatar from "@/components/ui/Avatar";
 import Button from "@/components/ui/Button";
@@ -30,6 +31,10 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
   const [retryError, setRetryError] = useState<string | null>(null);
   const [retried, setRetried] = useState(false);
   const activity = message.reply_activity ?? [];
+  const accessRevoked = message.send_error === "agent_access_revoked";
+  const errorText = (error: string) => error === "agent_access_revoked"
+    ? chatPane[zh ? "zh" : "en"].agentAccessRevoked
+    : error;
   const pending = activity.some(
     (a) => a.status === "waiting" || a.status === "processing",
   );
@@ -55,7 +60,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
   }, [pending, waitingForStatus, longWait, message.created_at]);
 
   const retry = async () => {
-    if (retrying) return;
+    if (retrying || accessRevoked) return;
     setRetrying(true);
     setRetryError(null);
     try {
@@ -81,7 +86,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
     } catch (error) {
       setRetryError(
         error instanceof Error
-          ? error.message
+          ? errorText(error.message)
           : zh
             ? "重试失败"
             : "Retry failed",
@@ -91,7 +96,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
     }
   };
   const canRetry =
-    message.is_mine &&
+    message.is_mine && !accessRevoked &&
     (failedSend ||
       activity.some((a) =>
         ["failed", "interrupted", "unconfirmed"].includes(a.status),
@@ -204,7 +209,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
         </div>
       )}
       {failedSend && message.send_error && (
-        <div className="text-danger">{message.send_error}</div>
+        <div className="text-danger">{errorText(message.send_error)}</div>
       )}
       {canRetry && !retried && (
         <Button
