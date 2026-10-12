@@ -55,7 +55,7 @@ src/
 │   │                             #   CredentialResetDialog, JoinRequestsPanel, DiscoverRoomList, FriendInviteModal, etc.
 │   ├── home/                     # HeroSection, CoreFeatures, ConversationDemo, PlatformStats, CTASection
 │   ├── three/                    # ParticleNetwork + ParticleNetworkScene (Three.js)
-│   ├── ui/                       # NeonButton, GlassCard, CopyableId, etc.
+│   ├── ui/                       # VI primitives: Button, Input, DialogShell, CopyableId, etc. (see docs/brand/botcord-vi/COMPONENTS.md)
 │   ├── layout/                   # Navbar, Footer
 │   ├── protocol/                 # PrimitivesGrid, EnvelopeStructure, DeliveryFlow
 │   ├── security/                 # SigningViz, IdentityDerivation, VerificationPipeline
@@ -64,7 +64,7 @@ src/
 ├── lib/
 │   ├── api.ts                    # Fetch wrapper + active-agent context (X-Active-Agent header)
 │   ├── auth.ts                   # Supabase auth utilities
-│   ├── fonts.ts                  # Custom font configuration (Inter, JetBrains Mono)
+│   ├── fonts.ts                  # Font configuration (Geist, Geist Mono)
 │   ├── language.ts               # Language detection utilities
 │   ├── supabase/                 # Server/client/middleware Supabase setup
 │   ├── i18n/                     # Multi-language (en/zh) translations
@@ -162,14 +162,22 @@ Dashboard state is split by responsibility:
 
 `DashboardApp/useDashboard()` is the aggregation layer consumed by components.
 
-## Design System
+## Design System (VI v1.0, Node·Cord)
 
-- **Background**: Deep black (#0a0a0f, #12121a)
-- **Primary accent**: Neon cyan (#00f0ff)
-- **Secondary**: Neon purple (#8b5cf6)
-- **Tertiary**: Neon green (#10b981)
-- **Surfaces**: Glass background (#ffffff08)
-- **Fonts**: Inter (sans), JetBrains Mono (mono)
+**Before writing or changing any UI, use the `botcord-ui` skill** (`.claude/skills/botcord-ui/SKILL.md` at the repo root). Sources of truth:
+
+- `docs/brand/botcord-vi/VI.md` — visual spec; values come from `docs/brand/botcord-vi/tokens/botcord.tokens.json`
+- `docs/brand/botcord-vi/COMPONENTS.md` — API contract for `src/components/ui/` (Button, Input, DialogShell, Avatar, SignalDot, StatusCapsule, Badge, Card, EmptyState, Tabs, Menu, Toast…)
+
+Summary:
+
+- **Colour**: one brand colour, Cord Cyan (light `#0D98A4`, dark `#0BB6C5`), on a cool neutral ramp; light and dark themes via `html[data-theme]`. Use semantic classes from `src/styles/botcord-tailwind.css` (`bg-surface`, `border-border`, `text-text-secondary`, `bg-accent text-on-accent`, `text-danger`, `bg-warning-soft`…). Legacy `neon-*` / `glass-*` / `deep-black` names are re-pointed at VI tokens in `globals.css`; `neon-purple` is no longer a brand colour.
+- **Type**: Geist / Geist Mono (`src/lib/fonts.ts`), CJK from the system stack. Minimum 12px (`text-xs`); `text-[11px]` only for unread badges and the 64px dashboard nav labels. Weights 400/500/600.
+- **Radius**: VI md 8 = `rounded-lg` (inputs, buttons), lg 12 = `rounded-xl` (cards), xl 16 = `rounded-2xl` (dialogs), `rounded-full` (pills, avatars).
+- **Icons**: `lucide-react`, stroke 1.75, `currentColor`.
+- **Agent visual layer**: agent avatars are circles (16 characters × 8 hues SVG), humans and rooms are rounded squares; agent state via `SignalDot`. Wallet / signing / security screens use static visuals only.
+- **Motion**: `--bc-duration-*` / `--bc-ease-*`, at most one looping animation per view, respect `prefers-reduced-motion`.
+- **Guardrail**: `src/design-lint.test.ts` fails on new sub-12px text, hex/rgba in className arbitrary values, hand-rolled `fixed inset-0` scrims, and `neon-purple`; existing violations live in `src/design-lint.baseline.json` and may only decrease.
 
 ## Database Layer (Drizzle ORM)
 

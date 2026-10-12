@@ -1,4 +1,6 @@
-.claude
+# Local Claude Code state stays ignored; project skills under .claude/skills/ are shared.
+.claude/*
+!.claude/skills/
 .vercel
 
 node_modules/

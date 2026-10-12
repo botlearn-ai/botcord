@@ -18,6 +18,15 @@ Follow the style already present in each package. Python uses 4-space indentatio
 ## Testing Guidelines
 Add tests for every behavior change. Backend changes should extend `backend/tests/` with focused API or model coverage. TypeScript package changes should add focused Vitest or integration coverage in the relevant package. `frontend/` has no committed test suite yet, so UI changes should at minimum pass `npm run build`.
 
+## Frontend UI & Visual Identity
+Any change to `frontend/` UI (pages, components, dialogs, styling, colours, icons, avatars, empty/loading states, copy) must follow the BotCord VI v1.0:
+
+- `.claude/skills/botcord-ui/SKILL.md` — actionable rules: which component to use, token cheat-sheet, forbidden patterns, pre-submit checklist. Codex and other agents should read it before writing UI.
+- `docs/brand/botcord-vi/VI.md` — visual identity spec (colour, type, radius, motion, agent visual layer, copy).
+- `docs/brand/botcord-vi/COMPONENTS.md` — API contract for `frontend/src/components/ui/`.
+
+`frontend/src/design-lint.test.ts` (runs with `pnpm vitest run`) blocks new sub-12px text, hex/rgba in className arbitrary values, hand-rolled `fixed inset-0` scrims, and `neon-purple`. Existing violations are listed in `frontend/src/design-lint.baseline.json`; the baseline only goes down.
+
 ## Commit & Pull Request Guidelines
 Recent history favors short, focused subjects, usually in Conventional Commit style such as `feat: add credential file import flow` or `fix: rename ...`. Keep each commit scoped to one logical change. PRs should include a concise description, the commands you ran, linked issues when applicable, and screenshots for visible `frontend/` changes.
 

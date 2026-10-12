@@ -1,0 +1,66 @@
+{
+  "text-below-11px": {
+    "components/home/ConversationDemo.tsx": 1
+  },
+  "text-11px": {
+    "components/dashboard/MessageBubble.tsx": 1,
+    "components/home/ConversationDemo.tsx": 1
+  },
+  "hex-in-class": {
+    "components/dashboard/AgentChannelsTab.tsx": 3,
+    "components/dashboard/DocumentPreviewPane.tsx": 1,
+    "components/dashboard/RoomZeroState.tsx": 1,
+    "components/home/AgentScenariosSection.tsx": 1
+  },
+  "rgba-in-class": {
+    "components/dashboard/AccountMenu.tsx": 5,
+    "components/dashboard/AgentChannelsTab.tsx": 1,
+    "components/dashboard/PresenceDot.tsx": 4,
+    "components/dashboard/ShareModal.tsx": 1,
+    "components/home/ConversationDemo.tsx": 3,
+    "components/share/SharedMessageBubble.tsx": 1,
+    "components/share/SharedRoomView.tsx": 1
+  },
+  "fixed-inset-scrim": {
+    "components/daemon/DaemonsSettingsPage.tsx": 1,
+    "components/dashboard/AddFriendModal.tsx": 1,
+    "components/dashboard/AddRoomMemberModal.tsx": 1,
+    "components/dashboard/AgentCardModal.tsx": 1,
+    "components/dashboard/AgentChannelsTab.tsx": 2,
+    "components/dashboard/AgentGateModal.tsx": 1,
+    "components/dashboard/AgentProfileEditModal.tsx": 1,
+    "components/dashboard/AgentSettingsDrawer.tsx": 1,
+    "components/dashboard/BotDetailDrawer.tsx": 1,
+    "components/dashboard/CreateAgentDialog.tsx": 1,
+    "components/dashboard/CreateRoomModal.tsx": 1,
+    "components/dashboard/DashboardApp.tsx": 1,
+    "components/dashboard/DashboardShellSkeleton.tsx": 1,
+    "components/dashboard/DeviceDetailDrawer.tsx": 1,
+    "components/dashboard/DocumentPreviewPane.tsx": 1,
+    "components/dashboard/ForwardModal.tsx": 1,
+    "components/dashboard/HumanCardModal.tsx": 1,
+    "components/dashboard/HumanProfileEditModal.tsx": 1,
+    "components/dashboard/MemberActionsMenu.tsx": 1,
+    "components/dashboard/PeerBotDetailDrawer.tsx": 1,
+    "components/dashboard/RoomHeader.tsx": 1,
+    "components/dashboard/RoomHumanComposer.tsx": 1,
+    "components/dashboard/RoomMemberSettingsModal.tsx": 1,
+    "components/dashboard/RoomPolicyModal.tsx": 1,
+    "components/dashboard/RoomSettingsModal.tsx": 2,
+    "components/dashboard/SettingsModal.tsx": 1,
+    "components/dashboard/ShareModal.tsx": 1,
+    "components/dashboard/sidebar/DeviceSettingsModal.tsx": 1,
+    "components/dashboard/sidebar/MessagesPanel.tsx": 1,
+    "components/dashboard/SubscriptionBadge.tsx": 1,
+    "components/dashboard/ToolResultContent.tsx": 1,
+    "components/dashboard/TopicDrawer.tsx": 1,
+    "components/dashboard/TopupDialog.tsx": 1,
+    "components/dashboard/TransferDialog.tsx": 1,
+    "components/dashboard/WithdrawDialog.tsx": 1,
+    "components/team/AgentManageDrawer.tsx": 1,
+    "components/ui/ImagePreviewOverlay.tsx": 1
+  },
+  "neon-purple": {
+    "components/home/ConversationDemo.tsx": 8
+  }
+}
