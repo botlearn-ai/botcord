@@ -34,13 +34,13 @@ export default function UnreadBadge({
 
   const sizing =
     size === "sm"
-      ? "h-4 min-w-[16px] px-1 text-[9px]"
-      : "h-5 min-w-[20px] px-1.5 text-[10px]";
+      ? "h-4 min-w-[16px] px-1 text-[11px]"
+      : "h-5 min-w-[20px] px-1.5 text-xs";
   return (
     <span
       ref={badgeRef}
       aria-label={label}
-      className={`flex shrink-0 items-center justify-center rounded-full bg-neon-cyan font-bold leading-none text-[var(--color-on-accent)] tabular-nums shadow-[0_0_10px_rgba(34,211,238,0.55)] ${sizing} ${className}`}
+      className={`flex shrink-0 items-center justify-center rounded-full bg-neon-cyan font-bold leading-none text-[var(--color-on-accent)] tabular-nums ${sizing} ${className}`}
     >
       {formatUnreadCount(count)}
     </span>

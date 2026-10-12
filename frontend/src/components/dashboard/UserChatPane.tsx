@@ -911,10 +911,10 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                       </span>
                     </button>
                     <div className="mt-1 flex items-center gap-1.5">
-                      <span className="text-[10px] text-zinc-500">
+                      <span className="text-xs text-zinc-500">
                         {formatMessageTimestamp(msg.createdAt)}
                       </span>
-                      <span className="rounded bg-amber-400/10 px-1 font-mono text-[10px] text-amber-300/80">
+                      <span className="rounded bg-amber-400/10 px-1 font-mono text-xs text-amber-300/80">
                         error
                       </span>
                     </div>
@@ -1232,11 +1232,11 @@ function OwnerChatReplyingToBar({ target, locale, onCancel }: OwnerChatReplyingT
     <div ref={barRef} className="mx-1 flex items-start gap-2 rounded-md border-l-2 border-neon-cyan/60 bg-glass-bg/60 pl-2 pr-1 py-1.5 text-xs">
       <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-neon-cyan/80" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[11px] font-medium text-neon-cyan/90">
+        <div className="truncate text-xs font-medium text-neon-cyan/90">
           {replyingLabel} · {name}
         </div>
         {preview && (
-          <div className="truncate text-[11px] text-text-secondary/80">{preview}</div>
+          <div className="truncate text-xs text-text-secondary/80">{preview}</div>
         )}
       </div>
       <button

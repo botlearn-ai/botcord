@@ -160,14 +160,14 @@ export default function TeamRoomMembersDialog({
           <span className="flex items-center gap-1.5">
             <span className="truncate text-sm">{p.display_name}</span>
             {p.kind === "agent" && (
-              <span className="shrink-0 rounded bg-neon-cyan/10 px-1.5 text-[10px] font-medium text-neon-cyan">Agent</span>
+              <span className="shrink-0 rounded bg-neon-cyan/10 px-1.5 text-xs font-medium text-neon-cyan">Agent</span>
             )}
             {p.id === viewerId && (
-              <span className="shrink-0 text-[11px] text-text-secondary">{t("（我）", "(you)")}</span>
+              <span className="shrink-0 text-xs text-text-secondary">{t("（我）", "(you)")}</span>
             )}
           </span>
           {p.role === "owner" || p.role === "admin" ? (
-            <span className="text-[11px] text-text-secondary">
+            <span className="text-xs text-text-secondary">
               {p.role === "owner" ? t("房间所有者", "Room owner") : t("房间管理员", "Room admin")}
             </span>
           ) : null}
@@ -185,7 +185,7 @@ export default function TeamRoomMembersDialog({
         )}
         {ownsAgent && !isDm && (
           <div className="w-full pl-11">
-            <span className="mb-1 block text-[11px] text-text-secondary">
+            <span className="mb-1 block text-xs text-text-secondary">
               {t("在这个房间什么时候回复", "When it replies in this room")}
             </span>
             <RoomReplyModeControl
@@ -202,7 +202,7 @@ export default function TeamRoomMembersDialog({
               const on = (wakers[agent.id] ?? []).includes(p.id);
               const key = `wake:${agent.id}:${p.id}`;
               return (
-                <label key={agent.id} className="flex cursor-pointer items-center gap-2 text-[11px] text-text-secondary">
+                <label key={agent.id} className="flex cursor-pointer items-center gap-2 text-xs text-text-secondary">
                   <input
                     type="checkbox"
                     role="switch"
@@ -330,7 +330,7 @@ export default function TeamRoomMembersDialog({
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm">{a.display_name}</span>
                           {blocker && (
-                            <span className="block text-[11px] leading-4 text-text-secondary">
+                            <span className="block text-xs leading-4 text-text-secondary">
                               {t("仅 Agent 所有者或组织管理员可添加", "Only its owner or an organization admin can add it")}
                             </span>
                           )}

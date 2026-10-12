@@ -54,7 +54,7 @@ function Tag({ tone, children }: { tone: "cyan" | "gray" | "green"; children: Re
         ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
         : "border-neon-cyan/40 bg-neon-cyan/15 text-neon-cyan";
   return (
-    <span className={`rounded-full border px-2 py-px text-[10px] font-medium ${cls}`}>
+    <span className={`rounded-full border px-2 py-px text-xs font-medium ${cls}`}>
       {children}
     </span>
   );
@@ -63,7 +63,7 @@ function Tag({ tone, children }: { tone: "cyan" | "gray" | "green"; children: Re
 function BigAvatar({ seed, tone = "cyan" }: { seed: string; tone?: "cyan" | "purple" }) {
   const cls =
     tone === "purple"
-      ? "border-neon-purple/25 bg-neon-purple/10 text-neon-purple"
+      ? "border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan"
       : "border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan";
   return (
     <div className={`flex h-24 w-24 items-center justify-center rounded-3xl border text-3xl font-semibold ${cls}`}>
@@ -277,7 +277,7 @@ export default function ContactsDetailPane() {
           </span>
         </p>
         {subtitle ? (
-          <p className="mt-1 font-mono text-[11px] text-text-secondary/55">{subtitle}</p>
+          <p className="mt-1 font-mono text-xs text-text-secondary/55">{subtitle}</p>
         ) : null}
         {bio ? (
           <p className="mt-5 max-w-md text-center text-sm text-text-secondary/80">{bio}</p>

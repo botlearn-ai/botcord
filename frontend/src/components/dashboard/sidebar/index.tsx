@@ -421,7 +421,7 @@ function Sidebar({
               badge = (
                 <span
                   data-primary-nav-badge
-                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold leading-none text-[var(--color-on-accent)] "
+                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[11px] font-bold leading-none text-[var(--color-on-accent)] "
                 >
                   {formatBadgeCount(unreadMessageCount)}
                 </span>
@@ -431,7 +431,7 @@ function Sidebar({
               badge = (
                 <span
                   data-primary-nav-badge
-                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold text-[var(--color-on-accent)] "
+                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[11px] font-bold text-[var(--color-on-accent)] "
                 >
                   {formatBadgeCount(pendingContactRequests)}
                 </span>
@@ -461,7 +461,7 @@ function Sidebar({
           <button
             onClick={() => setLanguage(locale === "zh" ? "en" : "zh")}
             aria-label="Toggle language"
-            className="flex h-10 w-12 items-center justify-center gap-0.5 rounded-xl text-[10px] font-medium leading-none transition-all duration-200 hover:bg-glass-bg max-md:w-10"
+            className="flex h-10 w-12 items-center justify-center gap-0.5 rounded-xl text-xs font-medium leading-none transition-all duration-200 hover:bg-glass-bg max-md:w-10"
           >
             <span className={locale === "en" ? "text-text-primary" : "text-text-secondary/50"}>EN</span>
             <span className="text-text-secondary/30">/</span>
@@ -476,7 +476,7 @@ function Sidebar({
               title={tc.login}
             >
               <LogIn className="h-5 w-5" strokeWidth={1.75} />
-              <span className="mt-0.5 text-[9px] font-medium leading-none">{tc.login}</span>
+              <span className="mt-0.5 text-xs font-medium leading-none">{tc.login}</span>
             </button>
           ) : null}
           <div className={isGuest ? "md:hidden" : ""}>
@@ -564,7 +564,7 @@ function Sidebar({
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-text-primary">{tabTitles[visibleSidebarTab]}</h2>
             {isGuest && (
-              <p className="truncate text-[10px] text-text-secondary/60">{t.browseAsGuest}</p>
+              <p className="truncate text-xs text-text-secondary/60">{t.browseAsGuest}</p>
             )}
           </div>
           {mobileHideSecondary && (

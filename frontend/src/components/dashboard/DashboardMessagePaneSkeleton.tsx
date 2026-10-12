@@ -85,7 +85,7 @@ export function MessageHistoryLoading({ label }: { label: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-1.5" role="status" aria-live="polite">
       <span className="dashboard-history-loader h-2 w-16 rounded-full" aria-hidden="true" />
-      <span className="text-[11px] text-text-secondary">{label}</span>
+      <span className="text-xs text-text-secondary">{label}</span>
     </div>
   );
 }

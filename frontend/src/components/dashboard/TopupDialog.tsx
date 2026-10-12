@@ -288,7 +288,7 @@ function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
           </>
         )}
 
-        <p className="mt-3 text-center text-[10px] text-text-secondary/60">
+        <p className="mt-3 text-center text-xs text-text-secondary/60">
           {t.securePayment}
         </p>
         </div>

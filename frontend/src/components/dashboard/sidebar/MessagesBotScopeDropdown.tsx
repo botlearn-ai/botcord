@@ -95,7 +95,7 @@ function Item({
       >
         {avatar}
         {count > 0 ? (
-          <span className={`absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-semibold leading-none ${
+          <span className={`absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-none ${
             active
               ? "bg-neon-cyan text-deep-black"
               : "bg-glass-bg text-text-secondary/80 ring-1 ring-glass-border"
@@ -105,7 +105,7 @@ function Item({
         ) : null}
       </span>
       <span
-        className={`line-clamp-2 w-full break-words text-center text-[10px] leading-tight ${
+        className={`line-clamp-2 w-full break-words text-center text-xs leading-tight ${
           active ? "font-medium text-neon-cyan" : "text-text-secondary/75"
         }`}
       >

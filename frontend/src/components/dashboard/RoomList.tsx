@@ -342,11 +342,11 @@ export default function RoomList({
               <div className="flex items-center justify-between gap-2">
                 <span className={`truncate text-sm font-medium flex items-center gap-2 ${messagesPane === "user-chat" ? "text-neon-cyan" : "text-text-primary"}`}>
                   {t.userChatTitle}
-                  <span className="rounded-full border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-neon-cyan">
+                  <span className="rounded-full border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.14em] text-neon-cyan">
                     {t.userChatBadge}
                   </span>
                   {isOwnerChatEmpty && (
-                    <span className="rounded-full bg-neon-green/20 border border-neon-green/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neon-green">
+                    <span className="rounded-full bg-neon-green/20 border border-neon-green/40 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-neon-green">
                       {t.userChatOnboardingBadge}
                     </span>
                   )}
@@ -459,7 +459,7 @@ export default function RoomList({
                         const isMyBot = room.owner_id && ownedAgentIds.has(room.owner_id);
                         if (isMyBot) {
                           return (
-                            <span className="shrink-0 rounded-full border border-neon-cyan/40 bg-neon-cyan/15 px-1.5 py-px text-[9px] font-medium text-neon-cyan">
+                            <span className="shrink-0 rounded-full border border-neon-cyan/40 bg-neon-cyan/15 px-1.5 py-px text-xs font-medium text-neon-cyan">
                               My Bot
                             </span>
                           );
@@ -469,13 +469,13 @@ export default function RoomList({
                         const ownerName = peerAgent?.owner_display_name;
                         const label = ownerName ? tGroup.ownedBotOf(ownerName) : tGroup.externalBot;
                         return (
-                          <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-[9px] font-medium text-text-secondary/70">
+                          <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary/70">
                             {label}
                           </span>
                         );
                       })()
                     ) : !isGroup && room.peer_type === "human" ? (
-                      <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-[9px] font-medium text-text-secondary/70">
+                      <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary/70">
                         HUMAN
                       </span>
                     ) : null}
@@ -485,7 +485,7 @@ export default function RoomList({
                       <UnreadBadge count={unreadCount} />
                     )}
                     {messageTime && (
-                      <span className="text-[11px] text-text-secondary/80">
+                      <span className="text-xs text-text-secondary/80">
                         {messageTime}
                       </span>
                     )}
@@ -502,7 +502,7 @@ export default function RoomList({
                   </p>
                 </div>
                 {metaLine && (
-                  <p className="mt-1 truncate text-[10px] text-neon-cyan/70">
+                  <p className="mt-1 truncate text-xs text-neon-cyan/70">
                     {metaLine}
                   </p>
                 )}

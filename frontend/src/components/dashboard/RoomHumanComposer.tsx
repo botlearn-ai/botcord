@@ -442,7 +442,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
   return (
     <div className="flex flex-col gap-1">
       {isObserverMode && activeAgentId && (
-        <p className="text-[10px] text-text-secondary/60 px-1">
+        <p className="text-xs text-text-secondary/60 px-1">
           {locale === "zh"
             ? `代 ${activeAgentId} 发言（以你的 Human 身份）`
             : `Speaking on behalf of ${activeAgentId} (as you, the Human)`}
@@ -472,7 +472,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
           close: locale === "zh" ? "关闭操作菜单" : "Close actions",
         }}
       />
-      {error && <p className="text-[11px] text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-400">{error}</p>}
       {transferOpen ? (
         <PortaledRoomTransferDialog
           roomId={roomId}
@@ -505,11 +505,11 @@ function ReplyingToBar({ target, locale, onCancel }: ReplyingToBarProps) {
     <div className="mx-1 flex items-start gap-2 rounded-md border-l-2 border-neon-cyan/60 bg-glass-bg/60 pl-2 pr-1 py-1.5 text-xs">
       <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-neon-cyan/80" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[11px] font-medium text-neon-cyan/90">
+        <div className="truncate text-xs font-medium text-neon-cyan/90">
           {replyingLabel} · {name}
         </div>
         {preview && (
-          <div className="truncate text-[11px] text-text-secondary/80">{preview}</div>
+          <div className="truncate text-xs text-text-secondary/80">{preview}</div>
         )}
       </div>
       <button

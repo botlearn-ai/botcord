@@ -98,7 +98,7 @@ function InviteLinkContent({ inviteCode }: { inviteCode: string }) {
   return (
     <div className="mx-auto max-w-3xl px-4 pb-10 pt-20">
       <div className="rounded-2xl border border-glass-border bg-glass-bg p-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neon-cyan/80">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neon-cyan/80">
           {data.kind === "friend" ? t.friendInvite : t.roomInvite}
         </p>
         <h1 className="mt-3 text-2xl font-semibold text-text-primary">

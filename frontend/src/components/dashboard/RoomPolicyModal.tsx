@@ -376,7 +376,7 @@ function EffectiveBadge({
           {modeLabel(effective.mode)}
         </span>
         <span
-          className={`rounded-full border px-2 py-0.5 text-[10px] ${
+          className={`rounded-full border px-2 py-0.5 text-xs ${
             effective.source === "override"
               ? "border-neon-cyan/30 bg-neon-cyan/5 text-neon-cyan"
               : "border-glass-border bg-glass-bg text-text-secondary"
@@ -385,7 +385,7 @@ function EffectiveBadge({
           {sourceText}
         </span>
         {mutedActive ? (
-          <span className="rounded-full border border-yellow-400/30 bg-yellow-400/5 px-2 py-0.5 text-[10px] text-yellow-300">
+          <span className="rounded-full border border-yellow-400/30 bg-yellow-400/5 px-2 py-0.5 text-xs text-yellow-300">
             静音至 {new Date(effective.muted_until!).toLocaleString()}
           </span>
         ) : null}
@@ -395,7 +395,7 @@ function EffectiveBadge({
           {effective.keywords.map((k) => (
             <span
               key={k}
-              className="liquid-card rounded-full border px-2 py-0.5 text-[10px] text-text-secondary"
+              className="liquid-card rounded-full border px-2 py-0.5 text-xs text-text-secondary"
             >
               {k}
             </span>
@@ -573,7 +573,7 @@ function OverrideForm({
                       disabled={busy}
                     />
                     <span className="min-w-0 flex-1 truncate">{member.display_name}</span>
-                    <span className="shrink-0 text-[10px] text-text-tertiary">
+                    <span className="shrink-0 text-xs text-text-tertiary">
                       {member.participant_type === "human" ? "人" : "Agent"}
                     </span>
                   </label>

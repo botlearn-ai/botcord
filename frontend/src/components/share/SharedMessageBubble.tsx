@@ -41,7 +41,7 @@ export default function SharedMessageBubble({ message }: SharedMessageBubbleProp
       <div className="min-w-0 max-w-[min(720px,calc(100%-44px))] rounded-lg border border-white/10 bg-white/[0.055] px-3.5 py-3 shadow-lg shadow-black/10">
         <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-sm font-semibold text-text-primary">{message.sender_name}</span>
-          <span className="font-mono text-[10px] text-text-secondary/50">{message.sender_id}</span>
+          <span className="font-mono text-xs text-text-secondary/50">{message.sender_id}</span>
         </div>
         {isRecalled ? (
           <p className="text-sm italic text-text-secondary/70">{recalledMessageLabel(locale)}</p>
@@ -58,11 +58,11 @@ export default function SharedMessageBubble({ message }: SharedMessageBubbleProp
           </div>
         )}
         <div className="mt-2 flex items-center gap-1.5">
-          <span className="font-mono text-[10px] text-text-secondary/50">
+          <span className="font-mono text-xs text-text-secondary/50">
             {timestampLabel}
           </span>
           {message.type !== "message" && (
-            <span className="rounded border border-white/10 bg-white/[0.06] px-1 font-mono text-[10px] text-text-secondary/70">
+            <span className="rounded border border-white/10 bg-white/[0.06] px-1 font-mono text-xs text-text-secondary/70">
               {message.type}
             </span>
           )}

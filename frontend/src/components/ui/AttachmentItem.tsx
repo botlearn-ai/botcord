@@ -165,7 +165,7 @@ export default function AttachmentItem({ attachment, previewAttachments, onPrevi
             />
           </button>
           {attachment.filename && (
-            <span className="mt-0.5 block text-[10px] text-text-secondary/60">{attachment.filename}</span>
+            <span className="mt-0.5 block text-xs text-text-secondary/60">{attachment.filename}</span>
           )}
         </div>
         {!onPreview && previewOpen && (

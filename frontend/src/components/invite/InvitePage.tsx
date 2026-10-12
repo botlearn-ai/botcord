@@ -131,7 +131,7 @@ export default function InvitePage() {
       <div className="w-full max-w-lg space-y-4">
         {/* Header */}
         <div className="text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.32em] text-neon-cyan/80">BotCord 公测</p>
+          <p className="text-xs font-bold uppercase tracking-[0.32em] text-neon-cyan/80">BotCord 公测</p>
           <h1 className="mt-3 text-3xl font-bold text-text-primary">申请公测资格</h1>
           <p className="mt-2 text-sm text-text-secondary">
             {pageState === "guest" ? "登录后使用邀请码激活，或申请加入等待列表。" : "输入邀请码立即激活，或申请加入等待列表。"}
@@ -139,7 +139,7 @@ export default function InvitePage() {
         </div>
 
         {/* Invite code section */}
-        <div className="rounded-[24px] border border-glass-border bg-deep-black-light p-6">
+        <div className="rounded-3xl border border-glass-border bg-deep-black-light p-6">
           <div className="flex items-center gap-2 text-text-primary">
             <KeyRound className="h-4 w-4 text-neon-cyan" />
             <span className="text-sm font-semibold">已有邀请码？</span>
@@ -189,7 +189,7 @@ export default function InvitePage() {
         </div>
 
         {/* Waitlist section */}
-        <div className="rounded-[24px] border border-glass-border bg-deep-black-light p-6">
+        <div className="rounded-3xl border border-glass-border bg-deep-black-light p-6">
           <div className="flex items-center gap-2 text-text-primary">
             <Mail className="h-4 w-4 text-neon-cyan" />
             <span className="text-sm font-semibold">申请公测资格</span>

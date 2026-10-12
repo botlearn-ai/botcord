@@ -526,7 +526,7 @@ export default function MessageComposer({
   return (
     <div onDrop={handleDrop} onDragOver={handleDragOver} className="liquid-composer rounded-2xl border border-glass-border p-1.5">
       {hasLengthError && (
-        <p className="mb-1 px-1 text-[11px] leading-4 text-red-400">
+        <p className="mb-1 px-1 text-xs leading-4 text-red-400">
           Message cannot exceed {MESSAGE_MAX_LENGTH.toLocaleString()} characters.
         </p>
       )}
@@ -650,7 +650,7 @@ export default function MessageComposer({
             hasLengthError
               ? "border-red-500/70 focus:border-red-500/80"
               : emptyState
-              ? "border-cyan-500/40 shadow-[0_0_8px_rgba(0,240,255,0.1)] animate-[pulse-border_2s_ease-in-out_infinite]"
+              ? "border-cyan-500/40 animate-[pulse-border_2s_ease-in-out_infinite]"
               : "border-zinc-700"
           }`}
           aria-label={placeholder}
@@ -742,11 +742,11 @@ export default function MessageComposer({
                   <KindIcon className={`h-3.5 w-3.5 shrink-0 ${iconClass}`} />
                   <span className="truncate font-medium">{s.display_name}</span>
                   {kindLabel && (
-                    <span className={`shrink-0 rounded px-1 py-px text-[9px] font-medium uppercase tracking-wide ${iconClass} bg-glass-bg`}>
+                    <span className={`shrink-0 rounded px-1 py-px text-xs font-medium uppercase tracking-wide ${iconClass} bg-glass-bg`}>
                       {kindLabel}
                     </span>
                   )}
-                  <span className="ml-auto max-w-[35%] truncate font-mono text-[10px] text-zinc-500">{s.id ?? s.agent_id}</span>
+                  <span className="ml-auto max-w-[35%] truncate font-mono text-xs text-zinc-500">{s.id ?? s.agent_id}</span>
                 </button>
               );
             })}

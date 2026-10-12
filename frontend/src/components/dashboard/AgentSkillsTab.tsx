@@ -105,7 +105,7 @@ function SkillCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-semibold text-text-primary">{skill.name}</span>
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-neon-cyan/25 bg-neon-cyan/5 px-2 py-0.5 text-[10px] font-medium text-neon-cyan">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-neon-cyan/25 bg-neon-cyan/5 px-2 py-0.5 text-xs font-medium text-neon-cyan">
               {sourceIcon(skill.source)}
               {sourceLabel}
             </span>
@@ -117,27 +117,27 @@ function SkillCard({
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {skill.runtime ? (
-          <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
+          <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-xs text-text-secondary">
             {skill.runtime}
           </span>
         ) : null}
         {skill.sourceDetail ? (
-          <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
+          <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-xs text-text-secondary">
             {sourceDetailLabel}: {skill.sourceDetail}
           </span>
         ) : null}
         {skill.profile ? (
-          <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
+          <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-xs text-text-secondary">
             {skill.profile}
           </span>
         ) : null}
         {skill.path ? (
-          <span className="max-w-full truncate rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
+          <span className="max-w-full truncate rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 font-mono text-xs text-text-secondary">
             {skill.path}
           </span>
         ) : null}
         {skill.updatedAt || skill.mtimeMs ? (
-          <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 text-[10px] text-text-secondary">
+          <span className="rounded border border-glass-border bg-deep-black/30 px-1.5 py-0.5 text-xs text-text-secondary">
             {formatTimestamp(skill.updatedAt) ?? formatMillis(skill.mtimeMs)}
           </span>
         ) : null}
@@ -263,11 +263,11 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
 
       <div className="grid grid-cols-2 gap-2">
         <div className="liquid-card rounded-xl border border-glass-border px-3 py-2">
-          <div className="text-[10px] uppercase tracking-normal text-text-secondary/65">{copy.title}</div>
+          <div className="text-xs uppercase tracking-normal text-text-secondary/65">{copy.title}</div>
           <div className="mt-1 text-lg font-semibold text-text-primary">{total}</div>
         </div>
         <div className="liquid-card rounded-xl border border-glass-border px-3 py-2">
-          <div className="text-[10px] uppercase tracking-normal text-text-secondary/65">
+          <div className="text-xs uppercase tracking-normal text-text-secondary/65">
             {visibleSnapshot?.runtime ? copy.runtime : copy.lastSniffed}
           </div>
           <div className="mt-1 truncate font-mono text-xs text-text-primary">
@@ -277,7 +277,7 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
       </div>
 
       {sniffedAt ? (
-        <p className="text-[11px] text-text-secondary/65">
+        <p className="text-xs text-text-secondary/65">
           {copy.lastSniffed}: {sniffedAt}
         </p>
       ) : null}
@@ -302,7 +302,7 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
         <div className="space-y-5">
           {runtimeGroups.map((group) => (
             <section key={group.runtime} className="space-y-3">
-              <div className="flex items-center justify-between gap-2 border-b border-glass-border/70 pb-2 text-[11px] font-semibold uppercase tracking-normal text-text-secondary/70">
+              <div className="flex items-center justify-between gap-2 border-b border-glass-border/70 pb-2 text-xs font-semibold uppercase tracking-normal text-text-secondary/70">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <Cpu className="h-3.5 w-3.5 text-neon-cyan" />
                   <span className="truncate font-mono">{group.runtime}</span>
@@ -315,7 +315,7 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
                 const label = sourceLabels[source];
                 return (
                   <div key={`${group.runtime}:${source}`} className="space-y-2">
-                    <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-normal text-text-secondary/70">
+                    <div className="flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-normal text-text-secondary/70">
                       <span className="flex items-center gap-1.5">
                         {sourceIcon(source)}
                         {label}

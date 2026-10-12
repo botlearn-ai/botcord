@@ -94,7 +94,7 @@ export default function ImagePreviewOverlay({
         <div className="min-w-0">
           <span className="block truncate text-sm font-medium text-text-primary">{title}</span>
           {hasGallery && (
-            <span className="block text-[11px] text-text-secondary/70">
+            <span className="block text-xs text-text-secondary/70">
               {currentIndex + 1} / {totalCount}
             </span>
           )}

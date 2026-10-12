@@ -42,7 +42,7 @@ interface DashboardMultiSelectProps {
 const toneClasses = {
   cyan: "bg-neon-cyan/10 text-neon-cyan",
   green: "bg-neon-green/10 text-neon-green",
-  purple: "bg-neon-purple/10 text-neon-purple",
+  purple: "bg-neon-cyan/10 text-neon-cyan",
   zinc: "bg-glass-bg/70 text-text-secondary",
 };
 
@@ -307,7 +307,7 @@ export default function DashboardMultiSelect({
           )}
         </span>
         <span className="flex shrink-0 items-center gap-2">
-          <span ref={selectedCountRef} className="min-w-[4.5rem] origin-center text-right text-[11px] text-text-secondary">
+          <span ref={selectedCountRef} className="min-w-[4.5rem] origin-center text-right text-xs text-text-secondary">
             {selectedLabel(selectedOptions.length)}
           </span>
           <ChevronDown className={`h-4 w-4 text-text-secondary transition-transform ${open ? "rotate-180" : ""}`} />
@@ -350,7 +350,7 @@ export default function DashboardMultiSelect({
               filteredGroups.map((group, groupIndex) => (
                 <div key={group.label ?? groupIndex} className="py-1">
                   {group.label ? (
-                    <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-secondary/60">
+                    <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/60">
                       {group.label}
                     </p>
                   ) : null}
@@ -385,14 +385,14 @@ export default function DashboardMultiSelect({
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-xs font-medium">{option.label}</span>
                           {option.sublabel ? (
-                            <span className="mt-0.5 block truncate font-mono text-[10px] text-text-secondary/70">
+                            <span className="mt-0.5 block truncate font-mono text-xs text-text-secondary/70">
                               {option.sublabel}
                             </span>
                           ) : null}
                         </span>
                         {option.badge ? (
                           <span
-                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${
                               toneClasses[option.tone ?? "zinc"]
                             }`}
                           >

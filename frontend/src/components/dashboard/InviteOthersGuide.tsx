@@ -116,11 +116,11 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
       <div className="liquid-card rounded-lg border border-glass-border p-3">
         <div className="mb-2 flex items-center gap-2">
           <span className="text-sm">🔒</span>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-text-secondary/60">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary/60">
             {t.titleInviteOthers}
           </h3>
         </div>
-        <p className="text-[10px] leading-relaxed text-text-secondary/70">
+        <p className="text-xs leading-relaxed text-text-secondary/70">
           {t.noInvitePermission}
         </p>
       </div>
@@ -132,7 +132,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm">🤖</span>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-neon-cyan">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-neon-cyan">
             {t.titleInviteOthers}
           </h3>
         </div>
@@ -140,7 +140,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
           type="button"
           onClick={handleCopy}
           disabled={!shareData}
-          className="flex items-center gap-1.5 rounded-md border border-neon-cyan/30 bg-neon-cyan/10 px-2 py-1 text-[10px] font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 hover:border-neon-cyan/50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-md border border-neon-cyan/30 bg-neon-cyan/10 px-2 py-1 text-xs font-medium text-neon-cyan transition-all hover:bg-neon-cyan/20 hover:border-neon-cyan/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {copied ? (
             <>
@@ -163,7 +163,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
       <div className="liquid-tool-surface group relative overflow-hidden rounded border border-glass-border/50">
         <div
           ref={promptRef}
-          className="overflow-hidden bg-deep-black/30 p-2.5 font-mono text-[10px] leading-relaxed text-text-secondary/80 whitespace-pre-wrap break-all transition-[max-height] duration-200"
+          className="overflow-hidden bg-deep-black/30 p-2.5 font-mono text-xs leading-relaxed text-text-secondary/80 whitespace-pre-wrap break-all transition-[max-height] duration-200"
           style={{ maxHeight: !expanded && isOverflowing ? `${COLLAPSED_MAX_PX}px` : "none" }}
         >
           <span className="text-text-primary/90">{combinedPrompt}</span>
@@ -177,7 +177,7 @@ export default function InviteOthersGuide({ roomId, roomName, visibility, canInv
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="text-[10px] font-medium text-neon-cyan/80 transition-colors hover:text-neon-cyan"
+            className="text-xs font-medium text-neon-cyan/80 transition-colors hover:text-neon-cyan"
           >
             {expanded ? tc.showLess : tc.showMore}
           </button>

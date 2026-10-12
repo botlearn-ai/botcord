@@ -252,16 +252,16 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
-                    <span className="rounded border border-neon-green/40 bg-neon-green/10 px-1.5 py-0.5 text-[10px] text-neon-green">
+                    <span className="rounded border border-neon-green/40 bg-neon-green/10 px-1.5 py-0.5 text-xs text-neon-green">
                       {t.joinedBadge}
                     </span>
                   </div>
-                  <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{room.room_id}</p>
+                  <p className="mt-1 truncate font-mono text-xs text-text-secondary/60">{room.room_id}</p>
                   {room.last_message_preview && (
                     <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{room.last_message_preview}</p>
                   )}
                   {room.last_message_at && (
-                    <p className="mt-2 text-[11px] text-text-secondary/70">
+                    <p className="mt-2 text-xs text-text-secondary/70">
                       {t.activeAt} {new Date(room.last_message_at).toLocaleString()}
                     </p>
                   )}
@@ -285,16 +285,16 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
-                    <span className="rounded border border-neon-purple/40 bg-neon-purple/10 px-1.5 py-0.5 text-[10px] text-neon-purple">
+                    <span className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-1.5 py-0.5 text-xs text-neon-cyan">
                       {t.ownerBadge}
                     </span>
                   </div>
-                  <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{room.room_id}</p>
+                  <p className="mt-1 truncate font-mono text-xs text-text-secondary/60">{room.room_id}</p>
                   {room.last_message_preview && (
                     <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{room.last_message_preview}</p>
                   )}
                   {room.last_message_at && (
-                    <p className="mt-2 text-[11px] text-text-secondary/70">
+                    <p className="mt-2 text-xs text-text-secondary/70">
                       {t.activeAt} {new Date(room.last_message_at).toLocaleString()}
                     </p>
                   )}
@@ -359,16 +359,16 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                       <p className="truncate text-sm font-semibold text-text-primary">
                         {hasRealName ? primaryName : (isHuman ? t.unnamedHuman : t.unnamedAgent)}
                       </p>
-                      <p className="mt-0.5 text-[10px] uppercase tracking-wide text-text-secondary/60">
+                      <p className="mt-0.5 text-xs uppercase tracking-wide text-text-secondary/60">
                         {isHuman ? t.contactKindHuman : t.contactKindAgent}
                       </p>
-                      <p className="mt-1 truncate font-mono text-[11px] text-text-secondary/60">{contact.contact_agent_id}</p>
+                      <p className="mt-1 truncate font-mono text-xs text-text-secondary/60">{contact.contact_agent_id}</p>
                       {contact.alias && contact.display_name && contact.display_name !== contact.alias && (
                         <p className="mt-1 truncate text-xs text-text-secondary">{t.display}: {contact.display_name}</p>
                       )}
                     </div>
                   </div>
-                  <p className="mt-3 text-[11px] text-text-secondary/70">
+                  <p className="mt-3 text-xs text-text-secondary/70">
                     {t.addedAt} {new Date(contact.created_at).toLocaleDateString()}
                   </p>
                 </button>
@@ -646,7 +646,7 @@ function MessagesEmptyState({ filter }: { filter: MessagesFilter }) {
       </div>
       <h2 className="text-lg font-semibold text-text-primary">{config.title}</h2>
       <p className="mt-2 text-sm text-text-secondary/70">{config.description}</p>
-      <p className="mt-4 inline-block rounded-full border border-glass-border/60 bg-glass-bg/30 px-3 py-1 text-[11px] text-text-secondary/60">
+      <p className="mt-4 inline-block rounded-full border border-glass-border/60 bg-glass-bg/30 px-3 py-1 text-xs text-text-secondary/60">
         {config.hint}
       </p>
     </div>
@@ -786,7 +786,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
                     <p className="text-center text-xs text-text-secondary/50">{t.readOnlyGuest}</p>
                     <button
                       onClick={showLoginModal}
-                      className="rounded border border-neon-cyan/30 px-2 py-0.5 text-[10px] font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+                      className="rounded border border-neon-cyan/30 px-2 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
                     >
                       {t.loginToParticipate}
                     </button>

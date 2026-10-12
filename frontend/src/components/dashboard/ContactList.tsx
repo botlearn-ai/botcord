@@ -70,7 +70,7 @@ export default function ContactList() {
                 />
               ) : (
                 <div
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${avatarFallback}`}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${avatarFallback}`}
                 >
                   {initials}
                 </div>

@@ -153,7 +153,7 @@ function AgentProfileEditModal({
             {tTitle}
           </h3>
           <p className="mt-2 text-sm text-text-secondary">{tDesc}</p>
-          <p className="mt-1 font-mono text-[10px] text-text-secondary/60">{agentId}</p>
+          <p className="mt-1 font-mono text-xs text-text-secondary/60">{agentId}</p>
         </div>
 
         <div data-agent-profile-modal-part className="mb-3">

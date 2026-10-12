@@ -123,7 +123,7 @@ function FieldRow({
 }) {
   return (
     <div>
-      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary/70">
+      <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
         {label}
       </div>
       {children}
@@ -147,7 +147,7 @@ function Chip({
   return (
     <span
       title={title}
-      className={`inline-flex max-w-full items-center gap-1 rounded-lg border px-2 py-1 text-[11px] leading-4 ${
+      className={`inline-flex max-w-full items-center gap-1 rounded-lg border px-2 py-1 text-xs leading-4 ${
         tone === "cyan"
           ? "border-neon-cyan/35 bg-neon-cyan/10 text-neon-cyan"
           : "border-glass-border bg-deep-black/40 text-text-primary"

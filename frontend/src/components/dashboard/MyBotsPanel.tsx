@@ -169,7 +169,7 @@ function BotsView({
                         {agent.display_name}
                       </h2>
                       <span
-                        className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-[10px] ${
+                        className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-xs ${
                           online
                             ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
                             : "border-glass-border bg-glass-bg text-text-secondary/70"
@@ -179,7 +179,7 @@ function BotsView({
                         {online ? "Online" : "Offline"}
                       </span>
                       {agent.is_default ? (
-                        <span className="rounded-full border border-neon-purple/30 bg-neon-purple/10 px-1.5 py-px text-[10px] text-neon-purple">
+                        <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-xs text-neon-cyan">
                           {t.defaultBadge}
                         </span>
                       ) : null}
@@ -187,7 +187,7 @@ function BotsView({
                     <p className="mt-1 line-clamp-2 text-xs text-text-secondary/70">
                       {agent.bio || t.noBio}
                     </p>
-                    <div className="mt-2 font-mono text-[11px] text-text-secondary/55">
+                    <div className="mt-2 font-mono text-xs text-text-secondary/55">
                       {agent.agent_id}
                     </div>
                   </div>
@@ -203,12 +203,12 @@ function BotsView({
                 ) : null}
 
                 {stats ? (
-                  <div className="mt-3 flex items-center justify-between border-t border-glass-border pt-2 text-[11px] text-text-secondary/55">
+                  <div className="mt-3 flex items-center justify-between border-t border-glass-border pt-2 text-xs text-text-secondary/55">
                     <span>{t.sentReceived(stats.messages_sent, stats.messages_received)}</span>
                     <span>{t.viewDetails}</span>
                   </div>
                 ) : (
-                  <div className="mt-3 flex justify-end border-t border-glass-border pt-2 text-[11px] text-text-secondary/55">
+                  <div className="mt-3 flex justify-end border-t border-glass-border pt-2 text-xs text-text-secondary/55">
                     {t.viewDetails}
                   </div>
                 )}
@@ -224,10 +224,10 @@ function BotsView({
 function Stat({ label, value, delta }: { label: string; value: number | string; delta?: string }) {
   return (
     <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
-      <div className="text-[10px] uppercase tracking-wider text-text-secondary/60">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-text-secondary/60">{label}</div>
       <div className="flex items-baseline gap-1">
         <span className="text-sm font-semibold text-text-primary">{value}</span>
-        {delta ? <span className="text-[10px] font-medium text-neon-green">{delta}</span> : null}
+        {delta ? <span className="text-xs font-medium text-neon-green">{delta}</span> : null}
       </div>
     </div>
   );

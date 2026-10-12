@@ -46,7 +46,7 @@ export function AgentMeta({ agent }: { agent: DirectoryAgent }) {
         {agentStatusLabel(agent.status, zh)}
       </span>
       {runtime && (
-        <span className="rounded-md border border-glass-border bg-glass-bg px-1.5 py-px text-[11px] text-text-primary">
+        <span className="rounded-md border border-glass-border bg-glass-bg px-1.5 py-px text-xs text-text-primary">
           {runtime}
         </span>
       )}

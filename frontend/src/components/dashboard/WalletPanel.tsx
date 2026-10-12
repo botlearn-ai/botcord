@@ -224,7 +224,7 @@ function WalletPanel() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="liquid-tool-surface rounded-xl border border-glass-border p-4">
-                  <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wider text-text-secondary">
                     {t.humanShare}
                   </div>
                   <div className="font-mono text-xl font-semibold text-neon-green">
@@ -233,10 +233,10 @@ function WalletPanel() {
                 </div>
                 <div className="liquid-tool-surface rounded-xl border border-glass-border p-4">
                   <div className="mb-1 flex items-baseline justify-between gap-2">
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-text-secondary">
+                    <span className="text-xs font-medium uppercase tracking-wider text-text-secondary">
                       {t.botShare}
                     </span>
-                    <span className="text-[10px] text-text-secondary/70">
+                    <span className="text-xs text-text-secondary/70">
                       {t.botShareCount.replace("{count}", String(ownedAgents.length))}
                     </span>
                   </div>
@@ -370,7 +370,7 @@ function CtaButton({
   const palette = {
     green: { hoverBorder: "hover:border-neon-green/30", hoverBg: "hover:bg-neon-green/5", iconColor: "text-neon-green" },
     cyan: { hoverBorder: "hover:border-neon-cyan/30", hoverBg: "hover:bg-neon-cyan/5", iconColor: "text-neon-cyan" },
-    purple: { hoverBorder: "hover:border-neon-purple/30", hoverBg: "hover:bg-neon-purple/5", iconColor: "text-neon-purple" },
+    purple: { hoverBorder: "hover:border-neon-cyan/30", hoverBg: "hover:bg-neon-cyan/5", iconColor: "text-neon-cyan" },
   }[color];
   return (
     <button
@@ -424,13 +424,13 @@ function BotBalancesSection({
                 <BotAvatar agentId={agent.agent_id} alt={agent.display_name} avatarUrl={agent.avatar_url} size={36} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-text-primary">{agent.display_name}</div>
-                  <div className="truncate font-mono text-[10px] text-text-secondary/60">{agent.agent_id}</div>
+                  <div className="truncate font-mono text-xs text-text-secondary/60">{agent.agent_id}</div>
                 </div>
                 <div className="text-right">
                   <div className="font-mono text-base font-semibold text-text-primary">
                     {w ? showAmount(w.total_balance_minor, hidden) : "—"}
                   </div>
-                  <div className="text-[10px] text-text-secondary/60">{assetCode}</div>
+                  <div className="text-xs text-text-secondary/60">{assetCode}</div>
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary/40" />
               </button>
@@ -506,17 +506,17 @@ function MergedLedgerSection({
                     <span className={`font-mono text-sm font-semibold ${isCredit ? "text-neon-green" : "text-text-primary"}`}>
                       {hidden ? "••••••" : `${isCredit ? "+" : "-"}${formatCoinAmount(entry.amount_minor)}`}
                     </span>
-                    <span className="rounded bg-glass-bg px-2 py-0.5 text-[10px] text-text-secondary">
+                    <span className="rounded bg-glass-bg px-2 py-0.5 text-xs text-text-secondary">
                       {txTypeLabel(entry.tx_type, txTypeLabels)}
                     </span>
                   </div>
-                  <div className="mt-1 truncate text-[11px] text-text-secondary/70">
+                  <div className="mt-1 truncate text-xs text-text-secondary/70">
                     {new Date(entry.created_at).toLocaleString()}
                   </div>
                 </div>
-                <div className="text-right text-[11px] text-text-secondary">
+                <div className="text-right text-xs text-text-secondary">
                   <div className="truncate">{entry._account.display_name}</div>
-                  <div className="font-mono text-[10px] text-text-secondary/50">{assetCode}</div>
+                  <div className="font-mono text-xs text-text-secondary/50">{assetCode}</div>
                 </div>
               </div>
             );
@@ -529,7 +529,7 @@ function MergedLedgerSection({
           <button
             onClick={onLoadMore}
             disabled={loading}
-            className="liquid-action inline-flex min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-glass-border px-4 py-1.5 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+            className="liquid-action inline-flex min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-glass-border px-4 py-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
           >
             {loading ? (
               <>
@@ -606,7 +606,7 @@ function RecentWithdrawals({
         <button
           onClick={onRefresh}
           disabled={isRefreshing}
-          className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+          className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
         >
           {isRefreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           {isRefreshing ? t.refreshing : t.refresh}
@@ -641,16 +641,16 @@ function RecentWithdrawals({
                     <div className="font-mono text-sm font-semibold text-text-primary">
                       {showAmount(item.amount_minor, hidden)} COIN
                     </div>
-                    <div className="mt-1 text-[11px] text-text-secondary">
+                    <div className="mt-1 text-xs text-text-secondary">
                       {new Date(item.created_at).toLocaleString()}
                     </div>
                   </div>
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${status.className}`}>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}>
                     {status.label}
                   </span>
                 </div>
 
-                <div className="flex flex-wrap gap-2 text-[11px] text-text-secondary">
+                <div className="flex flex-wrap gap-2 text-xs text-text-secondary">
                   <span className="rounded bg-glass-bg/70 px-2 py-1">
                     {item.destination_type || "manual_review"}
                   </span>
@@ -663,7 +663,7 @@ function RecentWithdrawals({
                       type="button"
                       onClick={() => handleCancel(item.withdrawal_id)}
                       disabled={cancellingId === item.withdrawal_id}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-400/30 px-3 py-1.5 text-[11px] text-red-300 transition-colors hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-400/30 px-3 py-1.5 text-xs text-red-300 transition-colors hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {cancellingId === item.withdrawal_id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                       {cancellingId === item.withdrawal_id ? t.cancelling : t.cancelWithdrawal}

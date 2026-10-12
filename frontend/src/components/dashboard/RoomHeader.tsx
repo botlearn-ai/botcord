@@ -375,7 +375,7 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
   };
 
   const iconBtn = "inline-flex h-8 w-8 max-md:h-11 max-md:w-11 items-center justify-center rounded text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary";
-  const tooltipCls = "pointer-events-none absolute top-full left-1/2 z-30 mt-1 -translate-x-1/2 whitespace-nowrap rounded border border-glass-border bg-deep-black px-2 py-0.5 text-[10px] text-text-secondary opacity-0 shadow-lg transition-opacity group-hover:opacity-100";
+  const tooltipCls = "pointer-events-none absolute top-full left-1/2 z-30 mt-1 -translate-x-1/2 whitespace-nowrap rounded border border-glass-border bg-deep-black px-2 py-0.5 text-xs text-text-secondary opacity-0 shadow-lg transition-opacity group-hover:opacity-100";
 
   return (
     <>
@@ -440,7 +440,7 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
                       </button>
                       {roomDescription && (
                         <div>
-                          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
+                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neon-cyan">
                             {t.roomDescriptionLabel}
                           </p>
                           <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary max-md:max-h-none max-md:text-sm max-md:leading-6">
@@ -450,7 +450,7 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
                       )}
                       {roomRule && (
                         <div>
-                          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neon-cyan">
+                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neon-cyan">
                             {t.viewRule}
                           </p>
                           <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary max-md:max-h-none max-md:text-sm max-md:leading-6">
@@ -492,7 +492,7 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
                 <button
                   type="button"
                   onClick={() => setRuleExpanded((v) => !v)}
-                  className="mt-0.5 text-[10px] font-medium text-neon-cyan/80 transition-colors hover:text-neon-cyan"
+                  className="mt-0.5 text-xs font-medium text-neon-cyan/80 transition-colors hover:text-neon-cyan"
                 >
                   {ruleExpanded ? tc.showLess : tc.showMore}
                 </button>
@@ -504,7 +504,7 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
 
           {renderJoinButton()}
           {isGuest && (
-            <span className="shrink-0 whitespace-nowrap rounded border border-neon-purple/30 bg-neon-purple/10 px-2 py-0.5 text-[10px] font-medium text-neon-purple">
+            <span className="shrink-0 whitespace-nowrap rounded border border-neon-cyan/30 bg-neon-cyan/10 px-2 py-0.5 text-xs font-medium text-neon-cyan">
               {t.guest}
             </span>
           )}

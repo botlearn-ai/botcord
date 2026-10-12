@@ -99,7 +99,7 @@ function BotActivityCard({ bot, stats, onClick }: { bot: UserAgent; stats: Agent
             <span className="truncate text-sm font-medium text-text-primary">{bot.display_name}</span>
             <span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-neon-green" : "bg-text-secondary/40"}`} />
           </div>
-          <div className="text-[11px] text-text-secondary/70">{online ? "Online" : "Offline"}</div>
+          <div className="text-xs text-text-secondary/70">{online ? "Online" : "Offline"}</div>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 text-xs">
@@ -133,7 +133,7 @@ function CreateNewBotCard({ onClick }: { onClick: () => void }) {
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
-      <div className="text-[10px] uppercase tracking-wider text-text-secondary/60">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-text-secondary/60">{label}</div>
       <div className="text-sm font-semibold text-text-primary">{value}</div>
     </div>
   );
@@ -167,8 +167,6 @@ export function BotEmptyHero({ onCreateBot }: { onCreateBot: () => void }) {
   const t = homePanelI18n[useLanguage()];
   return (
     <div className="liquid-empty-state relative overflow-hidden rounded-2xl border border-dashed border-glass-border">
-      <div className="pointer-events-none absolute -left-12 -top-16 h-48 w-48 rounded-full bg-neon-cyan/10 blur-3xl" />
-      <div className="pointer-events-none absolute -right-12 -bottom-16 h-48 w-48 rounded-full bg-neon-purple/10 blur-3xl" />
       <div className="relative flex flex-col items-center gap-5 px-6 py-12 text-center sm:py-14">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan">
           <Bot className="h-7 w-7" />
@@ -189,7 +187,7 @@ export function BotEmptyHero({ onCreateBot }: { onCreateBot: () => void }) {
           <Plus className="h-4 w-4" />
           {t.createFirstBot}
         </button>
-        <p className="text-[11px] text-text-tertiary">{t.emptyHeroEta}</p>
+        <p className="text-xs text-text-tertiary">{t.emptyHeroEta}</p>
       </div>
     </div>
   );
@@ -234,7 +232,7 @@ export function BotOnboardingSteps({
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-neon-cyan/30 text-[11px] font-semibold text-neon-cyan">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-neon-cyan/30 text-xs font-semibold text-neon-cyan">
                     1
                   </span>
                   <h3 className="text-base font-semibold text-text-primary">{t.connectDevice}</h3>
@@ -276,12 +274,12 @@ export function BotOnboardingSteps({
         <div className="flex min-h-48 flex-col justify-between gap-6 p-5 sm:p-6">
           <div>
             <div className="mb-4 flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neon-purple/25 bg-neon-purple/10 text-neon-purple">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neon-cyan/25 bg-neon-cyan/10 text-neon-cyan">
                 <Bot className="h-5 w-5" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-neon-purple/35 text-[11px] font-semibold text-neon-purple">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-neon-cyan/35 text-xs font-semibold text-neon-cyan">
                     2
                   </span>
                   <h3 className="text-base font-semibold text-text-primary">{t.createBot}</h3>
@@ -431,7 +429,7 @@ const TerminalHowToPopoverBody = forwardRef<
               <span className="block text-sm font-medium text-text-primary">{step.title}</span>
               <span className="mt-0.5 block text-xs leading-relaxed text-text-secondary/75">{step.body}</span>
               {index === 0 ? (
-                <span className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg/35 px-2.5 py-1 text-[11px] font-medium text-text-secondary">
+                <span className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg/35 px-2.5 py-1 text-xs font-medium text-text-secondary">
                   <span>Default:</span>
                   <span className="rounded border border-glass-border px-1.5 py-0.5 text-text-primary">Command</span>
                   <span>+</span>
@@ -446,7 +444,7 @@ const TerminalHowToPopoverBody = forwardRef<
                       <span className="h-2 w-2 rounded-full bg-amber-300/70" />
                       <span className="h-2 w-2 rounded-full bg-neon-green/70" />
                     </span>
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-text-secondary/60">
+                    <span className="text-xs font-medium uppercase tracking-wider text-text-secondary/60">
                       Terminal
                     </span>
                   </span>
@@ -572,7 +570,7 @@ export function DeviceConnectPanel({
           <div className="liquid-card rounded-2xl border border-glass-border p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary/60">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-secondary/60">
                   Install command
                 </div>
                 <h4 className="text-sm font-semibold leading-snug text-text-primary">
@@ -594,11 +592,11 @@ export function DeviceConnectPanel({
                     <span className="h-2 w-2 rounded-full bg-amber-300/70" />
                     <span className="h-2 w-2 rounded-full bg-neon-green/70" />
                   </span>
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-text-secondary/60">
+                  <span className="text-xs font-medium uppercase tracking-wider text-text-secondary/60">
                     Terminal
                   </span>
                 </div>
-                <span className="text-[10px] text-text-secondary/45">macOS / Linux</span>
+                <span className="text-xs text-text-secondary/45">macOS / Linux</span>
               </div>
               <code className="block h-14 w-full overflow-y-auto whitespace-pre-wrap break-words px-4 py-2 font-mono text-xs leading-5 text-text-primary">
                 {commandDisplay}
@@ -684,7 +682,7 @@ function PersonCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={avatarUrl} alt={name} className="h-10 w-10 rounded-full object-cover" />
         ) : (
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-neon-purple/25 bg-neon-purple/10 text-sm font-semibold text-neon-purple">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-neon-cyan/25 bg-neon-cyan/10 text-sm font-semibold text-neon-cyan">
             {name.charAt(0)}
           </div>
         )}
@@ -693,7 +691,7 @@ function PersonCard({
             <span className="truncate text-sm font-medium text-text-primary">{name}</span>
             {online ? <span className="h-1.5 w-1.5 rounded-full bg-neon-green" /> : null}
           </div>
-          <span className="mt-0.5 inline-block rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-[9px] font-medium text-text-secondary/70">
+          <span className="mt-0.5 inline-block rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary/70">
             {subtitle || badge}
           </span>
         </div>

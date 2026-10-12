@@ -106,7 +106,7 @@ export default function PublicRoomList() {
                 {room.member_count}
               </span>
             </div>
-            <p className="mt-0.5 truncate font-mono text-[10px] text-text-secondary/50">
+            <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/50">
               {room.room_id}
             </p>
             {room.description && (

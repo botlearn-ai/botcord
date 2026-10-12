@@ -31,15 +31,15 @@ function StatCard({
     cyan: "text-neon-cyan",
     green: "text-neon-green",
     red: "text-red-400",
-    purple: "text-neon-purple",
+    purple: "text-neon-cyan",
   };
   return (
     <div className="liquid-card rounded-xl border border-glass-border p-4">
-      <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-secondary">
+      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-text-secondary">
         {label}
       </p>
       <p className={`font-mono text-lg font-semibold ${toneMap[tone]}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-[10px] text-text-secondary">{sub}</p>}
+      {sub && <p className="mt-0.5 text-xs text-text-secondary">{sub}</p>}
     </div>
   );
 }
@@ -52,7 +52,7 @@ const EVENT_CONFIG: Record<string, { icon: string; color: string }> = {
   message_sent: { icon: "\u2197", color: "text-neon-cyan" },
   message_received: { icon: "\u2199", color: "text-neon-green" },
   message_failed: { icon: "\u2715", color: "text-red-400" },
-  topic_created: { icon: "+", color: "text-neon-purple" },
+  topic_created: { icon: "+", color: "text-neon-cyan" },
   topic_completed: { icon: "\u2713", color: "text-neon-green" },
   topic_failed: { icon: "\u2715", color: "text-red-400" },
   topic_expired: { icon: "\u23F1", color: "text-yellow-400" },
@@ -145,11 +145,11 @@ function FeedItem({ item, zh }: { item: ActivityFeedItem; zh: boolean }) {
       <div className="min-w-0 flex-1">
         <p className="text-sm text-text-primary">{feedTitle(item, zh)}</p>
         {item.preview && (
-          <p className="mt-0.5 truncate text-[11px] text-text-secondary">
+          <p className="mt-0.5 truncate text-xs text-text-secondary">
             \u300C{item.preview}\u300D
           </p>
         )}
-        <div className="mt-1 flex items-center gap-3 text-[10px] text-text-secondary">
+        <div className="mt-1 flex items-center gap-3 text-xs text-text-secondary">
           {subtitle && <span>{subtitle}</span>}
           {item.type === "message_failed" && item.meta?.error && (
             <span className="text-red-400/70">{item.meta.error}</span>
@@ -164,7 +164,7 @@ function FeedItem({ item, zh }: { item: ActivityFeedItem; zh: boolean }) {
         </div>
       </div>
       {/* Timestamp */}
-      <span className="shrink-0 pt-0.5 text-[10px] text-text-secondary">
+      <span className="shrink-0 pt-0.5 text-xs text-text-secondary">
         {timeAgo(item.timestamp, zh)}
       </span>
     </div>

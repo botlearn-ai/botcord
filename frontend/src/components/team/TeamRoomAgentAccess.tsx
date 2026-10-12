@@ -50,7 +50,7 @@ export function RoomAgentChips({ agents }: { agents: RoomAgentAccess[] }) {
     <>
       <div className="hidden md:contents">{chips}</div>
       <details className="group shrink-0 border-b border-glass-border md:hidden">
-        <summary className="flex min-h-8 cursor-pointer list-none items-center gap-1.5 px-3 text-[11px] text-text-secondary [&::-webkit-details-marker]:hidden">
+        <summary className="flex min-h-8 cursor-pointer list-none items-center gap-1.5 px-3 text-xs text-text-secondary [&::-webkit-details-marker]:hidden">
           <Bot size={13} className="text-neon-cyan" />
           <span>{zh ? `Agent 与权限 · ${agents.length}` : `Agents & permissions · ${agents.length}`}</span>
           <ChevronDown size={13} className="ml-auto transition-transform group-open:rotate-180" />
@@ -71,7 +71,7 @@ export function RoomReplyHints({ agents }: { agents: RoomAgentAccess[] }) {
   return (
     <ul className="mb-1.5 space-y-0.5 px-1" aria-label={zh ? "回复提示" : "Reply hints"}>
       {hints.map((hint) => (
-        <li key={hint} className="flex items-start gap-1.5 text-[11px] leading-4 text-text-secondary">
+        <li key={hint} className="flex items-start gap-1.5 text-xs leading-4 text-text-secondary">
           <Info size={12} className="mt-0.5 shrink-0" />
           <span className="min-w-0 break-words">{hint}</span>
         </li>

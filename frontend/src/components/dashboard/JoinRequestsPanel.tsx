@@ -111,7 +111,7 @@ export default function JoinRequestsPanel({ roomId }: JoinRequestsPanelProps) {
                 <button
                   onClick={() => void handleAccept(req.request_id)}
                   disabled={isProcessing}
-                  className="inline-flex items-center gap-1 rounded border border-neon-green/40 bg-neon-green/10 px-2 py-1 text-[10px] font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded border border-neon-green/40 bg-neon-green/10 px-2 py-1 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-50"
                 >
                   {isAccepting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                   {isAccepting ? t.accepting : t.accept}
@@ -119,7 +119,7 @@ export default function JoinRequestsPanel({ roomId }: JoinRequestsPanelProps) {
                 <button
                   onClick={() => void handleReject(req.request_id)}
                   disabled={isProcessing}
-                  className="inline-flex items-center gap-1 rounded border border-red-400/40 bg-red-400/10 px-2 py-1 text-[10px] font-medium text-red-400 transition-colors hover:bg-red-400/20 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded border border-red-400/40 bg-red-400/10 px-2 py-1 text-xs font-medium text-red-400 transition-colors hover:bg-red-400/20 disabled:opacity-50"
                 >
                   {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                   {isRejecting ? t.rejecting : t.reject}
@@ -127,7 +127,7 @@ export default function JoinRequestsPanel({ roomId }: JoinRequestsPanelProps) {
               </div>
             </div>
             {req.message && (
-              <p className="mt-1 text-[11px] text-text-secondary/80 line-clamp-2">
+              <p className="mt-1 text-xs text-text-secondary/80 line-clamp-2">
                 {req.message}
               </p>
             )}

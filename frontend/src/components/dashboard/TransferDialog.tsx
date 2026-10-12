@@ -288,7 +288,7 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
         <form id="transferForm" onSubmit={handleSubmit} className="flex-1 space-y-4 overflow-y-auto px-6 pb-4">
           {/* From card */}
           <div>
-            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-text-secondary">
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-secondary">
               {t.fromLabel}
             </label>
             <FromCard
@@ -305,7 +305,7 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
 
           {/* To */}
           <div>
-            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-text-secondary">
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-secondary">
               {t.toLabel}
             </label>
             {recipientMode === "picked" && recipientPick ? (
@@ -333,7 +333,7 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
                     setRecipientMode("none");
                     setCustomRecipientId("");
                   }}
-                  className="text-[11px] text-text-secondary/70 hover:text-text-primary"
+                  className="text-xs text-text-secondary/70 hover:text-text-primary"
                 >
                   ← {t.pickRecipientDefault}
                 </button>
@@ -366,14 +366,14 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
           {/* Amount */}
           <div>
             <div className="mb-1.5 flex items-baseline justify-between">
-              <label className="text-[11px] font-medium uppercase tracking-wider text-text-secondary">
+              <label className="text-xs font-medium uppercase tracking-wider text-text-secondary">
                 {t.amountCoin}
               </label>
               <button
                 type="button"
                 onClick={handleMaxAmount}
                 disabled={availableMinor <= 0}
-                className="text-[11px] font-medium text-neon-cyan hover:underline disabled:opacity-40 disabled:no-underline"
+                className="text-xs font-medium text-neon-cyan hover:underline disabled:opacity-40 disabled:no-underline"
               >
                 {t.maxAmount} · {showAmount(senderAvailableMinor, walletAmountsHidden)}
               </button>
@@ -401,7 +401,7 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
                     key={n}
                     type="button"
                     onClick={() => setAmount(String(n))}
-                    className={`liquid-action rounded-full border px-2.5 py-0.5 text-[11px] transition-colors ${
+                    className={`liquid-action rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
                       amount === String(n)
                         ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan"
                         : "border-glass-border text-text-secondary hover:border-glass-border/80 hover:text-text-primary"
@@ -413,13 +413,13 @@ function TransferDialog({ viewer, onClose, onSuccess }: TransferDialogProps) {
               </div>
             ) : null}
             {overBudget ? (
-              <p className="mt-1.5 text-[11px] text-red-400">{t.insufficient}</p>
+              <p className="mt-1.5 text-xs text-red-400">{t.insufficient}</p>
             ) : null}
           </div>
 
           {/* Memo */}
           <div>
-            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-text-secondary">
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-text-secondary">
               {t.memoOptional}
             </label>
             <input
@@ -501,7 +501,7 @@ function FromCard({
       >
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-text-primary">{label}</div>
-          <div className="mt-0.5 truncate font-mono text-[11px] text-text-secondary">
+          <div className="mt-0.5 truncate font-mono text-xs text-text-secondary">
             {availableHint} {showAmount(availableMinor, hidden)} COIN
           </div>
         </div>
@@ -526,7 +526,7 @@ function FromCard({
                 }`}
               >
                 <span className="truncate">{opt.label}</span>
-                <span className="ml-2 truncate font-mono text-[10px] text-text-secondary/60">
+                <span className="ml-2 truncate font-mono text-xs text-text-secondary/60">
                   {opt.identity.id}
                 </span>
               </button>
@@ -600,7 +600,7 @@ function RecipientPicker({
             if (items.length === 0) return null;
             return (
               <div key={group} className="border-b border-glass-border/40 py-1 last:border-b-0">
-                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary/60">
+                <div className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-text-secondary/60">
                   {groups[group]}
                 </div>
                 {items.map((opt) => (
@@ -620,7 +620,7 @@ function RecipientPicker({
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-text-primary">{opt.label}</span>
-                      <span className="block truncate font-mono text-[10px] text-text-secondary/60">{opt.id}</span>
+                      <span className="block truncate font-mono text-xs text-text-secondary/60">{opt.id}</span>
                     </span>
                   </button>
                 ))}
@@ -662,12 +662,12 @@ function RecipientChip({
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-text-primary">{option.label}</div>
-        <div className="truncate font-mono text-[10px] text-text-secondary/60">{option.id}</div>
+        <div className="truncate font-mono text-xs text-text-secondary/60">{option.id}</div>
       </div>
       <button
         type="button"
         onClick={onChange}
-        className="liquid-action rounded-md px-2 py-1 text-[11px] text-text-secondary transition-colors hover:border-neon-cyan/30 hover:text-text-primary"
+        className="liquid-action rounded-md px-2 py-1 text-xs text-text-secondary transition-colors hover:border-neon-cyan/30 hover:text-text-primary"
       >
         {changeLabel}
       </button>
@@ -678,7 +678,7 @@ function RecipientChip({
 function HumanInitial({ label }: { label: string }) {
   const initial = (label || "?").trim().charAt(0).toUpperCase();
   return (
-    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neon-purple/20 text-[11px] font-semibold text-neon-purple">
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neon-cyan/20 text-xs font-semibold text-neon-cyan">
       {initial}
     </div>
   );

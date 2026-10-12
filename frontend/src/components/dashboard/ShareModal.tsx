@@ -131,11 +131,11 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
   const visibleMembers = members.slice(0, 6);
   const remainingMembers = Math.max(memberTotal - visibleMembers.length, 0);
   const memberAvatarTones = [
-    "from-[#5eead4]/80 to-[#0891b2]/80",
-    "from-[#fda4af]/80 to-[#be185d]/80",
-    "from-[#c4b5fd]/80 to-[#7c3aed]/80",
-    "from-[#fde68a]/80 to-[#d97706]/80",
-    "from-[#93c5fd]/80 to-[#2563eb]/80",
+    "from-[var(--bc-agent-cyan)] to-[var(--bc-agent-cyan)]",
+    "from-[var(--bc-agent-coral)] to-[var(--bc-agent-coral)]",
+    "from-[var(--bc-agent-violet)] to-[var(--bc-agent-violet)]",
+    "from-[var(--bc-agent-amber)] to-[var(--bc-agent-amber)]",
+    "from-[var(--bc-agent-blue)] to-[var(--bc-agent-blue)]",
   ] as const;
   const memberSkeletonCount = 4;
 
@@ -167,7 +167,7 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
     >
       <div
         ref={panelRef}
-        className="liquid-dialog relative w-full max-w-2xl overflow-hidden rounded-[28px] border"
+        className="liquid-dialog relative w-full max-w-2xl overflow-hidden rounded-3xl border"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -192,24 +192,24 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
 
             <section className="w-full" data-overlay-section>
               <div
-                className="relative h-56 overflow-hidden rounded-[28px] border border-glass-border"
+                className="relative h-56 overflow-hidden rounded-3xl border border-glass-border"
                 style={{ backgroundImage: roomVisualTheme.patternUrl, backgroundRepeat: "repeat" }}
               >
                 <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(7,10,22,0.18),rgba(7,10,22,0.82))]" />
                 <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-5">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-neon-cyan/80">{t.shareRoom}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.28em] text-neon-cyan/80">{t.shareRoom}</p>
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
-                    <span className="liquid-card rounded-full px-3 py-1 text-[11px] font-medium text-text-primary">{visibilityLabel}</span>
-                    <span className="liquid-card rounded-full px-3 py-1 text-[11px] font-medium text-text-primary">{accessLabel}</span>
+                    <span className="liquid-card rounded-full px-3 py-1 text-xs font-medium text-text-primary">{visibilityLabel}</span>
+                    <span className="liquid-card rounded-full px-3 py-1 text-xs font-medium text-text-primary">{accessLabel}</span>
                   </div>
                 </div>
                 <div className="absolute inset-x-0 bottom-0 p-5">
                   <div className="space-y-4">
                     <div className="flex items-center gap-4">
                       <div
-                        className="liquid-card flex h-16 w-16 items-center justify-center rounded-[20px] text-lg font-bold text-text-primary"
+                        className="liquid-card flex h-16 w-16 items-center justify-center rounded-2xl text-lg font-bold text-text-primary"
                         style={{ background: roomVisualTheme.accentDim, boxShadow: `0 0 0 1px ${roomVisualTheme.accent}55` }}
                       >
                         {roomInitials}
@@ -267,7 +267,7 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
                           <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyCurrentUrlDescription}</p>
                         </div>
                       </div>
-                      <span className="liquid-card shrink-0 rounded-full px-3 py-1 text-[11px] font-medium text-text-primary/90">
+                      <span className="liquid-card shrink-0 rounded-full px-3 py-1 text-xs font-medium text-text-primary/90">
                         {copiedField === "plain-link" ? tc.copied : tc.copy}
                       </span>
                     </button>
@@ -298,11 +298,11 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
                             <p className="text-sm font-medium text-text-primary">{t.copyPlainLinkChannelTitle}</p>
                             <p className="mt-1 text-xs leading-5 text-text-secondary">{t.copyPlainLinkChannelDescription}</p>
                             {plainLinkUrl ? (
-                              <p className="mt-2 max-w-[18rem] truncate text-[11px] leading-5 text-text-secondary/80">{plainLinkUrl}</p>
+                              <p className="mt-2 max-w-[18rem] truncate text-xs leading-5 text-text-secondary/80">{plainLinkUrl}</p>
                             ) : null}
                           </div>
                         </div>
-                        <span className="liquid-card shrink-0 rounded-full px-3 py-1 text-[11px] font-medium text-text-primary/90">
+                        <span className="liquid-card shrink-0 rounded-full px-3 py-1 text-xs font-medium text-text-primary/90">
                           {copiedField === "plain-link" ? tc.copied : tc.copy}
                         </span>
                       </button>
@@ -311,7 +311,7 @@ function ShareModal({ roomId, roomName, roomVisibility, canInvite = true, onClos
                 }
 
                 <div className="liquid-card rounded-2xl px-4 py-4">
-                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                     {entryType === "private_invite" || roomVisibility === "private" ? <Lock className="h-3.5 w-3.5" /> : <Globe2 className="h-3.5 w-3.5" />}
                     {distributionLabel}
                   </div>

@@ -277,7 +277,7 @@ export default function SubscriptionBadge({
   ) : (
     <button
       onClick={handleOpen}
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${badgeClasses} ${className}`}
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${badgeClasses} ${className}`}
       title={alreadySubscribed ? t.subscriptionActiveTip : t.subscriptionRequiredTip}
     >
       <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
@@ -334,7 +334,7 @@ export default function SubscriptionBadge({
                     ) : null}
                   </div>
                   <span
-                    className={`shrink-0 rounded border px-2 py-1 text-[10px] font-medium ${
+                    className={`shrink-0 rounded border px-2 py-1 text-xs font-medium ${
                       alreadySubscribed
                         ? "border-neon-green/30 bg-neon-green/10 text-neon-green"
                         : "border-yellow-500/40 bg-yellow-500/10 text-yellow-400"

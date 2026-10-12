@@ -173,7 +173,7 @@ function DeviceSettingsModal({
           {lastSeen && (
             <div className="flex items-center justify-between">
               <span className="text-xs text-text-secondary/60">{locale === "zh" ? "最后在线" : "Last seen"}</span>
-              <span className="font-mono text-[11px] text-text-secondary/50">
+              <span className="font-mono text-xs text-text-secondary/50">
                 {new Date(lastSeen).toLocaleString()}
               </span>
             </div>
@@ -183,7 +183,7 @@ function DeviceSettingsModal({
             <span className="text-xs text-text-secondary/60">
               {locale === "zh" ? "Daemon 版本" : "Daemon version"}
             </span>
-            <span className="font-mono text-[11px] text-text-secondary/70">
+            <span className="font-mono text-xs text-text-secondary/70">
               {daemonVersion || "--"}
             </span>
           </div>
@@ -247,7 +247,7 @@ function DeviceSettingsModal({
                 <p className="text-xs font-medium text-text-primary">
                   {locale === "zh" ? "排障日志" : "Troubleshooting logs"}
                 </p>
-                <p className="mt-1 text-[11px] leading-relaxed text-text-secondary/60">
+                <p className="mt-1 text-xs leading-relaxed text-text-secondary/60">
                   {locale === "zh"
                     ? "收集这台设备最近的运行日志，便于排查问题。"
                     : "Collect recent logs from this device to help troubleshoot issues."}
@@ -262,7 +262,7 @@ function DeviceSettingsModal({
                     ? locale === "zh" ? "收集诊断日志" : "Collect diagnostics"
                     : locale === "zh" ? "设备在线后才能收集诊断日志" : "Device must be online to collect diagnostics"
                 }
-                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg/30 px-2.5 py-1.5 text-[11px] text-text-secondary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan disabled:opacity-40"
+                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-glass-border bg-glass-bg/30 px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan disabled:opacity-40"
               >
                 {isCollectingDiagnostics ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -276,10 +276,10 @@ function DeviceSettingsModal({
               <div ref={diagnosticResultRef} className="mt-2 flex items-center gap-2 rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-2">
                 <FileArchive className="h-4 w-4 shrink-0 text-neon-green" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[11px] font-medium text-neon-green">
+                  <p className="truncate text-xs font-medium text-neon-green">
                     {diagnosticResult.filename}
                   </p>
-                  <p className="text-[10px] text-neon-green/70">
+                  <p className="text-xs text-neon-green/70">
                     {locale === "zh" ? "日志文件已准备好" : "Log file ready"} · {diagnosticResult.size_bytes} bytes
                   </p>
                 </div>
@@ -305,7 +305,7 @@ function DeviceSettingsModal({
               </div>
             )}
             {diagnosticError && (
-              <p className="mt-2 rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-[11px] text-red-300">
+              <p className="mt-2 rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-xs text-red-300">
                 {diagnosticError}
               </p>
             )}
@@ -339,7 +339,7 @@ function DeviceSettingsModal({
                     ? "确认移除此设备？"
                     : "Remove this device?"}
                 </p>
-                <p className="text-[11px] leading-relaxed text-text-secondary/70">
+                <p className="text-xs leading-relaxed text-text-secondary/70">
                   {hostedAgentCount > 0
                     ? locale === "zh"
                       ? `${hostedAgentCount} 个 Agent 将移到「未关联设备」分组，云端身份和聊天记录都会保留。`
@@ -349,20 +349,20 @@ function DeviceSettingsModal({
                       : "No agents are hosted on this device. Cloud records will be kept."}
                 </p>
                 {isOffline ? (
-                  <p className="text-[11px] leading-relaxed text-yellow-400/80">
+                  <p className="text-xs leading-relaxed text-yellow-400/80">
                     {locale === "zh"
                       ? "设备当前离线。本地凭据/状态需等设备重新启动后才能清理。"
                       : "Device is offline. Local credentials and state can't be cleaned until the daemon starts again."}
                   </p>
                 ) : (
-                  <p className="text-[11px] leading-relaxed text-text-secondary/60">
+                  <p className="text-xs leading-relaxed text-text-secondary/60">
                     {locale === "zh"
                       ? "设备在线，本地凭据将立即清理。"
                       : "Device is online — local credentials will be cleaned now."}
                   </p>
                 )}
                 {removeError && (
-                  <p ref={removeErrorRef} className="text-[11px] text-red-400">{removeError}</p>
+                  <p ref={removeErrorRef} className="text-xs text-red-400">{removeError}</p>
                 )}
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
@@ -372,7 +372,7 @@ function DeviceSettingsModal({
                       setConfirmRemove(false);
                       setRemoveError(null);
                     }}
-                    className="rounded-lg border border-glass-border px-3 py-1.5 text-[11px] text-text-secondary transition-colors hover:bg-glass-bg disabled:opacity-40"
+                    className="rounded-lg border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg disabled:opacity-40"
                   >
                     {locale === "zh" ? "取消" : "Cancel"}
                   </button>
@@ -381,7 +381,7 @@ function DeviceSettingsModal({
                       type="button"
                       disabled={isRemoving}
                       onClick={() => void handleRemove(true)}
-                      className="rounded-lg border border-red-500/40 px-3 py-1.5 text-[11px] text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-40"
+                      className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-40"
                     >
                       {locale === "zh" ? "强制移除" : "Forget anyway"}
                     </button>
@@ -390,7 +390,7 @@ function DeviceSettingsModal({
                     type="button"
                     disabled={isRemoving}
                     onClick={() => void handleRemove(false)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/15 px-3 py-1.5 text-[11px] font-medium text-red-200 transition-colors hover:bg-red-500/25 disabled:opacity-40"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/60 bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-500/25 disabled:opacity-40"
                   >
                     {isRemoving && <Loader2 className="h-3 w-3 animate-spin" />}
                     {locale === "zh" ? "移除设备" : "Remove device"}

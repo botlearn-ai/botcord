@@ -272,7 +272,7 @@ function AgentCardModal({
             <p className="text-sm text-text-secondary">{agent?.bio || t.noBio}</p>
             <div className="flex items-center gap-2">
               {agent && <CopyableId value={agent.agent_id} />}
-              <span className="rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">
+              <span className="rounded border border-glass-border px-1.5 py-0.5 text-xs text-text-secondary">
                 {messagePolicyLabel}
               </span>
             </div>
@@ -312,7 +312,7 @@ function AgentCardModal({
             ) : null}
             <div data-profile-modal-part className="mb-4 flex items-center gap-2">
               {agent && <CopyableId value={agent.agent_id} />}
-              <span className="rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">
+              <span className="rounded border border-glass-border px-1.5 py-0.5 text-xs text-text-secondary">
                 {messagePolicyLabel}
               </span>
             </div>

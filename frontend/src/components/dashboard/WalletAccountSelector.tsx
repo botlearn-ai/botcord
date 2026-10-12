@@ -61,7 +61,7 @@ export default function WalletAccountSelector({ value, onChange, label }: Props)
   return (
     <div className="liquid-card mb-4 rounded-xl border border-glass-border px-3 py-2.5">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-text-secondary">
+        <span className="text-xs font-medium uppercase tracking-wider text-text-secondary">
           {label ?? t.fromAccount}
         </span>
         <div className="relative">
@@ -92,7 +92,7 @@ export default function WalletAccountSelector({ value, onChange, label }: Props)
                     }`}
                   >
                     <span className="truncate">{opt.label}</span>
-                    <span className="ml-2 truncate font-mono text-[10px] text-text-secondary/60">
+                    <span className="ml-2 truncate font-mono text-xs text-text-secondary/60">
                       {opt.identity.id}
                     </span>
                   </button>

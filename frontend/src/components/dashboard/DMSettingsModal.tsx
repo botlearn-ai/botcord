@@ -125,13 +125,13 @@ function DMSettingsModal({
           {isOwnAgent ? (
             <div className="liquid-card space-y-3 rounded-xl border p-3">
               <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                   {t.displayName}
                 </p>
                 <p className="text-sm text-text-primary">{ownAgentName ?? "—"}</p>
               </div>
               <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                   {t.agentId}
                 </p>
                 <CopyableId value={ownAgentId ?? ""} />
@@ -140,13 +140,13 @@ function DMSettingsModal({
           ) : (
             <div className="liquid-card space-y-3 rounded-xl border p-3">
               <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                   {t.displayName}
                 </p>
                 <p className="text-sm text-text-primary">{contact!.display_name}</p>
               </div>
               <div>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
                   {t.agentId}
                 </p>
                 <CopyableId value={contact!.contact_agent_id} />

@@ -329,7 +329,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4 text-text-secondary" />
                       <h4 className="truncate text-sm font-semibold text-text-primary">{schedule.name}</h4>
-                      <span className={`rounded border px-1.5 py-0.5 text-[10px] ${schedule.enabled ? "border-green-400/20 text-green-300" : "border-glass-border text-text-secondary"}`}>
+                      <span className={`rounded border px-1.5 py-0.5 text-xs ${schedule.enabled ? "border-green-400/20 text-green-300" : "border-glass-border text-text-secondary"}`}>
                         {schedule.enabled ? "启用" : "暂停"}
                       </span>
                     </div>

@@ -265,7 +265,7 @@ function MarkdownCodeBlock({ children }: { children: ReactNode }) {
       <button
         type="button"
         onClick={() => void handleCopy()}
-        className="liquid-action absolute right-2 top-2 z-10 inline-flex h-7 items-center gap-1.5 rounded-md border border-glass-border px-2 text-[11px] font-medium text-text-secondary shadow-lg shadow-black/20 transition hover:border-neon-cyan/40 hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-neon-cyan/50"
+        className="liquid-action absolute right-2 top-2 z-10 inline-flex h-7 items-center gap-1.5 rounded-md border border-glass-border px-2 text-xs font-medium text-text-secondary shadow-lg shadow-black/20 transition hover:border-neon-cyan/40 hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-neon-cyan/50"
         title={copied ? "Copied" : "Copy code"}
         aria-label={copied ? "Copied code" : "Copy code"}
       >
@@ -406,7 +406,7 @@ function createComponents(renderMention?: MarkdownContentProps["renderMention"])
     },
     pre: ({ children }) => <MarkdownCodeBlock>{children}</MarkdownCodeBlock>,
     blockquote: ({ children }) => (
-      <blockquote className="mb-2 border-l-2 border-neon-purple/50 pl-3 text-text-secondary last:mb-0">
+      <blockquote className="mb-2 border-l-2 border-neon-cyan/50 pl-3 text-text-secondary last:mb-0">
         {children}
       </blockquote>
     ),

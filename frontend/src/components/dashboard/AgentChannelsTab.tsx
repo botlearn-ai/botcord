@@ -131,7 +131,7 @@ function WechatLoginExpiryNotice({
   const expired = remainingMs <= 0;
   return (
     <div
-      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] ${
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
         expired
           ? "border-amber-400/35 bg-amber-400/10 text-amber-200"
           : remainingMs <= 60_000
@@ -162,7 +162,7 @@ function StepSection({
     <section className="liquid-card rounded-xl border border-glass-border p-3">
       <div className="mb-3 flex items-start gap-2.5">
         <span
-          className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${
+          className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
             complete
               ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
               : "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan"
@@ -173,7 +173,7 @@ function StepSection({
         <div className="min-w-0">
           <h4 className="text-xs font-semibold text-text-primary">{title}</h4>
           {description ? (
-            <p className="mt-0.5 text-[10px] leading-relaxed text-text-tertiary">
+            <p className="mt-0.5 text-xs leading-relaxed text-text-tertiary">
               {description}
             </p>
           ) : null}
@@ -270,7 +270,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="liquid-card rounded-lg border border-glass-border px-3 py-2 text-[11px] text-text-tertiary">
+      <div className="liquid-card rounded-lg border border-glass-border px-3 py-2 text-xs text-text-tertiary">
         {isCloudAgent
           ? "Cloud Agent 的第三方接入由云端 ingress 服务托管，setup 不依赖你的本机。"
           : "Local Agent 的第三方接入运行在你本地 daemon 中。"}
@@ -361,27 +361,27 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
                           {g.label || providerName(g.provider)}
                         </span>
                         <span
-                          className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] ${STATUS_STYLES[status]}`}
+                          className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-xs ${STATUS_STYLES[status]}`}
                         >
                           {STATUS_LABELS[status]}
                         </span>
                       </div>
-                      <div className="mt-1 text-[11px] text-text-secondary/80">
+                      <div className="mt-1 text-xs text-text-secondary/80">
                         {providerName(g.provider)}
                         {cfg.tokenPreview ? ` · token ${cfg.tokenPreview}` : ""}
                       </div>
                       {g.last_error && (
-                        <div className="mt-1 truncate text-[11px] text-red-300">
+                        <div className="mt-1 truncate text-xs text-red-300">
                           {g.last_error}
                         </div>
                       )}
                       {rowError[g.id] && (
-                        <div className="mt-1 text-[11px] text-red-300">
+                        <div className="mt-1 text-xs text-red-300">
                           {rowError[g.id]}
                         </div>
                       )}
                       {rowOk[g.id] && (
-                        <div className="mt-1 text-[11px] text-emerald-300">
+                        <div className="mt-1 text-xs text-emerald-300">
                           {rowOk[g.id]}
                         </div>
                       )}
@@ -391,7 +391,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
                         type="button"
                         onClick={() => handleToggle(g)}
                         disabled={blockedByOffline || busyId === g.id}
-                        className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+                        className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                       >
                         {g.enabled ? "停用" : "启用"}
                       </button>
@@ -403,7 +403,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
                           setOk(g.id, null);
                         }}
                         disabled={blockedByOffline || busyId === g.id}
-                        className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
                       >
                         <SquarePen className="h-3 w-3" />
                         编辑
@@ -439,7 +439,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
         )}
 
         {!addMode && lastError && !blockedByOffline && (
-          <div className="text-[11px] text-red-300">{lastError}</div>
+          <div className="text-xs text-red-300">{lastError}</div>
         )}
       </section>
 
@@ -705,13 +705,13 @@ function TelegramAddForm({
             <button
               type="button"
               onClick={() => setTokenGuideOpen(true)}
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300/45 bg-amber-300/12 px-3 py-2 text-[11px] font-medium text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.14)] hover:bg-amber-300/20"
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300/45 bg-amber-300/12 px-3 py-2 text-xs font-medium text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.14)] hover:bg-amber-300/20"
             >
               <Info className="h-3.5 w-3.5" />
               如何获取 token
             </button>
           </div>
-          <p className="mt-1 text-[10px] text-text-tertiary">
+          <p className="mt-1 text-xs text-text-tertiary">
             Token 只在创建或替换时填写。
           </p>
         </Field>
@@ -757,16 +757,16 @@ function TelegramAddForm({
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                        <span className="max-w-[180px] truncate text-xs font-medium text-text-primary">
                           {chat.label || "未命名会话"}
                         </span>
                         {chat.type ? (
-                          <span className="rounded border border-glass-border px-1.5 py-0.5 text-[9px] uppercase text-text-tertiary">
+                          <span className="rounded border border-glass-border px-1.5 py-0.5 text-xs uppercase text-text-tertiary">
                             {chat.type}
                           </span>
                         ) : null}
                       </div>
-                      <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                      <code className="mt-1 block break-all font-mono text-xs text-neon-cyan">
                         {chat.id}
                       </code>
                     </div>
@@ -775,7 +775,7 @@ function TelegramAddForm({
                         type="button"
                         onClick={() => setChatIds(chat.id)}
                         disabled={saving}
-                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
                       >
                         填入
                       </button>
@@ -783,7 +783,7 @@ function TelegramAddForm({
                         type="button"
                         onClick={() => appendChatId(chat.id)}
                         disabled={saving}
-                        className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                        className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
                       >
                         追加
                       </button>
@@ -806,12 +806,12 @@ function TelegramAddForm({
               </div>
             )}
             {discoverHint && (
-              <p className="mt-1 text-[10px] leading-relaxed text-text-tertiary">
+              <p className="mt-1 text-xs leading-relaxed text-text-tertiary">
                 {discoverHint}
               </p>
             )}
             {discoverError && (
-              <p className="mt-1 text-[10px] leading-relaxed text-amber-200">
+              <p className="mt-1 text-xs leading-relaxed text-amber-200">
                 {discoverError}
               </p>
             )}
@@ -833,7 +833,7 @@ function TelegramAddForm({
               placeholder="123456789"
               className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
             />
-            <p className="mt-1 text-[10px] text-text-tertiary">
+            <p className="mt-1 text-xs text-text-tertiary">
               如果第 2 步识别到用户，会自动填到这里。
             </p>
             {discoveredSenders.length > 0 && (
@@ -844,10 +844,10 @@ function TelegramAddForm({
                     className="flex flex-wrap items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/45 px-2.5 py-2"
                   >
                     <div className="min-w-0 flex-1">
-                      <span className="block max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                      <span className="block max-w-[180px] truncate text-xs font-medium text-text-primary">
                         {sender.label || "未命名用户"}
                       </span>
-                      <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                      <code className="mt-1 block break-all font-mono text-xs text-neon-cyan">
                         {sender.id}
                       </code>
                     </div>
@@ -856,7 +856,7 @@ function TelegramAddForm({
                         type="button"
                         onClick={() => setSenderIds(sender.id)}
                         disabled={saving}
-                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
                       >
                         填入
                       </button>
@@ -864,7 +864,7 @@ function TelegramAddForm({
                         type="button"
                         onClick={() => appendSenderId(sender.id)}
                         disabled={saving}
-                        className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                        className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
                       >
                         追加
                       </button>
@@ -908,12 +908,12 @@ function TelegramAddForm({
             </StepSection>
           )}
           {chatReady && whitelistIncomplete && (
-            <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+            <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
               必须同时填写允许的 chat id 和发送者 user id，才能保存 Telegram 接入。
             </p>
           )}
           {error && (
-            <p className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-300">
+            <p className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-xs text-red-300">
               {error}
             </p>
           )}
@@ -1007,25 +1007,25 @@ function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
         </div>
         <ol className="space-y-3 text-xs text-text-secondary">
           <li data-motion-item className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
               1
             </span>
             <span>打开 Telegram，搜索并进入官方账号 @BotFather。</span>
           </li>
           <li data-motion-item className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
               2
             </span>
             <span>发送 /newbot，按提示填写 bot 显示名称和以 bot 结尾的用户名。</span>
           </li>
           <li data-motion-item className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
               3
             </span>
             <span>BotFather 会返回一串 HTTP API token，格式通常类似 123456:ABC-...。</span>
           </li>
           <li data-motion-item className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-[10px] font-semibold text-neon-cyan">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
               4
             </span>
             <span>复制 token，粘贴到 Bot token 输入框；不要把 token 发到群聊或提交到代码仓库。</span>
@@ -1319,7 +1319,7 @@ function FeishuAddForm({
               </div>
             ) : null}
             {phase === "ready" ? (
-              <div className="space-y-1 text-[11px] text-text-secondary">
+              <div className="space-y-1 text-xs text-text-secondary">
                 {appId ? <div className="font-mono">App ID: {appId}</div> : null}
                 {userOpenId ? <div className="font-mono">open_id: {userOpenId}</div> : null}
                 {tokenPreview ? <div>secret {tokenPreview}</div> : null}
@@ -1372,7 +1372,7 @@ function FeishuAddForm({
                     className="flex w-full items-center justify-between rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-left text-xs text-text-secondary hover:border-neon-cyan/40 hover:text-text-primary"
                   >
                     <span className="min-w-0 truncate font-mono">{chat.chatId}</span>
-                    <span className="ml-3 shrink-0 text-[11px]">{chat.kind === "direct" ? "单聊" : "群聊"}</span>
+                    <span className="ml-3 shrink-0 text-xs">{chat.kind === "direct" ? "单聊" : "群聊"}</span>
                   </button>
                 ))}
               </div>
@@ -1750,7 +1750,7 @@ function WechatAddForm({
               </div>
             ) : qrcode ? (
               <div className="space-y-1.5">
-                <div className="break-all rounded-md border border-glass-border bg-glass-bg/40 p-2 font-mono text-[10px] text-text-secondary">
+                <div className="break-all rounded-md border border-glass-border bg-glass-bg/40 p-2 font-mono text-xs text-text-secondary">
                   {qrcode}
                 </div>
                 <button
@@ -1764,7 +1764,7 @@ function WechatAddForm({
                       /* noop */
                     }
                   }}
-                  className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary"
+                  className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-xs text-text-secondary hover:text-text-primary"
                 >
                   {copied ? "已复制" : "复制二维码内容"}
                 </button>
@@ -1775,7 +1775,7 @@ function WechatAddForm({
                 type="button"
                 onClick={handleStart}
                 disabled={busy}
-                className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary disabled:opacity-50"
+                className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
               >
                 重新获取二维码
               </button>
@@ -1785,7 +1785,7 @@ function WechatAddForm({
 
         {phase === "ready" && (
           <div className="space-y-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-2">
-            <div className="text-[11px] text-emerald-200">
+            <div className="text-xs text-emerald-200">
               已授权
               {tokenPreview ? (
                 <span className="ml-1 font-mono">· token {tokenPreview}</span>
@@ -1835,10 +1835,10 @@ function WechatAddForm({
                     className="flex flex-wrap items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/45 px-2.5 py-2"
                   >
                     <div className="min-w-0 flex-1">
-                      <span className="block max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                      <span className="block max-w-[180px] truncate text-xs font-medium text-text-primary">
                         {sender.label || "未命名用户"}
                       </span>
-                      <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                      <code className="mt-1 block break-all font-mono text-xs text-neon-cyan">
                         {sender.id}
                       </code>
                     </div>
@@ -1847,7 +1847,7 @@ function WechatAddForm({
                         type="button"
                         onClick={() => setSenderIds(sender.id)}
                         disabled={busy}
-                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
                       >
                         填入
                       </button>
@@ -1855,7 +1855,7 @@ function WechatAddForm({
                         type="button"
                         onClick={() => appendSenderId(sender.id)}
                         disabled={busy}
-                        className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                        className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
                       >
                         追加
                       </button>
@@ -1878,18 +1878,18 @@ function WechatAddForm({
               </div>
             )}
             {senderDiscoverHint && (
-              <p className="mt-1 text-[10px] leading-relaxed text-text-tertiary">
+              <p className="mt-1 text-xs leading-relaxed text-text-tertiary">
                 {senderDiscoverHint}
               </p>
             )}
             {senderDiscoverError && (
-              <p className="mt-1 text-[10px] leading-relaxed text-amber-200">
+              <p className="mt-1 text-xs leading-relaxed text-amber-200">
                 {senderDiscoverError}
               </p>
             )}
           </Field>
           {whitelistEmpty && (
-            <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+            <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
               必须填写至少一个允许的微信用户 ID，才能保存微信接入。
             </p>
           )}
@@ -1932,7 +1932,7 @@ function WechatAddForm({
             保存
           </button>
           {loginExpired && (
-            <p className="mt-2 text-[10px] leading-relaxed text-amber-200">
+            <p className="mt-2 text-xs leading-relaxed text-amber-200">
               微信临时登录态已过期，请重新扫码后保存。
             </p>
           )}
@@ -1940,7 +1940,7 @@ function WechatAddForm({
       )}
 
       {error && (
-        <p className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-[11px] text-red-300">
+        <p className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-xs text-red-300">
           {error}
         </p>
       )}
@@ -2342,7 +2342,7 @@ function GatewayEditForm({
                   )}
                   我已发送
                 </button>
-                <span className="text-[10px] text-text-tertiary">
+                <span className="text-xs text-text-tertiary">
                   在要接入的私聊、群或频道里发一条消息。
                 </span>
               </div>
@@ -2355,16 +2355,16 @@ function GatewayEditForm({
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                          <span className="max-w-[180px] truncate text-xs font-medium text-text-primary">
                             {chat.label || "未命名会话"}
                           </span>
                           {chat.type ? (
-                            <span className="rounded border border-glass-border px-1.5 py-0.5 text-[9px] uppercase text-text-tertiary">
+                            <span className="rounded border border-glass-border px-1.5 py-0.5 text-xs uppercase text-text-tertiary">
                               {chat.type}
                             </span>
                           ) : null}
                         </div>
-                        <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                        <code className="mt-1 block break-all font-mono text-xs text-neon-cyan">
                           {chat.id}
                         </code>
                       </div>
@@ -2373,7 +2373,7 @@ function GatewayEditForm({
                           type="button"
                           onClick={() => setChatIds(chat.id)}
                           disabled={saving}
-                          className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                          className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
                         >
                           填入
                         </button>
@@ -2381,7 +2381,7 @@ function GatewayEditForm({
                           type="button"
                           onClick={() => appendChatId(chat.id)}
                           disabled={saving}
-                          className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                          className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
                         >
                           追加
                         </button>
@@ -2404,12 +2404,12 @@ function GatewayEditForm({
                 </div>
               )}
               {chatDiscoverHint && (
-                <p className="text-[10px] leading-relaxed text-text-tertiary">
+                <p className="text-xs leading-relaxed text-text-tertiary">
                   {chatDiscoverHint}
                 </p>
               )}
               {chatDiscoverError && (
-                <p className="text-[10px] leading-relaxed text-amber-200">
+                <p className="text-xs leading-relaxed text-amber-200">
                   {chatDiscoverError}
                 </p>
               )}
@@ -2491,7 +2491,7 @@ function GatewayEditForm({
                 type="button"
                 onClick={handleStartWechatDiscoveryLogin}
                 disabled={daemonOffline || saving || wechatLoginBusy}
-                className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-[11px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-md border border-glass-border bg-glass-bg/50 px-2.5 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
               >
                 {wechatLoginBusy ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -2519,7 +2519,7 @@ function GatewayEditForm({
                 )}
                 我已发送
               </button>
-              <span className="text-[10px] text-text-tertiary">
+              <span className="text-xs text-text-tertiary">
                 用要接入的微信账号发一条消息。
               </span>
             </div>
@@ -2528,7 +2528,7 @@ function GatewayEditForm({
             )}
             {wechatLoginId && wechatStatus !== "confirmed" && (
               <div className="space-y-2 rounded-lg border border-glass-border bg-glass-bg/35 p-2">
-                <div className="text-[11px] text-text-secondary">
+                <div className="text-xs text-text-secondary">
                   {wechatStatusText[wechatStatus]}
                 </div>
                 {wechatQrcodeUrl ? (
@@ -2542,7 +2542,7 @@ function GatewayEditForm({
                     />
                   </div>
                 ) : wechatQrcode ? (
-                  <div className="break-all rounded-md border border-glass-border bg-deep-black/40 p-2 font-mono text-[10px] text-text-secondary">
+                  <div className="break-all rounded-md border border-glass-border bg-deep-black/40 p-2 font-mono text-xs text-text-secondary">
                     {wechatQrcode}
                   </div>
                 ) : null}
@@ -2556,10 +2556,10 @@ function GatewayEditForm({
                     className="flex flex-wrap items-center gap-2 rounded-lg border border-glass-border bg-glass-bg/45 px-2.5 py-2"
                   >
                     <div className="min-w-0 flex-1">
-                      <span className="block max-w-[180px] truncate text-[11px] font-medium text-text-primary">
+                      <span className="block max-w-[180px] truncate text-xs font-medium text-text-primary">
                         {sender.label || "未命名用户"}
                       </span>
-                      <code className="mt-1 block break-all font-mono text-[10px] text-neon-cyan">
+                      <code className="mt-1 block break-all font-mono text-xs text-neon-cyan">
                         {sender.id}
                       </code>
                     </div>
@@ -2568,7 +2568,7 @@ function GatewayEditForm({
                         type="button"
                         onClick={() => setSenderIds(sender.id)}
                         disabled={saving}
-                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-[10px] text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+                        className="rounded border border-neon-cyan/35 bg-neon-cyan/10 px-2 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
                       >
                         填入
                       </button>
@@ -2576,7 +2576,7 @@ function GatewayEditForm({
                         type="button"
                         onClick={() => appendSenderId(sender.id)}
                         disabled={saving}
-                        className="rounded border border-glass-border px-2 py-1 text-[10px] text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
+                        className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:border-neon-cyan/35 hover:text-neon-cyan disabled:opacity-50"
                       >
                         追加
                       </button>
@@ -2599,12 +2599,12 @@ function GatewayEditForm({
               </div>
             )}
             {senderDiscoverHint && (
-              <p className="text-[10px] leading-relaxed text-text-tertiary">
+              <p className="text-xs leading-relaxed text-text-tertiary">
                 {senderDiscoverHint}
               </p>
             )}
             {senderDiscoverError && (
-              <p className="text-[10px] leading-relaxed text-amber-200">
+              <p className="text-xs leading-relaxed text-amber-200">
                 {senderDiscoverError}
               </p>
             )}
@@ -2612,7 +2612,7 @@ function GatewayEditForm({
         )}
       </Field>
       {whitelistIncomplete && (
-        <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+        <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
           {gateway.provider === "telegram"
             ? "必须同时保留允许的 chat id 和发送者 user id，才能保存修改。"
             : gateway.provider === "feishu"
@@ -2646,7 +2646,7 @@ function GatewayEditForm({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-[11px] font-medium text-text-secondary">
+      <label className="mb-1 block text-xs font-medium text-text-secondary">
         {label}
       </label>
       {children}
@@ -2710,7 +2710,7 @@ function DeleteConfirmDialog({
         <p data-motion-item className="text-xs text-text-secondary">
           即将删除 <span className="text-text-primary">{gateway.label || providerName(gateway.provider)}</span>。
         </p>
-        <ul data-motion-item className="mt-3 list-disc space-y-1 pl-5 text-[11px] text-text-secondary">
+        <ul data-motion-item className="mt-3 list-disc space-y-1 pl-5 text-xs text-text-secondary">
           <li>仅移除第三方接入。</li>
           <li>不会删除 BotCord agent。</li>
           <li>不会删除 agent workspace、memory 或 runtime 配置。</li>

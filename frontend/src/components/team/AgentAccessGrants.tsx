@@ -150,7 +150,7 @@ export default function AgentAccessGrants({
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2 text-sm">
                     <span className="break-words font-medium">{nameOf(grant)}</span>
-                    <span className="rounded-md bg-neon-cyan/10 px-1.5 py-0.5 text-[11px] text-neon-cyan">
+                    <span className="rounded-md bg-neon-cyan/10 px-1.5 py-0.5 text-xs text-neon-cyan">
                       {grantRoleLabel(grant.role, zh)}
                     </span>
                   </p>

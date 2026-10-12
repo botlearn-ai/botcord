@@ -251,7 +251,7 @@ function StepperPill({
   return (
     <div className="flex items-center gap-2">
       <span
-        className={`flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-semibold ${badgeClass}`}
+        className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold ${badgeClass}`}
       >
         {isDone ? <Check className="h-3 w-3" /> : index}
       </span>
@@ -936,7 +936,7 @@ function CreateAgentDialog({
                     setAddingDevice(true);
                   }}
                   disabled={submitting}
-                  className="liquid-action inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-neon-cyan/80 transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
+                  className="liquid-action inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-neon-cyan/80 transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
                 >
                   <Plus className="h-3 w-3" />
                   {t.addDeviceLabel}
@@ -964,7 +964,7 @@ function CreateAgentDialog({
                   <span className="text-text-primary">
                     {t.cloudAgentOptionLabel}
                   </span>
-                  <span className="ml-auto text-[11px] text-text-secondary/70">
+                  <span className="ml-auto text-xs text-text-secondary/70">
                     {t.cloudAgentOptionHint}
                   </span>
                 </div>
@@ -1201,7 +1201,7 @@ function RuntimePicker({
           type="button"
           onClick={onRefresh}
           disabled={refreshing || disabled || !daemon}
-          className="liquid-action inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-neon-cyan/60 hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
+          className="liquid-action inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-text-secondary transition-colors hover:border-neon-cyan/60 hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
         >
           {refreshing ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -1259,7 +1259,7 @@ function RuntimePicker({
                     {labels.runtimeUnavailableCount(unavailableRuntimes.length)}
                   </span>
                 </span>
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-neon-cyan/80">
+                <span className="inline-flex items-center gap-1.5 text-xs text-neon-cyan/80">
                   {unavailableExpanded ? labels.hideUnavailable : labels.showUnavailable}
                   <ChevronDown
                     className={`h-3.5 w-3.5 transition-transform ${
@@ -1368,7 +1368,7 @@ function RuntimeCard({
             {runtime.version ? ` @ ${runtime.version}` : ""}
           </span>
           {runtime.available && availableLabel ? (
-            <span className="shrink-0 rounded border border-neon-green/30 bg-neon-green/10 px-1 py-px font-sans text-[9px] font-semibold uppercase tracking-wide text-neon-green">
+            <span className="shrink-0 rounded border border-neon-green/30 bg-neon-green/10 px-1 py-px font-sans text-xs font-semibold uppercase tracking-wide text-neon-green">
               {availableLabel}
             </span>
           ) : null}
@@ -1430,7 +1430,7 @@ function RuntimeModelOptions({
       <div className="grid gap-2.5 sm:grid-cols-2">
         {models.length > 0 ? (
           <div className={hasReasoning || hasThinking ? "" : "sm:col-span-2"}>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
               {labels.modelLabel}
             </label>
             <DashboardSelect
@@ -1455,7 +1455,7 @@ function RuntimeModelOptions({
 
         {hasReasoning ? (
           <div className={models.length > 0 ? "" : "sm:col-span-2"}>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
               {labels.reasoningEffortLabel}
             </label>
             {reasoningValues.length > 0 ? (
@@ -1550,7 +1550,7 @@ function OpenclawGatewayPicker({
       <div className="liquid-card rounded-xl p-2.5">
         <div className="grid gap-2.5">
       <div>
-        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
           Gateway
         </label>
         <div className="relative">
@@ -1568,14 +1568,14 @@ function OpenclawGatewayPicker({
           />
         </div>
         {reachable.length === 0 && (
-          <p className="mt-1 text-[11px] text-orange-400">
+          <p className="mt-1 text-xs text-orange-400">
             No reachable gateways. Check tokens, daemon network access, or refresh runtimes.
           </p>
         )}
       </div>
       <div>
         <div className="mb-1 flex items-center gap-2">
-          <label className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+          <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
             {labels.subagentLabel}
           </label>
           <span
@@ -1615,7 +1615,7 @@ function OpenclawGatewayPicker({
           </div>
         )}
         {boundCount > 0 && (
-          <p className="mt-1 text-[11px] text-text-tertiary">
+          <p className="mt-1 text-xs text-text-tertiary">
             {labels.boundProfiles(boundCount)}
           </p>
         )}
@@ -1682,13 +1682,13 @@ function HermesProfilePicker({
           })}
         />
       </div>
-      <p className="mt-1 text-[11px] text-text-tertiary">
+      <p className="mt-1 text-xs text-text-tertiary">
         BotCord agent attaches to this profile&apos;s{" "}
         <code className="font-mono">HERMES_HOME</code>; sessions, memory and
         skills are shared with your command-line <code className="font-mono">hermes</code>.
       </p>
       {allOccupied && (
-        <p className="mt-1 text-[11px] text-orange-400">
+        <p className="mt-1 text-xs text-orange-400">
           All profiles are bound. Run{" "}
           <code className="font-mono">hermes profile create &lt;name&gt; --clone</code>{" "}
           on this device and refresh.
@@ -1870,7 +1870,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
             label="Loading registered hosts…"
             size="sm"
             className="mt-2 justify-start"
-            textClassName="text-[11px] text-text-tertiary"
+            textClassName="text-xs text-text-tertiary"
           />
         )}
       </div>
@@ -1970,12 +1970,12 @@ function HostCard({
         {host.online ? (
           <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-neon-green" />
         ) : (
-          <span className="ml-1 text-[10px] uppercase tracking-wider text-text-tertiary">
+          <span className="ml-1 text-xs uppercase tracking-wider text-text-tertiary">
             offline
           </span>
         )}
       </span>
-      <span className="text-[11px] text-text-tertiary">
+      <span className="text-xs text-text-tertiary">
         {host.agent_count} agent{host.agent_count === 1 ? "" : "s"}
       </span>
     </button>

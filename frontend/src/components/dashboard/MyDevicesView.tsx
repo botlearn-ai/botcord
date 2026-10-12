@@ -75,12 +75,12 @@ export default function MyDevicesView() {
                           {device.label || (isCloud ? "BotCord Cloud Device" : device.id)}
                         </h2>
                         {isCloud ? (
-                          <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-[10px] text-neon-cyan">
+                          <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-xs text-neon-cyan">
                             Cloud
                           </span>
                         ) : null}
                         <span
-                          className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-[10px] ${
+                          className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-xs ${
                             online
                               ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
                               : "border-glass-border bg-glass-bg text-text-secondary/70"
@@ -90,7 +90,7 @@ export default function MyDevicesView() {
                           {online ? "Online" : "Offline"}
                         </span>
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-text-secondary/65">
+                      <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-text-secondary/65">
                         <span className="font-mono">{device.id}</span>
                         <span>·</span>
                         <span>{daemonVersionLabel(device.daemon_version)}</span>
@@ -104,7 +104,7 @@ export default function MyDevicesView() {
 
                 <div className="mt-4 border-t border-glass-border pt-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-[11px] font-medium uppercase tracking-wider text-text-secondary/60">
+                    <p className="text-xs font-medium uppercase tracking-wider text-text-secondary/60">
                       托管的 Bots · {bots.length}
                     </p>
                   </div>
@@ -125,7 +125,7 @@ export default function MyDevicesView() {
                           />
                           <span className="text-xs text-text-primary">{bot.display_name}</span>
                           {bot.is_default ? (
-                            <span className="rounded-full border border-neon-purple/30 bg-neon-purple/10 px-1.5 py-px text-[9px] text-neon-purple">
+                            <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-xs text-neon-cyan">
                               默认
                             </span>
                           ) : null}

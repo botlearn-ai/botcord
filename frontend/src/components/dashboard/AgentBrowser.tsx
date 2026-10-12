@@ -212,14 +212,14 @@ function AgentBrowser() {
               {activeIdentity?.type === "human" && joinedRoom && (joinedRoom.my_role === "owner" || joinedRoom.my_role === "admin") ? (
                 <button
                   onClick={() => setAddMemberModalOpen(true)}
-                  className="liquid-action rounded border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 text-[11px] font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15"
+                  className="liquid-action rounded border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15"
                 >
                   {t.addMembersEntry}
                 </button>
               ) : null}
             </div>
             <div className="mb-2 flex items-center gap-1.5 min-w-0">
-              <p className="truncate text-[11px] text-text-secondary/70">{currentRoom.name}</p>
+              <p className="truncate text-xs text-text-secondary/70">{currentRoom.name}</p>
               {currentRoom.required_subscription_product_id && (
                 <SubscriptionBadge productId={currentRoom.required_subscription_product_id} roomId={currentRoom.room_id} />
               )}
@@ -256,7 +256,7 @@ function AgentBrowser() {
                           <span className="truncate">{member.display_name}</span>
                           <span
                             title={ptype === "human" ? t.participantHuman : t.participantAgent}
-                            className={`shrink-0 rounded px-1 py-px text-[9px] font-medium leading-3 ${
+                            className={`shrink-0 rounded px-1 py-px text-xs font-medium leading-3 ${
                               ptype === "human"
                                 ? "bg-neon-green/10 text-neon-green"
                                 : "bg-neon-cyan/10 text-neon-cyan"
@@ -267,11 +267,11 @@ function AgentBrowser() {
                         </div>
                       </button>
                       <CopyableId value={member.agent_id} className="mt-0.5" />
-                      <span className={`ml-2 shrink-0 rounded border px-1.5 py-px text-[9px] font-medium ${
+                      <span className={`ml-2 shrink-0 rounded border px-1.5 py-px text-xs font-medium ${
                         member.role === "owner"
                           ? "border-neon-cyan/30 text-neon-cyan"
                           : member.role === "admin"
-                            ? "border-neon-purple/30 text-neon-purple"
+                            ? "border-neon-cyan/30 text-neon-cyan"
                             : "border-glass-border text-text-secondary"
                       }`}>
                         {member.role}
@@ -356,14 +356,14 @@ function AgentBrowser() {
                         setRoomActionError(null);
                         setTransferDialogOpen(true);
                       }}
-                      className="liquid-action w-full rounded border border-neon-purple/35 bg-neon-purple/10 px-3 py-2 text-xs font-medium text-neon-purple transition-colors hover:bg-neon-purple/15"
+                      className="liquid-action w-full rounded border border-neon-cyan/35 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15"
                     >
                       {t.transferOwnership}
                     </button>
                   )}
                 </div>
                 {joinedRoom.my_role === "owner" ? (
-                  <p className="mt-2 text-[11px] leading-5 text-text-secondary/70">
+                  <p className="mt-2 text-xs leading-5 text-text-secondary/70">
                     {t.ownerCannotLeave}
                   </p>
                 ) : null}
@@ -438,10 +438,10 @@ function AgentBrowser() {
                 <p className="text-xs text-text-secondary">{selectedAgentProfile.bio}</p>
               )}
               <div className="flex gap-2">
-                <span className="rounded border border-glass-border px-2 py-0.5 text-[10px] text-text-secondary">
+                <span className="rounded border border-glass-border px-2 py-0.5 text-xs text-text-secondary">
                   {selectedAgentProfile.message_policy}
                 </span>
-                <span className="font-mono text-[10px] text-text-secondary/60">
+                <span className="font-mono text-xs text-text-secondary/60">
                   {t.since} {new Date(selectedAgentProfile.created_at).toLocaleDateString()}
                 </span>
               </div>

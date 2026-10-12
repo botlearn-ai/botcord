@@ -101,7 +101,7 @@ function TemplateCardView({
   };
 
   return (
-    <div className="liquid-card overflow-hidden rounded-2xl border border-glass-border transition-colors hover:border-neon-purple/40">
+    <div className="liquid-card overflow-hidden rounded-2xl border border-glass-border transition-colors hover:border-neon-cyan/40">
       {/* Header */}
       <div className="px-5 pt-5 pb-3">
         <h3 className="text-sm font-semibold text-text-primary">{t[card.titleKey]}</h3>
@@ -110,7 +110,7 @@ function TemplateCardView({
           {card.tags.map((tag) => (
             <span
               key={tag}
-              className="rounded-full border border-glass-border bg-glass-bg px-2.5 py-0.5 text-[10px] text-text-secondary"
+              className="rounded-full border border-glass-border bg-glass-bg px-2.5 py-0.5 text-xs text-text-secondary"
             >
               {t[tag]}
             </span>
@@ -130,7 +130,7 @@ function TemplateCardView({
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="rounded-lg border border-glass-border px-3.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-neon-purple/40 hover:text-text-primary"
+          className="rounded-lg border border-glass-border px-3.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-neon-cyan/40 hover:text-text-primary"
         >
           {expanded ? (locale === "zh" ? "收起" : "Collapse") : (locale === "zh" ? "预览 Prompt" : "Preview")}
         </button>
@@ -139,7 +139,7 @@ function TemplateCardView({
       {/* Expandable prompt preview */}
       {expanded && (
         <div className="liquid-tool-surface border-t border-glass-border/50">
-          <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-[11px] leading-5 text-text-secondary/85">
+          <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-xs leading-5 text-text-secondary/85">
             {prompt}
           </pre>
         </div>

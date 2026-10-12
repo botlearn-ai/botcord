@@ -132,7 +132,7 @@ export default function AgentManageDrawer({
               >
                 {tabLabel[id]}
                 {id === "access" && pending > 0 && (
-                  <span className="rounded-full bg-neon-cyan/15 px-1.5 text-[11px] tabular-nums text-neon-cyan">
+                  <span className="rounded-full bg-neon-cyan/15 px-1.5 text-xs tabular-nums text-neon-cyan">
                     {pending}
                   </span>
                 )}
@@ -399,7 +399,7 @@ function AgentRoomsReply({
                   {room.sender_rules.map((rule) => (
                     <li
                       key={rule.sender_id}
-                      className="inline-flex max-w-full items-center gap-1 rounded-lg border border-glass-border bg-glass-bg py-0.5 pl-2 pr-0.5 text-[11px]"
+                      className="inline-flex max-w-full items-center gap-1 rounded-lg border border-glass-border bg-glass-bg py-0.5 pl-2 pr-0.5 text-xs"
                     >
                       <span className="truncate">
                         {nameOf(rule.sender_id)}: {replyModeLabel(rule.attention_mode, zh)}

@@ -92,10 +92,10 @@ function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="liquid-dialog w-full max-w-2xl rounded-[28px] p-8"
+        className="liquid-dialog w-full max-w-2xl rounded-3xl p-8"
       >
         <div data-agent-gate-part className="mx-auto max-w-xl text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.32em] text-neon-cyan/80">
+          <p className="text-xs font-bold uppercase tracking-[0.32em] text-neon-cyan/80">
             {t.communityGate}
           </p>
           <h1 className="mt-4 text-3xl font-bold text-text-primary">

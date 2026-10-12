@@ -177,14 +177,14 @@ export default function MentionChip({
         >
           <span className="mb-1 flex items-center gap-2">
             {isAgent && <PresenceDot agentId={id} size="sm" />}
-            <span className={`truncate text-xs font-semibold ${isHuman ? "text-neon-green" : "text-neon-purple"}`}>
+            <span className={`truncate text-xs font-semibold ${isHuman ? "text-text-primary" : "text-neon-cyan"}`}>
               {displayName}
             </span>
-            <span className="ml-auto rounded border border-glass-border px-1.5 py-0.5 text-[10px] text-text-secondary">
+            <span className="ml-auto rounded border border-glass-border px-1.5 py-0.5 text-xs text-text-secondary">
               {role}
             </span>
           </span>
-          <span className="block truncate font-mono text-[10px] text-text-secondary/70">{id}</span>
+          <span className="block truncate font-mono text-xs text-text-secondary/70">{id}</span>
           {bio && <span className="mt-1.5 line-clamp-3 block text-xs leading-relaxed text-text-secondary">{bio}</span>}
         </span>,
         document.body,

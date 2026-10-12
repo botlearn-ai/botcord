@@ -96,7 +96,7 @@ type Copy = (typeof COPY)[keyof typeof COPY];
 const LAYERS: CapabilityLayerKey[] = ["l0", "l1"];
 
 const LAYER_STYLE: Record<CapabilityLayerKey, { color: string; dash?: string }> = {
-  l0: { color: "var(--color-neon-purple)", dash: "4 3" },
+  l0: { color: "var(--color-text-secondary)", dash: "4 3" },
   l1: { color: "var(--color-neon-cyan)" },
 };
 
@@ -248,7 +248,7 @@ function Radar({ axes, copy }: { axes: CapabilityAxis[]; copy: Copy }) {
             y={y}
             textAnchor={anchor}
             dominantBaseline="middle"
-            className="fill-text-secondary text-[11px] font-medium"
+            className="fill-text-secondary text-xs font-medium"
           >
             {copy.axes[axis.key]}
           </text>
@@ -261,7 +261,7 @@ function Radar({ axes, copy }: { axes: CapabilityAxis[]; copy: Copy }) {
 function ScoreBadge({ layer, score }: { layer: CapabilityLayerKey; score: number | null }) {
   return (
     <span
-      className="inline-flex w-8 justify-center rounded border px-1 py-px text-[10px] font-semibold tabular-nums"
+      className="inline-flex w-8 justify-center rounded border px-1 py-px text-xs font-semibold tabular-nums"
       style={{
         color: LAYER_STYLE[layer].color,
         borderColor: `color-mix(in srgb, ${LAYER_STYLE[layer].color} 35%, transparent)`,
@@ -306,7 +306,7 @@ export default function AgentCapabilityCard({ agentId }: { agentId: string }) {
 
   return (
     <section className="liquid-card rounded-2xl border border-glass-border p-4">
-      <h3 className="mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-secondary/70">
+      <h3 className="mb-3 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
         <span>{copy.title}</span>
         <span className="font-normal normal-case tracking-normal text-text-secondary/50">
           {copy.window(data.window_days)}
@@ -316,7 +316,7 @@ export default function AgentCapabilityCard({ agentId }: { agentId: string }) {
       <div className="grid grid-cols-2 gap-2">
         {LAYERS.map((layer) => (
           <div key={layer} className="liquid-tool-surface rounded-lg px-3 py-2">
-            <div className="flex items-center gap-1.5 text-[10px] text-text-secondary/70">
+            <div className="flex items-center gap-1.5 text-xs text-text-secondary/70">
               <svg width="14" height="4" aria-hidden>
                 <line
                   x1="0"
@@ -341,14 +341,14 @@ export default function AgentCapabilityCard({ agentId }: { agentId: string }) {
 
       <ul className="space-y-2">
         {data.axes.map((axis) => (
-          <li key={axis.key} className="text-[11px]">
+          <li key={axis.key} className="text-xs">
             <div className="flex items-center gap-2">
               <span className="flex-1 font-medium text-text-primary/85">{copy.axes[axis.key]}</span>
               {LAYERS.map((layer) => (
                 <ScoreBadge key={layer} layer={layer} score={axis.layers[layer].score} />
               ))}
             </div>
-            <div className="mt-0.5 space-y-px text-[10px] text-text-secondary/55">
+            <div className="mt-0.5 space-y-px text-xs text-text-secondary/55">
               {LAYERS.map((layer) => (
                 <p key={layer} className="truncate">
                   <span className="mr-1 font-mono">{layer.toUpperCase()}</span>

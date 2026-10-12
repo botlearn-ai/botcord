@@ -299,12 +299,12 @@ function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
               <div className="min-w-0">
                 <p className="truncate text-xs font-medium">{sourceFile.filename}</p>
                 {sourceFile.sizeBytes != null && (
-                  <p className="text-[10px] text-text-secondary">{sourceFile.sizeBytes} bytes</p>
+                  <p className="text-xs text-text-secondary">{sourceFile.sizeBytes} bytes</p>
                 )}
               </div>
             </div>
           ) : (
-            <pre className="max-h-24 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-text-secondary">
+            <pre className="max-h-24 overflow-y-auto whitespace-pre-wrap font-mono text-xs leading-relaxed text-text-secondary">
               {quoteText}
             </pre>
           )}
@@ -329,7 +329,7 @@ function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
                   tone: target.kind === "room" ? "purple" : target.kind === "agent" ? "cyan" : "green",
                   icon:
                     target.kind === "room" ? (
-                      <Users className="h-3.5 w-3.5 text-neon-purple/70" />
+                      <Users className="h-3.5 w-3.5 text-neon-cyan/70" />
                     ) : target.kind === "agent" ? (
                       <MessageSquare className="h-3.5 w-3.5 text-neon-cyan/70" />
                     ) : (
@@ -343,15 +343,15 @@ function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-glass-border px-4 py-3">
-          {error && <p className="text-[11px] text-red-400">{error}</p>}
+          {error && <p className="text-xs text-red-400">{error}</p>}
           {done && (
-            <p ref={statusRef} className="flex origin-center items-center gap-1.5 text-[11px] text-emerald-400">
+            <p ref={statusRef} className="flex origin-center items-center gap-1.5 text-xs text-emerald-400">
               <CheckCircle2 className="h-3.5 w-3.5" />
               已发送
             </p>
           )}
           {!error && !done && (
-            <span className="text-[11px] text-text-secondary">
+            <span className="text-xs text-text-secondary">
               {selected.size > 0 ? `已选 ${selected.size} 个` : "选择发送目标"}
             </span>
           )}

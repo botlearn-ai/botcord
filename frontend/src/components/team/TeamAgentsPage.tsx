@@ -250,7 +250,7 @@ export default function TeamAgentsPage({
               <span>{ownerAgentSummary(agent, zh)}</span>
               {pending > 0 && (
                 <button
-                  className="rounded-full bg-neon-cyan/15 px-2 py-0.5 text-[11px] font-medium text-neon-cyan hover:bg-neon-cyan/25"
+                  className="rounded-full bg-neon-cyan/15 px-2 py-0.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/25"
                   onClick={() => openDrawer("access")}
                 >
                   {t(`${pending} 个待处理`, `${pending} pending`)}
@@ -427,7 +427,7 @@ export default function TeamAgentsPage({
           >
             {tabLabel[id]}
             <span
-              className={`rounded-full px-1.5 text-[11px] tabular-nums ${
+              className={`rounded-full px-1.5 text-xs tabular-nums ${
                 id === "action" ? "bg-neon-cyan/15 text-neon-cyan" : "bg-glass-bg"
               }`}
             >

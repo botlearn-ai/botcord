@@ -265,7 +265,7 @@ function SummaryTile({
           : "border-neon-cyan/30 bg-neon-cyan/5 text-neon-cyan";
   return (
     <div className={`rounded-xl border px-3 py-3 ${toneClass}`}>
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-normal opacity-80">
+      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-normal opacity-80">
         {icon}
         {label}
       </div>
@@ -518,7 +518,7 @@ function AgentSettingsDrawer({
             <h2 className="truncate text-base font-semibold text-text-primary">
               {displayName}
             </h2>
-            <p className="font-mono text-[10px] text-text-secondary/50">{agentId}</p>
+            <p className="font-mono text-xs text-text-secondary/50">{agentId}</p>
           </div>
           <button
             type="button"
@@ -898,14 +898,14 @@ function AgentSettingsDrawer({
                         >
                           <div className="min-w-0">
                             <div className="truncate text-sm text-text-primary">{file.name}</div>
-                            <div className="mt-0.5 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-normal text-text-secondary">
+                            <div className="mt-0.5 flex flex-wrap gap-1.5 text-xs uppercase tracking-normal text-text-secondary">
                               <span>{scopeLabel(file.scope)}</span>
                               {file.profile ? <span>{file.profile}</span> : null}
                               {size ? <span>{size}</span> : null}
                             </div>
                           </div>
                           {file.truncated ? (
-                            <span className="shrink-0 rounded border border-yellow-400/30 px-1.5 py-0.5 text-[10px] text-yellow-300">
+                            <span className="shrink-0 rounded border border-yellow-400/30 px-1.5 py-0.5 text-xs text-yellow-300">
                               {t.files.tooLarge}
                             </span>
                           ) : null}
