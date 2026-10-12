@@ -1,5 +1,6 @@
 "use client";
 
+import Radio from "@/components/ui/Radio";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { openOwnerChat } from "@/lib/owner-chat-navigation";
@@ -1169,8 +1170,8 @@ function RadioGroup<T extends string>({
               selected ? "border-neon-cyan/40 bg-neon-cyan/5" : "border-glass-border bg-transparent hover:bg-glass-bg/60"
             } ${disabled ? "pointer-events-none opacity-50" : ""}`}
           >
-            <input
-              type="radio"
+            <Radio
+
               name={name}
               value={opt.value}
               checked={selected}

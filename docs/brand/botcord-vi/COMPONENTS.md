@@ -135,3 +135,38 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 
 - `/design#loading` 展示 `BotCordLoader` 的 xs / sm / md 尺寸；“预览全页面加载”复用根路由等待态的 `BotCordLoadingScreen`，使用原生 dialog，支持 Esc、关闭按钮和焦点返回。
 - favicon 使用固定浅色底板、深色连线和品牌色节点，不随系统深色模式翻转。浏览器标签背景独立于页面主题，底板保证选中、未选中和着色标签下的可见度。SVG 源文件与 `public/favicon.svg` 同步，ICO 提供 16 / 32 / 48px 回退。
+
+## 类型覆盖补齐（2026-10-12）
+
+完整模块盘点见 [COMPONENT-INVENTORY.md](COMPONENT-INVENTORY.md)，重新生成：`cd frontend && node scripts/audit-ui-components.mjs`。
+
+| 类型 | 组件与契约 | 实际接入 |
+|---|---|---|
+| 原生下拉 | `Select`：原生 select props + `invalid`；保留 name/value/required/multiple 与手机系统选择器 | 8 个业务文件内原有 10 处 select 全部替换 |
+| 带说明的单选 | `SingleSelect`：value/onChange/options/placeholder，option 支持 sublabel/disabled；方向键、Home/End，Esc 返回焦点 | 原 `DashboardSelect` 保留兼容导出，8 个调用文件自动复用 |
+| 搜索多选 | `MultiSelect`：value 数组、onChange、options 或 groups、searchPlaceholder、emptyLabel、selectedLabel | 原 `DashboardMultiSelect` 保留兼容导出，3 个调用文件自动复用 |
+| 搜索框 | `SearchInput`：原生 input props + 必填 label，受控 value/onChange | `SearchBar` 复用视觉，保留 300ms 防抖与卸载清理 |
+| 单选按钮 | `Radio`：原生 input props，不含 type；调用者提供 label 和共享 name | 权限、回复策略等现有 radio 入口复用 |
+| 行内反馈 | `Alert`：tone=neutral/success/warning/danger，title/children/actions；danger 用 alert，其他 status | 团队申请、添加 Agent、房间成员等错误提示 |
+| 纯图标动作 | `IconButton`：必填 label，size=sm/md，danger，原生 button props | DialogShell 关闭按钮 |
+| 抽屉外壳 | `DrawerShell`：与 DialogShell 相同，右侧全高布局；共用关闭、busy、键盘焦点与底栏 | 已有预览；复杂业务抽屉保留，避免改变嵌套确认与生命周期 |
+| 数据表格 | `Table` / `TableHead` / `TableBody` / `TableRow` / `TableHeader` / `TableCell`；保留原生表格属性，Header 默认 scope=col | AdminCodesPage / AdminWaitlistPage；横向滚动由容器负责 |
+| 指标卡 | `MetricCard`：value/label/detail/accent；原生 dl/dt/dd | 团队 Agent 管理抽屉的数量汇总 |
+| 折叠区 | `Disclosure`：title + 原生 details props（open/onToggle） | 运行错误弹窗的原始详情 |
+
+`SingleSelect` 与 `MultiSelect` 透传 id、aria-label、aria-labelledby、aria-describedby、aria-invalid，可与 Field 组合。它们用于交互选项，**不提交隐藏表单值**；需要原生 form name/value 时用 Select。
+
+### 已有组件的预览补齐
+
+`/design` 增加分类导航与演示，覆盖组件库 43 个组件模块（含根布局的 ConfirmDialog / Toaster 宿主）。新增可交互确认框、图片预览，以及 UnreadBadge、CopyableId、MarkdownContent、AttachmentItem、SystemMessageNotice、MarketingButton、MarketingCard、SectionHeading、CordField、TypewriterCode 的示例。
+
+### 仍需分批迁移的业务类型
+
+- **消息与流式内容**：MessageBubble、StreamBlocksView、ToolResultContent、MessageComposer、MentionChip、ReplyQuoteBlock。继续组合 MarkdownContent、AttachmentItem、Avatar、Badge 等原语，业务协议、流式状态、编辑器和 IME 行为留在 dashboard。
+- **列表与业务身份**：RoomList、ContactList、ExploreEntityCard、CompositeAvatar、AgentIdentity。保留列表行为；基础头像和计数优先用 Avatar / UnreadBadge。
+- **出席状态与运行状态**：PresenceDot 的 busy / away / working 是业务出席状态，SignalDot 的 thinking / replying / waiting 是运行状态。不能直接改名替换；后续单独制定映射，避免把“忙碌”显示成“失败”。
+- **复杂弹窗与抽屉**：TopicDrawer、BotDetailDrawer、AgentManageDrawer 等仍有业务动画、嵌套确认、焦点和生命周期逻辑。DrawerShell 已提供统一基础；迁移时必须保留这些行为。
+- **设备表格、文件上传与文档阅读**：设备表格包含内联编辑和展开行，文档阅读有媒体与附件安全边界；本轮不改其行为。原生文件输入由 Input 接收原生 props，上传网络状态留在业务层。
+- **营销专用布局与动画**：Hero、3D 场景和功能演示继续放在营销目录，组件库提供品牌、卡片、标题和 CTA。
+
+本轮完成类型覆盖、共享实现提取和代表性业务接入，不代表所有裸 button/input、手写弹窗和旧视觉样式已迁移完毕。新增页面优先用上表的组件，存量按业务行为逐步迁移。

@@ -5,6 +5,7 @@
  * [OUTPUT]: Admin 邀请码管理页 — 列表 + 创建 + 撤销，后台刷新保留已加载列表
  */
 
+import Table, { TableHead, TableBody, TableRow, TableHeader, TableCell } from "@/components/ui/Table";
 import { useMemo, useEffect, useState } from "react";
 import { Loader2, Plus, XCircle } from "lucide-react";
 import { adminBetaApi, type BetaInviteCode } from "@/lib/api";
@@ -142,29 +143,29 @@ export default function AdminCodesPage() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-glass-border">
-          <table className="w-full text-sm">
-            <thead className="border-b border-glass-border bg-glass-bg">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">邀请码</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">标注</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">用量</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">状态</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">创建时间</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">操作</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="w-full text-sm">
+            <TableHead className="border-b border-glass-border bg-glass-bg">
+              <TableRow>
+                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">邀请码</TableHeader>
+                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">标注</TableHeader>
+                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">用量</TableHeader>
+                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">状态</TableHeader>
+                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">创建时间</TableHeader>
+                <TableHeader className="px-4 py-3 text-left text-xs text-text-secondary">操作</TableHeader>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {codes.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-text-secondary">暂无邀请码</td>
-                </tr>
+                <TableRow>
+                  <TableCell colSpan={6} className="px-4 py-8 text-center text-text-secondary">暂无邀请码</TableCell>
+                </TableRow>
               ) : (
                 codes.map((c) => (
-                  <tr key={c.id} className="border-b border-glass-border/50 last:border-0">
-                    <td className="px-4 py-3 font-mono text-xs text-neon-cyan">{c.code}</td>
-                    <td className="px-4 py-3 text-text-primary">{c.label || "—"}</td>
-                    <td className="px-4 py-3 text-text-secondary">{c.used_count}/{c.max_uses}</td>
-                    <td className="px-4 py-3">
+                  <TableRow key={c.id} className="border-b border-glass-border/50 last:border-0">
+                    <TableCell className="px-4 py-3 font-mono text-xs text-neon-cyan">{c.code}</TableCell>
+                    <TableCell className="px-4 py-3 text-text-primary">{c.label || "—"}</TableCell>
+                    <TableCell className="px-4 py-3 text-text-secondary">{c.used_count}/{c.max_uses}</TableCell>
+                    <TableCell className="px-4 py-3">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                         c.status === "active"
                           ? "bg-neon-cyan/10 text-neon-cyan"
@@ -172,11 +173,11 @@ export default function AdminCodesPage() {
                       }`}>
                         {c.status === "active" ? "有效" : "已撤销"}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-text-secondary">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-xs text-text-secondary">
                       {new Date(c.created_at).toLocaleDateString("zh-CN")}
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
                       {c.status === "active" && (
                         <button
                           onClick={() => handleRevoke(c.id)}
@@ -186,12 +187,12 @@ export default function AdminCodesPage() {
                           撤销
                         </button>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

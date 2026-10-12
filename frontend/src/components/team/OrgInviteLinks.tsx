@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/ui/Select";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, Link2, Loader2, Share2 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -215,8 +216,8 @@ export default function OrgInviteLinks({
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="space-y-1">
               <span>{t("有效期", "Expires after")}</span>
-              <select
-                className={input}
+              <Select
+
                 value={expiry}
                 disabled={busy}
                 onChange={(e) => setExpiry(e.target.value as InviteExpiry)}
@@ -226,7 +227,7 @@ export default function OrgInviteLinks({
                     {inviteExpiryLabel(value, zh)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="flex items-center gap-2 self-end pb-2.5">
               <input

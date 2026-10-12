@@ -1,5 +1,6 @@
 "use client";
 
+import Select from "@/components/ui/Select";
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -97,9 +98,9 @@ export default function RoomReplyModeControl({
   return (
     <div className="flex w-full min-w-0 flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-2">
-        <select
+        <Select
           aria-label={label}
-          className="min-w-0 max-w-full rounded-lg border border-glass-border bg-deep-black px-2 py-1.5 text-xs text-text-primary outline-none focus:border-neon-cyan disabled:opacity-50"
+
           value={value}
           disabled={busy}
           onChange={(e) => {
@@ -119,7 +120,7 @@ export default function RoomReplyModeControl({
                 : replyModeLabel(choice, zh)}
             </option>
           ))}
-        </select>
+        </Select>
         {busy && <Loader2 size={13} className="animate-spin text-text-secondary" />}
         {error && <span className="text-xs text-red-500">{t("保存失败，请重试", "Save failed. Try again.")}</span>}
       </div>

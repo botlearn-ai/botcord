@@ -16,6 +16,7 @@
  * [PROTOCOL]: update header on changes
  */
 
+import Radio from "@/components/ui/Radio";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Loader2, RotateCcw, X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -471,8 +472,8 @@ function OverrideForm({
                 : "border-glass-border bg-transparent hover:bg-glass-bg/50"
             }`}
           >
-            <input
-              type="radio"
+            <Radio
+
               name="room_attention"
               value={opt.value}
               checked={mode === opt.value}

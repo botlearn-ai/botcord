@@ -1,5 +1,6 @@
 "use client";
 
+import Alert from "@/components/ui/Alert";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Loader2, Plus, User, X } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
@@ -248,9 +249,9 @@ export default function TeamRoomMembersDialog({
         </button>
       </div>
       {error != null && (
-        <p role="alert" className="mb-3 rounded-xl border border-red-500/30 p-3 text-sm text-red-500">
+        <Alert tone="danger">
           {spaceError(error, zh)}
-        </p>
+        </Alert>
       )}
       {loading && !participants.length ? (
         <p role="status" className="flex items-center justify-center gap-2 py-6 text-xs text-text-secondary">
