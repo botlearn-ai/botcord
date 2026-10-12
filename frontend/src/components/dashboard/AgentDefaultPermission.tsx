@@ -86,11 +86,11 @@ export default function AgentDefaultPermission({
   return (
     <section className={className}>
       <h3 className="mb-1 text-sm font-semibold text-text-primary">
-        {t("别人使用这个 Agent 时的默认权限", "Default permission when others use this agent")}
+        {t("默认权限", "Default permission when others use this agent")}
       </h3>
       <p className="mb-4 text-xs text-text-secondary">
         {t(
-          "适用于之后新加的好友、新加入的群和公开这个 Agent；已有的关系不变。",
+          "设置他人使用时能做什么。适用于之后新增的好友和群聊。也用于公开此 Agent。已有关系的权限不变。",
           "Applies to new friends, new groups and making the agent public. Existing relations stay unchanged.",
         )}
       </p>

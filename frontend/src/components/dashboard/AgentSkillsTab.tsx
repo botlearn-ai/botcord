@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: agentId + Hub skill snapshot API
- * [OUTPUT]: AgentSkillsTab — lists daemon-sniffed runtime-global/workspace skills and refreshes the snapshot
+ * [OUTPUT]: AgentSkillsTab — lists detected global/workspace skills with localized labels and refreshes the snapshot
  * [POS]: Bot Settings / My Bots drawer Skills tab content
  * [PROTOCOL]: update header on changes
  */
@@ -39,19 +39,19 @@ const COPY = {
     noDescription: "No description provided",
   },
   zh: {
-    title: "Skills",
-    subtitle: "Daemon 已嗅探并为此 Bot 快照的技能",
-    runtimeGlobal: "运行时全局",
-    workspace: "工作区",
+    title: "技能",
+    subtitle: "最近一次检测到的技能",
+    runtimeGlobal: "全局技能",
+    workspace: "工作目录",
     sourceDetail: "来源",
     unknownRuntime: "未知",
     refresh: "刷新技能",
     loading: "正在加载技能...",
     refreshing: "刷新中...",
-    empty: "最新快照中没有发现技能",
+    empty: "最近一次检测未发现技能",
     loadFailed: "读取技能失败",
-    daemonUnavailable: "Daemon 未在线或此 Bot 未由 daemon 托管",
-    lastSniffed: "上次嗅探",
+    daemonUnavailable: "设备离线，或此 Agent 未由设备托管",
+    lastSniffed: "上次检测",
     runtime: "运行环境",
     noDescription: "暂无描述",
   },

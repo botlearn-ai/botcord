@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: agentId; uses useAgentGatewayStore for data + actions
- * [OUTPUT]: AgentChannelsTab — content of the "接入 / Channels" tab inside
+ * [OUTPUT]: AgentChannelsTab — content of the "聊天平台 / Channels" tab inside
  *          AgentSettingsDrawer. Provider-specific add forms are split into
  *          TelegramAddForm, WechatAddForm, and FeishuAddForm so future providers
  *          can drop into the same surface without tangling.
@@ -97,8 +97,8 @@ function isLoginExpiredError(err: unknown): boolean {
 
 function loginExpiredMessage(provider: "wechat" | "feishu"): string {
   return provider === "wechat"
-    ? "微信临时登录态已过期，请重新扫码。"
-    : "飞书临时登录态已过期，请重新扫码。";
+    ? "微信登录已过期，请重新扫码。"
+    : "飞书登录已过期，请重新扫码。";
 }
 
 function useExpiryCountdown(expiresAt: number | null): number | null {
@@ -140,7 +140,7 @@ function WechatLoginExpiryNotice({
       }`}
     >
       <Clock className="h-3 w-3" />
-      {expired ? "临时登录态已过期，请重新扫码" : `临时登录态剩余 ${formatCountdown(remainingMs)}`}
+      {expired ? "登录已过期，请重新扫码" : `登录有效期剩余 ${formatCountdown(remainingMs)}`}
     </div>
   );
 }
@@ -272,20 +272,20 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
     <div className="space-y-5">
       <div className="liquid-card rounded-lg border border-glass-border px-3 py-2 text-xs text-text-tertiary">
         {isCloudAgent
-          ? "Cloud Agent 的第三方接入由云端 ingress 服务托管，setup 不依赖你的本机。"
-          : "Local Agent 的第三方接入运行在你本地 daemon 中。"}
+          ? "云端 Agent 在云端连接聊天平台。无需使用本机。"
+          : "本地 Agent 通过本机连接聊天平台。"}
       </div>
       {daemonOffline && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2.5 text-xs text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <div className="font-semibold">
-              {isCloudAgent ? "云端运行环境暂不可用" : "Daemon 离线"}
+              {isCloudAgent ? "云端运行环境暂不可用" : "设备离线"}
             </div>
             <div className="text-amber-200/80">
               {isCloudAgent
                 ? "已连接列表仍可读。云端环境会在操作时尝试自动恢复；如果刚刚恢复超时，请稍后重试。"
-                : "本地 daemon 当前不在线，已连接列表仍可读，但无法创建、扫码、编辑、启用、停用或删除接入。"}
+                : "设备离线，仍可查看连接列表。暂时无法添加或修改连接。"}
             </div>
           </div>
         </div>
@@ -295,9 +295,9 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
         <div className="flex items-start gap-2 rounded-xl border border-neon-cyan/30 bg-neon-cyan/10 px-3 py-2.5 text-xs text-neon-cyan">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            <div className="font-semibold">云端接入会自动恢复运行环境</div>
+            <div className="font-semibold">自动恢复</div>
             <div className="text-neon-cyan/80">
-              创建、扫码、启用或停用第三方接入时会自动唤醒云端 agent；恢复可能需要几秒，超时后稍后刷新即可确认状态。
+              添加、扫码、启用或停用时自动恢复。恢复可能需要几秒。超时后可稍后刷新确认状态。
             </div>
           </div>
         </div>
@@ -306,7 +306,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
       {/* Connected gateways. */}
       <section className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-text-primary">第三方接入</h3>
+          <h3 className="text-sm font-semibold text-text-primary">聊天平台</h3>
           {!addMode && (
             <button
               type="button"
@@ -315,7 +315,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
               className="inline-flex items-center gap-1 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-2.5 py-1 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus className="h-3 w-3" />
-              添加接入
+              添加平台
             </button>
           )}
         </div>
@@ -331,7 +331,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
           </div>
         ) : list.length === 0 ? (
           <div className="rounded-xl border border-dashed border-glass-border/60 bg-transparent p-4 text-center text-xs text-text-tertiary">
-            尚未连接任何第三方入口
+            还没有连接聊天平台
           </div>
         ) : (
           <ul className="space-y-2">
@@ -447,7 +447,7 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
       {addMode && (
         <section className="liquid-card rounded-2xl border border-glass-border p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-text-primary">添加接入</h3>
+            <h3 className="text-sm font-semibold text-text-primary">添加平台</h3>
             <button
               type="button"
               onClick={() => setAddMode(null)}
@@ -639,7 +639,7 @@ function TelegramAddForm({
         setDiscoverHint("已自动填入发现的发送者 user id。");
       } else if (chats.length === 0) {
         setDiscoverHint(null);
-        setDiscoverError("还没有发现会话。请先在目标私聊或群聊里给 bot 发一条消息，然后再读取。");
+        setDiscoverError("还没有发现会话。请先在目标私聊或群聊里给 Agent 发一条消息，然后再读取。");
       } else {
         setDiscoverHint("发现多个会话，请选择要允许的 chat id。");
       }
@@ -687,11 +687,11 @@ function TelegramAddForm({
     <div className="space-y-3">
       <StepSection
         step={1}
-        title="填写 Bot token"
-        description="先从 BotFather 创建 bot，并把 token 填到这里。"
+        title="连接密钥"
+        description="在 BotFather 创建 Agent。将获得的密钥填入此处。"
         complete={tokenReady}
       >
-        <Field label="Bot token">
+        <Field label="连接密钥">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               type="password"
@@ -708,11 +708,11 @@ function TelegramAddForm({
               className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300/45 bg-amber-300/12 px-3 py-2 text-xs font-medium text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.14)] hover:bg-amber-300/20"
             >
               <Info className="h-3.5 w-3.5" />
-              如何获取 token
+              获取密钥
             </button>
           </div>
           <p className="mt-1 text-xs text-text-tertiary">
-            Token 只在创建或替换时填写。
+            仅在创建或替换时填写密钥。
           </p>
         </Field>
       </StepSection>
@@ -720,11 +720,12 @@ function TelegramAddForm({
         <>
           <StepSection
             step={2}
-            title="让目标对话发条消息"
-            description="在要接入的私聊、群或频道里发一条消息，发完后点击下面的按钮。"
+            title="发送消息"
+            description="在目标私聊、群聊或频道中发送消息。然后点击“我已发送”。"
             complete={chatReady}
           >
-          <Field label="允许的 chat id（逗号或换行分隔）">
+          <Field label="对话编号">
+            <p className="text-xs text-text-secondary">填写 chat_id，多个用逗号或换行分隔。</p>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
               <textarea
                 value={chatIds}
@@ -820,11 +821,12 @@ function TelegramAddForm({
           {chatReady && (
             <StepSection
               step={3}
-              title="确认允许的发送者 user id"
-              description="群里可能有多人发言，这里选择允许发消息的人。"
+              title="选择用户"
+              description="选择允许发来消息的用户。"
               complete={senderReady}
             >
-          <Field label="允许的发送者 user id（逗号或换行分隔）">
+          <Field label="用户编号">
+            <p className="text-xs text-text-secondary">填写用户编号，多个用逗号或换行分隔。</p>
             <textarea
               value={senderIds}
               onChange={(e) => setSenderIds(e.target.value)}
@@ -892,16 +894,16 @@ function TelegramAddForm({
           {senderReady && (
             <StepSection
               step={4}
-              title="确认接入名称"
-              description="名称只用于列表里识别这个 Telegram 接入。"
+              title="连接名称"
+              description="用于区分列表中的 Telegram 连接。"
             >
-              <Field label="接入名称（可选）">
+              <Field label="连接名称（可选）">
                 <input
                   type="text"
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
                   disabled={saving}
-                  placeholder="例如：客服 Bot"
+                  placeholder="例如：客服 Agent"
                   className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
                 />
               </Field>
@@ -990,7 +992,7 @@ function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
         <div data-motion-item className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-base font-semibold text-text-primary">
-              从 BotFather 获取 Bot token
+              获取连接密钥
             </h3>
             <p className="mt-1 text-xs leading-relaxed text-text-secondary">
               Token 来自 Telegram 官方 BotFather，创建后复制到这里即可继续配置接入。
@@ -1016,7 +1018,7 @@ function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
               2
             </span>
-            <span>发送 /newbot，按提示填写 bot 显示名称和以 bot 结尾的用户名。</span>
+            <span>发送 /newbot，按提示填写 Agent 显示名称和以 bot 结尾的用户名。</span>
           </li>
           <li data-motion-item className="flex gap-3">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
@@ -1028,7 +1030,7 @@ function TelegramTokenGuideDialog({ onClose }: { onClose: () => void }) {
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-neon-cyan/35 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
               4
             </span>
-            <span>复制 token，粘贴到 Bot token 输入框；不要把 token 发到群聊或提交到代码仓库。</span>
+            <span>复制 token，粘贴到连接密钥输入框；不要把 token 发到群聊或提交到代码仓库。</span>
           </li>
         </ol>
         <div data-motion-item className="mt-5 flex justify-end">
@@ -1279,8 +1281,8 @@ function FeishuAddForm({
     <div className="space-y-3">
       <StepSection
         step={1}
-        title="扫码创建飞书 Bot"
-        description="使用飞书扫码后，daemon 会拿到该 PersonalAgent 的 App ID 和 App Secret。"
+        title="扫码创建"
+        description="用飞书扫码后，设备将获取连接凭据。"
         complete={phase === "ready"}
       >
         <div className="mb-3 inline-flex rounded-lg border border-glass-border bg-deep-black/40 p-0.5">
@@ -1308,7 +1310,7 @@ function FeishuAddForm({
             className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-2 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
-            生成二维码
+            显示二维码
           </button>
         ) : (
           <div className="space-y-2">
@@ -1332,8 +1334,8 @@ function FeishuAddForm({
       {phase === "ready" && (
         <StepSection
           step={2}
-          title="发现飞书 chat_id"
-          description="在目标单聊或群聊里给 Bot 发一条消息，daemon 会临时监听并填入 chat_id。"
+          title="查找对话"
+          description="在目标私聊或群聊中向 Agent 发消息。系统会检测并填入对话编号。"
           complete={allowedChatIds.length > 0 || chatDiscoverySkipped}
         >
           <div className="space-y-3">
@@ -1384,12 +1386,12 @@ function FeishuAddForm({
       {phase === "ready" && (
         <StepSection
           step={3}
-          title="设置允许的飞书用户"
-          description="默认只允许扫码创建者触发，也可以追加其他 open_id。群聊可选填 chat_id。"
+          title="选择用户"
+          description="默认仅允许扫码创建者发来消息。可添加其他用户的 open_id。群聊可选填 chat_id。"
           complete={allowedSenderIds.length > 0}
         >
           <div className="space-y-3">
-            <Field label="接入名称">
+            <Field label="连接名称">
               <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
@@ -1397,7 +1399,8 @@ function FeishuAddForm({
                 className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40"
               />
             </Field>
-            <Field label="允许的用户 open_id（逗号或换行分隔）">
+            <Field label="用户编号">
+              <p className="text-xs text-text-secondary">填写 open_id，多个用逗号或换行分隔。</p>
               <textarea
                 value={senderIds}
                 onChange={(e) => setSenderIds(e.target.value)}
@@ -1405,7 +1408,8 @@ function FeishuAddForm({
                 className="w-full resize-none rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40"
               />
             </Field>
-            <Field label="允许的群 chat_id（可选）">
+            <Field label="群聊编号（可选）">
+              <p className="text-xs text-text-secondary">填写 chat_id，多个用逗号或换行分隔。</p>
               <textarea
                 value={chatIds}
                 onChange={(e) => {
@@ -1442,7 +1446,7 @@ function FeishuAddForm({
           className="inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/50 bg-neon-cyan/15 px-3 py-2 text-xs font-semibold text-neon-cyan hover:bg-neon-cyan/25 disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          保存接入
+          保存连接
         </button>
       </div>
     </div>
@@ -1593,7 +1597,7 @@ function WechatAddForm({
 
   async function handleSave() {
     if (loginExpired) {
-      setError("微信临时登录态已过期，请重新扫码。");
+      setError("微信登录已过期，请重新扫码。");
       return;
     }
     if (!canSave || !loginId) return;
@@ -1637,7 +1641,7 @@ function WechatAddForm({
     if (!loginId || discoveringSenders) return;
     if (loginExpired) {
       setSenderDiscoverHint(null);
-      setSenderDiscoverError("微信临时登录态已过期，请重新扫码。");
+      setSenderDiscoverError("微信登录已过期，请重新扫码。");
       return;
     }
     setDiscoveringSenders(true);
@@ -1716,8 +1720,8 @@ function WechatAddForm({
     <div className="space-y-3">
       <StepSection
         step={1}
-        title="扫码授权微信登录"
-        description="先让 daemon 拿到临时登录态；未授权前不能读取微信用户 ID，也不能保存接入。"
+        title="扫码登录"
+        description="请先扫码授权登录。授权后才能读取用户编号并保存连接。"
         complete={loginReady}
       >
         {phase === "idle" && (
@@ -1777,7 +1781,7 @@ function WechatAddForm({
                 disabled={busy}
                 className="rounded-md border border-glass-border bg-glass-bg/60 px-2 py-1 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
               >
-                重新获取二维码
+                重新扫码
               </button>
             )}
           </div>
@@ -1799,11 +1803,12 @@ function WechatAddForm({
       {loginReady && (
         <StepSection
           step={2}
-          title="让用户给微信发条消息"
-          description="用要接入的微信账号发一条消息，发完后点击下面的按钮。"
+          title="发送消息"
+          description="用要授权的微信账号发送消息。然后点击“我已发送”。"
           complete={senderReady}
         >
-          <Field label="允许的微信用户 ID（逗号或换行分隔）">
+          <Field label="用户编号">
+            <p className="text-xs text-text-secondary">填写用户编号，多个用逗号或换行分隔。</p>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
               <textarea
                 value={senderIds}
@@ -1890,7 +1895,7 @@ function WechatAddForm({
           </Field>
           {whitelistEmpty && (
             <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
-              必须填写至少一个允许的微信用户 ID，才能保存微信接入。
+              必须填写至少一个允许的微信用户 ID，才能保存连接。
             </p>
           )}
         </StepSection>
@@ -1899,11 +1904,11 @@ function WechatAddForm({
       {senderReady && (
         <StepSection
           step={3}
-          title="确认接入名称"
-          description="名称只用于列表里识别这个微信接入。"
+          title="连接名称"
+          description="用于区分列表中的微信连接。"
           complete
         >
-          <Field label="接入名称（可选）">
+          <Field label="连接名称（可选）">
             <input
               type="text"
               value={label}
@@ -1919,8 +1924,8 @@ function WechatAddForm({
       {senderReady && (
         <StepSection
           step={4}
-          title="保存微信接入"
-          description="保存后会开始处理来自允许用户的微信消息，后续可以在列表里停用、编辑或删除。"
+          title="保存连接"
+          description="保存后开始处理允许用户的微信消息。可在列表中停用、编辑或删除连接。"
         >
           <button
             type="button"
@@ -1933,7 +1938,7 @@ function WechatAddForm({
           </button>
           {loginExpired && (
             <p className="mt-2 text-xs leading-relaxed text-amber-200">
-              微信临时登录态已过期，请重新扫码后保存。
+              微信登录已过期，请重新扫码后保存。
             </p>
           )}
         </StepSection>
@@ -2093,7 +2098,7 @@ function GatewayEditForm({
   async function handleDiscoverTelegramChats() {
     const botToken = token.trim();
     if (!botToken || discoveringChats || gateway.provider !== "telegram") {
-      if (!botToken) setChatDiscoverError("请先填写 Bot token，Telegram 不会在前端保存明文 token。");
+      if (!botToken) setChatDiscoverError("请先连接密钥，Telegram 不会在前端保存明文 token。");
       return;
     }
     setDiscoveringChats(true);
@@ -2130,7 +2135,7 @@ function GatewayEditForm({
         setChatDiscoverHint("已自动填入发现的 chat id。");
       } else if (chats.length === 0) {
         setChatDiscoverHint(null);
-        setChatDiscoverError("还没有发现会话。请先在目标私聊或群聊里给 bot 发一条消息，然后再读取。");
+        setChatDiscoverError("还没有发现会话。请先在目标私聊或群聊里给 Agent 发一条消息，然后再读取。");
       } else {
         setChatDiscoverHint("发现多个会话，请选择要允许的 chat id。");
       }
@@ -2224,7 +2229,7 @@ function GatewayEditForm({
     if (!wechatLoginId || discoveringSenders || wechatStatus !== "confirmed") return;
     if (wechatLoginExpired) {
       setSenderDiscoverHint(null);
-      setSenderDiscoverError("微信临时登录态已过期，请重新扫码。");
+      setSenderDiscoverError("微信登录已过期，请重新扫码。");
       return;
     }
     setDiscoveringSenders(true);
@@ -2300,7 +2305,7 @@ function GatewayEditForm({
 
   return (
     <div className="mt-3 space-y-3 rounded-lg border border-glass-border bg-deep-black/35 p-3">
-      <Field label="接入名称（可选）">
+      <Field label="连接名称（可选）">
         <input
           type="text"
           value={label}
@@ -2311,14 +2316,15 @@ function GatewayEditForm({
               ? "例如：我的微信"
               : gateway.provider === "feishu"
                 ? "例如：飞书助手"
-                : "例如：客服 Bot"
+                : "例如：客服 Agent"
           }
           className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
         />
       </Field>
       {gateway.provider === "telegram" && (
         <>
-          <Field label="允许的 chat id（逗号或换行分隔）">
+          <Field label="对话编号">
+            <p className="text-xs text-text-secondary">填写 chat_id，多个用逗号或换行分隔。</p>
             <textarea
               value={chatIds}
               onChange={(e) => setChatIds(e.target.value)}
@@ -2415,14 +2421,14 @@ function GatewayEditForm({
               )}
             </div>
           </Field>
-          <Field label="替换 Bot token（可选）">
+          <Field label="更换密钥（可选）">
             <input
               type="password"
               autoComplete="off"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               disabled={saving}
-              placeholder="不填写则保持当前 token"
+              placeholder="留空则保留当前密钥"
               className="w-full rounded-lg border border-glass-border bg-deep-black/40 px-3 py-2 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/40 disabled:opacity-50"
             />
           </Field>
@@ -2430,7 +2436,7 @@ function GatewayEditForm({
       )}
       {gateway.provider === "feishu" && (
         <>
-          <Field label="飞书域">
+          <Field label="平台版本">
             <div className="inline-flex rounded-lg border border-glass-border bg-deep-black/40 p-0.5">
               {(["feishu", "lark"] as const).map((d) => (
                 <button
@@ -2449,7 +2455,8 @@ function GatewayEditForm({
               ))}
             </div>
           </Field>
-          <Field label="允许的飞书群 chat_id（可选，逗号或换行分隔）">
+          <Field label="群聊编号（可选）">
+            <p className="text-xs text-text-secondary">填写 chat_id，多个用逗号或换行分隔。</p>
             <textarea
               value={chatIds}
               onChange={(e) => setChatIds(e.target.value)}
@@ -2461,15 +2468,12 @@ function GatewayEditForm({
           </Field>
         </>
       )}
-      <Field
-        label={
-          gateway.provider === "wechat"
-            ? "允许的微信用户 ID（逗号或换行分隔）"
-            : gateway.provider === "feishu"
-              ? "允许的飞书用户 open_id（逗号或换行分隔）"
-              : "允许的发送者 user id（逗号或换行分隔）"
-        }
-      >
+      <Field label="用户编号">
+        <p className="text-xs text-text-secondary">
+          {gateway.provider === "feishu"
+            ? "填写 open_id，多个用逗号或换行分隔。"
+            : "填写用户编号，多个用逗号或换行分隔。"}
+        </p>
         <textarea
           value={senderIds}
           onChange={(e) => setSenderIds(e.target.value)}
@@ -2705,15 +2709,15 @@ function DeleteConfirmDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 data-motion-item className="mb-2 text-base font-semibold text-text-primary">
-          删除接入
+          删除连接
         </h3>
         <p data-motion-item className="text-xs text-text-secondary">
           即将删除 <span className="text-text-primary">{gateway.label || providerName(gateway.provider)}</span>。
         </p>
         <ul data-motion-item className="mt-3 list-disc space-y-1 pl-5 text-xs text-text-secondary">
-          <li>仅移除第三方接入。</li>
-          <li>不会删除 BotCord agent。</li>
-          <li>不会删除 agent workspace、memory 或 runtime 配置。</li>
+          <li>仅删除此平台连接。</li>
+          <li>保留 BotCord Agent。</li>
+          <li>保留 Agent 的文件、记忆和运行设置。</li>
         </ul>
         <div data-motion-item className="mt-5 flex justify-end gap-2">
           <button

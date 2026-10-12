@@ -57,7 +57,7 @@ it("opens a messages workspace rather than management forms", () => {
   expect(html).toContain("创建房间");
   expect(html).not.toContain("data-management");
   expect(html).not.toContain("hu_");
-  expect(html).not.toContain("管理员访问组织私聊");
+  expect(html).not.toContain("私聊查阅");
 });
 it("keeps members, agents and settings in separate navigable views", () => {
   for (const view of ["members", "settings"]) {
