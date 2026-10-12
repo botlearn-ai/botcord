@@ -9,6 +9,7 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 
 - 视觉规范：`docs/brand/botcord-vi/VI.md`（唯一文字来源，数值以 `tokens/botcord.tokens.json` 为准）
 - 全仓组件盘点：`docs/brand/botcord-vi/COMPONENT-INVENTORY.md`（`cd frontend && node scripts/audit-ui-components.mjs` 重新生成）
+- 迁移基线与验收边界：`docs/brand/botcord-vi/RELEASE-READINESS.md`；真实页面试点 `/design/pilot`（仅本地内存数据）
 - 组件 API 契约：`docs/brand/botcord-vi/COMPONENTS.md`
 - Tailwind 颜色桥：`frontend/src/styles/botcord-tailwind.css`；旧 token 映射：`frontend/src/app/globals.css` 顶部
 - 防回退检查：`frontend/src/design-lint.test.ts` + `design-lint.baseline.json`
@@ -75,12 +76,6 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 | 小标签 | xs 4 / sm 6 | `rounded` / `rounded-md` |
 | 输入框、按钮 | md 8 | `rounded-lg` |
 | 卡片、菜单 | lg 12 | `rounded-xl` |
-| 原生下拉 / 带说明单选 / 多选 | `Select` / `SingleSelect` / `MultiSelect`；原生表单提交用 Select，旧 DashboardSelect / DashboardMultiSelect 是兼容导出 |
-| 搜索框 | `SearchInput`；防抖和 API 请求留在业务层 |
-| 单选按钮 | `Radio`；组内共享 name，外层提供 label / fieldset |
-| 行内提示 | `Alert`（neutral / success / warning / danger）；瞬时结果用 Toast |
-| 抽屉 | `DrawerShell`；复杂业务抽屉迁移时保留嵌套确认与生命周期 |
-| 数据表 / 指标卡 / 折叠区 | `Table` 系列 / `MetricCard` / `Disclosure` |
 | 弹窗 | xl 16 | `rounded-2xl` |
 | 营销大卡片 | 2xl 24 | `rounded-3xl` |
 | 胶囊、头像 | full | `rounded-full` |
@@ -188,3 +183,10 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 - 宽表格复用 Table 自带滚动容器，传入 aria-label；Tabs 可横向滚动。
 - 必需信息不能只放 Tooltip；无标签控件要提供可见说明和足够的触控间距。
 - 至少检查 320 / 375 / 430px 的展开、关闭、长内容和输入场景。浏览器触控模拟不等于真实软键盘或安全区验证；汇报时区分。
+
+### v1 接口与迁移范围
+
+- 以 RELEASE-READINESS.md 的分组为准；基础组件可迁移，复杂消息、编辑器、业务抽屉不得机械替换。
+- 不改现有回调参数以统一命名；原生 Select 与受控 SingleSelect / MultiSelect 的表单语义不同。
+- className 只安排外部布局，不覆盖 VI 字体、颜色、焦点、触控尺寸或 busy 行为；外观扩展使用命名 variant。
+- 每批以完整页面验收，保留 API 与权限；测试失败、加载、长内容、嵌套弹层、焦点返回和移动端。预览 fixture 不能作为生产权限验证。
