@@ -230,3 +230,50 @@ async def test_publish_realtime_events_uses_hub_publisher(monkeypatch):
     assert seen == events
     await team_access.publish_realtime_events([])
     assert seen == events
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalidation", ["revoke", "expire", "other_space"])
+async def test_agent_dm_access_matches_send_authorization(client, db_session, org, invalidation):  # noqa: F811
+    """A retained DM must not advertise room-based access after its grant is lost."""
+    from hub.models import AgentAccessGrant
+    from hub.services import spaces
+    from uuid import UUID
+
+    grant = (await client.post(f"{base(org)}/agents/ag_barry/access-grants", headers=org["danny"],
+                              json={"human_id": org["alice_hu"], "role": "collaborator"})).json()
+    opened = await client.post(f"{base(org)}/agent-dms", headers=org["alice"], json={"agent_id": "ag_barry"})
+    assert opened.status_code == 201, opened.text
+    room_id = opened.json()["room_id"]
+    access_url = f"{base(org)}/rooms/{room_id}/agent-access"
+    access = by_agent((await client.get(access_url, headers=org["alice"])).json()["agents"])
+    assert (access["ag_barry"]["my_capability"], access["ag_barry"]["basis"]) == ("collaborator", "grant")
+
+    if invalidation == "revoke":
+        response = await client.delete(f"{base(org)}/access-grants/{grant['id']}", headers=org["danny"])
+        assert response.status_code == 200
+    elif invalidation == "expire":
+        row = await db_session.get(AgentAccessGrant, UUID(grant["id"]))
+        row.expires_at = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+        await db_session.commit()
+    else:
+        other = await spaces.create_organization(db_session, org["danny_id"], "other-dm", "Other")
+        await spaces.invite_user(db_session, other.space_id, org["danny_id"], org["alice_id"])
+        await spaces.accept_invitation(db_session, other.space_id, org["alice_id"])
+        await spaces.request_agent_admission(db_session, other.space_id, org["danny_id"], "ag_barry")
+        await spaces.approve_agent(db_session, other.space_id, org["danny_id"], "ag_barry")
+        await db_session.commit()
+        response = await client.post(f"/api/spaces/{other.space_id}/agents/ag_barry/access-grants",
+                                     headers=org["danny"], json={"human_id": org["alice_hu"], "role": "consultant"})
+        assert response.status_code == 201, response.text
+
+    access = by_agent((await client.get(access_url, headers=org["alice"])).json()["agents"])
+    assert (access["ag_barry"]["my_capability"], access["ag_barry"]["basis"]) == ("deny", "none")
+    sent = await client.post(f"/api/dashboard/rooms/{room_id}/send", headers=org["alice"], json={"text": "blocked"})
+    assert sent.status_code == 403 and sent.json()["detail"] == "agent_access_revoked"
+
+    # The owner still has access to their own Agent after a member's grant ends.
+    owner_dm = await client.post(f"{base(org)}/agent-dms", headers=org["danny"], json={"agent_id": "ag_barry"})
+    owner_access = by_agent((await client.get(
+        f"{base(org)}/rooms/{owner_dm.json()['room_id']}/agent-access", headers=org["danny"])).json()["agents"])
+    assert owner_access["ag_barry"]["my_capability"] == "full"

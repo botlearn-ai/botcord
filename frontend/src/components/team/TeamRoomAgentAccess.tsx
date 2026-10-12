@@ -4,12 +4,16 @@ import { useEffect, useState } from "react";
 import { Bot, ChevronDown, Info } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import { capabilityBadge, replyModeHint, teamAccessApi, type RoomAgentAccess } from "@/lib/team-access";
+import { useAccessChanges } from "@/store/useTeamAccessStore";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import AccessBadge from "./AccessBadge";
 
 /** What the viewer's messages can make each Agent in an org room do; reloads when members change. */
 export function useRoomAgentAccess(spaceId: string, roomId: string): RoomAgentAccess[] {
   const membersVersion = useDashboardChatStore((s) => s.roomMemberVersions[roomId] ?? 0);
+  const accessVersion = useAccessChanges(spaceId);
+  const revokedSends = useDashboardChatStore((s) => (s.messages[roomId] ?? [])
+    .filter((m) => m.send_error === "agent_access_revoked").length);
   const [agents, setAgents] = useState<RoomAgentAccess[]>([]);
   useEffect(() => {
     const controller = new AbortController();
@@ -21,7 +25,7 @@ export function useRoomAgentAccess(spaceId: string, roomId: string): RoomAgentAc
       // Advisory UI: keep the last known state rather than block the room.
       .catch(() => undefined);
     return () => controller.abort();
-  }, [spaceId, roomId, membersVersion]);
+  }, [spaceId, roomId, membersVersion, accessVersion, revokedSends]);
   return agents;
 }
 
@@ -65,6 +69,7 @@ export function RoomAgentChips({ agents }: { agents: RoomAgentAccess[] }) {
 export function RoomReplyHints({ agents }: { agents: RoomAgentAccess[] }) {
   const zh = useLanguage() === "zh";
   const hints = agents
+    .filter((a) => a.my_capability !== "deny")
     .map((a) => replyModeHint(a.display_name, a.reply_mode, a.keywords, zh))
     .filter((hint): hint is string => Boolean(hint));
   if (!hints.length) return null;
