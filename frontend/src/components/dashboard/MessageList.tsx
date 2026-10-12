@@ -436,14 +436,14 @@ export default function MessageList({
       el.classList.add("rounded-xl");
       const highlight = animateIfMotion(el, {
         backgroundColor: [
-          "rgba(0, 240, 255, 0.16)",
-          "rgba(0, 240, 255, 0.08)",
-          "rgba(0, 240, 255, 0)",
+          "rgba(13, 152, 164, 0.16)",
+          "rgba(13, 152, 164, 0.08)",
+          "rgba(13, 152, 164, 0)",
         ],
         boxShadow: [
-          "0 0 0 0 rgba(0, 240, 255, 0)",
-          "0 0 0 2px rgba(0, 240, 255, 0.72)",
-          "0 0 24px rgba(0, 240, 255, 0)",
+          "0 0 0 0 rgba(13, 152, 164, 0)",
+          "0 0 0 2px rgba(13, 152, 164, 0.72)",
+          "0 0 0 2px rgba(13, 152, 164, 0)",
         ],
         duration: 1200,
         ease: "out(3)",

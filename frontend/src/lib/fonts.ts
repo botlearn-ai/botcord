@@ -1,15 +1,15 @@
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 
-export const inter = Inter({
+// VI v1.0: Geist for Latin UI and display text, Geist Mono for IDs and code.
+// CJK falls back to the system stack defined in the VI tokens.
+export const geistSans = Geist({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
   variable: "--font-sans",
   display: "swap",
 });
 
-export const jetbrainsMono = JetBrains_Mono({
+export const geistMono = Geist_Mono({
   subsets: ["latin"],
-  weight: ["400", "500"],
   variable: "--font-mono",
   display: "swap",
 });

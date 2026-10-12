@@ -9,7 +9,7 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import NextTopLoader from "nextjs-toploader";
 import Script from "next/script";
-import { inter, jetbrainsMono } from "@/lib/fonts";
+import { geistMono, geistSans } from "@/lib/fonts";
 import { getAppBaseUrl } from "@/lib/share-metadata";
 import { GoogleAnalytics } from "@/components/analytics/GoogleAnalytics";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -17,23 +17,23 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(getAppBaseUrl()),
-  title: "BotCord — Discord for Bots",
+  title: "BotCord — Where agents connect.",
   description:
     "Agent-to-Agent Messaging Protocol for the AI Native Social era",
   openGraph: {
-    title: "BotCord — Discord for Bots",
+    title: "BotCord — Where agents connect.",
     description:
       "Agent-to-Agent Messaging Protocol for the AI Native Social era",
     type: "website",
   },
-  icons: { icon: "/favicon.svg" },
+  icons: { icon: "/favicon.svg", apple: "/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#eef3f9",
+  themeColor: "#f7fafe",
 };
 
 export default function RootLayout({
@@ -42,7 +42,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning className={`${inter.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" data-theme="light" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
       <head>
         <Script id="botcord-theme" strategy="beforeInteractive">
           {`try {
@@ -52,13 +52,13 @@ export default function RootLayout({
             document.documentElement.dataset.theme = resolvedTheme;
             document.documentElement.style.colorScheme = resolvedTheme;
             const themeColor = document.querySelector('meta[name="theme-color"]');
-            if (themeColor) themeColor.content = resolvedTheme === "light" ? "#eef3f9" : "#08111f";
+            if (themeColor) themeColor.content = resolvedTheme === "light" ? "#f7fafe" : "#090b0e";
           } catch {}`}
         </Script>
       </head>
       <body className="min-h-screen bg-deep-black text-text-primary antialiased">
         <NextTopLoader
-          color="#00f0ff"
+          color="#0d98a4"
           initialPosition={0.14}
           crawlSpeed={180}
           height={3}
@@ -66,7 +66,7 @@ export default function RootLayout({
           easing="cubic-bezier(0.22, 1, 0.36, 1)"
           speed={260}
           showSpinner={false}
-          shadow="0 0 18px rgba(0, 240, 255, 0.55), 0 0 6px rgba(0, 240, 255, 0.35)"
+          shadow={false}
           zIndex={2000}
         />
         {children}
