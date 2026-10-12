@@ -40,7 +40,7 @@ const CORD_STATES: NodeCordState[] = ["static", "sending", "thinking", "delivere
 function Section({ id, title, note, children }: { id: string; title: string; note?: string; children: ReactNode }) {
   return (
     <section id={id} className="border-t border-border py-10">
-      <h2 className="text-2xl font-semibold tracking-[-0.02em] text-text-primary">{title}</h2>
+      <h2 className="type-heading-2 text-text-primary">{title}</h2>
       {note ? <p className="mt-1 max-w-3xl text-sm text-text-secondary">{note}</p> : null}
       <div className="mt-6 space-y-6">{children}</div>
     </section>
@@ -50,7 +50,7 @@ function Section({ id, title, note, children }: { id: string; title: string; not
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-3 md:grid-cols-[160px_1fr] md:items-center">
-      <span className="font-mono text-xs text-text-tertiary">{label}</span>
+      <span className="font-mono text-xs text-text-secondary">{label}</span>
       <div className="flex flex-wrap items-center gap-3">{children}</div>
     </div>
   );
@@ -92,7 +92,7 @@ export default function DesignGallery() {
 
       <main className="mx-auto max-w-6xl px-6 pb-24">
         <div className="py-10">
-          <h1 className="text-4xl font-semibold tracking-[-0.03em]">组件库</h1>
+          <h1 className="type-heading-1">组件库</h1>
           <p className="mt-2 max-w-3xl text-base text-text-secondary">
             所有组件都在 <code className="font-mono text-sm">components/ui/</code>，API 契约见
             <code className="font-mono text-sm"> docs/brand/botcord-vi/COMPONENTS.md</code>。新界面只用这里的组件拼。
@@ -100,8 +100,26 @@ export default function DesignGallery() {
         </div>
 
         <nav aria-label="组件分类" className="mb-6 flex flex-wrap gap-2 text-sm">
-          {[ ["loading", "加载"], ["buttons", "基础"], ["selection", "选择与搜索"], ["persistent-feedback", "反馈与抽屉"], ["data", "数据"], ["content", "内容"], ["marketing", "营销"] ].map(([id, label]) => <a key={id} href={`#${id}`} className="rounded-lg border border-border px-3 py-2 text-text-secondary hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">{label}</a>)}
+          {[ ["typography", "字体"], ["loading", "加载"], ["buttons", "基础"], ["selection", "选择与搜索"], ["persistent-feedback", "反馈与抽屉"], ["data", "数据"], ["content", "内容"], ["marketing", "营销"] ].map(([id, label]) => <a key={id} href={`#${id}`} className="rounded-lg border border-border px-3 py-2 text-text-secondary hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">{label}</a>)}
         </nav>
+
+        <Section id="typography" title="字体与信息层级" note="英文使用 Geist，中文使用系统字体；代码与标识符使用 Geist Mono。标题字重 600，标签 500，正文 400。">
+          <Card padding="lg" className="space-y-6">
+            <div className="space-y-2">
+              <p className="type-caption text-text-secondary">标题 · 22 / 28.6</p>
+              <p className="type-heading-3">让 Agent 协作更清晰</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm leading-[1.6]">BotCord connects your agents. 在同一个 Room 中组织任务、交流进展。</p>
+              <p className="type-body-sm text-text-secondary">辅助说明保持清晰可读，不用透明度降低文字对比度。</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border pt-4">
+              <code className="font-mono text-[13px] leading-normal">agent_0x7f3a</code>
+              <span className="type-body-sm tabular-nums">0123456789 · 1,280.50</span>
+              <span className="type-caption text-text-secondary">Aa Bb · 中文标点，。！？</span>
+            </div>
+          </Card>
+        </Section>
 
         <Section id="loading" title="Logo Loading" note="全页面加载、区域等待和紧凑状态共用 BotCord 品牌动效。支持浅色、深色和减少动态效果。">
           <LoadingPreview />
@@ -122,7 +140,7 @@ export default function DesignGallery() {
           </Row>
         </Section>
 
-        <Section id="forms" title="表单：Field / Input / Textarea / Switch / Checkbox">
+        <Section id="forms" title="表单控件" note="Field / Input / Textarea / Switch / Checkbox">
           <div className="grid gap-6 md:grid-cols-2">
             <Field label="Agent 名称" hint="对其他 agent 可见，最多 32 个字符" required>
               <Input placeholder="例如 Researcher" />
@@ -172,7 +190,7 @@ export default function DesignGallery() {
             {SIGNALS.map((status) => (
               <div key={status} className="flex flex-col items-center gap-1.5">
                 <Avatar kind="agent" id={`ag_${status}`} name={status} size="md" status={status} />
-                <span className="font-mono text-xs text-text-tertiary">{status}</span>
+                <span className="font-mono text-xs text-text-secondary">{status}</span>
               </div>
             ))}
           </Row>
@@ -202,7 +220,7 @@ export default function DesignGallery() {
             {CORD_STATES.map((state) => (
               <Card key={state} padding="md" className="flex flex-col items-center gap-2">
                 <NodeCordStatus state={state} size={56} />
-                <span className="font-mono text-xs text-text-tertiary">{state}</span>
+                <span className="font-mono text-xs text-text-secondary">{state}</span>
               </Card>
             ))}
           </div>
@@ -268,7 +286,7 @@ export default function DesignGallery() {
           </Row>
         </Section>
 
-        <Section id="containers" title="Card / EmptyState / Skeleton">
+        <Section id="containers" title="容器与占位" note="Card / EmptyState / Skeleton">
           <div className="grid gap-4 md:grid-cols-3">
             <Card padding="lg">
               <h3 className="text-base font-semibold">default</h3>

@@ -354,12 +354,12 @@ export default function MultiSelect({
 
           <div className="max-h-72 overflow-y-auto py-1" role="listbox" aria-label={placeholder} aria-multiselectable="true">
             {visibleCount === 0 ? (
-              <p className="px-3 py-6 text-center text-xs text-text-secondary/70">{emptyLabel}</p>
+              <p className="px-3 py-6 text-center type-body-sm text-text-secondary">{emptyLabel}</p>
             ) : (
               filteredGroups.map((group, groupIndex) => (
                 <div key={group.label ?? groupIndex} className="py-1">
                   {group.label ? (
-                    <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/60">
+                    <p className="px-3 pb-1 pt-2 type-caption text-text-secondary">
                       {group.label}
                     </p>
                   ) : null}
@@ -394,7 +394,7 @@ export default function MultiSelect({
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-xs font-medium">{option.label}</span>
                           {option.sublabel ? (
-                            <span className="mt-0.5 block truncate font-mono text-xs text-text-secondary/70">
+                            <span className="mt-0.5 block truncate type-body-sm text-text-secondary">
                               {option.sublabel}
                             </span>
                           ) : null}

@@ -230,7 +230,7 @@ export default function SingleSelect({
               {selected?.label ?? placeholder}
             </span>
             {selected?.sublabel ? (
-              <span className="mt-0.5 block truncate font-mono text-xs text-text-secondary/60">
+              <span className="mt-0.5 block truncate type-body-sm text-text-secondary">
                 {selected.sublabel}
               </span>
             ) : null}
@@ -248,7 +248,7 @@ export default function SingleSelect({
           className={`liquid-menu absolute left-0 right-0 z-50 mt-2 max-h-64 overflow-y-auto rounded-xl border border-border py-1 ${panelClassName}`}
         >
           {options.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-text-secondary/70">{placeholder}</p>
+            <p className="px-3 py-3 type-body-sm text-text-secondary">{placeholder}</p>
           ) : (
             options.map((option) => {
               const isSelected = option.value === value;
@@ -279,7 +279,7 @@ export default function SingleSelect({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{option.label}</span>
                     {option.sublabel ? (
-                      <span className="mt-0.5 block truncate font-mono text-xs text-text-secondary/65">
+                      <span className="mt-0.5 block truncate type-body-sm text-text-secondary">
                         {option.sublabel}
                       </span>
                     ) : null}

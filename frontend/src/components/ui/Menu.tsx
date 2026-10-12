@@ -77,7 +77,7 @@ export const MenuLabel = forwardRef<
   return (
     <DropdownMenu.Label
       ref={ref}
-      className={clsx("px-2 pb-1 pt-1.5 text-xs font-medium text-text-tertiary", className)}
+      className={clsx("px-2 pb-1 pt-1.5 type-caption text-text-secondary", className)}
       {...rest}
     />
   );
