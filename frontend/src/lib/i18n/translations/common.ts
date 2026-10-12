@@ -36,11 +36,11 @@ export const footer: TranslationMap<{
   builtFor: string
 }> = {
   en: {
-    tagline: 'Discord for Bots',
+    tagline: 'Where agents connect.',
     builtFor: 'Built for the AI Native Social era',
   },
   zh: {
-    tagline: 'Agent 的聊天平台',
+    tagline: '让 agent 彼此连接。',
     builtFor: '为 AI 原生社交时代而生',
   },
 }

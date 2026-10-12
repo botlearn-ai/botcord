@@ -5,22 +5,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useLanguage } from "@/lib/i18n";
 import { envelopeStructure } from "@/lib/i18n/translations/protocol";
 
-interface Field {
-  key: string;
-  label: string;
-  color: string;
-}
-
-const fields: Field[] = [
-  { key: "v", label: "v", color: "text-neon-cyan" },
-  { key: "msg_id", label: "msg_id", color: "text-neon-cyan" },
-  { key: "ts", label: "ts", color: "text-neon-cyan" },
-  { key: "from", label: "from", color: "text-neon-green" },
-  { key: "to", label: "to", color: "text-neon-green" },
-  { key: "type", label: "type", color: "text-neon-purple" },
-  { key: "payload", label: "payload", color: "text-neon-purple" },
-  { key: "payload_hash", label: "payload_hash", color: "text-neon-purple" },
-  { key: "sig", label: "sig", color: "text-neon-cyan" },
+const fields = [
+  "v",
+  "msg_id",
+  "ts",
+  "from",
+  "to",
+  "type",
+  "payload",
+  "payload_hash",
+  "sig",
 ];
 
 export default function EnvelopeStructure() {
@@ -31,30 +25,30 @@ export default function EnvelopeStructure() {
   return (
     <div className="grid gap-8 lg:grid-cols-2">
       {/* JSON structure */}
-      <div className="rounded-xl border border-glass-border bg-deep-black-light p-6 font-mono text-sm">
-        <div className="mb-3 text-xs text-text-secondary">
+      <div className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface-sunken)] p-6 font-mono text-[13px]">
+        <div className="mb-3 text-xs text-[var(--bc-text-secondary)]">
           {t.title}
         </div>
         <div className="space-y-1">
-          <span className="text-text-secondary">{"{"}</span>
+          <span className="text-[var(--bc-text-secondary)]">{"{"}</span>
           {fields.map((field) => (
             <div
-              key={field.key}
-              className={`cursor-pointer rounded px-2 py-0.5 transition-all duration-200 ${
-                activeField === field.key
-                  ? "bg-neon-cyan/10 shadow-[0_0_10px_rgba(0,240,255,0.1)]"
-                  : "hover:bg-glass-bg"
+              key={field}
+              className={`cursor-pointer rounded-md px-2 py-0.5 transition-colors duration-[140ms] ${
+                activeField === field
+                  ? "bg-[var(--bc-accent-soft)]"
+                  : "hover:bg-[var(--bc-surface)]"
               }`}
-              onMouseEnter={() => setActiveField(field.key)}
+              onMouseEnter={() => setActiveField(field)}
               onMouseLeave={() => setActiveField(null)}
             >
-              <span className={field.color}>
-                {"  "}"{field.key}"
+              <span className="text-[var(--bc-accent-text)]">
+                {"  "}"{field}"
               </span>
-              <span className="text-text-secondary">: ...</span>
+              <span className="text-[var(--bc-text-secondary)]">: ...</span>
             </div>
           ))}
-          <span className="text-text-secondary">{"}"}</span>
+          <span className="text-[var(--bc-text-secondary)]">{"}"}</span>
         </div>
       </div>
 
@@ -68,14 +62,12 @@ export default function EnvelopeStructure() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.2 }}
-              className="rounded-xl border border-glass-border bg-glass-bg p-6 backdrop-blur-xl"
+              className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-6 shadow-[var(--bc-shadow-sm)]"
             >
-              <h4
-                className={`font-mono text-lg font-bold ${fields.find((f) => f.key === activeField)?.color}`}
-              >
+              <h4 className="font-mono text-lg font-semibold text-[var(--bc-accent-text)]">
                 {activeField}
               </h4>
-              <p className="mt-2 text-sm text-text-secondary">
+              <p className="mt-2 text-sm leading-[1.6] text-[var(--bc-text-secondary)]">
                 {t.fields[activeField]}
               </p>
             </motion.div>
@@ -85,7 +77,7 @@ export default function EnvelopeStructure() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-center text-sm text-text-secondary"
+              className="text-center text-sm text-[var(--bc-text-secondary)]"
             >
               <p>{t.hoverHint}</p>
             </motion.div>

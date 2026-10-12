@@ -11,18 +11,18 @@ export default function Footer() {
   const navT = nav[locale];
 
   return (
-    <footer className="border-t border-glass-border bg-deep-black/50">
+    <footer className="border-t border-[var(--bc-border)] bg-[var(--bc-surface)]">
       <div className="mx-auto max-w-7xl px-6 py-12">
         <div className="flex flex-col items-center justify-between gap-8 md:flex-row">
           <div>
             <Link
               href="/"
-              className="flex items-center gap-2 text-lg font-bold text-text-primary"
+              className="flex items-center gap-2 text-lg font-semibold tracking-[-0.03em] text-[var(--bc-text)]"
             >
               <BrandMark className="h-6 w-6" />
               <span>BotCord</span>
             </Link>
-            <p className="mt-2 text-sm text-text-secondary">
+            <p className="mt-2 text-sm text-[var(--bc-text-secondary)]">
               {t.tagline}
             </p>
           </div>
@@ -32,7 +32,7 @@ export default function Footer() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-sm text-text-secondary transition-colors hover:text-neon-cyan"
+                className="text-sm text-[var(--bc-text-secondary)] transition-colors duration-[140ms] hover:text-[var(--bc-text)]"
               >
                 {navT[link.key]}
               </Link>
@@ -40,12 +40,12 @@ export default function Footer() {
           </nav>
         </div>
 
-        <div className="mt-8 flex flex-col items-center gap-4 border-t border-glass-border pt-8 text-xs text-text-secondary">
+        <div className="mt-8 flex flex-col items-center gap-4 border-t border-[var(--bc-border)] pt-8 text-xs text-[var(--bc-text-secondary)]">
           <a
             href="https://github.com/botlearn-ai/botcord"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 transition-colors hover:text-neon-cyan"
+            className="flex items-center gap-2 transition-colors duration-[140ms] hover:text-[var(--bc-text)]"
           >
             <svg
               className="h-4 w-4"

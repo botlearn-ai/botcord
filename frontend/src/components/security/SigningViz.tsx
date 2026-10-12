@@ -1,147 +1,65 @@
+/**
+ * [INPUT]: 依赖 security i18n 的 signingViz 文案、framer-motion 进入动画与 VI token
+ * [OUTPUT]: 对外提供 SigningViz 组件：消息 → 签名 → 信封三段静态示意，段间用水平圆头连线
+ * [POS]: 安全页"签名流程"区块；按 VI §6.5 安全场景只用静态图形，不做循环动画
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 "use client";
 
-import { useEffect, useRef } from "react";
+import { Fragment } from "react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/lib/i18n";
 import { signingViz } from "@/lib/i18n/translations/security";
 
+function Connector() {
+  return (
+    <svg
+      viewBox="0 0 48 16"
+      className="mx-auto h-4 w-12 shrink-0 rotate-90 text-[var(--bc-border-strong)] md:rotate-0"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path d="M6 8 H42" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+      <circle cx={6} cy={8} r={3.5} fill="currentColor" />
+      <circle cx={42} cy={8} r={3.5} fill="var(--bc-brand)" />
+    </svg>
+  );
+}
+
 export default function SigningViz() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const locale = useLanguage();
   const t = signingViz[locale];
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const prefersReduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
-    };
-    resize();
-    window.addEventListener("resize", resize);
-
-    let time = 0;
-    let animId: number;
-
-    const draw = () => {
-      const cw = canvas.getBoundingClientRect().width;
-      const ch = canvas.getBoundingClientRect().height;
-      ctx.clearRect(0, 0, cw, ch);
-
-      const panelW = cw / 3 - 20;
-      const panelH = ch - 40;
-      const cy = ch / 2;
-
-      const panels = [
-        { x: 10, label: t.message, sublabel: t.plainBody, color: "#00f0ff" },
-        {
-          x: cw / 3 + 5,
-          label: t.sign,
-          sublabel: t.ed25519Jcs,
-          color: "#8b5cf6",
-        },
-        {
-          x: (cw * 2) / 3 + 5,
-          label: t.envelope,
-          sublabel: t.signedOutput,
-          color: "#10b981",
-        },
-      ];
-
-      panels.forEach((panel, i) => {
-        // Panel box
-        ctx.strokeStyle = panel.color + "40";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(panel.x, 20, panelW, panelH);
-
-        // Panel fill
-        ctx.fillStyle = panel.color + "08";
-        ctx.fillRect(panel.x, 20, panelW, panelH);
-
-        // Label
-        ctx.fillStyle = panel.color;
-        ctx.font = "bold 13px Inter, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(panel.label, panel.x + panelW / 2, cy - 8);
-
-        ctx.fillStyle = panel.color + "80";
-        ctx.font = "10px Inter, sans-serif";
-        ctx.fillText(panel.sublabel, panel.x + panelW / 2, cy + 10);
-
-        // Arrow between panels
-        if (i < 2) {
-          const ax = panel.x + panelW + 2;
-          const bx = panels[i + 1].x - 2;
-
-          ctx.strokeStyle = "rgba(255,255,255,0.15)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(ax, cy);
-          ctx.lineTo(bx, cy);
-          ctx.stroke();
-
-          // Arrowhead
-          ctx.beginPath();
-          ctx.moveTo(bx, cy);
-          ctx.lineTo(bx - 6, cy - 3);
-          ctx.lineTo(bx - 6, cy + 3);
-          ctx.closePath();
-          ctx.fillStyle = "rgba(255,255,255,0.15)";
-          ctx.fill();
-
-          if (!prefersReduced) {
-            // Animated dot
-            const cycle = (time * 0.5 + i * 0.5) % 1;
-            const px = ax + (bx - ax) * cycle;
-            ctx.beginPath();
-            ctx.arc(px, cy, 3, 0, Math.PI * 2);
-            ctx.fillStyle = panels[i + 1].color;
-            ctx.shadowColor = panels[i + 1].color;
-            ctx.shadowBlur = 8;
-            ctx.fill();
-            ctx.shadowBlur = 0;
-          }
-        }
-      });
-
-      if (!prefersReduced) {
-        time += 0.005;
-        animId = requestAnimationFrame(draw);
-      }
-    };
-
-    draw();
-
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener("resize", resize);
-    };
-  }, [t]);
+  const panels = [
+    { label: t.message, sublabel: t.plainBody },
+    { label: t.sign, sublabel: t.ed25519Jcs },
+    { label: t.envelope, sublabel: t.signedOutput },
+  ];
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      transition={{ duration: 0.6 }}
-      className="rounded-xl border border-glass-border bg-glass-bg p-4 backdrop-blur-xl"
+      transition={{ duration: 0.36, ease: [0, 0, 0, 1] }}
+      className="flex flex-col items-stretch gap-3 rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-4 shadow-[var(--bc-shadow-sm)] sm:p-6 md:flex-row md:items-center"
     >
-      <canvas
-        ref={canvasRef}
-        className="h-32 w-full md:h-40"
-        style={{ display: "block" }}
-      />
+      {panels.map((panel, i) => (
+        <Fragment key={panel.label}>
+          <div
+            className={`flex-1 rounded-lg border px-4 py-6 text-center ${
+              i === panels.length - 1
+                ? "border-[var(--bc-brand)]/40 bg-[var(--bc-accent-soft)]"
+                : "border-[var(--bc-border)] bg-[var(--bc-surface-sunken)]"
+            }`}
+          >
+            <div className="text-base font-semibold text-[var(--bc-text)]">{panel.label}</div>
+            <div className="mt-1 font-mono text-xs text-[var(--bc-text-secondary)]">{panel.sublabel}</div>
+          </div>
+          {i < panels.length - 1 ? <Connector /> : null}
+        </Fragment>
+      ))}
     </motion.div>
   );
 }

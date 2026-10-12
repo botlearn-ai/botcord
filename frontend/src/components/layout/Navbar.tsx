@@ -28,10 +28,10 @@ export default function Navbar() {
   }, []);
 
   return (
-    <nav className="marketing-nav fixed top-0 z-50 w-full border-b border-glass-border bg-deep-black/70 backdrop-blur-xl">
+    <nav className="fixed top-0 z-50 w-full border-b border-[var(--bc-border)] bg-[var(--bc-bg)]/85 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-        <Link href="/" className="flex items-center gap-2 text-lg font-bold text-text-primary">
-          <BrandMark className="h-8 w-8" />
+        <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-[-0.03em] text-[var(--bc-text)]">
+          <BrandMark className="h-7 w-7" />
           <span>BotCord</span>
         </Link>
 
@@ -43,8 +43,8 @@ export default function Navbar() {
               className={clsx(
                 "text-sm font-medium transition-colors duration-200",
                 pathname === link.href
-                  ? "text-neon-cyan"
-                  : "text-text-secondary hover:text-neon-cyan"
+                  ? "text-[var(--bc-accent-text)]"
+                  : "text-[var(--bc-text-secondary)] hover:text-[var(--bc-text)]"
               )}
             >
               {navT[link.key]}
@@ -54,7 +54,7 @@ export default function Navbar() {
             href="https://botlearn.ai"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm font-medium text-text-secondary transition-colors duration-200 hover:text-neon-cyan"
+            className="text-sm font-medium text-[var(--bc-text-secondary)] transition-colors duration-[140ms] hover:text-[var(--bc-text)]"
           >
             botlearn
           </a>
@@ -66,17 +66,17 @@ export default function Navbar() {
               onClick={() => setLanguage('en')}
               className={clsx(
                 "px-1.5 py-0.5 rounded transition-colors",
-                locale === 'en' ? "text-neon-cyan" : "text-text-secondary hover:text-text-primary"
+                locale === 'en' ? "text-[var(--bc-text)]" : "text-[var(--bc-text-tertiary)] hover:text-[var(--bc-text)]"
               )}
             >
               EN
             </button>
-            <span className="text-text-secondary/40">&middot;</span>
+            <span className="text-[var(--bc-text-tertiary)]">&middot;</span>
             <button
               onClick={() => setLanguage('zh')}
               className={clsx(
                 "px-1.5 py-0.5 rounded transition-colors",
-                locale === 'zh' ? "text-neon-cyan" : "text-text-secondary hover:text-text-primary"
+                locale === 'zh' ? "text-[var(--bc-text)]" : "text-[var(--bc-text-tertiary)] hover:text-[var(--bc-text)]"
               )}
             >
               中
@@ -87,7 +87,7 @@ export default function Navbar() {
             href="https://github.com/botlearn-ai/botcord"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-text-secondary transition-colors duration-200 hover:text-neon-cyan"
+            className="text-[var(--bc-text-secondary)] transition-colors duration-[140ms] hover:text-[var(--bc-text)]"
             aria-label="GitHub"
           >
             <svg
@@ -106,7 +106,7 @@ export default function Navbar() {
 
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="flex items-center justify-center rounded-lg p-2 text-text-secondary hover:text-neon-cyan md:hidden"
+            className="flex items-center justify-center rounded-lg p-2 text-[var(--bc-text-secondary)] hover:text-[var(--bc-text)] md:hidden"
             aria-label="Toggle menu"
           >
             <svg
@@ -128,7 +128,7 @@ export default function Navbar() {
       </div>
 
       {menuOpen && (
-        <div className="border-t border-glass-border bg-deep-black/90 backdrop-blur-xl md:hidden">
+        <div className="border-t border-[var(--bc-border)] bg-[var(--bc-bg)] md:hidden">
           <div className="flex flex-col gap-1 px-6 py-4">
             {navLinks.map((link) => (
               <Link
@@ -138,8 +138,8 @@ export default function Navbar() {
                 className={clsx(
                   "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
                   pathname === link.href
-                    ? "bg-neon-cyan-dim text-neon-cyan"
-                    : "text-text-secondary hover:bg-glass-bg hover:text-neon-cyan"
+                    ? "bg-[var(--bc-accent-soft)] text-[var(--bc-accent-text)]"
+                    : "text-[var(--bc-text-secondary)] hover:bg-[var(--bc-surface-sunken)] hover:text-[var(--bc-text)]"
                 )}
               >
                 {navT[link.key]}
@@ -150,7 +150,7 @@ export default function Navbar() {
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => setMenuOpen(false)}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-neon-cyan"
+              className="rounded-lg px-4 py-2 text-sm font-medium text-[var(--bc-text-secondary)] transition-colors hover:bg-[var(--bc-surface-sunken)] hover:text-[var(--bc-text)]"
             >
               botlearn
             </a>

@@ -1,9 +1,12 @@
 "use client";
 
+import { Braces, Clock, Ruler, Search, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
-import { verificationSteps } from "@/data/security-features";
 import { useLanguage } from "@/lib/i18n";
 import { verificationSteps as verificationStepsT, signingViz as signingVizT } from "@/lib/i18n/translations/security";
+
+// Same order as the translated steps: parse, resolve, canonicalize, verify, freshness.
+const icons = [Braces, Search, Ruler, ShieldCheck, Clock];
 
 export default function VerificationPipeline() {
   const locale = useLanguage();
@@ -13,40 +16,43 @@ export default function VerificationPipeline() {
   return (
     <div className="relative">
       {/* Connecting line */}
-      <div className="absolute left-6 top-8 hidden h-[calc(100%-4rem)] w-px bg-gradient-to-b from-neon-cyan via-neon-purple to-neon-green md:left-1/2 md:block" />
+      <div className="absolute left-6 top-8 hidden h-[calc(100%-4rem)] w-0.5 rounded-full bg-[var(--bc-border)] md:left-1/2 md:block md:-translate-x-1/2" />
 
       <div className="space-y-8">
-        {verificationSteps.map((step, i) => (
-          <motion.div
-            key={step.step}
-            initial={{ opacity: 0, x: i % 2 === 0 ? -30 : 30 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true, margin: "-30px" }}
-            transition={{ duration: 0.5, delay: i * 0.1 }}
-            className={`flex items-center gap-6 ${i % 2 === 0 ? "md:flex-row" : "md:flex-row-reverse"}`}
-          >
-            <div
-              className={`flex-1 ${i % 2 === 0 ? "md:text-right" : "md:text-left"}`}
+        {translatedSteps.map((step, i) => {
+          const Icon = icons[i] ?? ShieldCheck;
+          return (
+            <motion.div
+              key={step.title}
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-30px" }}
+              transition={{ duration: 0.36, delay: i * 0.04, ease: [0, 0, 0, 1] }}
+              className={`flex items-center gap-6 ${i % 2 === 0 ? "md:flex-row" : "md:flex-row-reverse"}`}
             >
-              <div className="rounded-xl border border-glass-border bg-glass-bg p-4 backdrop-blur-xl">
-                <div className="text-xs font-medium text-neon-cyan">
-                  {tViz.step}{step.step}
+              <div
+                className={`flex-1 ${i % 2 === 0 ? "md:text-right" : "md:text-left"}`}
+              >
+                <div className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-4 shadow-[var(--bc-shadow-sm)]">
+                  <div className="text-xs font-medium text-[var(--bc-accent-text)]">
+                    {tViz.step}{i + 1}
+                  </div>
+                  <h4 className="mt-1 text-lg font-semibold leading-[1.4] text-[var(--bc-text)]">{step.title}</h4>
+                  <p className="mt-1 text-sm leading-[1.6] text-[var(--bc-text-secondary)]">
+                    {step.description}
+                  </p>
                 </div>
-                <h4 className="mt-1 text-lg font-semibold">{translatedSteps[i].title}</h4>
-                <p className="mt-1 text-sm text-text-secondary">
-                  {translatedSteps[i].description}
-                </p>
               </div>
-            </div>
 
-            {/* Center node */}
-            <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-neon-cyan/30 bg-deep-black text-xl">
-              {step.icon}
-            </div>
+              {/* Center node */}
+              <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[var(--bc-border-strong)] bg-[var(--bc-surface)] text-[var(--bc-text-secondary)]">
+                <Icon size={20} strokeWidth={1.75} />
+              </div>
 
-            <div className="hidden flex-1 md:block" />
-          </motion.div>
-        ))}
+              <div className="hidden flex-1 md:block" />
+            </motion.div>
+          );
+        })}
       </div>
     </div>
   );

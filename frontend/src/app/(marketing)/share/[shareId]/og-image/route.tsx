@@ -1,8 +1,20 @@
 import { ImageResponse } from "next/og";
+import { BRAND_CORD_PATH } from "@/components/ui/BrandMark";
+import { CORD_FIELD } from "@/components/ui/CordField";
 import {
   getShareMetadataData,
   truncate,
 } from "@/lib/share-metadata";
+
+// VI v1.0 dark palette (docs/brand/botcord-vi/VI.md §2.4, §3). next/og cannot
+// read CSS variables, so the hex values are spelled out here.
+const BG = "#090B0E";
+const INK = "#F1F6FA";
+const BRAND = "#0BB6C5";
+const ACCENT_TEXT = "#50CFDD";
+const TEXT_SECONDARY = "#A1A5A9";
+const TEXT_TERTIARY = "#777B7F";
+const BORDER = "#26292D";
 
 export async function GET(
   _request: Request,
@@ -31,19 +43,47 @@ export async function GET(
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          background: "#07090d",
-          color: "#f6f8fb",
+          background: BG,
+          color: INK,
           padding: 72,
-          fontFamily: "Inter, Arial, sans-serif",
+          fontFamily: "Geist, Inter, Arial, sans-serif",
           position: "relative",
         }}
       >
+        {/* VI §11: cord field on the right, faded out behind the copy. */}
+        <svg
+          width={1200}
+          height={630}
+          viewBox="0 0 1200 630"
+          style={{ position: "absolute", top: 0, left: 0 }}
+        >
+          <path
+            d={CORD_FIELD.d}
+            stroke={INK}
+            strokeOpacity={0.22}
+            strokeWidth={1.6}
+            strokeLinecap="round"
+            fill="none"
+          />
+          {CORD_FIELD.nodes.map((node) => (
+            <circle
+              key={`${node.x}-${node.y}`}
+              cx={node.x}
+              cy={node.y}
+              r={node.accent ? 4 : 3.2}
+              fill={node.accent ? BRAND : INK}
+              fillOpacity={node.accent ? 1 : 0.4}
+            />
+          ))}
+        </svg>
         <div
           style={{
             position: "absolute",
-            inset: 0,
-            background:
-              "linear-gradient(135deg, rgba(0,240,255,0.20), transparent 34%), radial-gradient(circle at 78% 22%, rgba(255,214,10,0.20), transparent 28%), linear-gradient(180deg, rgba(255,255,255,0.06), transparent)",
+            top: 0,
+            left: 0,
+            width: 1200,
+            height: 630,
+            background: `linear-gradient(90deg, ${BG} 0%, ${BG} 45%, rgba(9,11,14,0.85) 62%, rgba(9,11,14,0) 100%)`,
           }}
         />
         <div
@@ -54,53 +94,43 @@ export async function GET(
             position: "relative",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-            <div
-              style={{
-                width: 54,
-                height: 54,
-                borderRadius: 16,
-                background: "#f6f8fb",
-                color: "#07090d",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 28,
-                fontWeight: 900,
-              }}
-            >
-              B
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              <div style={{ fontSize: 30, fontWeight: 800 }}>BotCord</div>
-              <div style={{ fontSize: 18, color: "#a8b3c7" }}>room snapshot</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <svg width={56} height={56} viewBox="0 0 48 48">
+              <path d={BRAND_CORD_PATH} stroke={INK} strokeWidth={5.5} strokeLinecap="round" fill="none" />
+              <circle cx={8.5} cy={34} r={7} fill={INK} />
+              <circle cx={39.5} cy={14} r={7} fill={BRAND} />
+            </svg>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <div style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.03em" }}>BotCord</div>
+              <div style={{ fontSize: 18, color: TEXT_SECONDARY }}>Room snapshot</div>
             </div>
           </div>
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              border: "1px solid rgba(255,255,255,0.18)",
+              border: `1px solid ${BORDER}`,
+              background: BG,
               borderRadius: 999,
-              padding: "12px 20px",
-              color: "#00f0ff",
+              padding: "10px 20px",
+              color: ACCENT_TEXT,
               fontSize: 20,
-              fontWeight: 700,
-              textTransform: "uppercase",
+              fontWeight: 500,
             }}
           >
             {entryLabel}
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 26, position: "relative" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 24, position: "relative" }}>
           <div
             style={{
               display: "flex",
-              fontSize: 72,
-              lineHeight: 1.03,
-              fontWeight: 900,
-              maxWidth: 920,
+              fontSize: 64,
+              lineHeight: 1.05,
+              fontWeight: 600,
+              letterSpacing: "-0.04em",
+              maxWidth: 860,
             }}
           >
             {roomName}
@@ -108,10 +138,10 @@ export async function GET(
           <div
             style={{
               display: "flex",
-              fontSize: 30,
-              lineHeight: 1.35,
-              color: "#c9d2e3",
-              maxWidth: 930,
+              fontSize: 28,
+              lineHeight: 1.4,
+              color: TEXT_SECONDARY,
+              maxWidth: 820,
             }}
           >
             {description}
@@ -127,10 +157,10 @@ export async function GET(
           }}
         >
           <div style={{ display: "flex", gap: 16 }}>
-            <Metric label="messages" value={messageCount} />
-            <Metric label="members" value={memberCount} />
+            <Metric label="Messages" value={messageCount} />
+            <Metric label="Members" value={memberCount} />
           </div>
-          <div style={{ color: "#7f8ca3", fontSize: 22 }}>www.botcord.chat</div>
+          <div style={{ color: TEXT_TERTIARY, fontSize: 22 }}>www.botcord.chat</div>
         </div>
       </div>
     ),
@@ -148,14 +178,15 @@ function Metric({ label, value }: { label: string; value: number }) {
         display: "flex",
         flexDirection: "column",
         gap: 4,
-        border: "1px solid rgba(255,255,255,0.16)",
-        borderRadius: 18,
+        border: `1px solid ${BORDER}`,
+        background: BG,
+        borderRadius: 16,
         padding: "16px 22px",
         minWidth: 132,
       }}
     >
-      <div style={{ fontSize: 32, fontWeight: 900 }}>{value}</div>
-      <div style={{ fontSize: 16, color: "#8d9bb2", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: 32, fontWeight: 600 }}>{value}</div>
+      <div style={{ fontSize: 16, color: TEXT_TERTIARY }}>{label}</div>
     </div>
   );
 }

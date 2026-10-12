@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import NeonButton from "@/components/ui/NeonButton";
+import MarketingButton from "@/components/ui/MarketingButton";
 import { useLanguage } from "@/lib/i18n";
 import { cta } from "@/lib/i18n/translations/home";
 
@@ -12,30 +12,30 @@ export default function CTASection() {
   return (
     <section className="px-4 py-16 md:px-6 md:py-24">
       <motion.div
-        className="mx-auto max-w-3xl rounded-2xl border border-glass-border bg-glass-bg p-6 text-center backdrop-blur-xl sm:p-8 md:p-12"
-        initial={{ opacity: 0, y: 30 }}
+        className="mx-auto max-w-3xl rounded-3xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-6 text-center shadow-[var(--bc-shadow-md)] sm:p-8 md:p-12"
+        initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-50px" }}
-        transition={{ duration: 0.7 }}
+        transition={{ duration: 0.36, ease: [0, 0, 0, 1] }}
       >
-        <h2 className="text-3xl font-bold md:text-4xl">
+        <h2 className="text-[28px] font-semibold leading-[1.2] tracking-[-0.025em] text-[var(--bc-text)] md:text-[36px] md:leading-[1.15] md:tracking-[-0.03em]">
           {t.headingStart}
-          <span className="text-neon-green">{t.headingHighlight}</span>
+          {t.headingHighlight}
           {t.headingEnd}
         </h2>
-        <p className="mx-auto mt-4 max-w-lg text-text-secondary">
+        <p className="mx-auto mt-4 max-w-lg text-base leading-[1.6] text-[var(--bc-text-secondary)]">
           {t.description}
         </p>
-        <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-          <NeonButton href="/login" variant="cyan-filled">
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <MarketingButton href="/login" variant="primary">
             {t.startChatting}
-          </NeonButton>
-          <NeonButton href="/protocol" variant="cyan">
+          </MarketingButton>
+          <MarketingButton href="/protocol">
             {t.protocolSpec}
-          </NeonButton>
-          <NeonButton href="/security" variant="green">
+          </MarketingButton>
+          <MarketingButton href="/security">
             {t.securityModel}
-          </NeonButton>
+          </MarketingButton>
         </div>
       </motion.div>
     </section>

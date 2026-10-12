@@ -1,7 +1,7 @@
 "use client";
 
 import { Apple, Shield, AlertTriangle } from "lucide-react";
-import NeonButton from "@/components/ui/NeonButton";
+import MarketingButton from "@/components/ui/MarketingButton";
 import { useLanguage } from "@/lib/i18n";
 
 const RELEASE_TAG = "botcord-desktop-beta-v0.1.0";
@@ -55,39 +55,39 @@ export default function DownloadPage() {
   return (
     <section className="px-6 pb-24 pt-32">
       <div className="mx-auto max-w-3xl">
-        <span className="inline-block rounded-full border border-neon-cyan/30 bg-neon-cyan/5 px-4 py-1.5 text-xs font-medium tracking-wider text-neon-cyan">
+        <span className="inline-block rounded-full bg-[var(--bc-accent-soft)] px-3 py-1 text-xs font-medium text-[var(--bc-accent-text)]">
           {t.badge}
         </span>
-        <h1 className="mt-6 text-4xl font-bold leading-tight md:text-5xl">
+        <h1 className="mt-6 text-[36px] font-semibold leading-[1.15] tracking-[-0.03em] text-[var(--bc-text)] md:text-[56px] md:leading-[1.05] md:tracking-[-0.04em]">
           {t.title}
         </h1>
-        <p className="mt-4 max-w-2xl text-lg text-text-secondary">
+        <p className="mt-4 max-w-2xl text-base leading-[1.6] text-[var(--bc-text-secondary)] md:text-lg">
           {t.description}
         </p>
 
         <div className="mt-10 flex flex-col items-start gap-3">
-          <NeonButton href={DMG_URL} variant="cyan-filled">
-            <Apple className="h-5 w-5" />
+          <MarketingButton href={DMG_URL} variant="primary">
+            <Apple className="h-5 w-5" strokeWidth={1.75} />
             {t.downloadCta}
-          </NeonButton>
-          <div className="text-sm text-text-secondary">
+          </MarketingButton>
+          <div className="text-sm text-[var(--bc-text-secondary)]">
             {t.arch} ·{" "}
-            <a href={DMG_URL} className="text-neon-cyan hover:underline">
+            <a href={DMG_URL} className="break-all text-[var(--bc-accent-text)] hover:underline">
               {DMG_NAME}
             </a>
           </div>
-          <div className="text-xs text-text-secondary">{t.version}</div>
+          <div className="text-xs text-[var(--bc-text-secondary)]">{t.version}</div>
         </div>
 
-        <div className="mt-12 rounded-2xl border border-glass-border bg-glass-background p-6">
-          <h2 className="flex items-center gap-2 text-lg font-semibold">
-            <Shield className="h-5 w-5 text-neon-cyan" />
+        <div className="mt-12 rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-6 shadow-[var(--bc-shadow-sm)]">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--bc-text)]">
+            <Shield className="h-5 w-5 text-[var(--bc-text-secondary)]" strokeWidth={1.75} />
             {t.securityHeading}
           </h2>
-          <ol className="mt-4 space-y-3 text-sm text-text-secondary">
+          <ol className="mt-4 space-y-3 text-sm leading-[1.6] text-[var(--bc-text-secondary)]">
             {t.securitySteps.map((step, i) => (
               <li key={i} className="flex gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neon-cyan/10 text-xs font-medium text-neon-cyan">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--bc-accent-soft)] text-xs font-medium text-[var(--bc-accent-text)]">
                   {i + 1}
                 </span>
                 <span>{step}</span>
@@ -96,17 +96,17 @@ export default function DownloadPage() {
           </ol>
         </div>
 
-        <div className="mt-6 rounded-xl border border-neon-purple/20 bg-neon-purple/5 p-4">
+        <div className="mt-6 rounded-xl border border-[var(--bc-warning)]/30 bg-[var(--bc-warning-soft)] p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-neon-purple" />
-            <div className="flex-1">
-              <div className="text-sm font-medium text-text-primary">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--bc-warning)]" strokeWidth={1.75} />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-[var(--bc-text)]">
                 {t.troubleHeading}
               </div>
-              <div className="mt-1 text-sm text-text-secondary">
+              <div className="mt-1 text-sm leading-[1.6] text-[var(--bc-text-secondary)]">
                 {t.troubleBody}
               </div>
-              <pre className="mt-3 overflow-x-auto rounded-lg border border-glass-border bg-deep-black/60 px-3 py-2 font-mono text-xs text-neon-cyan">
+              <pre className="mt-3 overflow-x-auto rounded-lg border border-[var(--bc-border)] bg-[var(--bc-surface-sunken)] px-3 py-2 font-mono text-[13px] text-[var(--bc-text)]">
                 sudo xattr -cr /Applications/BotCord.app
               </pre>
             </div>

@@ -56,18 +56,18 @@ export default function TypewriterCode({
       whileInView={{ opacity: 1 }}
       viewport={{ once: true }}
       transition={{ duration: 0.5 }}
-      className="liquid-tool-surface overflow-hidden rounded-xl border border-glass-border"
+      className="overflow-hidden rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface-sunken)] shadow-[var(--bc-shadow-sm)]"
     >
-      <div className="flex items-center gap-2 border-b border-glass-border px-4 py-2">
-        <div className="h-3 w-3 rounded-full bg-red-500/60" />
-        <div className="h-3 w-3 rounded-full bg-yellow-500/60" />
-        <div className="h-3 w-3 rounded-full bg-green-500/60" />
-        <span className="ml-2 text-xs text-text-secondary">{language}</span>
+      <div className="flex items-center gap-2 border-b border-[var(--bc-border)] bg-[var(--bc-surface)] px-4 py-2">
+        <div className="h-2.5 w-2.5 rounded-full bg-[var(--bc-border-strong)]" />
+        <div className="h-2.5 w-2.5 rounded-full bg-[var(--bc-border-strong)]" />
+        <div className="h-2.5 w-2.5 rounded-full bg-[var(--bc-border-strong)]" />
+        <span className="ml-2 font-mono text-xs text-[var(--bc-text-secondary)]">{language}</span>
       </div>
-      <pre className="overflow-x-auto p-4 font-mono text-sm leading-relaxed text-neon-green/90">
+      <pre className="overflow-x-auto p-4 font-mono text-[13px] leading-[1.5] text-[var(--bc-text)]">
         <code>{displayedText}</code>
         {displayedText.length < code.length && (
-          <span className="animate-pulse text-neon-cyan">▌</span>
+          <span className="text-[var(--bc-brand)]">▌</span>
         )}
       </pre>
     </motion.div>
