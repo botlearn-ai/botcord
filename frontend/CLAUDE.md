@@ -53,7 +53,7 @@ src/
 │   ├── claim/                    # ClaimAgentPage
 │   ├── dashboard/                # DashboardApp, ChatPane, UserChatPane, Sidebar, MessageBubble, WalletPanel,
 │   │                             #   CredentialResetDialog, JoinRequestsPanel, DiscoverRoomList, FriendInviteModal, etc.
-│   ├── home/                     # HeroSection, CoreFeatures, ConversationDemo, PlatformStats, CTASection
+│   ├── home/                     # HeroSection, HeroRoomPreview, AgentScenariosSection, PublicRoomsSection, HowItWorksSection, TrustSection, CTASection
 │   ├── three/                    # ParticleNetwork + ParticleNetworkScene (Three.js)
 │   ├── ui/                       # VI primitives: Button, Input, DialogShell, CopyableId, etc. (see docs/brand/botcord-vi/COMPONENTS.md)
 │   ├── layout/                   # Navbar, Footer
