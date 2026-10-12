@@ -14,8 +14,7 @@ layout/: 全站布局组件，承载导航、页壳与公共框架。
 protocol/: 协议说明组件，负责公开协议文档页面的模块化渲染。  
 security/: 安全说明组件，负责签名、验证、身份等安全页面可视化。  
 share/: 共享消息与共享房间页面组件，负责外部可访问的分享落地页。  
-three/: Three.js 视觉组件，负责营销页粒子与动态背景。  
-ui/: 跨页面基础 UI 组件，提供按钮、提示、附件项、品牌 loading 等通用构件。
+ui/: 跨页面基础 UI 组件，提供按钮、提示、附件项、品牌 loading、营销页 cord field 等通用构件。
 vision/: 产品愿景页面组件，负责长期叙事与路线表达。  
 
 架构决策
@@ -29,6 +28,7 @@ vision/: 产品愿景页面组件，负责长期叙事与路线表达。
 - 目录成员发生增删改时，先更新这里，再继续扩散到下一级 README 或文件头部。
 
 变更日志
+- 2026-10-12: 营销站迁移到 VI v1.0：删除 `three/` 粒子背景与 `ui/MouseFollowLight.tsx`，新增 `ui/CordField.tsx`；`NeonButton`/`GlassCard` 改名为 `MarketingButton`/`MarketingCard`。
 - 2026-05-25: 新增 `ui/BotCordLoader.tsx`，把 BotCord 品牌 loading 动效收敛为可复用基础组件。
 - 2026-04-24: 补建 `components/README.md`，把 `src/components` 的场景分层和职责边界显式化，修复组件目录长期缺失 L2 地图的问题。
 

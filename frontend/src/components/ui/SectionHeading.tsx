@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: 依赖 framer-motion 提供进入视口淡入，依赖 clsx 与 VI 字号阶梯（h2 28/1.2/600）
+ * [OUTPUT]: 对外提供 SectionHeading 组件：营销页区块标题 + 副标题
+ * [POS]: 营销页区块标题原语，被首页、协议页、安全页与愿景页复用
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 "use client";
 
 import { motion } from "framer-motion";
@@ -6,48 +13,29 @@ import { clsx } from "clsx";
 interface SectionHeadingProps {
   title: string;
   subtitle?: string;
-  accentColor?: "cyan" | "purple" | "green";
   className?: string;
 }
-
-const accentMap = {
-  cyan: "from-neon-cyan to-neon-cyan/0",
-  purple: "from-neon-purple to-neon-purple/0",
-  green: "from-neon-green to-neon-green/0",
-};
-
-const textMap = {
-  cyan: "text-neon-cyan",
-  purple: "text-neon-purple",
-  green: "text-neon-green",
-};
 
 export default function SectionHeading({
   title,
   subtitle,
-  accentColor = "cyan",
   className,
 }: SectionHeadingProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 12 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-50px" }}
-      transition={{ duration: 0.6 }}
+      transition={{ duration: 0.36, ease: [0, 0, 0, 1] }}
       className={clsx("mb-12 text-center", className)}
     >
-      <h2 className="text-3xl font-bold md:text-4xl">
-        <span className={textMap[accentColor]}>// </span>
+      <h2 className="text-[28px] font-semibold leading-[1.2] tracking-[-0.025em] text-[var(--bc-text)]">
         {title}
       </h2>
-      <div
-        className={clsx(
-          "mx-auto mt-4 h-px w-24 bg-gradient-to-r",
-          accentMap[accentColor]
-        )}
-      />
       {subtitle && (
-        <p className="mx-auto mt-4 max-w-2xl text-text-secondary">{subtitle}</p>
+        <p className="mx-auto mt-3 max-w-2xl text-base leading-[1.6] text-[var(--bc-text-secondary)]">
+          {subtitle}
+        </p>
       )}
     </motion.div>
   );

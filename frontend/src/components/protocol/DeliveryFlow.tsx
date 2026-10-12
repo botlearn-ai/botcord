@@ -1,157 +1,112 @@
+/**
+ * [INPUT]: 依赖 protocol i18n 的 deliveryFlow 文案、framer-motion 进入动画与 VI token（--bc-text / --bc-brand / --bc-border-strong）
+ * [OUTPUT]: 对外提供 DeliveryFlow 组件：Alice → Hub → Bob 的投递示意，节点间用 logo 同款 S 形连线
+ * [POS]: 协议页"消息投递"区块的可视化；信号点沿连线移动，prefers-reduced-motion 时保持静态
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/lib/i18n";
 import { deliveryFlow } from "@/lib/i18n/translations/protocol";
 
+const VIEW_W = 640;
+const VIEW_H = 140;
+
+// Sender sits low-left and receiver high-right, mirroring the Node·Cord mark.
+const NODES = [
+  { x: 72, y: 100 },
+  { x: 320, y: 68 },
+  { x: 568, y: 36 },
+] as const;
+
+/** Horizontal-tangent cubic between two nodes (VI §5 连线语言). */
+function cord(a: { x: number; y: number }, b: { x: number; y: number }) {
+  const mx = (a.x + b.x) / 2;
+  return `M${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x} ${b.y}`;
+}
+
+const SEGMENTS = [cord(NODES[0], NODES[1]), cord(NODES[1], NODES[2])];
+const ROUTE = `${SEGMENTS[0]} ${SEGMENTS[1].replace(/^M[^C]+/, "")}`;
+
 export default function DeliveryFlow() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const locale = useLanguage();
   const t = deliveryFlow[locale];
+  const [animate, setAnimate] = useState(false);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setAnimate(!query.matches);
+  }, []);
 
-    const prefersReduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
-    };
-    resize();
-    window.addEventListener("resize", resize);
-
-    const w = () => canvas.getBoundingClientRect().width;
-    const h = () => canvas.getBoundingClientRect().height;
-
-    let time = 0;
-    let animId: number;
-
-    const draw = () => {
-      const cw = w();
-      const ch = h();
-      ctx.clearRect(0, 0, cw, ch);
-
-      const cy = ch / 2;
-      const nodeR = 20;
-      const nodes = [
-        { x: cw * 0.15, y: cy, label: t.alice, color: "#00f0ff" },
-        { x: cw * 0.5, y: cy, label: t.hub, color: "#8b5cf6" },
-        { x: cw * 0.85, y: cy, label: t.bob, color: "#10b981" },
-      ];
-
-      // Draw connection lines
-      ctx.strokeStyle = "rgba(255,255,255,0.05)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(nodes[0].x + nodeR, cy);
-      ctx.lineTo(nodes[1].x - nodeR, cy);
-      ctx.moveTo(nodes[1].x + nodeR, cy);
-      ctx.lineTo(nodes[2].x - nodeR, cy);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Draw nodes
-      nodes.forEach((node) => {
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, nodeR, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(10,10,15,0.8)";
-        ctx.fill();
-        ctx.strokeStyle = node.color;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // Glow
-        ctx.shadowColor = node.color;
-        ctx.shadowBlur = 15;
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, nodeR, 0, Math.PI * 2);
-        ctx.strokeStyle = node.color + "40";
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Label
-        ctx.fillStyle = node.color;
-        ctx.font = "11px Inter, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(node.label, node.x, node.y + nodeR + 18);
-      });
-
-      if (prefersReduced) {
-        // Static scene — draw once, no animation loop
-        return;
-      }
-
-      // Animated pulse: message traveling Alice → Hub → Bob
-      const cycle = time % 3;
-      let px: number;
-      let py: number = cy;
-
-      if (cycle < 1) {
-        // Alice → Hub
-        px =
-          nodes[0].x + nodeR + (nodes[1].x - nodeR - nodes[0].x - nodeR) * cycle;
-      } else if (cycle < 2) {
-        // Hub processing (pulse at hub)
-        const progress = cycle - 1;
-        px = nodes[1].x;
-        ctx.beginPath();
-        ctx.arc(px, py, nodeR + 8 * Math.sin(progress * Math.PI), 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(139,92,246,${0.3 * Math.sin(progress * Math.PI)})`;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      } else {
-        // Hub → Bob
-        const progress = cycle - 2;
-        px =
-          nodes[1].x + nodeR + (nodes[2].x - nodeR - nodes[1].x - nodeR) * progress;
-      }
-
-      // Draw message dot
-      ctx.beginPath();
-      ctx.arc(px, py, 4, 0, Math.PI * 2);
-      ctx.fillStyle = "#00f0ff";
-      ctx.shadowColor = "#00f0ff";
-      ctx.shadowBlur = 12;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      time += 0.008;
-      animId = requestAnimationFrame(draw);
-    };
-
-    draw();
-
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener("resize", resize);
-    };
-  }, [t]);
+  const labels = [t.alice, t.hub, t.bob];
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      transition={{ duration: 0.6 }}
-      className="rounded-xl border border-glass-border bg-glass-bg p-4 backdrop-blur-xl"
+      transition={{ duration: 0.36, ease: [0, 0, 0, 1] }}
+      className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-4 shadow-[var(--bc-shadow-sm)] sm:p-6"
     >
-      <canvas
-        ref={canvasRef}
-        className="h-40 w-full"
-        style={{ display: "block" }}
-      />
+      <div className="relative mx-auto max-w-3xl pb-6">
+        <svg
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          className="block h-auto w-full text-[var(--bc-text)]"
+          fill="none"
+          role="img"
+          aria-label={labels.join(" → ")}
+        >
+          {SEGMENTS.map((d) => (
+            <path
+              key={d}
+              d={d}
+              stroke="var(--bc-border-strong)"
+              strokeWidth={3}
+              strokeLinecap="round"
+            />
+          ))}
+
+          <circle cx={NODES[0].x} cy={NODES[0].y} r={11} fill="currentColor" />
+          <circle
+            cx={NODES[1].x}
+            cy={NODES[1].y}
+            r={11}
+            fill="var(--bc-surface)"
+            stroke="currentColor"
+            strokeWidth={3}
+          />
+          <circle cx={NODES[2].x} cy={NODES[2].y} r={11} fill="var(--bc-brand)" />
+
+          {animate ? (
+            <circle r={5} fill="var(--bc-brand)">
+              <animateMotion
+                path={ROUTE}
+                dur="3.2s"
+                repeatCount="indefinite"
+                keyPoints="0;0.5;0.5;1;1"
+                keyTimes="0;0.36;0.5;0.86;1"
+                calcMode="linear"
+              />
+            </circle>
+          ) : null}
+        </svg>
+
+        {labels.map((label, i) => (
+          <span
+            key={label}
+            className="absolute -translate-x-1/2 whitespace-nowrap text-xs font-medium text-[var(--bc-text-secondary)]"
+            style={{
+              left: `${(NODES[i].x / VIEW_W) * 100}%`,
+              top: `calc(${(NODES[i].y / VIEW_H) * 100}% + 18px)`,
+            }}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
     </motion.div>
   );
 }

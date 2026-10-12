@@ -11,10 +11,6 @@ const stepValues = [
   "ag_7a3f8c2b1e9d",
 ];
 
-const stepColors = ["#00f0ff", "#8b5cf6", "#8b5cf6", "#10b981"];
-
-const propertyColors = ["text-neon-cyan", "text-neon-purple", "text-neon-green"];
-
 export default function IdentityDerivation() {
   const locale = useLanguage();
   const t = identityDerivation[locale];
@@ -23,54 +19,59 @@ export default function IdentityDerivation() {
     <div className="space-y-6">
       {/* Pipeline visualization */}
       <div className="grid gap-4 md:grid-cols-4">
-        {t.steps.map((step, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-30px" }}
-            transition={{ duration: 0.5, delay: i * 0.15 }}
-            className="relative"
-          >
-            <div
-              className="rounded-xl border bg-glass-bg p-4 backdrop-blur-xl"
-              style={{ borderColor: stepColors[i] + "30" }}
+        {t.steps.map((step, i) => {
+          const isResult = i === t.steps.length - 1;
+          return (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-30px" }}
+              transition={{ duration: 0.36, delay: i * 0.06, ease: [0, 0, 0, 1] }}
+              className="relative"
             >
-              <div className="mb-2 text-xs font-semibold tracking-wider" style={{ color: stepColors[i] }}>
-                {step.title}
+              <div
+                className={`h-full rounded-xl border p-4 ${
+                  isResult
+                    ? "border-[var(--bc-brand)]/40 bg-[var(--bc-accent-soft)]"
+                    : "border-[var(--bc-border)] bg-[var(--bc-surface)] shadow-[var(--bc-shadow-sm)]"
+                }`}
+              >
+                <div className={`mb-2 text-xs font-medium ${isResult ? "text-[var(--bc-accent-text)]" : "text-[var(--bc-text-secondary)]"}`}>
+                  {step.title}
+                </div>
+                <div className="break-all font-mono text-[13px] text-[var(--bc-text)]">
+                  {stepValues[i]}
+                </div>
+                <p className="mt-2 text-xs leading-[1.45] text-[var(--bc-text-secondary)]">
+                  {step.detail}
+                </p>
               </div>
-              <div className="font-mono text-sm text-text-primary break-all">
-                {stepValues[i]}
-              </div>
-              <p className="mt-2 text-xs text-text-secondary leading-relaxed">
-                {step.detail}
-              </p>
-            </div>
-            {/* Arrow */}
-            {i < t.steps.length - 1 && (
-              <div className="absolute -right-3 top-1/2 z-10 hidden -translate-y-1/2 text-text-secondary/30 md:block">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            )}
-          </motion.div>
-        ))}
+              {/* Connector to the next step */}
+              {i < t.steps.length - 1 && (
+                <span
+                  className="absolute -right-3 top-1/2 z-10 hidden h-0.5 w-2 -translate-y-1/2 rounded-full bg-[var(--bc-border-strong)] md:block"
+                  aria-hidden="true"
+                />
+              )}
+            </motion.div>
+          );
+        })}
       </div>
 
       {/* Key properties */}
       <motion.div
-        initial={{ opacity: 0, y: 15 }}
+        initial={{ opacity: 0, y: 12 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
-        transition={{ duration: 0.5, delay: 0.6 }}
-        className="rounded-xl border border-neon-cyan/15 bg-neon-cyan/5 p-5"
+        transition={{ duration: 0.36, delay: 0.2, ease: [0, 0, 0, 1] }}
+        className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface-sunken)] p-5"
       >
         <div className="grid gap-4 sm:grid-cols-3">
           {t.properties.map((prop, i) => (
             <div key={i}>
-              <h4 className={`text-sm font-semibold ${propertyColors[i]}`}>{prop.title}</h4>
-              <p className="mt-1 text-xs text-text-secondary">
+              <h4 className="text-sm font-semibold text-[var(--bc-text)]">{prop.title}</h4>
+              <p className="mt-1 text-[13px] leading-[1.5] text-[var(--bc-text-secondary)]">
                 {prop.description}
               </p>
             </div>

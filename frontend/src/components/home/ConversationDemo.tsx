@@ -285,7 +285,6 @@ export default function ConversationDemo() {
         <SectionHeading
           title={t.title}
           subtitle={t.subtitle}
-          accentColor="cyan"
         />
 
         {/* Tab bar */}

@@ -23,33 +23,6 @@ type PlatformStatsWithPrivate = PlatformStatsShape & {
   private_rooms?: number;
 };
 
-type StatTone = "cyan" | "purple" | "green" | "white";
-
-const toneMap: Record<
-  StatTone,
-  {
-    text: string;
-    rail: string;
-  }
-> = {
-  cyan: {
-    text: "text-neon-cyan",
-    rail: "from-neon-cyan/65 via-neon-cyan/25 to-transparent",
-  },
-  purple: {
-    text: "text-neon-purple",
-    rail: "from-neon-purple/65 via-neon-purple/25 to-transparent",
-  },
-  green: {
-    text: "text-neon-green",
-    rail: "from-neon-green/65 via-neon-green/25 to-transparent",
-  },
-  white: {
-    text: "text-text-primary",
-    rail: "from-white/70 via-white/20 to-transparent",
-  },
-};
-
 function formatValue(value: number | null) {
   return value !== null ? value.toLocaleString() : "—";
 }
@@ -57,44 +30,32 @@ function formatValue(value: number | null) {
 function StatColumn({
   label,
   value,
-  tone,
   compact = false,
   withDivider = false,
 }: {
   label: string;
   value: number | null;
-  tone: StatTone;
   compact?: boolean;
   withDivider?: boolean;
 }) {
-  const accent = toneMap[tone];
-
   return (
     <div
       className={[
-        "relative min-w-0",
-        compact ? "space-y-1" : "space-y-1.5",
-        withDivider ? "sm:border-l sm:border-white/10 sm:pl-4" : "",
+        "relative min-w-0 text-left",
+        compact ? "space-y-0.5" : "space-y-1",
+        withDivider ? "sm:border-l sm:border-[var(--bc-border)] sm:pl-4" : "",
       ].join(" ")}
     >
-      <div className={`h-px ${compact ? "w-8" : "w-10"} bg-gradient-to-r ${accent.rail}`} />
       <p
         className={[
-          "tabular-nums font-semibold tracking-[-0.04em] text-text-primary",
-          compact ? "text-[1.02rem] sm:text-[1.12rem]" : "text-[1.45rem] sm:text-[1.75rem]",
+          "tabular-nums font-semibold tracking-[-0.02em] text-[var(--bc-text)]",
+          compact ? "text-lg" : "text-[28px] leading-[1.2]",
         ].join(" ")}
       >
         {formatValue(value)}
       </p>
-      <p
-        className={[
-          "uppercase text-text-secondary",
-          compact
-            ? "text-[8px] leading-3 tracking-[0.2em]"
-            : "text-[9px] leading-4 tracking-[0.22em]",
-        ].join(" ")}
-      >
-        <span className={accent.text}>{label}</span>
+      <p className="text-xs font-medium leading-[1.45] text-[var(--bc-text-secondary)]">
+        {label}
       </p>
     </div>
   );
@@ -209,22 +170,18 @@ export default function PlatformStats() {
       {
         label: t.activeAgents,
         value: stats?.total_agents ?? null,
-        tone: "cyan" as const,
       },
       {
         label: t.publicRooms,
         value: stats?.public_rooms ?? null,
-        tone: "purple" as const,
       },
       {
         label: t.privateRooms,
         value: privateRooms,
-        tone: "green" as const,
       },
       {
         label: t.messagesSent,
         value: stats?.total_messages ?? null,
-        tone: "white" as const,
       },
     ];
   }, [stats, t.activeAgents, t.messagesSent, t.privateRooms, t.publicRooms]);
@@ -249,22 +206,22 @@ export default function PlatformStats() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-40px" }}
             transition={{ duration: 0.55 }}
-            className="rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,var(--mock-sheen-soft),transparent_42%),var(--mock-shell)] px-4 py-4 shadow-[var(--mock-shadow-soft)] backdrop-blur-xl sm:px-5 sm:py-5"
+            className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] px-4 py-4 shadow-[var(--bc-shadow-sm)] sm:px-5 sm:py-5"
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-2">
-                <span className="inline-flex items-center gap-2 text-[9px] font-semibold uppercase tracking-[0.28em] text-text-secondary">
-                  <span className="h-1.5 w-1.5 rounded-full bg-neon-cyan/75" />
+                <span className="inline-flex items-center gap-2 text-xs font-medium text-[var(--bc-text)]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--bc-brand)]" />
                   {t.networkLive}
                 </span>
-                <p className="max-w-xl text-left text-[10px] uppercase tracking-[0.22em] text-white/48 sm:text-[11px]">
+                <p className="max-w-xl text-left text-xs text-[var(--bc-text-secondary)]">
                   {t.title}
                 </p>
               </div>
 
-              <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[9px] uppercase tracking-[0.22em] text-text-secondary sm:flex">
+              <div className="hidden items-center gap-2 rounded-full border border-[var(--bc-border)] bg-[var(--bc-surface-sunken)] px-3 py-1 text-xs text-[var(--bc-text-secondary)] sm:flex">
                 <span>{t.currentTime}</span>
-                <span className="text-[10px] text-text-primary">{formattedTime}</span>
+                <span className="font-mono tabular-nums text-[var(--bc-text)]" suppressHydrationWarning>{formattedTime}</span>
               </div>
             </div>
 
@@ -274,7 +231,6 @@ export default function PlatformStats() {
                   key={item.label}
                   label={item.label}
                   value={item.value}
-                  tone={item.tone}
                   withDivider={index > 0}
                 />
               ))}
@@ -292,28 +248,27 @@ export default function PlatformStats() {
             transition={{ duration: 0.3, ease: "easeOut" }}
             className="fixed bottom-3 right-3 z-50 left-3 sm:left-auto sm:w-[min(82vw,29rem)]"
           >
-            <div className="rounded-[18px] border border-white/12 bg-[var(--mock-dock)] p-3 shadow-[var(--mock-shadow-dock)] backdrop-blur-2xl sm:p-3.5">
+            <div className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface-raised)] p-3 shadow-[var(--bc-shadow-lg)] sm:p-3.5">
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-0">
                 {statItems.map((item, index) => (
                   <StatColumn
                     key={`dock-${item.label}`}
                     label={item.label}
                     value={item.value}
-                    tone={item.tone}
-                    compact
+                      compact
                     withDivider={index > 0}
                   />
                 ))}
               </div>
 
-              <div className="mt-3 flex items-end justify-between border-t border-white/8 pt-2.5 text-text-secondary">
-                <span className="inline-flex h-2 w-2 rounded-full bg-red-400 shadow-[0_0_14px_rgba(248,113,113,0.5)]" />
+              <div className="mt-3 flex items-end justify-between border-t border-[var(--bc-border)] pt-2.5 text-[var(--bc-text-secondary)]">
+                <span className="inline-flex h-2 w-2 rounded-full bg-[var(--bc-brand)]" />
 
                 <div className="text-right">
-                  <p className="text-[8px] uppercase tracking-[0.22em] text-white/45">
+                  <p className="text-xs text-[var(--bc-text-tertiary)]">
                     {timeZone || t.currentTime}
                   </p>
-                  <p className="mt-0.5 text-[1.05rem] font-semibold tabular-nums tracking-[0.1em] text-text-primary sm:text-[1.2rem]">
+                  <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-[var(--bc-text)]" suppressHydrationWarning>
                     {formattedTime}
                   </p>
                 </div>

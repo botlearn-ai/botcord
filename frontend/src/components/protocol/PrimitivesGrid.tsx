@@ -1,87 +1,12 @@
 "use client";
 
-import { motion } from "framer-motion";
-import GlassCard from "@/components/ui/GlassCard";
-import { primitives as primitiveData } from "@/data/protocol-primitives";
+import { Bot, Mail, Users } from "lucide-react";
+import MarketingCard from "@/components/ui/MarketingCard";
 import { useLanguage } from "@/lib/i18n";
 import { primitives as primitivesT } from "@/lib/i18n/translations/protocol";
 
-const icons: Record<string, React.ReactNode> = {
-  Contact: (
-    <svg
-      className="h-10 w-10"
-      viewBox="0 0 40 40"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <circle cx="14" cy="16" r="5" className="text-neon-cyan" />
-      <circle cx="26" cy="16" r="5" className="text-neon-cyan" />
-      <path d="M19 16h2" className="text-neon-cyan" strokeDasharray="2 2">
-        <animate
-          attributeName="stroke-dashoffset"
-          values="0;4"
-          dur="1s"
-          repeatCount="indefinite"
-        />
-      </path>
-      <path
-        d="M4 34c0-6 4-10 10-10M26 24c6 0 10 4 10 10"
-        className="text-neon-cyan/50"
-      />
-    </svg>
-  ),
-  Group: (
-    <svg
-      className="h-10 w-10"
-      viewBox="0 0 40 40"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <circle cx="20" cy="12" r="4" className="text-neon-purple" />
-      <circle cx="10" cy="20" r="4" className="text-neon-purple" />
-      <circle cx="30" cy="20" r="4" className="text-neon-purple" />
-      <circle cx="15" cy="30" r="4" className="text-neon-purple" />
-      <circle cx="25" cy="30" r="4" className="text-neon-purple" />
-      <path
-        d="M20 16v10M14 22l6 6M26 22l-6 6M13 22l4 6M27 22l-4 6"
-        className="text-neon-purple/30"
-        strokeDasharray="2 2"
-      >
-        <animate
-          attributeName="stroke-dashoffset"
-          values="0;4"
-          dur="2s"
-          repeatCount="indefinite"
-        />
-      </path>
-    </svg>
-  ),
-  Channel: (
-    <svg
-      className="h-10 w-10"
-      viewBox="0 0 40 40"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <circle cx="8" cy="20" r="4" className="text-neon-green" />
-      <path d="M12 20h6" className="text-neon-green" />
-      <path d="M18 20l4-8M18 20l4 8M18 20h8" className="text-neon-green/60">
-        <animate
-          attributeName="stroke-dashoffset"
-          values="0;8"
-          dur="1.5s"
-          repeatCount="indefinite"
-        />
-      </path>
-      <circle cx="34" cy="12" r="3" className="text-neon-green/50" />
-      <circle cx="34" cy="20" r="3" className="text-neon-green/50" />
-      <circle cx="34" cy="28" r="3" className="text-neon-green/50" />
-    </svg>
-  ),
-};
+// Same order as the translated primitives: Agent, Room, Message.
+const icons = [Bot, Users, Mail];
 
 export default function PrimitivesGrid() {
   const locale = useLanguage();
@@ -90,31 +15,27 @@ export default function PrimitivesGrid() {
   return (
     <div className="grid gap-6 md:grid-cols-3">
       {translatedPrimitives.map((prim, i) => {
-        const color = primitiveData[i].color;
+        const Icon = icons[i] ?? Bot;
         return (
-          <motion.div
-            key={prim.name}
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
-            transition={{ duration: 0.6, delay: i * 0.15 }}
-          >
-            <GlassCard glowColor={color} className="h-full">
-              <div className="mb-4">{icons[primitiveData[i].name]}</div>
-              <h3 className="mb-2 text-xl font-semibold">{prim.name}</h3>
-              <p className="mb-4 text-sm text-text-secondary">
-                {prim.description}
-              </p>
-              <ul className="space-y-2">
-                {prim.details.map((d) => (
-                  <li key={d} className="flex items-start gap-2 text-xs">
-                    <span className="mt-0.5 text-neon-cyan">▹</span>
-                    <span className="text-text-secondary">{d}</span>
-                  </li>
-                ))}
-              </ul>
-            </GlassCard>
-          </motion.div>
+          <MarketingCard key={prim.name} className="h-full">
+            <div className="mb-5 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--bc-accent-soft)] text-[var(--bc-accent-text)]">
+              <Icon size={20} strokeWidth={1.75} />
+            </div>
+            <h3 className="mb-2 text-[22px] font-semibold leading-[1.3] tracking-[-0.02em] text-[var(--bc-text)]">
+              {prim.name}
+            </h3>
+            <p className="mb-4 text-sm leading-[1.6] text-[var(--bc-text-secondary)]">
+              {prim.description}
+            </p>
+            <ul className="space-y-2">
+              {prim.details.map((d) => (
+                <li key={d} className="flex items-start gap-2 text-[13px] leading-[1.5]">
+                  <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-[var(--bc-text-tertiary)]" />
+                  <span className="text-[var(--bc-text-secondary)]">{d}</span>
+                </li>
+              ))}
+            </ul>
+          </MarketingCard>
         );
       })}
     </div>
