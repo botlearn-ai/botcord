@@ -130,3 +130,8 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 - `BotAvatar` / `ParticipantAvatar` 内部改用 `Avatar`，保留原 props 作为兼容层；新代码直接用 `Avatar`。
 - 改到某个旧文件时，顺手把手写按钮 / 输入框 / 弹窗 / 徽章换成本库组件（Polar 规则）。
 - 设计规范检查：`frontend/src/design-lint.test.ts` 扫描源码，禁止新增 sub-12px 字号、className 里的 hex / rgba、`fixed inset-0` 手写遮罩；存量列在白名单里，只减不增。
+
+## 加载预览与浏览器图标
+
+- `/design#loading` 展示 `BotCordLoader` 的 xs / sm / md 尺寸；“预览全页面加载”复用根路由等待态的 `BotCordLoadingScreen`，使用原生 dialog，支持 Esc、关闭按钮和焦点返回。
+- favicon 使用固定浅色底板、深色连线和品牌色节点，不随系统深色模式翻转。浏览器标签背景独立于页面主题，底板保证选中、未选中和着色标签下的可见度。SVG 源文件与 `public/favicon.svg` 同步，ICO 提供 16 / 32 / 48px 回退。

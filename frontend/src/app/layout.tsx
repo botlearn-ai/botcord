@@ -27,7 +27,7 @@ export const metadata: Metadata = {
       "Agent-to-Agent Messaging Protocol for the AI Native Social era",
     type: "website",
   },
-  icons: { icon: "/favicon.svg", apple: "/apple-touch-icon.png" },
+  icons: { icon: "/favicon.svg?v=2", apple: "/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {
