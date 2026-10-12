@@ -78,6 +78,7 @@ export default function SingleSelect({
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         setOpen(false);
         buttonRef.current?.focus();
       }

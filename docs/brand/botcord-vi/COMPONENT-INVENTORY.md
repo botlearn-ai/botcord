@@ -2,7 +2,7 @@
 
 由 `cd frontend && node scripts/audit-ui-components.mjs` 生成。扫描非测试 TS/TSX 静态 import、re-export 和 JSX，不计动态拼装的组件名。
 
-共 242 个 TSX 文件、202 个组件模块，其中 UI 组件库 43 个模块。
+共 244 个 TSX 文件、202 个组件模块，其中 UI 组件库 43 个模块。
 
 “预览可达”表示从 /design 或根布局的 ConfirmDialog / Toaster 宿主可达，不代表全部业务状态均已演示。生产引用不包含 /design；兼容导出也算引用。
 
@@ -12,10 +12,10 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 
 | 元素 | 出现次数 | 文件数 |
 |---|---:|---:|
-| button | 573 | 120 |
+| button | 569 | 119 |
 | details | 4 | 4 |
 | dialog | 6 | 6 |
-| input | 80 | 37 |
+| input | 77 | 36 |
 | select | 1 | 1 |
 | table | 3 | 3 |
 | textarea | 28 | 18 |
@@ -24,14 +24,14 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 
 | 模块 | 生产引用文件数 | 预览可达 |
 |---|---:|---|
-| [components/ui/Alert.tsx](../../../frontend/src/components/ui/Alert.tsx) | 4 | 是 |
+| [components/ui/Alert.tsx](../../../frontend/src/components/ui/Alert.tsx) | 5 | 是 |
 | [components/ui/AttachmentItem.tsx](../../../frontend/src/components/ui/AttachmentItem.tsx) | 5 | 是 |
 | [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 2 | 是 |
-| [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 0 | 是 |
-| [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 25 | 是 |
+| [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 1 | 是 |
+| [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 26 | 是 |
 | [components/ui/BrandMark.tsx](../../../frontend/src/components/ui/BrandMark.tsx) | 6 | 是 |
-| [components/ui/Button.tsx](../../../frontend/src/components/ui/Button.tsx) | 8 | 是 |
-| [components/ui/Card.tsx](../../../frontend/src/components/ui/Card.tsx) | 0 | 是 |
+| [components/ui/Button.tsx](../../../frontend/src/components/ui/Button.tsx) | 9 | 是 |
+| [components/ui/Card.tsx](../../../frontend/src/components/ui/Card.tsx) | 1 | 是 |
 | [components/ui/Checkbox.tsx](../../../frontend/src/components/ui/Checkbox.tsx) | 0 | 是 |
 | [components/ui/ConfirmDialog.tsx](../../../frontend/src/components/ui/ConfirmDialog.tsx) | 1 | 是 |
 | [components/ui/CopyableId.tsx](../../../frontend/src/components/ui/CopyableId.tsx) | 11 | 是 |
@@ -39,11 +39,11 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/DialogShell.tsx](../../../frontend/src/components/ui/DialogShell.tsx) | 10 | 是 |
 | [components/ui/Disclosure.tsx](../../../frontend/src/components/ui/Disclosure.tsx) | 1 | 是 |
 | [components/ui/DrawerShell.tsx](../../../frontend/src/components/ui/DrawerShell.tsx) | 0 | 是 |
-| [components/ui/EmptyState.tsx](../../../frontend/src/components/ui/EmptyState.tsx) | 0 | 是 |
-| [components/ui/Field.tsx](../../../frontend/src/components/ui/Field.tsx) | 0 | 是 |
+| [components/ui/EmptyState.tsx](../../../frontend/src/components/ui/EmptyState.tsx) | 1 | 是 |
+| [components/ui/Field.tsx](../../../frontend/src/components/ui/Field.tsx) | 1 | 是 |
 | [components/ui/IconButton.tsx](../../../frontend/src/components/ui/IconButton.tsx) | 1 | 是 |
 | [components/ui/ImagePreviewOverlay.tsx](../../../frontend/src/components/ui/ImagePreviewOverlay.tsx) | 4 | 是 |
-| [components/ui/Input.tsx](../../../frontend/src/components/ui/Input.tsx) | 2 | 是 |
+| [components/ui/Input.tsx](../../../frontend/src/components/ui/Input.tsx) | 3 | 是 |
 | [components/ui/MarkdownContent.tsx](../../../frontend/src/components/ui/MarkdownContent.tsx) | 8 | 是 |
 | [components/ui/MarketingButton.tsx](../../../frontend/src/components/ui/MarketingButton.tsx) | 4 | 是 |
 | [components/ui/MarketingCard.tsx](../../../frontend/src/components/ui/MarketingCard.tsx) | 3 | 是 |

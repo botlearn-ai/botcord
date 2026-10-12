@@ -132,7 +132,8 @@ export default function MultiSelect({
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setOpen(false); buttonRef.current?.focus(); }
+      if (event.key === "Escape") {
+        event.preventDefault(); setOpen(false); buttonRef.current?.focus(); }
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);

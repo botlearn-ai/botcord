@@ -99,6 +99,7 @@ export default function DesignGallery() {
           </p>
         </div>
 
+        <a href="/design/pilot" className="mb-4 inline-block text-sm text-accent-text underline underline-offset-4">查看真实页面迁移试点与边界验收</a>
         <nav aria-label="组件分类" className="mb-6 flex flex-wrap gap-2 text-sm">
           {[ ["typography", "字体"], ["loading", "加载"], ["buttons", "基础"], ["selection", "选择与搜索"], ["persistent-feedback", "反馈与抽屉"], ["data", "数据"], ["content", "内容"], ["marketing", "营销"] ].map(([id, label]) => <a key={id} href={`#${id}`} className="rounded-lg border border-border px-3 py-2 text-text-secondary hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">{label}</a>)}
         </nav>
