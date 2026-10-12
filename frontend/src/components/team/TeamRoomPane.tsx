@@ -7,16 +7,20 @@
  * pane claims `openedRoomId` while mounted and polls messages itself (the
  * personal 5s poll is off in Team mode).
  */
-import { useEffect } from "react";
-import Link from "next/link";
-import { TeamMessageFeedbackContext } from "./TeamMessageFeedback";
-import { useLanguage } from "@/lib/i18n";
-import RoomHeader from "@/components/dashboard/RoomHeader";
+import LinkButton from "@/components/ui/LinkButton";
 import MessageList from "@/components/dashboard/MessageList";
+import RoomHeader from "@/components/dashboard/RoomHeader";
 import RoomHumanComposer from "@/components/dashboard/RoomHumanComposer";
+import { useLanguage } from "@/lib/i18n";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
-import { RoomAgentChips, RoomReplyHints, useRoomAgentAccess } from "./TeamRoomAgentAccess";
+import { useEffect } from "react";
+import { TeamMessageFeedbackContext } from "./TeamMessageFeedback";
+import {
+  RoomAgentChips,
+  RoomReplyHints,
+  useRoomAgentAccess,
+} from "./TeamRoomAgentAccess";
 
 export const TEAM_ROOM_POLL_MS = 5000;
 
@@ -48,9 +52,11 @@ export default function TeamRoomPane({
     ui.setFocusedRoomId(roomId);
     ui.setOpenedRoomId(roomId);
     const chat = useDashboardChatStore.getState();
-    if (Object.prototype.hasOwnProperty.call(chat.messages, roomId)) void chat.pollNewMessages(roomId);
+    if (Object.prototype.hasOwnProperty.call(chat.messages, roomId))
+      void chat.pollNewMessages(roomId);
     const poll = () => {
-      if (document.visibilityState === "visible") void useDashboardChatStore.getState().pollNewMessages(roomId);
+      if (document.visibilityState === "visible")
+        void useDashboardChatStore.getState().pollNewMessages(roomId);
     };
     const timer = window.setInterval(poll, TEAM_ROOM_POLL_MS);
     document.addEventListener("visibilitychange", poll);
@@ -65,37 +71,42 @@ export default function TeamRoomPane({
 
   return (
     <TeamMessageFeedbackContext.Provider value={true}>
-    <div className="dashboard-main flex h-full min-h-0 flex-col overflow-hidden bg-deep-black" data-team-room={roomId}>
-      <RoomHeader
-        onBack={onBack}
-        title={title}
-        onOpenMembers={onOpenMembers}
-        membersLabel={zh ? "成员与 Agent" : "Members & Agents"}
-      />
-      <RoomAgentChips agents={agentAccess} />
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {opened && <MessageList key={roomId} />}
+      <div
+        className="dashboard-main flex h-full min-h-0 flex-col overflow-hidden bg-deep-black"
+        data-team-room={roomId}
+      >
+        <RoomHeader
+          onBack={onBack}
+          title={title}
+          onOpenMembers={onOpenMembers}
+          membersLabel={zh ? "成员与 Agent" : "Members & Agents"}
+        />
+        <RoomAgentChips agents={agentAccess} />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {opened && <MessageList key={roomId} />}
+        </div>
+        <div className="team-room-composer shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2">
+          {accessDenied ? (
+            <div className="space-y-2 text-center text-sm text-text-secondary" role="status">
+              <p>{zh ? "你没有使用该 Agent 的有效授权。" : "You don't have active access to this Agent."}</p>
+              <LinkButton variant="inline" href={`/chats/team?space=${encodeURIComponent(spaceId)}&view=agents`}>
+                {zh ? "前往 Agent 页面申请权限" : "Go to Agents to request access"}
+              </LinkButton>
+            </div>
+          ) : allowHumanSend ? (
+            <>
+              <RoomReplyHints agents={agentAccess} />
+              <RoomHumanComposer roomId={roomId} />
+            </>
+          ) : (
+            <p className="text-center text-xs text-text-secondary/60">
+              {zh
+                ? "该房间暂不允许成员发言"
+                : "Members can't send messages in this room"}
+            </p>
+          )}
+        </div>
       </div>
-      <div className="team-room-composer shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2">
-        {accessDenied ? (
-          <div className="space-y-2 text-center text-sm text-text-secondary" role="status">
-            <p>{zh ? "你没有使用该 Agent 的有效授权。" : "You don't have active access to this Agent."}</p>
-            <Link className="text-neon-cyan hover:underline" href={`/chats/team?space=${encodeURIComponent(spaceId)}&view=agents`}>
-              {zh ? "前往 Agent 页面申请权限" : "Go to Agents to request access"}
-            </Link>
-          </div>
-        ) : allowHumanSend ? (
-          <>
-            <RoomReplyHints agents={agentAccess} />
-            <RoomHumanComposer roomId={roomId} />
-          </>
-        ) : (
-          <p className="text-center text-xs text-text-secondary/60">
-            {zh ? "该房间暂不允许成员发言" : "Members can't send messages in this room"}
-          </p>
-        )}
-      </div>
-    </div>
     </TeamMessageFeedbackContext.Provider>
   );
 }

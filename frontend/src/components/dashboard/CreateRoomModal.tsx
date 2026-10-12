@@ -1,4 +1,12 @@
 "use client";
+import EmptyState from "@/components/ui/EmptyState";
+import Field from "@/components/ui/Field";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -133,17 +141,9 @@ function CreateRoomModal({ onClose, onCreated }: CreateRoomModalProps) {
   }, [closing, onClose, saving]);
 
   useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; } });
     return () => cleanupAnime(animationRef.current);
   }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
 
   useEffect(() => {
     if (!error || !errorRef.current) return;
@@ -153,16 +153,7 @@ function CreateRoomModal({ onClose, onCreated }: CreateRoomModalProps) {
   }, [error]);
 
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        className="liquid-dialog flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<>{t.title}</>} busy={saving} overlayClassName="z-50" className="max-w-lg overflow-hidden">
         <div className="border-b border-glass-border px-6 py-4">
           <h2 className="text-lg font-semibold text-text-primary">{t.title}</h2>
         </div>
@@ -170,31 +161,31 @@ function CreateRoomModal({ onClose, onCreated }: CreateRoomModalProps) {
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
           {/* Basics */}
           <section className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <p className="text-xs font-semibold text-text-secondary">
               {t.basicSection}
             </p>
-            <label className="block">
-              <span className="mb-1 block text-xs text-text-secondary">{t.nameLabel}</span>
-              <input
+            <Field label={<>{t.nameLabel}</>} className="block">
+
+              <Input
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t.namePlaceholder}
                 maxLength={128}
-                className="liquid-input w-full rounded border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
+                className="w-full"
               />
-            </label>
+            </Field>
 
-            <label className="block">
-              <span className="mb-1 block text-xs text-text-secondary">{t.descriptionLabel}</span>
-              <textarea
+            <Field label={<>{t.descriptionLabel}</>} className="block">
+
+              <Textarea
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t.descriptionPlaceholder}
-                className="liquid-input w-full resize-none rounded border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
+                className="w-full"
               />
-            </label>
+            </Field>
 
             {/* Members */}
             <div>
@@ -208,11 +199,9 @@ function CreateRoomModal({ onClose, onCreated }: CreateRoomModalProps) {
                   )}
                 </span>
               </div>
-              <p className="mb-2 text-xs text-text-secondary/70">{t.membersHint}</p>
+              <p className="mb-2 text-xs text-text-secondary">{t.membersHint}</p>
               {contacts.length === 0 && ownedAgents.length === 0 ? (
-                <p className="liquid-empty-state rounded border border-dashed px-3 py-3 text-xs text-text-secondary/70">
-                  {t.noContacts}
-                </p>
+                <EmptyState compact bordered title={<>{t.noContacts}</>} />
               ) : (
                 <DashboardMultiSelect
                   value={Array.from(selected)}
@@ -228,31 +217,30 @@ function CreateRoomModal({ onClose, onCreated }: CreateRoomModalProps) {
           </section>
 
           {error && (
-            <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            <Alert tone="danger" ref={errorRef} >
               {error}
-            </div>
+            </Alert>
           )}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-glass-border px-6 py-3">
-          <button
+          <Button variant="secondary"
             onClick={closeWithMotion}
             disabled={saving}
-            className="liquid-action rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-50"
+
           >
             {t.cancel}
-          </button>
-          <button
+          </Button>
+          <Button variant="primary"
             onClick={handleCreate}
             disabled={saving || !identityReady}
             title={!identityReady ? t.createFailed : undefined}
-            className="liquid-action inline-flex items-center gap-2 rounded border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {saving ? t.creating : t.create}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }

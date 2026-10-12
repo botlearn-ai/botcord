@@ -1,5 +1,8 @@
 "use client";
 
+import Avatar from "@/components/ui/Avatar";
+import Badge from "@/components/ui/Badge";
+import Card from "@/components/ui/Card";
 import { motion } from "framer-motion";
 import type { Locale } from "@/lib/i18n";
 import { useLanguage } from "@/lib/i18n";
@@ -11,8 +14,7 @@ const scenarioVisualCopy: Record<
     chips: string[];
     focus: string;
     footer: string;
-  }>
-> = {
+  }> > = {
   en: [
     {
       chips: ["AI", "Finance", "Product", "Research"],
@@ -65,8 +67,7 @@ function VisualShell({ children, flow = false }: { children: React.ReactNode; fl
     <div
       className={`relative overflow-hidden rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface-sunken)] p-4 ${
         flow ? "sm:aspect-[4/3]" : "aspect-[4/3]"
-      }`}
-    >
+      }`} >
       {children}
     </div>
   );
@@ -88,8 +89,7 @@ function Cords({ paths, accentIndex }: { paths: string[]; accentIndex?: number }
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
       fill="none"
-      aria-hidden="true"
-    >
+      aria-hidden="true" >
       {paths.map((d, i) => (
         <path
           key={d}
@@ -121,12 +121,10 @@ function ScenarioVisual({
       <VisualShell flow>
         <div className="relative flex flex-wrap gap-2">
           {copy.chips.map((chip) => (
-            <span
-              key={chip}
-              className="rounded-full border border-[var(--bc-border)] bg-[var(--bc-surface)] px-2.5 py-0.5 text-xs text-[var(--bc-text-secondary)]"
-            >
+            <Badge tone="neutral"
+              key={chip} >
               {chip}
-            </span>
+            </Badge>
           ))}
         </div>
 
@@ -174,18 +172,14 @@ function ScenarioVisual({
           <div
             key={chip}
             className={`${panel} absolute left-[4%] w-[34%] -translate-y-1/2 px-3 py-2 text-xs font-medium text-[var(--bc-text)]`}
-            style={{ top: `${rows[idx] ?? 50}%` }}
-          >
+            style={{ top: `${rows[idx] ?? 50}%` }} >
             {chip}
           </div>
         ))}
 
         <div className={`${panel} absolute left-[58%] top-1/2 w-[38%] -translate-y-1/2 p-3`}>
           <div className="flex items-center gap-2">
-            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--bc-agent-cyan)] text-xs font-semibold text-[#FFFFFF]">
-              AI
-              <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--bc-surface)] bg-[var(--bc-brand)]" />
-            </div>
+            <Avatar kind="agent" id="scenario-personal-agent" name="AI" size="sm" status="online" />
             <span className={accentCaption}>{copy.focus}</span>
           </div>
           <p className="mt-2.5 text-xs text-[var(--bc-text-secondary)]">{copy.footer}</p>
@@ -203,7 +197,7 @@ function ScenarioVisual({
         />
         <div className={`${panel} absolute left-[4%] top-[30%] w-[22%] -translate-y-1/2 p-2.5`}>
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 shrink-0 rounded-full bg-[var(--bc-agent-cyan)]" />
+            <Avatar kind="agent" id="scenario-sender" name="Agent" size="sm" />
             <div className="hidden w-full space-y-1.5 sm:block">
               <Bar strong className="w-full" />
               <Bar className="w-2/3" />
@@ -212,7 +206,7 @@ function ScenarioVisual({
         </div>
         <div className={`${panel} absolute left-[74%] top-[70%] w-[22%] -translate-y-1/2 p-2.5`}>
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 shrink-0 rounded-full bg-[var(--bc-agent-violet)]" />
+            <Avatar kind="agent" id="scenario-receiver" name="Agent" size="sm" />
             <div className="hidden w-full space-y-1.5 sm:block">
               <Bar strong className="w-full" />
               <Bar className="w-2/3" />
@@ -228,9 +222,9 @@ function ScenarioVisual({
           </div>
           <div className="mt-2.5 hidden flex-wrap gap-1 sm:flex">
             {copy.chips.map((chip) => (
-              <span key={chip} className="whitespace-nowrap rounded-full bg-[var(--bc-surface-sunken)] px-2 py-0.5 text-xs text-[var(--bc-text-secondary)]">
+              <Badge tone="neutral" key={chip} >
                 {chip}
-              </span>
+              </Badge>
             ))}
           </div>
         </div>
@@ -256,12 +250,12 @@ function ScenarioVisual({
       <div className={`${panel} relative mt-3 p-3.5`}>
         <div className="flex items-center justify-between gap-3">
           <p className={accentCaption}>{copy.focus}</p>
-          <span className="rounded-full bg-[var(--bc-success-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--bc-success)]">
+          <Badge tone="neutral" >
             sync
-          </span>
+          </Badge>
         </div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--bc-border)]">
-          <div className="h-full w-[72%] rounded-full bg-[var(--bc-accent)]" />
+        <div aria-hidden="true" className="mt-3 h-2 overflow-hidden rounded-full bg-border">
+          <div className="h-full w-[72%] rounded-full bg-accent" />
         </div>
         <p className="mt-2.5 text-xs text-[var(--bc-text-secondary)]">{copy.footer}</p>
       </div>
@@ -275,15 +269,14 @@ export default function AgentScenariosSection() {
 
   return (
     <section className="relative px-6 pb-20 pt-0">
-      <div className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl border border-[var(--bc-border)] bg-[var(--bc-surface)] shadow-[var(--bc-shadow-sm)]">
+      <Card padding="md" className="relative mx-auto max-w-5xl overflow-hidden">
         <div className="relative px-6 py-10 sm:px-8 lg:px-12 lg:py-12">
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-50px" }}
             transition={{ duration: 0.36, ease: [0, 0, 0, 1] }}
-            className="max-w-4xl"
-          >
+            className="max-w-4xl" >
             <span className="text-xs font-medium text-[var(--bc-accent-text)]">
               {t.label}
             </span>
@@ -313,8 +306,7 @@ export default function AgentScenariosSection() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-50px" }}
                   transition={{ duration: 0.36, delay: index * 0.06, ease: [0, 0, 0, 1] }}
-                  className="grid gap-4 border-t border-[var(--bc-border)] py-6 first:border-t-0 md:grid-cols-[96px_minmax(0,1fr)] md:gap-6 lg:grid-cols-[120px_minmax(0,1fr)] lg:py-7"
-                >
+                  className="grid gap-4 border-t border-[var(--bc-border)] py-6 first:border-t-0 md:grid-cols-[96px_minmax(0,1fr)] md:gap-6 lg:grid-cols-[120px_minmax(0,1fr)] lg:py-7" >
                   <div className="flex items-start md:justify-start">
                     <span className="font-mono text-[40px] font-medium leading-none tracking-[-0.04em] text-[var(--bc-border-strong)] lg:text-[56px]">
                       {number}
@@ -341,7 +333,7 @@ export default function AgentScenariosSection() {
             })}
           </div>
         </div>
-      </div>
+      </Card>
     </section>
   );
 }

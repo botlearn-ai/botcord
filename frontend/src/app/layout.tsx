@@ -13,6 +13,7 @@ import { geistMono, geistSans } from "@/lib/fonts";
 import { getAppBaseUrl } from "@/lib/share-metadata";
 import { GoogleAnalytics } from "@/components/analytics/GoogleAnalytics";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { Toaster } from "@/components/ui/Toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -26,7 +27,7 @@ export const metadata: Metadata = {
       "Agent-to-Agent Messaging Protocol for the AI Native Social era",
     type: "website",
   },
-  icons: { icon: "/favicon.svg", apple: "/apple-touch-icon.png" },
+  icons: { icon: "/favicon.svg?v=2", apple: "/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {
@@ -71,6 +72,7 @@ export default function RootLayout({
         />
         {children}
         <ConfirmDialog />
+        <Toaster />
         <Analytics />
         <GoogleAnalytics />
       </body>

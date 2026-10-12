@@ -1,0 +1,426 @@
+"use client";
+
+/**
+ * [INPUT]: 受控的 option/value/onChange 与可选分组、搜索文案
+ * [OUTPUT]: 对外提供 MultiSelect，渲染带受控动效的 BotCord 共享可搜索多选下拉
+ * [POS]: ui 表单原语，dashboard 旧入口保留兼容导出，替代分散的原生/临时多选列表
+ * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+ */
+
+import { moveListboxFocus } from "./listbox-keyboard";
+import { useMobilePickerStyle } from "./use-mobile-picker-style";
+import { type ButtonHTMLAttributes, type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
+import { animatePop, animateIfMotion, animeStagger, cleanupAnime } from "@/lib/anime";
+
+export interface MultiSelectOption {
+  value: string;
+  label: string;
+  sublabel?: string;
+  badge?: string;
+  tone?: "cyan" | "green" | "purple" | "zinc";
+  icon?: ReactNode;
+}
+
+export interface MultiSelectGroup {
+  label?: string;
+  options: MultiSelectOption[];
+}
+
+export interface MultiSelectProps extends Pick<ButtonHTMLAttributes<HTMLButtonElement>, "id" | "aria-label" | "aria-labelledby" | "aria-describedby" | "aria-invalid"> {
+  value: string[];
+  onChange: (value: string[]) => void;
+  groups?: MultiSelectGroup[];
+  options?: MultiSelectOption[];
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyLabel: string;
+  selectedLabel?: (count: number) => string;
+  disabled?: boolean;
+  className?: string;
+  panelClassName?: string;
+}
+
+const toneClasses = {
+  cyan: "bg-accent/10 text-accent-text",
+  green: "bg-success/10 text-success",
+  purple: "bg-accent/10 text-accent-text",
+  zinc: "bg-surface-sunken/70 text-text-secondary",
+};
+
+export default function MultiSelect({
+  value,
+  onChange,
+  groups,
+  options,
+  placeholder,
+  searchPlaceholder,
+  emptyLabel,
+  selectedLabel = (count) => `${count} selected`,
+  disabled = false,
+  className = "",
+  panelClassName = "",
+  ...controlProps
+}: MultiSelectProps) {
+  const id = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const chipRefs = useRef(new Map<string, HTMLSpanElement>());
+  const selectedCheckRefs = useRef(new Map<string, HTMLSpanElement>());
+  const overflowChipRef = useRef<HTMLSpanElement>(null);
+  const selectedCountRef = useRef<HTMLSpanElement>(null);
+  const panelAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const optionAnimationRef = useRef<ReturnType<typeof animateIfMotion>>(null);
+  const selectionAnimationRefs = useRef<Array<ReturnType<typeof animatePop>>>([]);
+  const previousValueRef = useRef(value);
+  const [open, setOpen] = useState(false);
+  const mobilePickerStyle = useMobilePickerStyle(open);
+  const [query, setQuery] = useState("");
+
+  const normalizedGroups = useMemo<MultiSelectGroup[]>(() => {
+    if (groups) return groups;
+    return [{ options: options ?? [] }];
+  }, [groups, options]);
+
+  const selectedSet = useMemo(() => new Set(value), [value]);
+  const optionByValue = useMemo(() => {
+    const map = new Map<string, MultiSelectOption>();
+    for (const group of normalizedGroups) {
+      for (const option of group.options) map.set(option.value, option);
+    }
+    return map;
+  }, [normalizedGroups]);
+
+  const selectedOptions = value
+    .map((selectedValue) => optionByValue.get(selectedValue))
+    .filter((option): option is MultiSelectOption => Boolean(option));
+
+  const filteredGroups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return normalizedGroups;
+    return normalizedGroups
+      .map((group) => ({
+        ...group,
+        options: group.options.filter((option) => {
+          return (
+            option.label.toLowerCase().includes(q) ||
+            option.sublabel?.toLowerCase().includes(q) ||
+            option.badge?.toLowerCase().includes(q)
+          );
+        }),
+      }))
+      .filter((group) => group.options.length > 0);
+  }, [normalizedGroups, query]);
+
+  const visibleCount = filteredGroups.reduce((sum, group) => sum + group.options.length, 0);
+  const visibleOptionKey = useMemo(
+    () => filteredGroups.flatMap((group) => group.options.map((option) => option.value)).join("\u0000"),
+    [filteredGroups],
+  );
+  const valueKey = useMemo(() => value.join("\u0000"), [value]);
+
+  const cleanupSelectionAnimations = useCallback(() => {
+    selectionAnimationRefs.current.forEach(cleanupAnime);
+    selectionAnimationRefs.current = [];
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault(); setOpen(false); buttonRef.current?.focus(); }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) window.setTimeout(() => searchRef.current?.focus(), 0);
+    else setQuery("");
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      cleanupAnime(panelAnimationRef.current);
+      cleanupAnime(optionAnimationRef.current);
+      cleanupSelectionAnimations();
+    };
+  }, [cleanupSelectionAnimations]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      cleanupAnime(panelAnimationRef.current);
+      cleanupAnime(optionAnimationRef.current);
+      panelAnimationRef.current = null;
+      optionAnimationRef.current = null;
+      return;
+    }
+
+    let panelAnimation: ReturnType<typeof animateIfMotion> = null;
+    const frameId = window.requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      cleanupAnime(panelAnimationRef.current);
+
+      panel.style.opacity = "0";
+      panel.style.transform = "translateY(6px) scale(0.985)";
+      panel.style.transformOrigin = "top center";
+
+      panelAnimation = animateIfMotion(panel, {
+        opacity: [0, 1],
+        translateY: [6, 0],
+        scale: [0.985, 1],
+        duration: 180,
+        ease: "out(3)",
+      });
+
+      if (!panelAnimation) {
+        panel.style.opacity = "1";
+        panel.style.transform = "translateY(0px) scale(1)";
+      }
+
+      panelAnimationRef.current = panelAnimation;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      cleanupAnime(panelAnimation);
+      if (panelAnimationRef.current === panelAnimation) panelAnimationRef.current = null;
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    let optionAnimation: ReturnType<typeof animateIfMotion> = null;
+    const frameId = window.requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      cleanupAnime(optionAnimationRef.current);
+
+      const optionNodes = Array.from(
+        panel.querySelectorAll<HTMLElement>("[data-dashboard-multi-option]"),
+      ).slice(0, 16);
+
+      if (optionNodes.length > 0) {
+        optionAnimation = animateIfMotion(optionNodes, {
+          opacity: [0, 1],
+          translateY: [4, 0],
+          scale: [0.985, 1],
+          delay: animeStagger(12, { start: 35 }),
+          duration: 170,
+          ease: "out(3)",
+        });
+
+        if (!optionAnimation) {
+          optionNodes.forEach((optionNode) => {
+            optionNode.style.opacity = "1";
+            optionNode.style.transform = "translateY(0px) scale(1)";
+          });
+        }
+      }
+
+      optionAnimationRef.current = optionAnimation;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      cleanupAnime(optionAnimation);
+      if (optionAnimationRef.current === optionAnimation) optionAnimationRef.current = null;
+    };
+  }, [open, visibleOptionKey]);
+
+  useEffect(() => {
+    const previousValue = previousValueRef.current;
+    const previousSet = new Set(previousValue);
+    const addedValue = value.find((selectedValue) => !previousSet.has(selectedValue)) ?? null;
+    previousValueRef.current = value;
+
+    if (!addedValue) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      cleanupSelectionAnimations();
+
+      const targets = [
+        chipRefs.current.get(addedValue) ?? overflowChipRef.current,
+        selectedCountRef.current,
+        selectedCheckRefs.current.get(addedValue),
+      ].filter((target): target is HTMLElement => Boolean(target));
+
+      selectionAnimationRefs.current = targets.map((target) => animatePop(target));
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [cleanupSelectionAnimations, value, valueKey]);
+
+  const toggle = (optionValue: string) => {
+    const next = new Set(selectedSet);
+    if (next.has(optionValue)) next.delete(optionValue);
+    else next.add(optionValue);
+    onChange(Array.from(next));
+  };
+
+  const clear = () => onChange([]);
+
+  return (
+    <div ref={rootRef} className={`relative ${className}`} onKeyDown={(event) => {
+      if (open) moveListboxFocus(event, panelRef.current);
+      else if (!disabled && ["ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); setOpen(true); }
+    }}>
+      <button
+        ref={buttonRef}
+        {...controlProps}
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((next) => !next)}
+        className="liquid-input flex min-h-10 w-full items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-left text-sm text-text-primary transition-colors hover:border-accent/30 disabled:cursor-not-allowed disabled:opacity-50"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={`${id}-panel`}
+      >
+        <span className="min-w-0 flex-1">
+          {selectedOptions.length === 0 ? (
+            <span className="text-text-secondary/70">{placeholder}</span>
+          ) : (
+            <span className="flex min-w-0 flex-wrap gap-1.5">
+              {selectedOptions.slice(0, 3).map((option) => (
+                <span
+                  key={option.value}
+                  ref={(node) => {
+                    if (node) chipRefs.current.set(option.value, node);
+                    else chipRefs.current.delete(option.value);
+                  }}
+                  className="inline-block max-w-[11rem] origin-center truncate rounded border border-accent/20 bg-accent/10 px-2 py-0.5 text-xs text-accent-text"
+                >
+                  {option.label}
+                </span>
+              ))}
+              {selectedOptions.length > 3 ? (
+                <span
+                  ref={overflowChipRef}
+                  className="inline-block origin-center rounded border border-border bg-surface-sunken/70 px-2 py-0.5 text-xs text-text-secondary"
+                >
+                  +{selectedOptions.length - 3}
+                </span>
+              ) : null}
+            </span>
+          )}
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <span ref={selectedCountRef} className="min-w-[4.5rem] origin-center text-right text-xs text-text-secondary">
+            {selectedLabel(selectedOptions.length)}
+          </span>
+          <ChevronDown className={`h-4 w-4 text-text-secondary transition-transform ${open ? "rotate-180" : ""}`} />
+        </span>
+      </button>
+
+      {open ? (
+        <div
+          ref={panelRef}
+          style={mobilePickerStyle}
+          id={`${id}-panel`}
+          className={`liquid-menu absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-xl border border-border ${panelClassName}`}
+        >
+          <div className="border-b border-border p-2">
+            <div className="liquid-input flex items-center gap-2 rounded-lg border border-border px-2.5">
+              <Search className="h-3.5 w-3.5 text-text-secondary/70" />
+              <input
+                ref={searchRef}
+                aria-label={searchPlaceholder}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={searchPlaceholder}
+                className="w-full bg-transparent py-2 text-xs text-text-primary outline-none placeholder:text-text-secondary/50"
+              />
+              {value.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={clear}
+                  className="rounded p-1 text-text-secondary transition-colors hover:bg-surface-sunken hover:text-text-primary"
+                  aria-label="Clear selected"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="max-h-72 overflow-y-auto py-1" role="listbox" aria-label={placeholder} aria-multiselectable="true">
+            {visibleCount === 0 ? (
+              <p className="px-3 py-6 text-center type-body-sm text-text-secondary">{emptyLabel}</p>
+            ) : (
+              filteredGroups.map((group, groupIndex) => (
+                <div key={group.label ?? groupIndex} className="py-1">
+                  {group.label ? (
+                    <p className="px-3 pb-1 pt-2 type-caption text-text-secondary">
+                      {group.label}
+                    </p>
+                  ) : null}
+                  {group.options.map((option) => {
+                    const selected = selectedSet.has(option.value);
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        onClick={() => toggle(option.value)}
+                        data-dashboard-multi-option
+                        className={`liquid-list-row flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${
+                          selected ? "!bg-accent/10 text-accent-text" : "text-text-primary hover:bg-surface-sunken"
+                        }`}
+                      >
+                        <span
+                          ref={(node) => {
+                            if (node && selected) selectedCheckRefs.current.set(option.value, node);
+                            else selectedCheckRefs.current.delete(option.value);
+                          }}
+                          className={`flex h-4 w-4 shrink-0 origin-center items-center justify-center rounded border ${
+                            selected
+                              ? "border-accent bg-accent text-deep-black"
+                              : "border-border bg-surface-sunken/70"
+                          }`}
+                        >
+                          {selected ? <Check className="h-3 w-3" /> : null}
+                        </span>
+                        {option.icon ? <span className="shrink-0">{option.icon}</span> : null}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-medium">{option.label}</span>
+                          {option.sublabel ? (
+                            <span className="mt-0.5 block truncate type-body-sm text-text-secondary">
+                              {option.sublabel}
+                            </span>
+                          ) : null}
+                        </span>
+                        {option.badge ? (
+                          <span
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${
+                              toneClasses[option.tone ?? "zinc"]
+                            }`}
+                          >
+                            {option.badge}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}

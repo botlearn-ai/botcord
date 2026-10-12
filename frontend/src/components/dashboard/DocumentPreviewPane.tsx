@@ -1,5 +1,6 @@
 "use client";
 
+import IconButton from "@/components/ui/IconButton";
 import {
   useCallback,
   useEffect,
@@ -371,18 +372,18 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
         onPointerDown={handleResizePointerDown}
         onKeyDown={handleResizeKeyDown}
         className={`absolute -left-1 top-0 z-[90] hidden h-full w-2 cursor-col-resize items-center justify-center outline-none transition-colors md:flex ${
-          resizing ? "bg-neon-cyan/25" : "hover:bg-neon-cyan/20 focus-visible:bg-neon-cyan/25"
+          resizing ? "bg-accent-soft" : "hover:bg-accent-soft focus-visible:bg-accent-soft"
         }`}
       >
         <span className="h-12 w-px rounded-full bg-text-secondary/40" />
       </div>
       <div className="document-preview-toolbar liquid-toolbar flex min-h-14 shrink-0 items-center gap-3 border-b border-glass-border px-3">
         <div className="document-preview-file-icon" aria-hidden="true">
-          <FileText className="h-4 w-4 text-neon-cyan" />
+          <FileText className="h-4 w-4 text-accent-text" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-text-primary">{title}</div>
-          <div className="truncate text-xs text-text-secondary/70">
+          <div className="truncate text-xs text-text-secondary">
             {attachment.size_bytes != null ? formatPreviewSize(attachment.size_bytes) : "Document preview"}
           </div>
         </div>
@@ -397,15 +398,15 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
         >
           <Download className="h-4 w-4" />
         </a>
-        <button
+        <IconButton size="sm" label="Close preview"
           type="button"
           onClick={handleClose}
-          className="liquid-action inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:text-text-primary"
+          className="inline-flex shrink-0 items-center justify-center"
           aria-label="Close preview"
           title="Close preview"
         >
           <X className="h-4 w-4" />
-        </button>
+        </IconButton>
       </div>
       <div className={`document-preview-surface min-h-0 flex-1 overflow-auto ${resizing ? "pointer-events-none" : ""}`}>
         {renderedBody}

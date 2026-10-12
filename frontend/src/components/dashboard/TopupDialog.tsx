@@ -1,4 +1,12 @@
 "use client";
+import Card from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useState, useEffect, useRef } from "react";
@@ -9,7 +17,7 @@ import { animateOverlayPanelEnter, animateOverlayPanelExit, animatePop, cleanupA
 import type { StripePackageItem } from "@/lib/types";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { saveStripeTopupContext } from "@/lib/stripe-topup-context";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
 import WalletAccountSelector from "./WalletAccountSelector";
 
@@ -55,7 +63,7 @@ function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
   const [closing, setClosing] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const errorRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
   const errorAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
@@ -120,17 +128,9 @@ function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
   }, [closing, onClose, submitting]);
 
   useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; } });
     return () => cleanupAnime(animationRef.current);
   }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
 
   useEffect(() => {
     if (!error || !errorRef.current) return;
@@ -140,24 +140,13 @@ function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
   }, [error]);
 
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center ${closing ? "pointer-events-none" : ""}`}
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        className="liquid-dialog relative flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<>{t.recharge}</>} busy={submitting} overlayClassName="z-50" className="max-w-md">
+        <IconButton label="Close"
           onClick={closeWithMotion}
-          className="liquid-action absolute right-4 top-4 z-10 rounded-lg p-1 text-text-secondary hover:text-text-primary"
+          className="absolute right-4 z-10"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </svg>
-        </button>
+          <X aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+        </IconButton>
 
         <div className="shrink-0 px-6 pt-6 pb-3">
           <h3 className="text-lg font-semibold text-text-primary">{t.recharge}</h3>
@@ -171,10 +160,10 @@ function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
           <MobileBotCordLoading
             label={t.loadingPackages}
             className="py-8"
-            textClassName="animate-pulse text-center text-sm text-text-secondary"
+            textClassName="text-center text-sm text-text-secondary"
           />
         ) : packagesError ? (
-          <div className="py-8 text-center text-sm text-red-400">{packagesError}</div>
+          <Alert tone="danger" >{packagesError}</Alert>
         ) : packages.length === 0 ? (
           <div className="py-8 text-center text-sm text-text-secondary">
             {t.noPackages}
@@ -184,79 +173,75 @@ function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
             {packages.length > 1 ? (
               <div className="space-y-3">
                 {packages.map((pkg) => (
-                  <button
+                  <Button aria-pressed={activePackage?.package_code === pkg.package_code} variant="row"
                     key={pkg.package_code}
                     onClick={() => setSelectedPackage(pkg.package_code)}
-                    className={`liquid-action w-full rounded-xl border p-4 text-left transition-colors ${
-                      activePackage?.package_code === pkg.package_code
-                        ? "border-neon-green/50 bg-neon-green/5"
-                        : "border-glass-border hover:border-glass-border/80"
-                    }`}
+                    className="w-full"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-sm font-semibold text-text-primary">
                         {formatCoin(pkg.coin_amount_minor)} COIN / ${pkg.fiat_amount || formatFiat(0)}
                       </span>
-                      <span className="rounded bg-neon-cyan/10 px-2 py-0.5 text-xs font-medium text-neon-cyan">
+                      <Badge tone="accent" >
                         {pkg.fiat_amount ? `$${pkg.fiat_amount}` : pkg.currency.toUpperCase()}
-                      </span>
+                      </Badge>
                     </div>
-                  </button>
+                  </Button>
                 ))}
               </div>
             ) : activePackage ? (
-              <div className="liquid-card rounded-xl border border-neon-green/30 bg-neon-green/5 p-4">
+              <Card padding="none" className="p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium uppercase tracking-wider text-text-secondary">
+                  <span className="text-xs font-medium text-text-secondary">
                     {t.unitPrice}
                   </span>
-                  <span className="rounded bg-neon-cyan/10 px-2 py-0.5 text-xs font-medium text-neon-cyan">
+                  <Badge tone="accent" >
                     {activePackage.fiat_amount ? `$${activePackage.fiat_amount}` : activePackage.currency.toUpperCase()}
-                  </span>
+                  </Badge>
                 </div>
                 <div className="mt-2 font-mono text-lg font-semibold text-text-primary">
                   {formatCoin(activePackage.coin_amount_minor)} COIN / ${activePackage.fiat_amount || formatFiat(0)}
                 </div>
-              </div>
+              </Card>
             ) : null}
 
             {activePackage ? (
               <>
-                <div className="liquid-card mt-4 rounded-xl p-4">
+                <Card padding="none" className="mt-4 p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <span className="text-sm font-medium text-text-primary">{t.quantity}</span>
                     <span className="text-xs text-text-secondary">{t.quantityRange}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <button
+                    <Button variant="secondary"
                       type="button"
                       onClick={() => updateQuantity(quantity - 1)}
                       disabled={quantity <= 1 || submitting}
-                      className="liquid-action h-10 w-10 rounded-lg text-lg text-text-primary transition-colors hover:border-neon-green/40 disabled:opacity-40"
+                      className="w-10"
                     >
                       -
-                    </button>
-                    <input
+                    </Button>
+                    <Input
                       type="number"
                       min={1}
                       max={100}
                       step={1}
                       value={quantity}
                       onChange={(e) => updateQuantity(parseInt(e.target.value, 10))}
-                      className="liquid-input h-10 flex-1 rounded-lg border px-3 text-center font-mono text-text-primary outline-none transition-colors focus:border-neon-green/40"
+                      className="flex-1"
                     />
-                    <button
+                    <Button variant="secondary"
                       type="button"
                       onClick={() => updateQuantity(quantity + 1)}
                       disabled={quantity >= 100 || submitting}
-                      className="liquid-action h-10 w-10 rounded-lg text-lg text-text-primary transition-colors hover:border-neon-green/40 disabled:opacity-40"
+                      className="w-10"
                     >
                       +
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Card>
 
-                <div className="liquid-card mt-4 rounded-xl p-4">
+                <Card padding="none" className="mt-4 p-4">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-text-secondary">{t.perUnit}</span>
                     <span className="font-mono text-text-primary">
@@ -280,32 +265,31 @@ function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
                       </div>
                     </div>
                   </div>
-                </div>
+                </Card>
               </>
             ) : null}
 
-            {error && <p ref={errorRef} className="mt-3 text-sm text-red-400">{error}</p>}
+            {error && <Alert tone="danger" ref={errorRef} className="mt-3">{error}</Alert>}
           </>
         )}
 
-        <p className="mt-3 text-center text-xs text-text-secondary/60">
+        <p className="mt-3 text-center text-xs text-text-secondary">
           {t.securePayment}
         </p>
         </div>
 
         {!packagesLoading && !packagesError && packages.length > 0 ? (
           <div className="liquid-toolbar shrink-0 border-t px-6 py-4">
-            <button
+            <Button variant="secondary"
               onClick={handleCheckout}
               disabled={!activePackage || submitting}
-              className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/30 bg-neon-green/10 py-2.5 font-medium text-neon-green transition-colors hover:bg-neon-green/20 disabled:opacity-40"
+              className="w-full"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {submitting ? t.redirectingToStripe : `${t.continueToPayment}${activePackage ? ` • $${formatFiat(totalFiat)}` : ""}`}
-            </button>
+            </Button>
           </div>
         ) : null}
-      </div>
-    </div>
+      </DialogSurface>
   );
 }

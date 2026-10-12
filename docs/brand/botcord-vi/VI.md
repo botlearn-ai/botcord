@@ -89,7 +89,7 @@
 ### 2.6 App 图标与 favicon
 
 - App 图标：1024 × 1024，圆角 228（约 22.3%）。图形占画布宽度的 62%，居中。默认用深底版；浅底版和主色底版用于特殊渠道。
-- favicon：`botcord-favicon.svg` 内置 `prefers-color-scheme`，在浅色和深色浏览器界面中自动切换配色。
+- favicon：`botcord-favicon.svg` 使用固定浅色圆角底板、深色连线和品牌青节点，保证选中标签页和不同浏览器主题中的可见度。
 
 ---
 
@@ -346,6 +346,6 @@ docs/brand/botcord-vi/
 
 - 修改数值：先改 `botcord.tokens.json`，再重新生成 CSS；不要手改 `botcord.css`。
 - Logo 资产由脚本生成（字标为 Geist SemiBold 轮廓）；修改几何时同步更新本文 2.1 节。
-- 前端接入（替换 `frontend/public/logo.svg`、favicon、`BrandMark`，把 `globals.css` 迁移到语义 token）是下一阶段工作，不在本次范围内。
+- 前端已接入 Logo、favicon、BrandMark 与语义 token；组件展示入口为 `/design`，覆盖范围与剩余迁移见 `COMPONENT-INVENTORY.md`。
 - 字体许可：Geist / Geist Mono 为 SIL Open Font License 1.1。
-- 尚未完成：商标检索；PNG / ICO 位图导出；中文字标。
+- 尚未完成：商标检索；中文字标。

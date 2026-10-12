@@ -1,5 +1,6 @@
 "use client";
 
+import Card from "@/components/ui/Card";
 import { Braces, Clock, Ruler, Search, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/lib/i18n";
@@ -28,12 +29,10 @@ export default function VerificationPipeline() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-30px" }}
               transition={{ duration: 0.36, delay: i * 0.04, ease: [0, 0, 0, 1] }}
-              className={`flex items-center gap-6 ${i % 2 === 0 ? "md:flex-row" : "md:flex-row-reverse"}`}
-            >
+              className={`flex items-center gap-6 ${i % 2 === 0 ? "md:flex-row" : "md:flex-row-reverse"}`} >
               <div
-                className={`flex-1 ${i % 2 === 0 ? "md:text-right" : "md:text-left"}`}
-              >
-                <div className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-4 shadow-[var(--bc-shadow-sm)]">
+                className={`flex-1 ${i % 2 === 0 ? "md:text-right" : "md:text-left"}`} >
+                <Card padding="md" >
                   <div className="text-xs font-medium text-[var(--bc-accent-text)]">
                     {tViz.step}{i + 1}
                   </div>
@@ -41,7 +40,7 @@ export default function VerificationPipeline() {
                   <p className="mt-1 text-sm leading-[1.6] text-[var(--bc-text-secondary)]">
                     {step.description}
                   </p>
-                </div>
+                </Card>
               </div>
 
               {/* Center node */}

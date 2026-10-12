@@ -1,4 +1,10 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -36,7 +42,7 @@ export default withDashboardOverlayPortal(ForwardModal, "nested");
 function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const statusRef = useRef<HTMLParagraphElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
   const modalAnimationRef = useRef<ReturnType<typeof createTimelineIfMotion>>(null);
   const successAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -183,15 +189,6 @@ function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
   }, [onClose]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeModal();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeModal]);
-
-  useEffect(() => {
     if (!done) return;
 
     const frameId = window.requestAnimationFrame(() => {
@@ -264,35 +261,22 @@ function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
   };
 
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (e.target === e.currentTarget) closeModal();
-      }}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-dialog w-full max-w-sm rounded-xl border"
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeModal} ariaLabel="Forward Modal" busy={closingRef.current} overlayClassName="z-50" className="max-w-sm">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
           <span className="text-sm font-medium text-text-primary">转发消息</span>
-          <button
+          <IconButton label="Close forward modal"
             type="button"
             onClick={closeModal}
-            className="liquid-action rounded-md p-1 text-text-secondary transition-colors hover:text-text-primary"
+
             aria-label="Close forward modal"
           >
             <X className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
 
         {/* Quote / file preview */}
-        <div className="liquid-card mx-4 mt-3 rounded-lg border px-3 py-2">
+        <Card padding="none" className="mx-4 mt-3 px-3 py-2">
           {sourceFile ? (
             <div className="flex items-center gap-2 text-text-primary">
               <FileArchive className="h-4 w-4 shrink-0 text-cyan-400" />
@@ -308,7 +292,7 @@ function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
               {quoteText}
             </pre>
           )}
-        </div>
+        </Card>
 
         {/* Target selector */}
         <div className="px-4 py-3">
@@ -343,9 +327,9 @@ function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-glass-border px-4 py-3">
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <Alert tone="danger" >{error}</Alert>}
           {done && (
-            <p ref={statusRef} className="flex origin-center items-center gap-1.5 text-xs text-emerald-400">
+            <p ref={statusRef} className="flex origin-center items-center gap-1.5 text-xs text-success">
               <CheckCircle2 className="h-3.5 w-3.5" />
               已发送
             </p>
@@ -355,17 +339,16 @@ function ForwardModal({ quoteText, sourceFile, onClose }: ForwardModalProps) {
               {selected.size > 0 ? `已选 ${selected.size} 个` : "选择发送目标"}
             </span>
           )}
-          <button
+          <Button variant="secondary"
             type="button"
             disabled={selected.size === 0 || sending || done}
             onClick={handleSend}
-            className="liquid-action ml-auto flex items-center gap-1.5 rounded-lg border border-neon-cyan/35 bg-neon-cyan/15 px-3 py-1.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/25 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+            className="ml-auto"
           >
             {sending && <Loader2 className="h-3 w-3 animate-spin" />}
             发送
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }

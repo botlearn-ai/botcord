@@ -8,7 +8,7 @@ describe("shared chat mention rendering", () => {
     const html = renderToStaticMarkup(<ChatMarkdown content="@Alice(hu_alice) @Helper(ag_helper)" />);
     expect(html).toContain('data-mention-id="hu_alice"');
     expect(html).toContain('data-mention-id="ag_helper"');
-    expect(html).toContain("text-neon-cyan underline");
+    expect(html).toContain("text-accent-text hover:underline");
     expect(html).not.toContain("(hu_alice)");
     expect(html).not.toContain("(ag_helper)");
   });

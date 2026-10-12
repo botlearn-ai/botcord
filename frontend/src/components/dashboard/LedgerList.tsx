@@ -7,6 +7,8 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import { useShallow } from "zustand/react/shallow";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { BotCordLoader, MobileBotCordLoading } from "@/components/ui/BotCordLoader";
@@ -55,7 +57,7 @@ export default function LedgerList() {
       <div className="flex items-center justify-center py-12">
         <MobileBotCordLoading
           label="Loading ledger..."
-          textClassName="animate-pulse text-sm text-neon-cyan"
+          textClassName="animate-pulse text-sm text-accent-text"
         />
       </div>
     );
@@ -64,13 +66,13 @@ export default function LedgerList() {
   if (walletLedgerError && walletLedger.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-3">
-        <div className="text-sm text-red-400">{walletLedgerError}</div>
-        <button
+        <div className="text-sm text-danger">{walletLedgerError}</div>
+        <Button variant="secondary" size="sm"
           onClick={() => loadWalletLedger()}
-          className="rounded border border-glass-border px-4 py-2 text-xs text-text-secondary hover:text-text-primary"
+
         >
           Retry
-        </button>
+        </Button>
       </div>
     );
   }
@@ -90,14 +92,14 @@ export default function LedgerList() {
         const isCredit = entry.direction === "credit";
         const sourceLabel = formatSourceLabel(entry);
         return (
-          <div
+          <Card padding="md"
             key={entry.entry_id}
-            className="liquid-list-row flex items-center gap-3 rounded-xl border border-glass-border p-4 transition-colors"
+            className="flex items-center gap-3"
           >
             {/* Direction icon */}
             <div
               className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                isCredit ? "bg-neon-green/10 text-neon-green" : "bg-red-500/10 text-red-400"
+                isCredit ? "bg-success-soft text-success" : "bg-danger-soft text-danger"
               }`}
             >
               {isCredit ? (
@@ -118,41 +120,41 @@ export default function LedgerList() {
                   <span className="text-xs font-medium text-text-primary capitalize">
                     {isCredit ? "Credit" : "Debit"}
                   </span>
-                  <span className="ml-2 text-xs uppercase tracking-[0.18em] text-text-secondary/60">
+                  <span className="ml-2 text-xs uppercase tracking-[0.18em] text-text-secondary">
                     {sourceLabel}
                   </span>
                 </div>
                 <span
                   className={`font-mono text-sm font-semibold ${
-                    isCredit ? "text-neon-green" : "text-red-400"
+                    isCredit ? "text-success" : "text-danger"
                   }`}
                 >
                   {isCredit ? "+" : "-"}{formatCoinAmount(entry.amount_minor)}
                 </span>
               </div>
               <div className="flex items-baseline justify-between">
-                <span className="truncate font-mono text-xs text-text-secondary/60">
+                <span className="truncate font-mono text-xs text-text-secondary">
                   {entry.tx_id}
                 </span>
-                <span className="ml-2 shrink-0 text-xs text-text-secondary/60">
+                <span className="ml-2 shrink-0 text-xs text-text-secondary">
                   Bal: {formatCoinAmount(entry.balance_after_minor)}
                 </span>
               </div>
-              <div className="mt-0.5 text-xs text-text-secondary/50">
+              <div className="mt-0.5 text-xs text-text-secondary">
                 {formatTime(entry.created_at)}
               </div>
             </div>
-          </div>
+          </Card>
         );
       })}
 
       {/* Load more */}
       {walletLedgerHasMore && (
         <div className="flex justify-center pt-2">
-          <button
+          <Button variant="secondary" size="sm"
             onClick={() => loadWalletLedger(true)}
             disabled={walletLoading}
-            className="inline-flex min-w-[5.5rem] items-center justify-center rounded-lg border border-glass-border px-4 py-2 text-xs font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-40"
+            className="inline-flex min-w-[5.5rem] items-center justify-center disabled:opacity-40"
           >
             {walletLoading ? (
               <>
@@ -167,7 +169,7 @@ export default function LedgerList() {
             ) : (
               "Load more"
             )}
-          </button>
+          </Button>
         </div>
       )}
     </div>

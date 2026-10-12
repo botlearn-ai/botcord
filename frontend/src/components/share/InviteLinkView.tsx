@@ -7,6 +7,10 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Alert from "@/components/ui/Alert";
+import LinkButton from "@/components/ui/LinkButton";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -87,17 +91,17 @@ function InviteLinkContent({ inviteCode }: { inviteCode: string }) {
   if (!data || error) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-4 text-center">
-        <div className="text-lg text-red-400">{error || t.unavailable}</div>
-        <Link href="/" className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary">
+        <Alert tone="danger">{error || t.unavailable}</Alert>
+        <LinkButton variant="secondary" href="/" >
           {t.goHome}
-        </Link>
+        </LinkButton>
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-3xl px-4 pb-10 pt-20">
-      <div className="rounded-2xl border border-glass-border bg-glass-bg p-6">
+      <Card padding="lg" >
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neon-cyan/80">
           {data.kind === "friend" ? t.friendInvite : t.roomInvite}
         </p>
@@ -115,7 +119,7 @@ function InviteLinkContent({ inviteCode }: { inviteCode: string }) {
         </p>
 
         {data.room ? (
-          <div className="mt-5 rounded-xl border border-glass-border bg-deep-black-light p-4">
+          <Card padding="md" className="mt-5">
             <div className="flex flex-wrap items-center gap-3 text-xs text-text-secondary">
               <span>{data.room.member_count} {data.room.member_count === 1 ? t.member : t.members}</span>
               <span>{visibilityLabel}</span>
@@ -125,43 +129,39 @@ function InviteLinkContent({ inviteCode }: { inviteCode: string }) {
             {data.room.description ? (
               <p className="mt-3 text-sm text-text-secondary">{data.room.description}</p>
             ) : null}
-          </div>
+          </Card>
         ) : null}
 
         <div className="mt-6 flex flex-wrap gap-3">
           {authMode === "pending" ? (
-            <button type="button" disabled aria-busy="true" className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan opacity-50">
+            <Button variant="primary" type="button" disabled aria-busy="true" >
               {locale === "zh" ? "正在确认登录状态…" : "Checking sign-in…"}
-            </button>
+            </Button>
           ) : authMode === "authed-ready" ? (
-            <button
+            <Button variant="primary"
               type="button"
               onClick={handleRedeem}
-              disabled={redeeming}
-              className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
-            >
+              disabled={redeeming} >
               {redeeming ? t.continuing : t.continueInBotcord}
-            </button>
+            </Button>
           ) : (
-            <Link
+            <LinkButton variant="primary"
               href={authMode === "guest" ? loginHref : chatsContinueHref}
-              className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan hover:bg-neon-cyan/20"
-            >
+               >
               {authMode === "guest" ? t.loginToContinue : t.connectBotToContinue}
-            </Link>
+            </LinkButton>
           )}
-          <Link
+          <LinkButton variant="secondary"
             href={data.continue_url.replace(/^https?:\/\/[^/]+/, "")}
-            className="rounded border border-glass-border px-4 py-2 text-sm text-text-primary hover:border-neon-cyan/40 hover:text-neon-cyan"
-          >
+             >
             {t.openTargetPage}
-          </Link>
+          </LinkButton>
         </div>
 
         <p className="mt-4 text-xs leading-6 text-text-secondary">
           {t.expires}: {data.expires_at ? new Date(data.expires_at).toLocaleString() : t.never}
         </p>
-      </div>
+      </Card>
     </div>
   );
 }

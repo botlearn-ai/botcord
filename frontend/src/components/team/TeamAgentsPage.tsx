@@ -1,20 +1,18 @@
 "use client";
+import DashboardOverlayPortal from "@/components/dashboard/DashboardOverlayPortal";
+import Alert from "@/components/ui/Alert";
+import Badge from "@/components/ui/Badge";
+import { BotCordLoader } from "@/components/ui/BotCordLoader";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import DialogShell from "@/components/ui/DialogShell";
+import EmptyState from "@/components/ui/EmptyState";
+import IconButton from "@/components/ui/IconButton";
+import Tabs from "@/components/ui/Tabs";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Bot,
-  ChevronRight,
-  Clock,
-  Inbox,
-  KeyRound,
-  Loader2,
-  MessageCircle,
-  Plus,
-  RefreshCw,
-  X,
-} from "lucide-react";
+import CreateAgentDialog from "@/components/dashboard/CreateAgentDialog";
 import { useLanguage } from "@/lib/i18n";
-import { admitNewAgent, canManage, spaceError, teamSpacesApi } from "@/lib/team-spaces";
+import { orgRoomsApi } from "@/lib/org-rooms";
 import {
   AGENT_TABS,
   accessBadge,
@@ -31,23 +29,38 @@ import {
   type AgentTab,
   type DirectoryAgent,
 } from "@/lib/team-access";
-import { orgRoomsApi } from "@/lib/org-rooms";
+import {
+  admitNewAgent,
+  canManage,
+  spaceError,
+  teamSpacesApi,
+} from "@/lib/team-spaces";
 import type { TeamSnapshot } from "@/store/team-space-store";
 import { useConfirm } from "@/store/useConfirmStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
-import { useAccessChanges, useLoadedToDecide, useTeamAccessStore } from "@/store/useTeamAccessStore";
-import CreateAgentDialog from "@/components/dashboard/CreateAgentDialog";
-import { teamButton } from "./TeamConversationDialog";
+import {
+  useAccessChanges,
+  useLoadedToDecide,
+  useTeamAccessStore,
+} from "@/store/useTeamAccessStore";
+import {
+  Bot,
+  ChevronRight,
+  Clock,
+  Inbox,
+  KeyRound,
+  Loader2,
+  MessageCircle,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AccessBadge from "./AccessBadge";
-import AccessRequestDialog, { teamDialogClass } from "./AccessRequestDialog";
+import AccessRequestDialog from "./AccessRequestDialog";
 import AccessRequestsInbox from "./AccessRequestsInbox";
 import AddAgentDialog from "./AddAgentDialog";
-import AgentManageDrawer, { type ManageTab } from "./AgentManageDrawer";
 import { AgentAvatar, AgentMeta } from "./AgentIdentity";
-
-const small =
-  "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-glass-border px-3 py-1.5 text-xs transition-colors hover:bg-neon-cyan/10 focus-visible:outline-2 focus-visible:outline-neon-cyan disabled:cursor-not-allowed disabled:opacity-50";
-const accent = "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan";
+import AgentManageDrawer, { type ManageTab } from "./AgentManageDrawer";
 
 /**
  * Team "Agent" page: every organization Agent with what the viewer can do,
@@ -77,11 +90,16 @@ export default function TeamAgentsPage({
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
-  const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(
+    null,
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [tab, setTab] = useState<AgentTab>("all");
   const [requesting, setRequesting] = useState<DirectoryAgent | null>(null);
-  const [managing, setManaging] = useState<{ id: string; tab: ManageTab } | null>(null);
+  const [managing, setManaging] = useState<{
+    id: string;
+    tab: ManageTab;
+  } | null>(null);
   const [dialog, setDialog] = useState<"add" | "create" | "inbox" | null>(null);
   const [version, setVersion] = useState(0);
   const toDecide = useLoadedToDecide(spaceId);
@@ -96,7 +114,9 @@ export default function TeamAgentsPage({
     Promise.all([
       teamAccessApi.directory(spaceId, controller.signal),
       // Request history only feeds the "declined" hint; the page still renders without it.
-      teamAccessApi.requests(spaceId, "all", controller.signal).catch(() => null),
+      teamAccessApi
+        .requests(spaceId, "all", controller.signal)
+        .catch(() => null),
     ])
       .then(([directory, requests]) => {
         if (!mounted.current) return;
@@ -119,8 +139,14 @@ export default function TeamAgentsPage({
     // `members` changes after an Agent joins or leaves the organization.
   }, [spaceId, version, changes, members]);
 
-  const counts = useMemo(() => agentTabCounts(agents, toDecide), [agents, toDecide]);
-  const visible = useMemo(() => filterAgents(agents, tab, toDecide), [agents, tab, toDecide]);
+  const counts = useMemo(
+    () => agentTabCounts(agents, toDecide),
+    [agents, toDecide],
+  );
+  const visible = useMemo(
+    () => filterAgents(agents, tab, toDecide),
+    [agents, tab, toDecide],
+  );
   // The "needs my action" tab disappears once everything is handled.
   useEffect(() => {
     if (tab === "action" && counts.action === 0) setTab("all");
@@ -128,15 +154,21 @@ export default function TeamAgentsPage({
   const requestsToDecide = toDecide?.length ?? 0;
   const myMembershipId = members.users.find((u) => u.user_id === user.id)?.id;
   const waiting = members.agents.filter(
-    (a) => a.status === "invited" && (manager || a.sponsor_user_membership_id === myMembershipId),
+    (a) =>
+      a.status === "invited" &&
+      (manager || a.sponsor_user_membership_id === myMembershipId),
   );
   const availableToAdd = user.agents.filter(
     (agent) =>
       !members.agents.some(
-        (m) => m.agent_id === agent.agent_id && (m.status === "active" || m.status === "invited"),
+        (m) =>
+          m.agent_id === agent.agent_id &&
+          (m.status === "active" || m.status === "invited"),
       ),
   );
-  const managed = managing ? agents.find((a) => a.agent_id === managing.id) ?? null : null;
+  const managed = managing
+    ? (agents.find((a) => a.agent_id === managing.id) ?? null)
+    : null;
 
   async function act(key: string, task: () => Promise<unknown>) {
     if (busy) return;
@@ -145,7 +177,8 @@ export default function TeamAgentsPage({
     try {
       await task();
     } catch (cause) {
-      if (mounted.current) setNotice({ error: true, text: spaceError(cause, zh) });
+      if (mounted.current)
+        setNotice({ error: true, text: spaceError(cause, zh) });
     } finally {
       if (mounted.current) setBusy(null);
     }
@@ -159,7 +192,10 @@ export default function TeamAgentsPage({
     act(`cancel:${agent.agent_id}`, async () => {
       const ok = await confirm({
         title: `${t("取消申请", "Cancel request")}: ${agent.display_name}`,
-        message: t("所有者将不再看到这条申请。", "The owner will no longer see this request."),
+        message: t(
+          "所有者将不再看到这条申请。",
+          "The owner will no longer see this request.",
+        ),
         confirmLabel: t("取消申请", "Cancel request"),
         cancelLabel: t("保留", "Keep"),
       });
@@ -171,7 +207,10 @@ export default function TeamAgentsPage({
     act(`approve:${agentId}`, async () => {
       await teamSpacesApi.approveAgent(spaceId, agentId);
       if (!mounted.current) return;
-      setNotice({ error: false, text: t(`${name} 已加入组织。`, `${name} joined the organization.`) });
+      setNotice({
+        error: false,
+        text: t(`${name} 已加入组织。`, `${name} joined the organization.`),
+      });
       onChanged();
     });
   const dropJoin = (agentId: string, name: string, mine: boolean) =>
@@ -180,8 +219,13 @@ export default function TeamAgentsPage({
         title: mine
           ? `${t("撤销加入申请", "Cancel application")}: ${name}`
           : `${t("拒绝加入", "Decline")}: ${name}`,
-        message: t("它不会加入本组织，之后可以重新申请。", "It won't join the organization. It can apply again later."),
-        confirmLabel: mine ? t("撤销申请", "Cancel application") : t("拒绝", "Decline"),
+        message: t(
+          "它不会加入本组织，之后可以重新申请。",
+          "It won't join the organization. It can apply again later.",
+        ),
+        confirmLabel: mine
+          ? t("撤销申请", "Cancel application")
+          : t("拒绝", "Decline"),
         tone: "danger",
       });
       if (!ok) return;
@@ -198,19 +242,37 @@ export default function TeamAgentsPage({
   const emptyState: Record<AgentTab, { title: string; hint: string }> = {
     all: {
       title: t("组织里还没有 Agent", "No Agents in this organization yet"),
-      hint: t("添加你的 Agent，成员就能在房间里 @ 它或私聊它。", "Add one of your Agents so teammates can @mention or message it."),
+      hint: t(
+        "添加你的 Agent，成员就能在房间里 @ 它或私聊它。",
+        "Add one of your Agents so teammates can @mention or message it.",
+      ),
     },
     mine: {
-      title: t("你还没有 Agent 加入本组织", "None of your Agents has joined yet"),
-      hint: t("添加后你可以决定谁能用它、它在哪些房间回复。", "Once added, you decide who may use it and where it replies."),
+      title: t(
+        "你还没有 Agent 加入本组织",
+        "None of your Agents has joined yet",
+      ),
+      hint: t(
+        "添加后你可以决定谁能用它、它在哪些房间回复。",
+        "Once added, you decide who may use it and where it replies.",
+      ),
     },
     available: {
-      title: t("还没有人把 Agent 共享给你", "No one has shared an Agent with you yet"),
-      hint: t("在「全部」里找到想用的 Agent，向所有者申请权限。", "Find an Agent under All and ask its owner for access."),
+      title: t(
+        "还没有人把 Agent 共享给你",
+        "No one has shared an Agent with you yet",
+      ),
+      hint: t(
+        "在「全部」里找到想用的 Agent，向所有者申请权限。",
+        "Find an Agent under All and ask its owner for access.",
+      ),
     },
     action: {
       title: t("没有需要你处理的事", "Nothing needs your action"),
-      hint: t("有人申请使用你的 Agent 时会出现在这里。", "Requests to use your Agents show up here."),
+      hint: t(
+        "有人申请使用你的 Agent 时会出现在这里。",
+        "Requests to use your Agents show up here.",
+      ),
     },
   };
 
@@ -219,59 +281,82 @@ export default function TeamAgentsPage({
     const pending = pendingCountFor(agent, toDecide);
     const last = latest[agent.agent_id];
     const declined =
-      !agent.pending_request && last?.status === "rejected" && (agent.my_access === "none" || agent.my_access === "consultant");
+      !agent.pending_request &&
+      last?.status === "rejected" &&
+      (agent.my_access === "none" || agent.my_access === "consultant");
     const actions = agentRowActions(agent);
-    const openDrawer = (target: ManageTab = "overview") => setManaging({ id: agent.agent_id, tab: target });
+    const openDrawer = (target: ManageTab = "overview") =>
+      setManaging({ id: agent.agent_id, tab: target });
     return (
-      <li
+      <Card
+        as="li"
         key={agent.agent_id}
-        className="liquid-card flex flex-col gap-3 rounded-2xl border border-glass-border p-4 lg:flex-row lg:items-center"
+        className="flex flex-col gap-3 lg:flex-row lg:items-center"
       >
-        <button
-          className="flex min-w-0 flex-1 items-start gap-3 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-neon-cyan"
+        <Button
+          variant="row"
+          className="min-w-0 flex-1"
           onClick={() => openDrawer()}
-          aria-label={t(`查看 ${agent.display_name}`, `View ${agent.display_name}`)}
+          aria-label={t(
+            `查看 ${agent.display_name}`,
+            `View ${agent.display_name}`,
+          )}
         >
-          <AgentAvatar
-            agentId={agent.agent_id}
-            avatarUrl={agent.avatar_url}
-            name={agent.display_name}
-            status={agent.status}
-            size={44}
-          />
-          <span className="min-w-0 flex-1 space-y-1">
-            <span className="block truncate text-sm font-semibold">{agent.display_name}</span>
-            <AgentMeta agent={agent} />
+          <span className="flex w-full items-center gap-3">
+            <AgentAvatar
+              agentId={agent.agent_id}
+              avatarUrl={agent.avatar_url}
+              name={agent.display_name}
+              status={agent.status}
+              size={44}
+            />
+            <span className="min-w-0 flex-1 space-y-1">
+              <span className="block truncate text-sm font-semibold">
+                {agent.display_name}
+              </span>
+              <AgentMeta agent={agent} />
+            </span>
           </span>
-        </button>
+        </Button>
         <div className="min-w-0 space-y-1 pl-14 text-xs text-text-secondary lg:w-60 lg:shrink-0 lg:pl-0 xl:w-72">
           {owner ? (
             <p className="flex flex-wrap items-center gap-2">
               <span>{ownerAgentSummary(agent, zh)}</span>
               {pending > 0 && (
-                <button
-                  className="rounded-full bg-neon-cyan/15 px-2 py-0.5 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/25"
+                <Button
+                  variant="secondary"
+                  size="sm"
+
                   onClick={() => openDrawer("access")}
                 >
                   {t(`${pending} 个待处理`, `${pending} pending`)}
-                </button>
+                </Button>
               )}
             </p>
           ) : (
             <div className="flex items-start gap-2">
-              <AccessBadge info={accessBadge(agent.my_access, zh)} className="shrink-0" />
-              <span className="min-w-0 pt-0.5 leading-4">{accessSummary(agent.my_access, zh)}</span>
+              <AccessBadge
+                info={accessBadge(agent.my_access, zh)}
+                className="shrink-0"
+              />
+              <span className="min-w-0 pt-0.5 leading-4">
+                {accessSummary(agent.my_access, zh)}
+              </span>
             </div>
           )}
           {agent.pending_request && (
             <p className="flex items-center gap-1">
               <Clock size={12} />
-              {t("申请中", "Requested")}: {roleBadge(agent.pending_request.requested_role, zh).label}
+              {t("申请中", "Requested")}:{" "}
+              {roleBadge(agent.pending_request.requested_role, zh).label}
             </p>
           )}
           {declined && (
-            <p className="text-red-500">
-              {t("上次申请被拒绝，可以重新申请。", "Your last request was declined. You can ask again.")}
+            <p className="text-danger">
+              {t(
+                "上次申请被拒绝，可以重新申请。",
+                "Your last request was declined. You can ask again.",
+              )}
             </p>
           )}
         </div>
@@ -281,83 +366,120 @@ export default function TeamAgentsPage({
             switch (action) {
               case "chat":
                 return (
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     key={action}
-                    className={`${small} ${accent} flex-1 lg:flex-none`}
+                    className="flex-1 lg:flex-none"
                     disabled={busy != null}
                     onClick={() => void chat(agent.agent_id)}
-                    aria-label={t(`与 ${agent.display_name} 对话`, `Chat with ${agent.display_name}`)}
+                    aria-label={t(
+                      `与 ${agent.display_name} 对话`,
+                      `Chat with ${agent.display_name}`,
+                    )}
                   >
-                    {busy === `open:${agent.agent_id}` ? <Loader2 size={13} className="animate-spin" /> : <MessageCircle size={13} />}
+                    {busy === `open:${agent.agent_id}` ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <MessageCircle size={13} />
+                    )}
                     {t("对话", "Chat")}
-                  </button>
+                  </Button>
                 );
               case "manage":
                 return (
-                  <button key={action} className={`${small} flex-1 lg:flex-none`} onClick={() => openDrawer()}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    key={action}
+                    className="flex-1 lg:flex-none"
+                    onClick={() => openDrawer()}
+                  >
                     {t("管理", "Manage")}
                     <ChevronRight size={13} />
-                  </button>
+                  </Button>
                 );
               case "cancel":
                 return (
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     key={action}
-                    className={`${small} flex-1 lg:flex-none`}
+                    className="flex-1 lg:flex-none"
                     disabled={busy != null}
                     onClick={() => void cancelRequest(agent)}
-                    aria-label={t(`取消对 ${agent.display_name} 的申请`, `Cancel request for ${agent.display_name}`)}
+                    aria-label={t(
+                      `取消对 ${agent.display_name} 的申请`,
+                      `Cancel request for ${agent.display_name}`,
+                    )}
                   >
-                    {busy === key && <Loader2 size={13} className="animate-spin" />}
+                    {busy === key && (
+                      <Loader2 size={13} className="animate-spin" />
+                    )}
                     {t("申请中 · 取消", "Requested · Cancel")}
-                  </button>
+                  </Button>
                 );
               default:
                 return (
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     key={action}
-                    className={`${small} flex-1 lg:flex-none`}
+                    className="flex-1 lg:flex-none"
                     disabled={busy != null}
                     onClick={() => setRequesting(agent)}
                   >
                     <KeyRound size={13} />
-                    {action === "upgrade" ? t("申请协作", "Request collaborate") : t("申请权限", "Request access")}
-                  </button>
+                    {action === "upgrade"
+                      ? t("申请协作", "Request collaborate")
+                      : t("申请权限", "Request access")}
+                  </Button>
                 );
             }
           })}
         </div>
-      </li>
+      </Card>
     );
   };
 
   return (
-    <section className="mx-auto w-full max-w-5xl space-y-5 px-4 pb-8 pt-5 sm:px-6 sm:pt-6" aria-labelledby="team-agents-title">
+    <section
+      className="mx-auto w-full max-w-5xl space-y-5 px-4 pb-8 pt-5 sm:px-6 sm:pt-6"
+      aria-labelledby="team-agents-title"
+    >
       <header className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1">
         <h1 id="team-agents-title" className="text-xl font-semibold">
           Agent
         </h1>
         <div className="row-span-2 flex shrink-0 gap-2 max-sm:row-span-1">
-          <button
-            className="rounded-xl p-2.5 text-text-secondary hover:bg-glass-bg disabled:opacity-50"
+          <IconButton
             disabled={loading}
             onClick={reload}
-            aria-label={t("刷新 Agent 列表", "Refresh Agents")}
+            label={t("刷新 Agent 列表", "Refresh Agents")}
           >
-            <RefreshCw size={16} className={loading && loaded ? "animate-spin" : ""} />
-          </button>
-          <button className={`${teamButton} ${accent} font-medium`} onClick={() => setDialog("add")}>
+            <RefreshCw
+              size={16}
+              className={loading && loaded ? "animate-spin" : ""}
+            />
+          </IconButton>
+          <Button variant="primary" onClick={() => setDialog("add")}>
             <Plus size={16} />
             {t("添加 Agent", "Add Agent")}
-          </button>
+          </Button>
         </div>
         <p className="text-sm text-text-secondary max-sm:col-span-2">
-          {t("组织里的 Agent，以及你能用它们做什么。", "Agents in this organization and what you can do with them.")}
+          {t(
+            "组织里的 Agent，以及你能用它们做什么。",
+            "Agents in this organization and what you can do with them.",
+          )}
         </p>
       </header>
 
       {requestsToDecide > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-neon-cyan/30 bg-neon-cyan/5 px-4 py-3" role="status">
+        <div
+          className="flex flex-wrap items-center gap-3 rounded-2xl border border-neon-cyan/30 bg-neon-cyan/5 px-4 py-3"
+          role="status"
+        >
           <Inbox size={18} className="shrink-0 text-neon-cyan" />
           <p className="min-w-0 flex-1 text-sm">
             {t(
@@ -365,118 +487,146 @@ export default function TeamAgentsPage({
               `${requestsToDecide} access request${requestsToDecide > 1 ? "s" : ""} need${requestsToDecide > 1 ? "" : "s"} your action`,
             )}
           </p>
-          <button className={`${small} ${accent}`} onClick={() => setDialog("inbox")}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setDialog("inbox")}
+          >
             {t("处理", "Review")}
-          </button>
+          </Button>
         </div>
       )}
 
       {waiting.length > 0 && (
-        <div className="space-y-2 rounded-2xl border border-glass-border p-4" aria-label={t("等待加入组织", "Waiting to join")}>
+        <Card
+          className="space-y-2"
+          aria-label={t("等待加入组织", "Waiting to join")}
+        >
           <h2 className="text-sm font-medium">
             {t("等待加入组织", "Waiting to join")} · {waiting.length}
           </h2>
           <ul className="divide-y divide-glass-border">
             {waiting.map((agent) => {
               const mine = agent.sponsor_user_membership_id === myMembershipId;
-              const sponsor = members.users.find((u) => u.id === agent.sponsor_user_membership_id);
+              const sponsor = members.users.find(
+                (u) => u.id === agent.sponsor_user_membership_id,
+              );
               return (
-                <li key={agent.id} className="flex flex-wrap items-center gap-3 py-2.5">
+                <li
+                  key={agent.id}
+                  className="flex flex-wrap items-center gap-3 py-2.5"
+                >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">{agent.display_name}</span>
+                    <span className="block truncate text-sm">
+                      {agent.display_name}
+                    </span>
                     <span className="block text-xs text-text-secondary">
-                      {mine ? t("你的申请，等待管理员批准", "Your application, waiting for an administrator") : `${t("所有者", "Owner")}: ${sponsor?.display_name ?? "—"}`}
+                      {mine
+                        ? t(
+                            "你的申请，等待管理员批准",
+                            "Your application, waiting for an administrator",
+                          )
+                        : `${t("所有者", "Owner")}: ${sponsor?.display_name ?? "—"}`}
                     </span>
                   </span>
                   <span className="flex gap-2">
-                    <button
-                      className={`${small} ${mine ? "" : "text-red-500"}`}
+                    <Button
+                      variant="danger"
+                      size="sm"
+
                       disabled={busy != null}
-                      onClick={() => void dropJoin(agent.agent_id, agent.display_name, mine)}
+                      onClick={() =>
+                        void dropJoin(agent.agent_id, agent.display_name, mine)
+                      }
                     >
-                      {busy === `drop:${agent.agent_id}` && <Loader2 size={13} className="animate-spin" />}
-                      {mine ? t("撤销申请", "Cancel application") : t("拒绝", "Decline")}
-                    </button>
+                      {busy === `drop:${agent.agent_id}` && (
+                        <Loader2 size={13} className="animate-spin" />
+                      )}
+                      {mine
+                        ? t("撤销申请", "Cancel application")
+                        : t("拒绝", "Decline")}
+                    </Button>
                     {manager && (
-                      <button
-                        className={`${small} ${accent}`}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+
                         disabled={busy != null}
-                        onClick={() => void approveJoin(agent.agent_id, agent.display_name)}
+                        onClick={() =>
+                          void approveJoin(agent.agent_id, agent.display_name)
+                        }
                       >
-                        {busy === `approve:${agent.agent_id}` && <Loader2 size={13} className="animate-spin" />}
+                        {busy === `approve:${agent.agent_id}` && (
+                          <Loader2 size={13} className="animate-spin" />
+                        )}
                         {t("批准加入", "Approve")}
-                      </button>
+                      </Button>
                     )}
                   </span>
                 </li>
               );
             })}
           </ul>
-        </div>
+        </Card>
       )}
 
-      <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 [scrollbar-width:none]" aria-label={t("筛选 Agent", "Filter Agents")}>
-        {AGENT_TABS.filter((id) => id !== "action" || counts.action > 0).map((id) => (
-          <button
-            key={id}
-            aria-pressed={tab === id}
-            onClick={() => setTab(id)}
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm ${
-              tab === id ? "bg-neon-cyan/10 font-medium text-neon-cyan" : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-            }`}
-          >
-            {tabLabel[id]}
-            <span
-              className={`rounded-full px-1.5 text-xs tabular-nums ${
-                id === "action" ? "bg-neon-cyan/15 text-neon-cyan" : "bg-glass-bg"
-              }`}
-            >
+      <Tabs
+        value={tab}
+        onValueChange={(value) => setTab(value as AgentTab)}
+        ariaLabel={t("筛选 Agent", "Filter Agents")}
+        items={AGENT_TABS.filter(
+          (id) => id !== "action" || counts.action > 0,
+        ).map((id) => ({
+          value: id,
+          label: tabLabel[id],
+          badge: (
+            <Badge tone={id === "action" ? "accent" : "neutral"}>
               {counts[id]}
-            </span>
-          </button>
-        ))}
-      </nav>
+            </Badge>
+          ),
+        }))}
+      />
 
       {notice && (
-        <p
-          role={notice.error ? "alert" : "status"}
-          className={`rounded-xl border p-3 text-sm ${notice.error ? "border-red-500/30 text-red-500" : "border-neon-cyan/30 text-neon-cyan"}`}
-        >
-          {notice.text}
-        </p>
+        <Alert tone={notice.error ? "danger" : "success"}>{notice.text}</Alert>
       )}
       {error != null && (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 p-4 text-sm text-red-500">
+        <Alert
+          tone="danger"
+          className="flex flex-wrap items-center justify-between gap-3"
+        >
           <span>{spaceError(error, zh)}</span>
-          <button className={small} onClick={reload}>
+          <Button variant="secondary" size="sm" onClick={reload}>
             {t("重试", "Retry")}
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
       {!loaded ? (
         error == null && (
-          <p role="status" className="flex items-center justify-center gap-2 py-12 text-sm text-text-secondary">
-            <Loader2 size={16} className="animate-spin" />
-            {t("正在加载 Agent…", "Loading Agents…")}
-          </p>
+          <BotCordLoader
+            size="sm"
+            className="w-full py-6"
+            label={t("正在加载 Agent…", "Loading Agents…")}
+          />
         )
       ) : visible.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-glass-border px-6 py-12 text-center">
-          <Bot size={28} className="mx-auto mb-3 text-text-secondary opacity-60" />
-          <p className="text-sm font-medium">{emptyState[tab].title}</p>
-          <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-text-secondary">{emptyState[tab].hint}</p>
-          {(tab === "all" || tab === "mine") && (
-            <button className={`${teamButton} ${accent} mt-4`} onClick={() => setDialog("add")}>
-              <Plus size={16} />
-              {t("添加 Agent", "Add Agent")}
-            </button>
-          )}
-          {tab === "available" && counts.all > 0 && (
-            <button className={`${teamButton} mt-4`} onClick={() => setTab("all")}>
-              {t("查看全部 Agent", "See all Agents")}
-            </button>
-          )}
-        </div>
+        <EmptyState
+          icon={<Bot size={24} />}
+          title={emptyState[tab].title}
+          description={emptyState[tab].hint}
+          action={
+            tab === "all" || tab === "mine" ? (
+              <Button variant="primary" onClick={() => setDialog("add")}>
+                <Plus size={16} />
+                {t("添加 Agent", "Add Agent")}
+              </Button>
+            ) : tab === "available" && counts.all > 0 ? (
+              <Button onClick={() => setTab("all")}>
+                {t("查看全部 Agent", "See all Agents")}
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <ul className="space-y-2" aria-label={tabLabel[tab]}>
           {visible.map(row)}
@@ -514,7 +664,10 @@ export default function TeamAgentsPage({
           onSuccess={async (newAgentId) => {
             setDialog(null);
             // Keep the global owned-Agent list in sync, as the sidebar entry does.
-            await useDashboardSessionStore.getState().refreshUserProfile().catch(() => undefined);
+            await useDashboardSessionStore
+              .getState()
+              .refreshUserProfile()
+              .catch(() => undefined);
             // Admission runs after the dialog closes so failures surface on this page.
             void act(`create:${newAgentId}`, async () => {
               await admitNewAgent(spaceId, newAgentId, direct);
@@ -522,8 +675,14 @@ export default function TeamAgentsPage({
               setNotice({
                 error: false,
                 text: direct
-                  ? t("Agent 已创建并加入组织。", "Agent created and added to the organization.")
-                  : t("Agent 已创建，加入申请已提交，等待管理员批准。", "Agent created. Application submitted; waiting for administrator approval."),
+                  ? t(
+                      "Agent 已创建并加入组织。",
+                      "Agent created and added to the organization.",
+                    )
+                  : t(
+                      "Agent 已创建，加入申请已提交，等待管理员批准。",
+                      "Agent created. Application submitted; waiting for administrator approval.",
+                    ),
               });
               onChanged();
             });
@@ -533,7 +692,9 @@ export default function TeamAgentsPage({
       {dialog === "inbox" && (
         <InboxDialog
           spaceId={spaceId}
-          agentNames={Object.fromEntries(agents.map((a) => [a.agent_id, a.display_name]))}
+          agentNames={Object.fromEntries(
+            agents.map((a) => [a.agent_id, a.display_name]),
+          )}
           onDecided={reload}
           onClose={() => setDialog(null)}
         />
@@ -550,13 +711,20 @@ export default function TeamAgentsPage({
           userId={user.id}
           initialTab={managing.tab}
           chatBusy={busy === `open:${managed.agent_id}`}
-          onChat={managed.my_access !== "none" ? () => void chat(managed.agent_id) : null}
+          onChat={
+            managed.my_access !== "none"
+              ? () => void chat(managed.agent_id)
+              : null
+          }
           onChanged={reload}
           onRemoved={() => {
             setManaging(null);
             setNotice({
               error: false,
-              text: t(`${managed.display_name} 已从组织移除。`, `${managed.display_name} was removed from the organization.`),
+              text: t(
+                `${managed.display_name} 已从组织移除。`,
+                `${managed.display_name} was removed from the organization.`,
+              ),
             });
             onChanged();
           }}
@@ -580,19 +748,23 @@ function InboxDialog({
   onClose: () => void;
 }) {
   const zh = useLanguage() === "zh";
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    dialog.current?.showModal?.();
-  }, []);
+  useEffect(() => {}, []);
   return (
-    <dialog ref={dialog} onCancel={onClose} aria-label={zh ? "权限申请" : "Access requests"} className={teamDialogClass}>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">{zh ? "权限申请" : "Access requests"}</h2>
-        <button type="button" className="rounded-lg p-2 hover:bg-glass-bg" aria-label={zh ? "关闭" : "Close"} onClick={onClose}>
-          <X size={18} />
-        </button>
-      </div>
-      <AccessRequestsInbox spaceId={spaceId} agentNames={agentNames} onDecided={onDecided} />
-    </dialog>
+    <DashboardOverlayPortal>
+      <DialogShell
+        size="lg"
+        title={<>{zh ? "权限申请" : "Access requests"}</>}
+        onClose={onClose}
+        busy={false}
+        closeLabel={zh ? "关闭" : "Close"}
+      >
+        <div className="mb-3 flex items-center justify-between gap-3"></div>
+        <AccessRequestsInbox
+          spaceId={spaceId}
+          agentNames={agentNames}
+          onDecided={onDecided}
+        />
+      </DialogShell>
+    </DashboardOverlayPortal>
   );
 }

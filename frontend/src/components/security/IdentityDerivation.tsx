@@ -1,8 +1,11 @@
 "use client";
 
+import Card from "@/components/ui/Card";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/lib/i18n";
 import { identityDerivation } from "@/lib/i18n/translations/security";
+
+const MotionCard = motion.create(Card);
 
 const stepValues = [
   "Generate keypair",
@@ -28,15 +31,13 @@ export default function IdentityDerivation() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-30px" }}
               transition={{ duration: 0.36, delay: i * 0.06, ease: [0, 0, 0, 1] }}
-              className="relative"
-            >
+              className="relative" >
               <div
                 className={`h-full rounded-xl border p-4 ${
                   isResult
                     ? "border-[var(--bc-brand)]/40 bg-[var(--bc-accent-soft)]"
                     : "border-[var(--bc-border)] bg-[var(--bc-surface)] shadow-[var(--bc-shadow-sm)]"
-                }`}
-              >
+                }`} >
                 <div className={`mb-2 text-xs font-medium ${isResult ? "text-[var(--bc-accent-text)]" : "text-[var(--bc-text-secondary)]"}`}>
                   {step.title}
                 </div>
@@ -60,13 +61,11 @@ export default function IdentityDerivation() {
       </div>
 
       {/* Key properties */}
-      <motion.div
+      <MotionCard padding="md"
         initial={{ opacity: 0, y: 12 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
-        transition={{ duration: 0.36, delay: 0.2, ease: [0, 0, 0, 1] }}
-        className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface-sunken)] p-5"
-      >
+        transition={{ duration: 0.36, delay: 0.2, ease: [0, 0, 0, 1] }} >
         <div className="grid gap-4 sm:grid-cols-3">
           {t.properties.map((prop, i) => (
             <div key={i}>
@@ -77,7 +76,7 @@ export default function IdentityDerivation() {
             </div>
           ))}
         </div>
-      </motion.div>
+      </MotionCard>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "../styles/botcord-tokens.css";
 @import "../styles/botcord-tailwind.css";
+@import "../styles/ui-motion.css";
+@import "../styles/ui-motion-interactive.css";
 
 /*
  * VI v1.0 (Node·Cord) bridge. The legacy token names below (deep-black,
@@ -26,8 +28,8 @@
   --color-text-primary: var(--bc-neutral-50);
   --color-text-secondary: var(--bc-neutral-400);
 
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 html[data-theme="dark"] {
@@ -740,30 +742,6 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   animation: botcord-loader-signal 1.4s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 
-.botcord-loader-dots {
-  display: inline-flex;
-  margin-left: 0.35rem;
-  width: 1rem;
-  gap: 0.15rem;
-}
-
-.botcord-loader-dots span {
-  height: 0.22rem;
-  width: 0.22rem;
-  border-radius: 9999px;
-  background: currentColor;
-  opacity: 0.28;
-  animation: botcord-loader-dot 1.05s ease-in-out infinite;
-}
-
-.botcord-loader-dots span:nth-child(2) {
-  animation-delay: 0.14s;
-}
-
-.botcord-loader-dots span:nth-child(3) {
-  animation-delay: 0.28s;
-}
-
 .replying-avatar {
   position: relative;
   display: inline-flex;
@@ -867,19 +845,6 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   }
 }
 
-@keyframes botcord-loader-dot {
-  0%,
-  100% {
-    opacity: 0.22;
-    transform: translateY(0);
-  }
-
-  45% {
-    opacity: 1;
-    transform: translateY(-2px);
-  }
-}
-
 @keyframes replying-avatar-pulse {
   0% {
     transform: scale(0.92);
@@ -923,4 +888,35 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 @media (min-width: 768px) and (hover: hover) and (pointer: fine) {
   .message-history-load { display: none; }
   .message-history-scroll { display: block; }
+}
+
+/* VI typography: reuse the generated scale with the loaded next/font families. */
+:root {
+  --bc-font-sans: var(--font-geist-sans);
+  --bc-font-mono: var(--font-geist-mono);
+}
+@utility type-heading-1 {
+  font: var(--bc-text-h1);
+  letter-spacing: var(--bc-tracking-h1);
+}
+@utility type-heading-2 {
+  font: var(--bc-text-h2);
+  letter-spacing: var(--bc-tracking-h2);
+}
+@utility type-heading-3 {
+  font: var(--bc-text-h3);
+  letter-spacing: var(--bc-tracking-h3);
+}
+@utility type-body-sm {
+  font: var(--bc-text-body-sm);
+}
+@utility type-caption {
+  font: var(--bc-text-caption);
+}
+
+/* Coarse pointers need larger hit targets; desktop density stays unchanged. */
+@media (pointer: coarse) {
+  .bc-touch-target, label:has(> .bc-radio) { min-width: 44px; min-height: 44px; }
+  .liquid-input { min-height: 44px; }
+  [role="listbox"] [role="option"] { min-height: 44px; }
 }

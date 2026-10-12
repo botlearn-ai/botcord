@@ -1,5 +1,9 @@
 "use client";
 
+import EmptyState from "@/components/ui/EmptyState";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
+import IconButton from "@/components/ui/IconButton";
 import { startTransition, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { useLanguage } from "@/lib/i18n";
@@ -27,13 +31,9 @@ function AgentRow({ bot, isSelected, locale, onSelect, onOpenSettings }: AgentRo
 
   return (
     <div className="group relative">
-      <button
+      <Button variant="row" aria-pressed={isSelected}
         onClick={() => onSelect(bot.agent_id)}
-        className={`liquid-list-row flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 pr-11 text-left transition-colors ${
-          isSelected
-            ? "!border-neon-cyan/60 !bg-neon-cyan/10 text-neon-cyan"
-            : "border-transparent text-text-secondary hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
-        }`}
+        className={`flex w-full items-center gap-2.5 `}
       >
         <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-glass-bg">
           {bot.avatar_url ? (
@@ -51,27 +51,23 @@ function AgentRow({ bot, isSelected, locale, onSelect, onOpenSettings }: AgentRo
           <span className="block truncate text-xs font-medium">
             {bot.display_name || bot.agent_id}
           </span>
-          <span className="block truncate font-mono text-xs text-text-secondary/60">
+          <span className="block truncate font-mono text-xs text-text-secondary">
             {bot.agent_id}
           </span>
         </span>
         {bot.ws_online && (
           <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-neon-green" />
         )}
-      </button>
-      <button
+      </Button>
+      <IconButton size="sm" label={`${bot.display_name || bot.agent_id} ${settingsLabel}`} aria-pressed={isSelected}
         type="button"
         title={settingsLabel}
         aria-label={`${bot.display_name || bot.agent_id} ${settingsLabel}`}
         onClick={(e) => { e.stopPropagation(); onOpenSettings(bot); }}
-        className={`liquid-action absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md border transition-colors ${
-          isSelected
-            ? "border-neon-cyan/30 bg-glass-bg/70 text-neon-cyan hover:bg-neon-cyan/10"
-            : "border-transparent text-text-secondary/60 hover:border-glass-border hover:bg-glass-bg hover:text-text-primary"
-        }`}
+        className={`absolute right-2 top-1/2 inline-flex items-center justify-center `}
       >
         <Settings2 className="h-3.5 w-3.5" />
-      </button>
+      </IconButton>
     </div>
   );
 }
@@ -165,35 +161,35 @@ export default function BotsPanel({
         const label = daemon?.label || did.slice(0, 8);
         const isOnline = daemon?.status === "online";
         return (
-          <div key={did} className="liquid-card rounded-xl border border-glass-border/50">
+          <Card padding="none" key={did} className="">
             <div className="flex items-center gap-2 px-3 py-2">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5 flex-shrink-0 text-text-secondary/60">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3.5 w-3.5 flex-shrink-0 text-text-secondary">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0H3" />
               </svg>
-              <button
+              <Button variant="row"
                 type="button"
                 onClick={() => setDeviceSettingsId(did)}
-                className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-text-secondary/80 hover:text-text-primary transition-colors"
+                className="min-w-0 flex-1 truncate"
               >
                 {label}
-              </button>
+              </Button>
               <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${isOnline ? "bg-neon-green" : "bg-text-secondary/30"}`} />
-              <button
+              <IconButton size="sm" label={locale === "zh" ? "设备设置" : "Device settings"}
                 type="button"
                 title={locale === "zh" ? "设备设置" : "Device settings"}
                 onClick={() => setDeviceSettingsId(did)}
-                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-secondary/40 transition-colors hover:bg-glass-bg hover:text-text-secondary"
+                className="flex flex-shrink-0 items-center justify-center"
               >
                 <Settings2 className="h-3 w-3" />
-              </button>
-              <button
+              </IconButton>
+              <IconButton size="sm" label={locale === "zh" ? "在此设备创建 Agent" : "Create agent on this device"}
                 type="button"
                 title={locale === "zh" ? "在此设备创建 Agent" : "Create agent on this device"}
                 onClick={() => onCreateBotForDaemon(did)}
-                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-secondary/50 transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
+                className="flex flex-shrink-0 items-center justify-center"
               >
                 <Plus className="h-3 w-3" />
-              </button>
+              </IconButton>
             </div>
             {daemonAgents.length > 0 ? (
               <div className="px-2 pb-2 space-y-1">
@@ -209,20 +205,20 @@ export default function BotsPanel({
                 ))}
               </div>
             ) : (
-              <p className="px-3 pb-2.5 text-xs text-text-secondary/40">
+              <p className="px-3 pb-2.5 text-xs text-text-secondary">
                 {locale === "zh" ? "暂无 Agent" : "No agents yet"}
               </p>
             )}
-          </div>
+          </Card>
         );
       })}
 
       {/* Unbound agents */}
       {unbound.length > 0 && (
-        <div className="liquid-card rounded-xl border border-glass-border/50">
+        <Card padding="none" className="">
           <div className="flex items-center gap-2 px-3 py-2">
-            <Bot className="h-3.5 w-3.5 flex-shrink-0 text-text-secondary/60" />
-            <span className="flex-1 text-xs font-semibold text-text-secondary/80">
+            <Bot className="h-3.5 w-3.5 flex-shrink-0 text-text-secondary" />
+            <span className="flex-1 text-xs font-semibold text-text-secondary">
               {locale === "zh" ? "未关联设备" : "No Device"}
             </span>
           </div>
@@ -238,34 +234,31 @@ export default function BotsPanel({
               />
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Empty state */}
       {isEmpty && (
-        <div className="liquid-empty-state rounded-lg border border-dashed border-glass-border px-3 py-6 text-center">
-          <p className="text-xs text-text-secondary/70">{t.myBotsEmpty}</p>
-          <button
+        <EmptyState compact bordered title={<>{t.myBotsEmpty}</>} action={<><Button variant="secondary" size="sm"
             type="button"
             onClick={onOpenCreateBot}
-            className="liquid-action mt-4 inline-flex items-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+            className="mt-4 inline-flex items-center gap-2"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>{t.createBot}</span>
-          </button>
-        </div>
+          </Button></>} />
       )}
 
       {/* Add Device button */}
       {!isEmpty && (
-        <button
+        <Button variant="row"
           type="button"
           onClick={() => setShowAddDevice(true)}
-          className="liquid-action flex w-full items-center gap-2 rounded-lg border border-dashed border-glass-border/60 px-3 py-2 text-left text-xs text-text-secondary/60 transition-colors hover:border-neon-cyan/30 hover:text-neon-cyan/80"
+          className="flex w-full items-center gap-2"
         >
           <Plus className="h-3.5 w-3.5" />
           <span>{locale === "zh" ? "添加设备" : "Add Device"}</span>
-        </button>
+        </Button>
       )}
 
       {/* Add Device modal */}

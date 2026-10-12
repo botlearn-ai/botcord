@@ -1,5 +1,19 @@
 "use client";
+import EmptyState from "@/components/ui/EmptyState";
+import Skeleton from "@/components/ui/Skeleton";
+import Tabs from "@/components/ui/Tabs";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
+import DialogSurface from "@/components/ui/DialogSurface";
 
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Input";
+import Checkbox from "@/components/ui/Checkbox";
+
+import Radio from "@/components/ui/Radio";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { openOwnerChat } from "@/lib/owner-chat-navigation";
@@ -139,7 +153,7 @@ function BotDetailDrawer() {
   const [tab, setTab] = useState<TabKey>("overview");
   const [stats, setStats] = useState<ActivityStats | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  const panelRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const motionRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
   const closingRef = useRef(false);
 
@@ -190,17 +204,8 @@ function BotDetailDrawer() {
   }, [botDetailAgentId]);
 
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeDrawer();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [closeDrawer, open]);
-
-  useEffect(() => {
     if (!open || !bot) return;
-    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
       direction: "right",
       contentSelector: "[data-overlay-section]",
     });
@@ -237,19 +242,7 @@ function BotDetailDrawer() {
 
   return (
     <>
-      <div
-        ref={overlayRef}
-        className="liquid-scrim fixed inset-0 z-40 backdrop-blur-[2px]"
-        onClick={closeDrawer}
-        aria-hidden
-      />
-      <aside
-        ref={panelRef}
-        className="liquid-drawer fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-glass-border"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t.ariaLabel}
-      >
+      <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeDrawer} ariaLabel={t.ariaLabel} placement="right" overlayClassName="z-40" className="max-w-md">
         {/* Header */}
         <div className="liquid-toolbar flex items-center justify-between border-b border-glass-border px-5 py-4" data-overlay-section>
           <div className="flex min-w-0 items-center gap-3">
@@ -259,44 +252,29 @@ function BotDetailDrawer() {
                 <h2 className="truncate text-base font-semibold text-text-primary">
                   {bot.display_name}
                 </h2>
-                <span className="rounded-full border border-neon-cyan/40 bg-neon-cyan/10 px-1.5 py-px text-xs font-medium text-neon-cyan">
+                <Badge tone="accent" >
                   {bot.is_default ? t.defaultBadge : t.botBadge}
-                </span>
+                </Badge>
               </div>
-              <p className={`text-xs ${online ? "text-neon-green" : "text-text-secondary/60"}`}>
+              <p className={`text-xs ${online ? "text-neon-green" : "text-text-secondary"}`}>
                 ● {online ? t.online : t.offline}
               </p>
             </div>
           </div>
-          <button
+          <IconButton label={t.close}
             onClick={closeDrawer}
             title={t.close}
             aria-label={t.close}
-            className="liquid-action flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="w-8 shrink-0"
           >
             <X className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
 
         {/* Tab strip */}
-        <div className="liquid-tabs grid grid-cols-5 border-b border-glass-border" data-overlay-section>
-          {TABS.map(({ key, icon: Icon }) => {
-            const active = tab === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={`flex min-w-0 items-center justify-center gap-1.5 px-2 py-2.5 text-xs font-medium transition-colors ${
-                  active
-                    ? "border-b-2 border-neon-cyan text-neon-cyan"
-                    : "border-b-2 border-transparent text-text-secondary hover:text-text-primary"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {t.tabs[key]}
-              </button>
-            );
-          })}
+        <div data-overlay-section className="px-5">
+          <Tabs value={tab} onValueChange={(value) => setTab(value as TabKey)} variant="underline" size="sm" ariaLabel={t.ariaLabel}
+            items={TABS.map(({ key, icon: Icon }) => ({ value: key, label: t.tabs[key], icon: <Icon className="h-4 w-4" /> }))} />
         </div>
 
         {/* Tab content */}
@@ -335,7 +313,7 @@ function BotDetailDrawer() {
           {tab === "files" && <FilesTab agentId={bot.agent_id} t={t} />}
           {tab === "wallet" && <BotWalletTab agentId={bot.agent_id} displayName={bot.display_name} />}
         </div>
-      </aside>
+      </DialogSurface>
     </>
   );
 }
@@ -403,8 +381,8 @@ function OverviewTab({
       />
 
       {stats ? (
-        <section className="liquid-card rounded-2xl border border-glass-border p-4">
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+        <Card as="section" padding="none" className="p-4">
+          <h3 className="mb-3 text-xs font-semibold text-text-secondary">
             {t.overview.activity7d}
           </h3>
           <div className="grid grid-cols-4 gap-2 text-center">
@@ -413,19 +391,19 @@ function OverviewTab({
             <Stat label={t.overview.openTopics} value={stats.topics_open} />
             <Stat label={t.overview.completedTopics} value={stats.topics_completed} />
           </div>
-        </section>
+        </Card>
       ) : null}
 
       <AgentCapabilityCard agentId={bot.agent_id} />
 
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+      <Card as="section" padding="none" className="p-4">
+        <h3 className="mb-3 text-xs font-semibold text-text-secondary">
           {t.overview.hostedDevice}
         </h3>
         {device ? (
-          <button
+          <Button variant="row"
             onClick={() => onJumpToDevice(device.id)}
-            className="liquid-list-row flex w-full items-center justify-between gap-2 rounded-lg border border-glass-border px-3 py-2 text-left transition-colors hover:border-neon-cyan/40"
+            className="w-full"
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -436,33 +414,33 @@ function OverviewTab({
                   className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-xs ${
                     device.status === "online"
                       ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
-                      : "border-glass-border bg-glass-bg text-text-secondary/70"
+                      : "border-glass-border bg-glass-bg text-text-secondary"
                   }`}
                 >
                   <span className={`h-1 w-1 rounded-full ${device.status === "online" ? "bg-neon-green" : "bg-text-secondary/40"}`} />
                   {device.status === "online" ? t.online : t.offline}
                 </span>
               </div>
-              <p className="mt-0.5 font-mono text-xs text-text-secondary/55">{device.id}</p>
+              <p className="mt-0.5 font-mono text-xs text-text-secondary">{device.id}</p>
             </div>
-            <span className="shrink-0 text-xs text-text-secondary/65">{t.overview.view} -&gt;</span>
-          </button>
+            <span className="shrink-0 text-xs text-text-secondary">{t.overview.view} -&gt;</span>
+          </Button>
         ) : (
-          <p className="text-xs text-text-secondary/55">{t.overview.noDevice}</p>
+          <p className="text-xs text-text-secondary">{t.overview.noDevice}</p>
         )}
-      </section>
+      </Card>
 
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+      <Card as="section" padding="none" className="p-4">
+        <h3 className="mb-3 flex items-center justify-between text-xs font-semibold text-text-secondary">
           <span>{t.overview.friends(friends.length)}</span>
         </h3>
         {friends.length > 0 ? (
           <ul className="space-y-1">
             {friends.slice(0, 6).map((friend) => (
               <li key={`${friend.type}-${friend.id}`}>
-                <button
+                <Button variant="row"
                   onClick={() => onJumpToFriend(friend)}
-                  className="liquid-list-row flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors"
+                  className="w-full"
                 >
                   {friend.type === "agent" ? (
                     <BotAvatar agentId={friend.id} size={28} alt={friend.display_name} />
@@ -477,34 +455,34 @@ function OverviewTab({
                       {friend.online ? <span className="h-1.5 w-1.5 rounded-full bg-neon-green" /> : null}
                     </div>
                   </div>
-                  <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary/70">
+                  <span className="shrink-0 rounded-full border border-text-secondary/20 bg-text-secondary/10 px-1.5 py-px text-xs font-medium text-text-secondary">
                     {friend.type === "agent" ? "BOT" : "HUMAN"}
                   </span>
-                </button>
+                </Button>
               </li>
             ))}
             {friends.length > 6 ? (
-              <li className="px-2 pt-1 text-xs text-text-secondary/55">
+              <li className="px-2 pt-1 text-xs text-text-secondary">
                 {t.overview.moreFriends(friends.length - 6)}
               </li>
             ) : null}
           </ul>
         ) : (
-          <p className="text-xs text-text-secondary/55">{t.overview.noFriends}</p>
+          <p className="text-xs text-text-secondary">{t.overview.noFriends}</p>
         )}
-      </section>
+      </Card>
 
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <h3 className="mb-3 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+      <Card as="section" padding="none" className="p-4">
+        <h3 className="mb-3 flex items-center justify-between text-xs font-semibold text-text-secondary">
           <span>{t.overview.groups(groups.length)}</span>
         </h3>
         {groups.length > 0 ? (
           <ul className="space-y-1">
             {groups.slice(0, 8).map((group) => (
               <li key={group.room_id}>
-                <button
+                <Button variant="row"
                   onClick={() => onJumpToGroup(group)}
-                  className="liquid-list-row flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors"
+                  className="w-full"
                 >
                   {group.bots.length >= 2 ? (
                     <CompositeAvatar
@@ -522,48 +500,48 @@ function OverviewTab({
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs text-text-primary">{group.name}</p>
-                    <p className="text-xs text-text-secondary/55">{t.overview.members(group.member_count)}</p>
+                    <p className="text-xs text-text-secondary">{t.overview.members(group.member_count)}</p>
                   </div>
-                </button>
+                </Button>
               </li>
             ))}
             {groups.length > 8 ? (
-              <li className="px-2 pt-1 text-xs text-text-secondary/55">
+              <li className="px-2 pt-1 text-xs text-text-secondary">
                 {t.overview.moreGroups(groups.length - 8)}
               </li>
             ) : null}
           </ul>
         ) : (
-          <p className="text-xs text-text-secondary/55">{t.overview.noGroups}</p>
+          <p className="text-xs text-text-secondary">{t.overview.noGroups}</p>
         )}
-      </section>
+      </Card>
 
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
+      <Card as="section" padding="none" className="p-4">
         <div className="flex gap-2">
-          <button
+          <Button variant="primary"
             onClick={onOpenChat}
-            className="liquid-action flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+            className="flex-1"
           >
             <MessageCircle className="h-3.5 w-3.5" />
             {t.overview.openChat}
-          </button>
+          </Button>
         </div>
-      </section>
+      </Card>
 
-      <section className="rounded-2xl border border-red-500/25 bg-red-500/5 p-4">
-        <button
+      <section className="rounded-2xl border border-danger/25 bg-danger-soft p-4">
+        <Button variant="danger"
           onClick={async () => {
             if (await confirm({ title: t.overview.deleteConfirm, tone: "danger" })) {
               void userApi.unbindAgent(bot.agent_id).then(() => window.location.reload());
             }
           }}
-          className="flex w-full items-center justify-between rounded-lg text-left text-xs text-red-300/85 transition-colors hover:text-red-200"
+          className="w-full"
         >
           <span className="flex items-center gap-2">
             <Trash2 className="h-3.5 w-3.5" />
             {t.overview.deleteBot}
           </span>
-        </button>
+        </Button>
       </section>
     </div>
   );
@@ -696,42 +674,42 @@ function ProfileEditor({
   };
 
   return (
-    <section className="liquid-card rounded-2xl border border-glass-border p-4">
+    <Card as="section" padding="none" className="p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-text-secondary">
           <Pencil className="h-3.5 w-3.5" />
           {t.profile.title}
         </div>
         <RuntimeChip label={runtimeLabel} runtimeId={runtimeId} unknownLabel={unknownRuntimeLabel} />
       </div>
-      <label className="mb-1 block text-xs text-text-secondary/65">{t.profile.displayName}</label>
-      <input
+      <label className="mb-1 block text-xs text-text-secondary">{t.profile.displayName}</label>
+      <Input
         value={name}
         onChange={(e) => setName(e.target.value)}
         maxLength={128}
-        className="liquid-input w-full rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/40"
+        className="w-full"
       />
-      <label className="mb-1 mt-4 block text-xs text-text-secondary/65">{t.profile.bio}</label>
-      <textarea
+      <label className="mb-1 mt-4 block text-xs text-text-secondary">{t.profile.bio}</label>
+      <Textarea
         value={bio}
         onChange={(e) => setBio(e.target.value)}
         rows={4}
         maxLength={4000}
         placeholder={t.profile.bioPlaceholder}
-        className="liquid-input w-full resize-none rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/40"
+        className="w-full"
       />
       <div className="mt-4 flex items-center justify-between">
-        <p className="font-mono text-xs text-text-secondary/55">{agentId}</p>
-        <button
+        <p className="font-mono text-xs text-text-secondary">{agentId}</p>
+        <Button variant="primary"
           onClick={() => void handleSave()}
           disabled={!dirty || saving}
-          className="liquid-action rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-50"
+
         >
           {saving ? t.profile.saving : saved ? `${t.profile.saved} ✓` : t.profile.save}
-        </button>
+        </Button>
       </div>
-      {error ? <p className="mt-2 text-xs text-red-300">{error}</p> : null}
-    </section>
+      {error ? <Alert tone="danger" className="mt-2">{error}</Alert> : null}
+    </Card>
   );
 }
 
@@ -771,21 +749,21 @@ function SettingsTab({
       />
 
       <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+        <h3 className="text-xs font-semibold text-text-secondary">
           {t.settings.conversation}
         </h3>
         <PolicyTab agentId={agentId} t={t} />
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+        <h3 className="text-xs font-semibold text-text-secondary">
           {t.settings.autonomy}
         </h3>
         <AgentSchedulesTab agentId={agentId} />
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+        <h3 className="text-xs font-semibold text-text-secondary">
           {t.settings.channels}
         </h3>
         <AgentChannelsTab agentId={agentId} hostingKind={hostingKind} />
@@ -846,13 +824,13 @@ export function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerC
 
   if (!policy && error) {
     return (
-      <div role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+      <Alert tone="danger" role="alert" >
         {error}
-        <button type="button" className="ml-3 underline" onClick={() => {
+        <Button variant="ghost" type="button" className="ml-3" onClick={() => {
           setError(null);
           void loadGlobal(agentId).catch((err) => setError(err instanceof Error ? err.message : String(err)));
-        }}>{t.files.refresh}</button>
-      </div>
+        }}>{t.files.refresh}</Button>
+      </Alert>
     );
   }
 
@@ -860,13 +838,13 @@ export function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerC
     return (
       <div className="space-y-4">
         {[1, 2].map((i) => (
-          <div key={i} className="liquid-card animate-pulse rounded-2xl border border-glass-border p-5">
-            <div className="mb-3 h-4 w-28 rounded bg-glass-bg" />
+          <Card padding="none" key={i} className="p-5">
+            <Skeleton shape="block" height={16} width={112} className="mb-3" />
             <div className="space-y-2">
-              <div className="h-9 rounded bg-glass-bg/70" />
-              <div className="h-9 rounded bg-glass-bg/70" />
+              <Skeleton shape="block" height={36} />
+              <Skeleton shape="block" height={36} />
             </div>
-          </div>
+          </Card>
         ))}
       </div>
     );
@@ -881,11 +859,11 @@ export function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerC
 
   return (
     <div className="space-y-5">
-      {error ? <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">{error}</div> : null}
+      {error ? <Alert tone="danger" >{error}</Alert> : null}
 
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
+      <Card as="section" padding="none" className="p-4">
         <h3 className="mb-1 text-sm font-semibold text-text-primary">{t.settings.contactTitle}</h3>
-        <p className="mb-4 text-xs text-text-secondary/65">{t.settings.contactDescription}</p>
+        <p className="mb-4 text-xs text-text-secondary">{t.settings.contactDescription}</p>
         <RadioGroup
           name={`contact_policy_${agentId}`}
           value={policy.contact_policy}
@@ -894,14 +872,8 @@ export function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerC
           onChange={(value) => void applyPolicy({ contact_policy: value })}
         />
         <div className="mt-4 flex flex-col gap-2">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
-            <input type="checkbox" checked={policy.allow_agent_sender} onChange={(e) => void applyPolicy({ allow_agent_sender: e.target.checked })} disabled={saving} className="accent-neon-cyan" />
-            {t.settings.allowAgentSender}
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-text-primary">
-            <input type="checkbox" checked={policy.allow_human_sender} onChange={(e) => void applyPolicy({ allow_human_sender: e.target.checked })} disabled={saving} className="accent-neon-cyan" />
-            {t.settings.allowHumanSender}
-          </label>
+          <Checkbox checked={policy.allow_agent_sender} onCheckedChange={(checked) => void applyPolicy({ allow_agent_sender: checked })} disabled={saving} label={<>{t.settings.allowAgentSender}</>} />
+          <Checkbox checked={policy.allow_human_sender} onCheckedChange={(checked) => void applyPolicy({ allow_human_sender: checked })} disabled={saving} label={<>{t.settings.allowHumanSender}</>} />
         </div>
         <label className="mt-4 flex items-center gap-2 text-sm text-text-secondary">
           <span className="shrink-0">{t.settings.roomInvite}</span>
@@ -913,17 +885,17 @@ export function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerC
             disabled={saving}
             placeholder={t.settings.roomInvite}
             className="min-w-40"
-            buttonClassName="liquid-input min-h-8 rounded-lg px-2 text-xs"
+
             options={roomInviteOptions.map((opt) => ({ value: opt.value, label: opt.label }))}
           />
         </label>
-      </section>
+      </Card>
 
-      <AgentDefaultPermission agentId={agentId} className="liquid-card rounded-2xl border border-glass-border p-4" />
+      <Card><AgentDefaultPermission agentId={agentId} /></Card>
 
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
+      <Card as="section" padding="none" className="p-4">
         <h3 className="mb-1 text-sm font-semibold text-text-primary">{t.settings.defaultReplyTitle}</h3>
-        <p className="mb-4 text-xs text-text-secondary/65">{t.settings.defaultReplyDescription}</p>
+        <p className="mb-4 text-xs text-text-secondary">{t.settings.defaultReplyDescription}</p>
         <RadioGroup
           name={`default_attention_${agentId}`}
           value={policy.default_attention}
@@ -938,17 +910,17 @@ export function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerC
               {policy.attention_keywords.map((keyword) => (
                 <span key={keyword} className="inline-flex items-center gap-1 rounded-full border border-neon-cyan/30 bg-neon-cyan/5 px-2 py-0.5 text-xs text-neon-cyan">
                   {keyword}
-                  <button
+                  <IconButton label="Close"
                     type="button"
                     onClick={() => void applyPolicy({ attention_keywords: policy.attention_keywords.filter((item) => item !== keyword) })}
                     disabled={saving}
-                    className="rounded-full p-0.5 hover:bg-neon-cyan/10 disabled:opacity-50"
+
                   >
                     <X className="h-3 w-3" />
-                  </button>
+                  </IconButton>
                 </span>
               ))}
-              <input
+              <Input
                 value={draftKeyword}
                 onChange={(e) => setDraftKeyword(e.target.value)}
                 onKeyDown={(e) => {
@@ -960,13 +932,13 @@ export function PolicyTab({ agentId, t }: { agentId: string; t: BotDetailDrawerC
                 onBlur={addKeyword}
                 disabled={saving}
                 placeholder={t.settings.keywordPlaceholder}
-                className="min-w-[150px] flex-1 rounded-full border border-dashed border-glass-border bg-transparent px-2 py-0.5 text-xs text-text-primary placeholder:text-text-tertiary outline-none focus:border-neon-cyan/40"
+                className="min-w-[150px] flex-1"
               />
             </div>
           </div>
         ) : null}
         <p className="mt-4 rounded-lg border border-glass-border/60 bg-glass-bg/40 px-3 py-2 text-xs text-text-secondary">{t.settings.dmAlwaysReply}</p>
-      </section>
+      </Card>
 
       {saving ? (
         <div className="flex items-center gap-2 text-xs text-text-secondary">
@@ -1072,51 +1044,47 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
           <h3 className="text-sm font-semibold text-text-primary">{t.files.title}</h3>
           <p className="truncate text-xs text-text-secondary">{runtimeLabel || t.files.subtitle}</p>
         </div>
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={() => void loadFiles()}
           disabled={loading}
-          className="liquid-action inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+          className="w-9 shrink-0"
           title={t.files.refresh}
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-        </button>
+        </Button>
       </div>
 
-      {error ? <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">{error}</div> : null}
+      {error ? <Alert tone="danger" >{error}</Alert> : null}
 
       {loading && files.length === 0 ? (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-glass-bg/60" />)}
+          {[1, 2, 3].map((i) => <Skeleton shape="block" height={56} key={i} />)}
         </div>
       ) : files.length === 0 ? (
-        <div className="liquid-empty-state rounded-xl border border-glass-border px-4 py-8 text-center text-sm text-text-secondary">
-          {t.files.empty}
-        </div>
+        <EmptyState compact bordered title={<>{t.files.empty}</>} />
       ) : (
         <div className="space-y-3">
           <div className="grid grid-cols-1 gap-2">
             {files.map((file) => {
               const selected = file.id === selectedFileId;
               return (
-                <button
+                <Button aria-pressed={selected} variant="row"
                   key={file.id}
                   type="button"
                   onClick={() => setSelectedFileId(file.id)}
-                  className={`liquid-list-row flex min-h-[56px] items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
-                    selected ? "border-neon-cyan/40 bg-neon-cyan/5" : "border-glass-border bg-glass-bg/40 hover:bg-glass-bg/70"
-                  }`}
+
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm text-text-primary">{file.name}</span>
-                    <span className="mt-0.5 flex flex-wrap gap-1.5 text-xs uppercase tracking-normal text-text-secondary">
+                    <span className="mt-0.5 flex flex-wrap gap-1.5 text-xs text-text-secondary">
                       <span>{scopeLabel(file.scope)}</span>
                       {file.profile ? <span>{file.profile}</span> : null}
                       {typeof file.size === "number" ? <span>{formatBytes(file.size)}</span> : null}
                     </span>
                   </span>
-                  {file.truncated ? <span className="shrink-0 rounded border border-yellow-400/30 px-1.5 py-0.5 text-xs text-yellow-300">{t.files.tooLarge}</span> : null}
-                </button>
+                  {file.truncated ? <span className="shrink-0 rounded border border-warning/30 px-1.5 py-0.5 text-xs text-warning">{t.files.tooLarge}</span> : null}
+                </Button>
               );
             })}
           </div>
@@ -1169,8 +1137,8 @@ function RadioGroup<T extends string>({
               selected ? "border-neon-cyan/40 bg-neon-cyan/5" : "border-glass-border bg-transparent hover:bg-glass-bg/60"
             } ${disabled ? "pointer-events-none opacity-50" : ""}`}
           >
-            <input
-              type="radio"
+            <Radio
+
               name={name}
               value={opt.value}
               checked={selected}
@@ -1192,7 +1160,7 @@ function RadioGroup<T extends string>({
 function Stat({ label, value, delta }: { label: string; value: number | string; delta?: string }) {
   return (
     <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
-      <div className="text-xs uppercase tracking-wider text-text-secondary/55">{label}</div>
+      <div className="text-xs text-text-secondary">{label}</div>
       <div className="flex items-baseline justify-center gap-1">
         <span className="text-sm font-semibold text-text-primary">{value}</span>
         {delta ? <span className="text-xs font-medium text-neon-green">{delta}</span> : null}

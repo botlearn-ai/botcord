@@ -5,6 +5,12 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 "use client";
+import EmptyState from "@/components/ui/EmptyState";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -113,17 +119,9 @@ function AddRoomMemberModal({
   }, [closing, onClose, saving]);
 
   useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; } });
     return () => cleanupAnime(animationRef.current);
   }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
 
   useEffect(() => {
     if (!error || !errorRef.current) return;
@@ -133,32 +131,27 @@ function AddRoomMemberModal({
   }, [error]);
 
   return (
-    <div ref={overlayRef} className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm ${closing ? "pointer-events-none" : ""}`} onClick={closeWithMotion}>
-      <div
-        ref={panelRef}
-        className="liquid-dialog flex h-[min(760px,calc(100dvh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-xl border"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<>{t.addMemberTitle}</>} busy={saving} overlayClassName="z-50" className="h-[min(760px,calc(100dvh-2rem))] max-w-2xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
           <div>
             <h2 className="text-lg font-semibold text-text-primary">{t.addMemberTitle}</h2>
             <p className="mt-1 text-xs text-text-secondary">{t.addMemberDescription}</p>
           </div>
-          <button
+          <IconButton label={t.closeAddMemberModal}
             onClick={closeWithMotion}
-            className="liquid-action rounded p-1.5 text-text-secondary transition-colors hover:text-text-primary"
+
             aria-label={t.closeAddMemberModal}
             title={t.closeAddMemberModal}
           >
             <X className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
           {error ? (
-            <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            <Alert tone="danger" ref={errorRef} >
               {error}
-            </div>
+            </Alert>
           ) : null}
 
           <div className="flex items-center justify-between text-xs text-text-secondary">
@@ -167,9 +160,7 @@ function AddRoomMemberModal({
           </div>
 
           {candidates.length === 0 ? (
-            <div className="liquid-empty-state rounded border border-dashed px-4 py-6 text-sm text-text-secondary/70">
-              {t.noAddableMembers}
-            </div>
+            <EmptyState compact bordered title={<>{t.noAddableMembers}</>} />
           ) : (
             <DashboardMultiSelect
               value={Array.from(selectedIds)}
@@ -191,23 +182,22 @@ function AddRoomMemberModal({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-glass-border px-6 py-4">
-          <button
+          <Button variant="secondary"
             onClick={closeWithMotion}
             disabled={saving}
-            className="liquid-action rounded px-4 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+
           >
             {t.permCancel}
-          </button>
-          <button
+          </Button>
+          <Button variant="primary"
             onClick={() => void handleAddMembers()}
             disabled={saving || selectedIds.size === 0}
-            className="liquid-action inline-flex items-center gap-2 rounded border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
+
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {saving ? t.addingMembers : t.addMembersAction}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }

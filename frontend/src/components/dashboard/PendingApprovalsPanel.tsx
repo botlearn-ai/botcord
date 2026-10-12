@@ -11,6 +11,9 @@
  *             backend/app/routers/humans.py schemas.
  */
 
+import Badge from "@/components/ui/Badge";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -67,14 +70,14 @@ export default function PendingApprovalsPanel() {
 
   if (loading && approvals.length === 0) {
     return (
-      <div className="liquid-card mb-4 rounded-2xl border border-glass-border px-4 py-3">
+      <Card padding="sm" className="mb-4">
         <MobileBotCordLoading
           label={t.loading}
           size="sm"
           className="justify-start"
           textClassName="text-xs text-text-secondary"
         />
-      </div>
+      </Card>
     );
   }
 
@@ -85,9 +88,9 @@ export default function PendingApprovalsPanel() {
   }
 
   return (
-    <section
+    <Card as="section" padding="md"
       aria-label="Pending approvals on agents you own"
-      className="liquid-card mb-4 rounded-2xl border border-neon-cyan/40 bg-neon-cyan/5 p-4"
+      className="mb-4"
     >
       <header className="mb-3 flex items-center justify-between gap-2">
         <div>
@@ -98,17 +101,17 @@ export default function PendingApprovalsPanel() {
             {t.subtitle}
           </p>
         </div>
-        <button
+        <Button variant="secondary" size="sm"
           type="button"
           onClick={() => void refresh()}
-          className="rounded border border-glass-border px-2 py-1 text-xs text-text-secondary hover:bg-glass-bg"
+
         >
           {t.refresh}
-        </button>
+        </Button>
       </header>
 
       {error ? (
-        <p className="mb-3 text-xs text-red-300">{error}</p>
+        <p className="mb-3 text-xs text-danger">{error}</p>
       ) : null}
 
       <ul className="flex flex-col gap-2">
@@ -128,16 +131,15 @@ export default function PendingApprovalsPanel() {
             payload.from_participant_id ||
             "unknown";
           return (
-            <li
+            <Card as="li" padding="sm"
               key={entry.id}
-              className="liquid-list-row rounded-xl border border-glass-border p-3"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-xs text-text-secondary">
-                    <span className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-1.5 py-0.5 text-xs uppercase tracking-wide text-neon-cyan">
+                    <Badge tone="accent" >
                       {entry.kind.replace(/_/g, " ")}
-                    </span>
+                    </Badge>
                     <span className="truncate font-mono text-xs">
                       {t.forAgent} {entry.agent_id}
                     </span>
@@ -146,7 +148,7 @@ export default function PendingApprovalsPanel() {
                     {fromLabel}
                   </p>
                   {payload.from_participant_id ? (
-                    <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/60">
+                    <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">
                       {payload.from_participant_id}
                     </p>
                   ) : null}
@@ -157,34 +159,34 @@ export default function PendingApprovalsPanel() {
                   ) : null}
                 </div>
                 <div className="flex shrink-0 flex-col gap-1.5">
-                  <button
+                  <Button variant="secondary" size="sm"
                     type="button"
                     onClick={() => void resolve(entry.id, "approve")}
                     disabled={processing}
-                    className="inline-flex items-center justify-center gap-1.5 rounded border border-neon-green/40 bg-neon-green/10 px-3 py-1 text-xs text-neon-green disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
                   >
                     {isApproving ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : null}
                     {t.approve}
-                  </button>
-                  <button
+                  </Button>
+                  <Button variant="danger" size="sm"
                     type="button"
                     onClick={() => void resolve(entry.id, "reject")}
                     disabled={processing}
-                    className="inline-flex items-center justify-center gap-1.5 rounded border border-red-400/40 bg-red-400/10 px-3 py-1 text-xs text-red-300 disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
                   >
                     {isRejecting ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : null}
                     {t.reject}
-                  </button>
+                  </Button>
                 </div>
               </div>
-            </li>
+            </Card>
           );
         })}
       </ul>
-    </section>
+    </Card>
   );
 }

@@ -1,4 +1,7 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+
+import { Textarea } from "@/components/ui/Input";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -95,15 +98,15 @@ function FriendInviteModal({ onClose }: { onClose: () => void }) {
       )}
     >
       {error ? (
-        <div ref={errorRef} className="mb-4 rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-sm text-danger">
+        <Alert tone="danger" ref={errorRef} className="mb-4">
           {error}
-        </div>
+        </Alert>
       ) : null}
 
       {invite ? (
         <div>
           <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <p className="text-xs font-semibold text-text-secondary">
               {t.invitePrompt}
             </p>
             <Button
@@ -115,11 +118,11 @@ function FriendInviteModal({ onClose }: { onClose: () => void }) {
               {copied === "prompt" ? tc.copied : t.copyPrompt}
             </Button>
           </div>
-          <textarea
+          <Textarea
             readOnly
             rows={6}
             value={buildFriendInvitePrompt({ inviteCode: invite.code, locale })}
-            className="liquid-input w-full resize-none rounded-lg border px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
+            className="w-full"
           />
         </div>
       ) : null}

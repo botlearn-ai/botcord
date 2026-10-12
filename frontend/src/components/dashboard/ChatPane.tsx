@@ -7,6 +7,10 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Badge from "@/components/ui/Badge";
+import Tabs from "@/components/ui/Tabs";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { chatPane, exploreUi, messagesGrouping } from '@/lib/i18n/translations/dashboard';
@@ -221,13 +225,13 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
             />
           </div>
           {!isRequestsView && !isRoomsView && !isCreatedView ? (
-            <button
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={() => setShowFriendInvite(true)}
-              className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan hover:bg-neon-cyan/20"
+
             >
               {t.inviteFriend}
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -244,28 +248,28 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
           ) : (
             <ResultsGrid className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {(pageItems as typeof filteredJoinedRooms).map((room) => (
-                <button
+                <Card as="button" variant="interactive" padding="md"
                   key={room.room_id}
                   data-motion-grid-item
                   onClick={() => openJoinedRoom(room.room_id)}
-                  className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
+
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
-                    <span className="rounded border border-neon-green/40 bg-neon-green/10 px-1.5 py-0.5 text-xs text-neon-green">
+                    <Badge tone="success" >
                       {t.joinedBadge}
-                    </span>
+                    </Badge>
                   </div>
-                  <p className="mt-1 truncate font-mono text-xs text-text-secondary/60">{room.room_id}</p>
+                  <p className="mt-1 truncate font-mono text-xs text-text-secondary">{room.room_id}</p>
                   {room.last_message_preview && (
                     <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{room.last_message_preview}</p>
                   )}
                   {room.last_message_at && (
-                    <p className="mt-2 text-xs text-text-secondary/70">
+                    <p className="mt-2 text-xs text-text-secondary">
                       {t.activeAt} {new Date(room.last_message_at).toLocaleString()}
                     </p>
                   )}
-                </button>
+                </Card>
               ))}
             </ResultsGrid>
           )
@@ -277,28 +281,28 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
           ) : (
             <ResultsGrid className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {(pageItems as typeof filteredCreatedRooms).map((room) => (
-                <button
+                <Card as="button" variant="interactive" padding="md"
                   key={room.room_id}
                   data-motion-grid-item
                   onClick={() => openJoinedRoom(room.room_id)}
-                  className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
+
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm font-semibold text-text-primary">{room.name}</p>
-                    <span className="rounded border border-neon-cyan/40 bg-neon-cyan/10 px-1.5 py-0.5 text-xs text-neon-cyan">
+                    <Badge tone="accent" >
                       {t.ownerBadge}
-                    </span>
+                    </Badge>
                   </div>
-                  <p className="mt-1 truncate font-mono text-xs text-text-secondary/60">{room.room_id}</p>
+                  <p className="mt-1 truncate font-mono text-xs text-text-secondary">{room.room_id}</p>
                   {room.last_message_preview && (
                     <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{room.last_message_preview}</p>
                   )}
                   {room.last_message_at && (
-                    <p className="mt-2 text-xs text-text-secondary/70">
+                    <p className="mt-2 text-xs text-text-secondary">
                       {t.activeAt} {new Date(room.last_message_at).toLocaleString()}
                     </p>
                   )}
-                </button>
+                </Card>
               ))}
             </ResultsGrid>
           )
@@ -315,10 +319,10 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
               const initials = initialsFromName(hasRealName ? primaryName : contact.contact_agent_id);
               const avatarBorder = isHuman ? "border-neon-green/30" : "border-neon-cyan/30";
               const avatarFallback = isHuman
-                ? "border-neon-green/30 bg-neon-green/10 text-neon-green"
-                : "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan";
+                ? "border-neon-green/30 bg-success-soft text-success"
+                : "border-neon-cyan/30 bg-accent-soft text-accent-text";
               return (
-                <button
+                <Card as="button" variant="interactive" padding="md"
                   key={contact.contact_agent_id}
                   data-motion-grid-item
                   onClick={async () => {
@@ -338,7 +342,7 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                       void selectAgent(contact.contact_agent_id);
                     }
                   }}
-                  className="rounded-2xl border border-glass-border bg-deep-black-light p-4 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
+
                 >
                   <div className="flex items-start gap-3">
                     {contact.avatar_url ? (
@@ -359,19 +363,19 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                       <p className="truncate text-sm font-semibold text-text-primary">
                         {hasRealName ? primaryName : (isHuman ? t.unnamedHuman : t.unnamedAgent)}
                       </p>
-                      <p className="mt-0.5 text-xs uppercase tracking-wide text-text-secondary/60">
+                      <p className="mt-0.5 text-xs uppercase tracking-wide text-text-secondary">
                         {isHuman ? t.contactKindHuman : t.contactKindAgent}
                       </p>
-                      <p className="mt-1 truncate font-mono text-xs text-text-secondary/60">{contact.contact_agent_id}</p>
+                      <p className="mt-1 truncate font-mono text-xs text-text-secondary">{contact.contact_agent_id}</p>
                       {contact.alias && contact.display_name && contact.display_name !== contact.alias && (
                         <p className="mt-1 truncate text-xs text-text-secondary">{t.display}: {contact.display_name}</p>
                       )}
                     </div>
                   </div>
-                  <p className="mt-3 text-xs text-text-secondary/70">
+                  <p className="mt-3 text-xs text-text-secondary">
                     {t.addedAt} {new Date(contact.created_at).toLocaleDateString()}
                   </p>
-                </button>
+                </Card>
               );
             })}
           </ResultsGrid>
@@ -524,30 +528,15 @@ function ExploreMainPane({ onHumanOpen }: ChatPaneProps) {
         <h1 className="text-2xl font-semibold text-text-primary">
           {locale === "zh" ? "发现" : "Explore"}
         </h1>
-        <p className="mt-1 text-sm text-text-secondary/70">
+        <p className="mt-1 text-sm text-text-secondary">
           {locale === "zh" ? "找到你的同好，与有趣的人聊天" : "Find your tribe, chat with interesting people"}
         </p>
-        <div className="mt-5 inline-flex items-center gap-1 rounded-full border border-glass-border bg-glass-bg/60 p-1">
-          {exploreTabs.map((tab) => {
-            const active = exploreView === tab.key;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => {
-                  setExploreView(tab.key);
-                  startTransition(() => router.push(`/chats/explore/${tab.key}`));
-                }}
-                className={`rounded-full px-5 py-1.5 text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-text-primary text-deep-black"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+        <Tabs className="mt-5" ariaLabel={locale === "zh" ? "发现类型" : "Explore categories"} value={exploreView} onValueChange={(value) => {
+          const tab = exploreTabs.find((item) => item.key === value);
+          if (!tab) return;
+          setExploreView(tab.key);
+          startTransition(() => router.push(`/chats/explore/${tab.key}`));
+        }} items={exploreTabs.map((tab) => ({ value: tab.key, label: tab.label }))} />
         <div className="mt-5 max-w-xl">
           <SearchBar onSearch={setQuery} onInputChange={setInputQuery} placeholder={searchPlaceholder} />
         </div>
@@ -642,11 +631,11 @@ function MessagesEmptyState({ filter }: { filter: MessagesFilter }) {
   return (
     <div className="w-full max-w-md text-center">
       <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-glass-border bg-glass-bg/40">
-        <Icon className="h-6 w-6 text-neon-cyan/80" />
+        <Icon className="h-6 w-6 text-accent-text" />
       </div>
       <h2 className="text-lg font-semibold text-text-primary">{config.title}</h2>
-      <p className="mt-2 text-sm text-text-secondary/70">{config.description}</p>
-      <p className="mt-4 inline-block rounded-full border border-glass-border/60 bg-glass-bg/30 px-3 py-1 text-xs text-text-secondary/60">
+      <p className="mt-2 text-sm text-text-secondary">{config.description}</p>
+      <p className="mt-4 inline-block rounded-full border border-glass-border/60 bg-glass-bg/30 px-3 py-1 text-xs text-text-secondary">
         {config.hint}
       </p>
     </div>
@@ -776,20 +765,20 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
             <>
               {originAgent ? (
                 <div className="border-t border-glass-border bg-glass-bg/30 px-4 py-2.5">
-                  <p className="text-center text-xs text-text-secondary/70">
+                  <p className="text-center text-xs text-text-secondary">
                     由 {originAgent.display_name} 代为发言 · 你是 owner，可观察不可发
                   </p>
                 </div>
               ) : isGuest ? (
                 <div className="shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2">
                   <div className="flex items-center justify-center gap-2">
-                    <p className="text-center text-xs text-text-secondary/50">{t.readOnlyGuest}</p>
-                    <button
+                    <p className="text-center text-xs text-text-secondary">{t.readOnlyGuest}</p>
+                    <Button variant="secondary" size="sm"
                       onClick={showLoginModal}
-                      className="rounded border border-neon-cyan/30 px-2 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+
                     >
                       {t.loginToParticipate}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && openedRoomId && humanSendAllowed ? (
@@ -798,7 +787,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
                 </div>
               ) : (isAuthedReady || isAuthedHuman) && isJoinedRoom && !humanSendAllowed ? (
                 <div className="shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2">
-                  <p className="text-center text-xs text-text-secondary/50">{t.humanSendDisabled}</p>
+                  <p className="text-center text-xs text-text-secondary">{t.humanSendDisabled}</p>
                 </div>
               ) : null}
             </>

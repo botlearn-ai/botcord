@@ -1,5 +1,17 @@
 "use client";
+import Skeleton from "@/components/ui/Skeleton";
+import Tabs from "@/components/ui/Tabs";
+import Field from "@/components/ui/Field";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
 
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import { Textarea } from "@/components/ui/Input";
+import Checkbox from "@/components/ui/Checkbox";
+
+import Radio from "@/components/ui/Radio";
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, Bot, Clock, FileText, Loader2, MessageSquare, Plug, RefreshCw, Shield, Sparkles, Trash2, User, UserRound, X } from "lucide-react";
@@ -90,8 +102,8 @@ function RadioGroup<T extends string>({
                 : "border-glass-border bg-transparent hover:bg-glass-bg/60"
             } ${disabled ? "pointer-events-none opacity-50" : ""}`}
           >
-            <input
-              type="radio"
+            <Radio
+
               name={name}
               value={opt.value}
               checked={selected}
@@ -146,7 +158,7 @@ function KeywordChips({
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-1.5">
         {value.length === 0 ? (
-          <span className="text-xs text-text-tertiary">{emptyLabel}</span>
+          <span className="text-xs text-text-secondary">{emptyLabel}</span>
         ) : (
           value.map((kw) => (
             <span
@@ -154,19 +166,19 @@ function KeywordChips({
               className="inline-flex items-center gap-1 rounded-full border border-neon-cyan/30 bg-neon-cyan/5 px-2 py-0.5 text-xs text-neon-cyan"
             >
               {kw}
-              <button
+              <IconButton label="Close"
                 type="button"
                 onClick={() => remove(kw)}
                 disabled={disabled}
-                className="rounded-full p-0.5 hover:bg-neon-cyan/10 disabled:opacity-50"
+
               >
                 <X className="h-3 w-3" />
-              </button>
+              </IconButton>
             </span>
           ))
         )}
       </div>
-      <input
+      <Input
         type="text"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -179,7 +191,7 @@ function KeywordChips({
         onBlur={() => add(draft)}
         disabled={disabled}
         placeholder={placeholder}
-        className="rounded-xl border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-neon-cyan/40 focus:outline-none disabled:opacity-50"
+
       />
     </div>
   );
@@ -259,13 +271,13 @@ function SummaryTile({
     tone === "green"
       ? "border-neon-green/30 bg-neon-green/5 text-neon-green"
       : tone === "yellow"
-        ? "border-yellow-400/30 bg-yellow-400/5 text-yellow-300"
+        ? "border-warning/30 bg-warning-soft text-warning"
         : tone === "red"
-          ? "border-red-400/30 bg-red-400/5 text-red-300"
+          ? "border-danger/30 bg-danger-soft text-danger"
           : "border-neon-cyan/30 bg-neon-cyan/5 text-neon-cyan";
   return (
     <div className={`rounded-xl border px-3 py-3 ${toneClass}`}>
-      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-normal opacity-80">
+      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium opacity-80">
         {icon}
         {label}
       </div>
@@ -492,84 +504,46 @@ function AgentSettingsDrawer({
   }, [onClose]);
 
   useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, drawerRef.current, {
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, drawerRef.current, { onComplete: () => { if (drawerRef.current) drawerRef.current.style.transform = "none"; },
       direction: "right",
     });
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWithMotion();
-    };
-    document.addEventListener("keydown", onKeyDown);
+
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+
       cleanupAnime(animationRef.current);
     };
   }, [closeWithMotion]);
 
   return (
-    <div ref={overlayRef} className="liquid-scrim fixed inset-0 z-50" onClick={closeWithMotion}>
-      <div
-        ref={drawerRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-drawer ml-auto flex h-full w-full max-w-[480px] flex-col overflow-hidden border-l border-glass-border shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={drawerRef} onClose={closeWithMotion} title={<>{displayName}</>} placement="right" overlayClassName="z-50" className="max-w-[480px] overflow-hidden">
         {/* Header */}
         <div className="liquid-toolbar flex items-center justify-between border-b border-glass-border px-6 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold text-text-primary">
               {displayName}
             </h2>
-            <p className="font-mono text-xs text-text-secondary/50">{agentId}</p>
+            <p className="font-mono text-xs text-text-secondary">{agentId}</p>
           </div>
-          <button
+          <IconButton label="Close"
             type="button"
             onClick={closeWithMotion}
-            className="ml-4 rounded-full p-2 text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="ml-4"
           >
             <X className="h-5 w-5" />
-          </button>
+          </IconButton>
         </div>
 
         {/* Tabs */}
-        <div className="liquid-tabs flex flex-nowrap overflow-x-auto border-b border-glass-border/60 px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {(["profile", "policy", "schedules", "gateways", "skills", "files"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-3 text-xs font-medium transition-colors ${
-                tab === t
-                  ? "border-b-2 border-neon-cyan text-neon-cyan"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              {t === "profile" ? (
-                <User className="h-3.5 w-3.5" />
-              ) : t === "policy" ? (
-                <MessageSquare className="h-3.5 w-3.5" />
-              ) : t === "gateways" ? (
-                <Plug className="h-3.5 w-3.5" />
-              ) : t === "schedules" ? (
-                <Clock className="h-3.5 w-3.5" />
-              ) : t === "skills" ? (
-                <Sparkles className="h-3.5 w-3.5" />
-              ) : (
-                <FileText className="h-3.5 w-3.5" />
-              )}
-              {t === "profile"
-                  ? botDetailDrawer[locale].profile.title
-                : t === "policy"
-                  ? labels.policyTab
-                : t === "schedules"
-                    ? botDetailDrawer[locale].settings.autonomy
-                    : t === "gateways"
-                      ? botDetailDrawer[locale].settings.channels
-                      : t === "skills"
-                        ? labels.skillsTab
-                        : labels.filesTab}
-            </button>
-          ))}
+        <div className="px-6">
+          <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} variant="underline" size="sm" ariaLabel={displayName}
+            items={([
+              ["profile", botDetailDrawer[locale].profile.title, User],
+              ["policy", labels.policyTab, MessageSquare],
+              ["schedules", botDetailDrawer[locale].settings.autonomy, Clock],
+              ["gateways", botDetailDrawer[locale].settings.channels, Plug],
+              ["skills", labels.skillsTab, Sparkles],
+              ["files", labels.filesTab, FileText],
+            ] as const).map(([value, label, Icon]) => ({ value, label, icon: <Icon className="h-4 w-4" /> }))} />
         </div>
 
         {/* Content */}
@@ -589,34 +563,30 @@ function AgentSettingsDrawer({
                 />
               </div>
 
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-secondary">
-                  {t.profile.displayName}
-                </label>
-                <input
+              <Field label={<>{t.profile.displayName}</>}>
+
+                <Input
                   type="text"
                   value={nameVal}
                   onChange={(e) => setNameVal(e.target.value)}
                   disabled={profileSaving}
                   maxLength={128}
-                  className="liquid-input w-full rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none transition-colors disabled:opacity-60"
+                  className="w-full"
                 />
-              </div>
+              </Field>
 
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-secondary">
-                  {t.profile.bio}
-                </label>
-                <textarea
+              <Field label={<>{t.profile.bio}</>}>
+
+                <Textarea
                   value={bioVal}
                   onChange={(e) => setBioVal(e.target.value)}
                   disabled={profileSaving}
                   rows={4}
                   maxLength={4000}
                   placeholder={t.profile.bioPlaceholder}
-                  className="liquid-input w-full resize-none rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none transition-colors disabled:opacity-60"
+                  className="w-full"
                 />
-              </div>
+              </Field>
 
               <BotRuntimeCapabilitiesPanel
                 agentId={agentId}
@@ -629,16 +599,16 @@ function AgentSettingsDrawer({
               />
 
               {profileError && (
-                <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
+                <Alert tone="danger" >
                   {profileError}
-                </p>
+                </Alert>
               )}
 
-              <button
+              <Button variant="primary"
                 type="button"
                 onClick={handleSaveProfile}
                 disabled={!canSaveProfile}
-                className="flex items-center gap-2 rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-60"
+
               >
                 {profileSaving ? (
                   <>
@@ -648,18 +618,18 @@ function AgentSettingsDrawer({
                 ) : (
                   labels.saveProfile
                 )}
-              </button>
+              </Button>
 
               <div className="border-t border-glass-border pt-4">
-                <button
+                <Button variant="danger"
                   type="button"
                   onClick={() => setShowUnbind(true)}
                   disabled={profileSaving}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 disabled:opacity-60"
+                  className="w-full"
                 >
                   <Trash2 className="h-4 w-4" />
                   {labels.deleteAgent}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -667,25 +637,25 @@ function AgentSettingsDrawer({
           {tab === "policy" && (
             <div className="space-y-6">
               {policyError && (
-                <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+                <Alert tone="danger" >
                   {policyError}
                   {!policy && (
-                    <button type="button" className="ml-3 underline" onClick={() => {
+                    <Button variant="ghost" type="button" className="ml-3" onClick={() => {
                       setPolicyError(null);
                       void loadGlobal(agentId).catch((err) => setPolicyError(err instanceof Error ? err.message : String(err)));
-                    }}>{t.files.refresh}</button>
+                    }}>{t.files.refresh}</Button>
                   )}
-                </div>
+                </Alert>
               )}
 
               {!policy ? (
                 <div className={policyError ? "hidden" : "space-y-4"}>
                   {[1, 2].map((i) => (
                     <div key={i} className="animate-pulse rounded-2xl border border-glass-border bg-glass-bg/40 p-5">
-                      <div className="mb-3 h-4 w-28 rounded bg-glass-bg" />
+                      <Skeleton shape="block" height={16} width={112} className="mb-3" />
                       <div className="space-y-2">
-                        <div className="h-9 rounded bg-glass-bg/70" />
-                        <div className="h-9 rounded bg-glass-bg/70" />
+                        <Skeleton shape="block" height={36} />
+                        <Skeleton shape="block" height={36} />
                       </div>
                     </div>
                   ))}
@@ -730,40 +700,22 @@ function AgentSettingsDrawer({
                     />
 
                     <div className="mt-5 rounded-xl border border-glass-border bg-deep-black/20 p-3">
-                      <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
+                      <div className="mb-3 flex items-center gap-2 text-xs font-medium text-text-secondary">
                         <Bot className="h-3.5 w-3.5" />
                         {labels.senderTypes}
                       </div>
-                      <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-glass-border/70 bg-glass-bg/30 px-3 py-2 text-sm text-text-primary">
-                        <span>
+                      <Checkbox checked={policy.allow_agent_sender} onCheckedChange={(checked) => void applyPolicy({ allow_agent_sender: checked })} disabled={policySaving} label={<><span>
                           Agent
                           <span className="ml-2 text-xs text-text-secondary">{labels.agentSenderHint}</span>
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={policy.allow_agent_sender}
-                          onChange={(e) => void applyPolicy({ allow_agent_sender: e.target.checked })}
-                          disabled={policySaving}
-                          className="accent-neon-cyan"
-                        />
-                      </label>
-                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-glass-border/70 bg-glass-bg/30 px-3 py-2 text-sm text-text-primary">
-                        <span>
+                        </span></>} />
+                      <Checkbox checked={policy.allow_human_sender} onCheckedChange={(checked) => void applyPolicy({ allow_human_sender: checked })} disabled={policySaving} label={<><span>
                           {locale === "zh" ? "真人用户" : "Human"}
                           <span className="ml-2 text-xs text-text-secondary">{labels.humanSenderHint}</span>
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={policy.allow_human_sender}
-                          onChange={(e) => void applyPolicy({ allow_human_sender: e.target.checked })}
-                          disabled={policySaving}
-                          className="accent-neon-cyan"
-                        />
-                      </label>
+                        </span></>} />
                     </div>
 
                     <div className="mt-5">
-                      <div className="mb-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
+                      <div className="mb-2 text-xs font-medium text-text-secondary">
                         {labels.inviteMe}
                       </div>
                       <RadioGroup
@@ -835,11 +787,11 @@ function AgentSettingsDrawer({
                     {runtimeLabel ? runtimeLabel : t.files.subtitle}
                   </p>
                 </div>
-                <button
+                <Button variant="secondary"
                   type="button"
                   onClick={() => void loadRuntimeFiles()}
                   disabled={filesLoading}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-glass-border bg-glass-bg text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+                  className="w-9 shrink-0"
                   title={t.files.refresh}
                 >
                   {filesLoading ? (
@@ -847,19 +799,19 @@ function AgentSettingsDrawer({
                   ) : (
                     <RefreshCw className="h-4 w-4" />
                   )}
-                </button>
+                </Button>
               </div>
 
               {filesError && (
-                <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+                <Alert tone="danger" >
                   {filesError}
-                </div>
+                </Alert>
               )}
 
               {filesLoading && runtimeFiles.length === 0 ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-14 animate-pulse rounded-xl bg-glass-bg/60" />
+                    <Skeleton shape="block" height={56} key={i} />
                   ))}
                 </div>
               ) : runtimeFiles.length === 0 ? (
@@ -873,30 +825,26 @@ function AgentSettingsDrawer({
                       const selected = file.id === selectedFileId;
                       const size = formatBytes(file.size);
                       return (
-                        <button
+                        <Button aria-pressed={selected} variant="row"
                           key={file.id}
                           type="button"
                           onClick={() => setSelectedFileId(file.id)}
-                          className={`flex min-h-[56px] items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
-                            selected
-                              ? "border-neon-cyan/40 bg-neon-cyan/5"
-                              : "border-glass-border bg-glass-bg/40 hover:bg-glass-bg/70"
-                          }`}
+
                         >
                           <div className="min-w-0">
                             <div className="truncate text-sm text-text-primary">{file.name}</div>
-                            <div className="mt-0.5 flex flex-wrap gap-1.5 text-xs uppercase tracking-normal text-text-secondary">
+                            <div className="mt-0.5 flex flex-wrap gap-1.5 text-xs text-text-secondary">
                               <span>{scopeLabel(file.scope, locale === "zh")}</span>
                               {file.profile ? <span>{file.profile}</span> : null}
                               {size ? <span>{size}</span> : null}
                             </div>
                           </div>
                           {file.truncated ? (
-                            <span className="shrink-0 rounded border border-yellow-400/30 px-1.5 py-0.5 text-xs text-yellow-300">
+                            <span className="shrink-0 rounded border border-warning/30 px-1.5 py-0.5 text-xs text-warning">
                               {t.files.tooLarge}
                             </span>
                           ) : null}
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -924,21 +872,6 @@ function AgentSettingsDrawer({
             </div>
           )}
         </div>
-      </div>
-
-      {showUnbind && (
-        <UnbindAgentDialog
-          agentId={agentId}
-          agentName={displayName}
-          deleteMode={hostingKind === "cloud" ? "cloud" : "unbind"}
-          onClose={() => setShowUnbind(false)}
-          onUnbound={async () => {
-            await refreshUserProfile();
-            onSaved?.();
-            closeWithMotion();
-          }}
-        />
-      )}
-    </div>
+      </DialogSurface>
   );
 }

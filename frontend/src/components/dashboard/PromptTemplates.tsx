@@ -7,6 +7,9 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Badge from "@/components/ui/Badge";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import { useMemo, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { promptTemplatesUi } from "@/lib/i18n/translations/dashboard";
@@ -101,50 +104,50 @@ function TemplateCardView({
   };
 
   return (
-    <div className="liquid-card overflow-hidden rounded-2xl border border-glass-border transition-colors hover:border-neon-cyan/40">
+    <Card padding="none" className="overflow-hidden">
       {/* Header */}
       <div className="px-5 pt-5 pb-3">
         <h3 className="text-sm font-semibold text-text-primary">{t[card.titleKey]}</h3>
         <p className="mt-1.5 text-xs leading-5 text-text-secondary">{t[card.descKey]}</p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {card.tags.map((tag) => (
-            <span
+            <Badge tone="neutral"
               key={tag}
-              className="rounded-full border border-glass-border bg-glass-bg px-2.5 py-0.5 text-xs text-text-secondary"
+
             >
               {t[tag]}
-            </span>
+            </Badge>
           ))}
         </div>
       </div>
 
       {/* Actions */}
       <div className="flex items-center gap-2 border-t border-glass-border/60 px-5 py-3">
-        <button
+        <Button variant="secondary" size="sm"
           type="button"
           onClick={() => void handleCopy()}
-          className="rounded-lg border border-neon-cyan/35 bg-neon-cyan/10 px-3.5 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+
         >
           {copied ? t.copied : t.copyPrompt}
-        </button>
-        <button
+        </Button>
+        <Button variant="secondary" size="sm"
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="rounded-lg border border-glass-border px-3.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-neon-cyan/40 hover:text-text-primary"
+
         >
           {expanded ? (locale === "zh" ? "收起" : "Collapse") : (locale === "zh" ? "预览 Prompt" : "Preview")}
-        </button>
+        </Button>
       </div>
 
       {/* Expandable prompt preview */}
       {expanded && (
         <div className="liquid-tool-surface border-t border-glass-border/50">
-          <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-xs leading-5 text-text-secondary/85">
+          <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-xs leading-5 text-text-secondary">
             {prompt}
           </pre>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 

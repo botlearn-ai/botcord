@@ -7,6 +7,12 @@
  * [PROTOCOL]: update header on changes
  */
 
+import LinkButton from "@/components/ui/LinkButton";
+import Card from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
+import Tabs from "@/components/ui/Tabs";
+import Alert from "@/components/ui/Alert";
+import Button from "@/components/ui/Button";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -214,18 +220,7 @@ function Notice({
   icon: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const classes =
-    tone === "success"
-      ? "border-neon-green/25 bg-neon-green/10 text-neon-green"
-      : tone === "warning"
-        ? "border-yellow-400/25 bg-yellow-400/10 text-yellow-200"
-        : "border-red-400/25 bg-red-400/10 text-red-300";
-  return (
-    <div className={`mb-4 flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${classes}`}>
-      <span className="mt-0.5 shrink-0">{icon}</span>
-      <div className="min-w-0">{children}</div>
-    </div>
-  );
+  return <Alert tone={tone === "error" ? "danger" : tone} className="mb-4">{children}</Alert>;
 }
 
 function ScopeList({
@@ -243,32 +238,28 @@ function ScopeList({
         const active = activeScopes?.has(scope) ?? false;
         const isDaemonScope = scope === DAEMON_PROVISION_SCOPE;
         return (
-          <div
-            key={scope}
-            className="rounded-lg border border-glass-border bg-deep-black/30 px-3 py-3"
-          >
+          <Card padding="md"
+            key={scope} >
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-text-primary">
                 {scopeLabel(scope)}
               </span>
-              <span className="rounded border border-glass-border bg-glass-bg px-1.5 py-0.5 font-mono text-xs text-text-secondary">
+              <Badge tone="neutral" >
                 {scope}
-              </span>
+              </Badge>
               {active ? (
-                <span className="rounded-full bg-neon-green/10 px-2 py-0.5 text-xs text-neon-green">
-                  Active
-                </span>
+                <Badge tone="success">Active</Badge>
               ) : null}
             </div>
             <p className="mt-1 text-xs text-text-secondary">
               {scopeDescription(scope)}
             </p>
             {isDaemonScope && daemonInstanceId ? (
-              <p className="mt-2 font-mono text-xs text-text-tertiary">
+              <p className="mt-2 font-mono text-xs text-text-secondary">
                 daemon_instance_id: {daemonInstanceId}
               </p>
             ) : null}
-          </div>
+          </Card>
         );
       })}
     </div>
@@ -295,9 +286,8 @@ function RequestContextPanel({
           </div>
           <div
             className={`mt-1 break-words text-sm ${
-              hasDeviceName ? "text-text-primary" : "text-yellow-200"
-            }`}
-          >
+              hasDeviceName ? "text-text-primary" : "text-warning"
+            }`} >
             {requestContext.deviceName || "Device not included in this link"}
           </div>
           <p className="mt-1 text-xs text-text-secondary">
@@ -471,15 +461,14 @@ export default function CliPermissionsClient({
             </p>
           </div>
         </div>
-        <Link
+        <LinkButton variant="secondary"
           href="/chats/messages"
-          className="rounded-lg border border-glass-border px-3 py-1.5 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
-        >
+           >
           Dashboard
-        </Link>
+        </LinkButton>
       </header>
 
-      <section className="mb-4 rounded-lg border border-glass-border bg-glass-bg/40 p-5">
+      <Card as="section" padding="md" className="mb-4">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-xs font-medium uppercase tracking-normal text-text-secondary">
@@ -507,7 +496,7 @@ export default function CliPermissionsClient({
         {needsDaemonId ? (
           <Notice tone="warning" icon={<AlertTriangle className="h-4 w-4" />}>
             <div className="font-medium">Daemon-specific approval required</div>
-            <div className="mt-1 text-yellow-100/80">
+            <div className="mt-1 text-warning">
               The requested scope includes <span className="font-mono">{DAEMON_PROVISION_SCOPE}</span>,
               but this link has no <span className="font-mono">daemon_instance_id</span>.
               No global daemon grant will be created.
@@ -518,13 +507,12 @@ export default function CliPermissionsClient({
         {loadError ? (
           <Notice tone="error" icon={<XCircle className="h-4 w-4" />}>
             Could not load existing grants: {loadError}
-            <button
+            <Button variant="danger" size="sm"
               type="button"
               onClick={() => void load()}
-              className="ml-3 rounded border border-red-400/40 px-2 py-0.5 text-xs text-red-200 hover:bg-red-400/10"
-            >
+              className="ml-3" >
               Retry
-            </button>
+            </Button>
           </Notice>
         ) : null}
 
@@ -540,10 +528,10 @@ export default function CliPermissionsClient({
             />
           </>
         ) : null}
-      </section>
+      </Card>
 
       {createdGrants ? (
-        <section className="mb-4 rounded-lg border border-neon-green/25 bg-neon-green/10 p-5">
+        <Alert tone="success" className="mb-4">
           <div className="mb-3 flex items-center gap-2 text-neon-green">
             <CheckCircle2 className="h-5 w-5" />
             <h2 className="text-sm font-semibold">Permission approved</h2>
@@ -553,25 +541,25 @@ export default function CliPermissionsClient({
             activeScopes={new Set(createdGrants.map((grant) => grant.scope))}
             daemonInstanceId={daemonInstanceId}
           />
-          <div className="mt-3 space-y-1 text-xs text-neon-green/80">
+          <div className="mt-3 space-y-1 text-xs text-success">
             {createdGrants.map((grant) => (
               <div key={grant.id}>
                 {scopeLabel(grant.scope)} expires {formatDate(grant.expires_at)}
               </div>
             ))}
           </div>
-          <div className="mt-4 rounded-lg border border-neon-green/20 bg-deep-black/30 px-3 py-3 text-sm text-neon-green">
+          <div  className="mt-4">
             <div className="mb-1 flex items-center gap-2 font-medium">
               <Terminal className="h-4 w-4" />
               Return to CLI
             </div>
-            <p className="text-xs text-neon-green/80">
+            <div>
               Re-run the command that printed this authorization link.
-            </p>
+            </div>
           </div>
-        </section>
+        </Alert>
       ) : (
-        <section className="rounded-lg border border-glass-border bg-glass-bg/40 p-5">
+        <Card as="section" padding="md" >
           <div className="mb-4 flex items-center gap-2">
             <Clock3 className="h-4 w-4 text-text-secondary" />
             <div>
@@ -584,26 +572,7 @@ export default function CliPermissionsClient({
             </div>
           </div>
 
-          <div className="mb-5 inline-flex rounded-lg border border-glass-border bg-deep-black/30 p-1">
-            {EXPIRATION_OPTIONS.map((option) => {
-              const active = expiresInDays === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setExpiresInDays(option.value)}
-                  disabled={submitting}
-                  className={`rounded-md px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${
-                    active
-                      ? "bg-neon-cyan/15 text-neon-cyan"
-                      : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
+          <Tabs value={String(expiresInDays)} onValueChange={(value) => { const option = EXPIRATION_OPTIONS.find((item) => String(item.value) === value); if (option) setExpiresInDays(option.value); }} ariaLabel="Expiration" className="mb-5" items={EXPIRATION_OPTIONS.map((option) => ({ value: String(option.value), label: option.label, disabled: submitting }))} />
 
           <div className="mb-4 flex items-center gap-2">
             <Hash className="h-4 w-4 text-text-secondary" />
@@ -617,26 +586,7 @@ export default function CliPermissionsClient({
             </div>
           </div>
 
-          <div className="mb-5 inline-flex rounded-lg border border-glass-border bg-deep-black/30 p-1">
-            {USAGE_LIMIT_OPTIONS.map((option) => {
-              const active = maxUses === option.value;
-              return (
-                <button
-                  key={option.label}
-                  type="button"
-                  onClick={() => setMaxUses(option.value)}
-                  disabled={submitting}
-                  className={`rounded-md px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${
-                    active
-                      ? "bg-neon-cyan/15 text-neon-cyan"
-                      : "text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
+          <Tabs value={String(maxUses)} onValueChange={(value) => { const option = USAGE_LIMIT_OPTIONS.find((item) => String(item.value) === value); if (option) setMaxUses(option.value); }} ariaLabel="Usage limit" className="mb-5" items={USAGE_LIMIT_OPTIONS.map((option) => ({ value: String(option.value), label: option.label, disabled: submitting }))} />
 
           {submitError ? (
             <Notice tone="error" icon={<XCircle className="h-4 w-4" />}>
@@ -651,23 +601,21 @@ export default function CliPermissionsClient({
             </Notice>
           ) : null}
 
-          <button
+          <Button variant="primary"
             type="button"
             onClick={() => void approve()}
-            disabled={!hasScopes || needsDaemonId || submitting}
-            className="inline-flex items-center gap-2 rounded-lg bg-neon-cyan px-4 py-2 text-sm font-semibold text-deep-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+            disabled={!hasScopes || needsDaemonId || submitting} >
             {submitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <ShieldCheck className="h-4 w-4" />
             )}
             Approve
-          </button>
+          </Button>
           <span className="ml-3 align-middle text-xs text-text-secondary">
             {usageLimitLabel(maxUses)}
           </span>
-        </section>
+        </Card>
       )}
     </div>
   );

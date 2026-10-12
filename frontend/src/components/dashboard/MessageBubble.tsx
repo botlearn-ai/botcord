@@ -1,5 +1,8 @@
 "use client";
 
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import IconButton from "@/components/ui/IconButton";
 import { memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -47,11 +50,11 @@ interface MessageBubbleProps {
 }
 
 const stateColors: Record<string, { color: string; icon: string }> = {
-  queued:    { color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30", icon: "⏳" },
+  queued:    { color: "text-warning bg-warning-soft border-warning/40", icon: "⏳" },
   delivered: { color: "text-blue-400 bg-blue-400/10 border-blue-400/30",     icon: "✓" },
-  acked:     { color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/30", icon: "✓✓" },
-  done:      { color: "text-green-400 bg-green-400/10 border-green-400/30",   icon: "✔" },
-  failed:    { color: "text-red-400 bg-red-400/10 border-red-400/30",         icon: "✗" },
+  acked:     { color: "text-success bg-emerald-400/10 border-emerald-400/30", icon: "✓✓" },
+  done:      { color: "text-success bg-green-400/10 border-green-400/30",   icon: "✔" },
+  failed:    { color: "text-danger bg-danger-soft border-danger/40",         icon: "✗" },
 };
 
 const showMessageStatus = (() => {
@@ -135,13 +138,13 @@ function CollapsibleMessageBody({
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-zinc-950/95 via-zinc-950/70 to-transparent" />
         )}
       </div>
-      <button
+      <Button variant="inline"
         type="button"
         onClick={(e) => {
           e.stopPropagation();
           setExpanded((value) => !value);
         }}
-        className="mt-1.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan/80"
+        className="mt-1.5 inline-flex items-center gap-1"
         aria-expanded={expanded}
       >
         {expanded ? (
@@ -155,7 +158,7 @@ function CollapsibleMessageBody({
             {expandLabel}
           </>
         )}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -249,13 +252,13 @@ function StateCountsBadges({ counts }: { counts: Record<string, number> }) {
         const sc = stateConfig[state];
         if (!sc) return null;
         return (
-          <span
+          <Badge tone="neutral"
             key={state}
-            className={`inline-flex items-center gap-0.5 rounded border px-1 py-px text-xs font-medium ${sc.color}`}
+
           >
             <span className="text-xs">{sc.icon}</span>
             {count}/{total} {sc.label}
-          </span>
+          </Badge>
         );
       })}
     </span>
@@ -311,13 +314,13 @@ function ReplyingAvatarStack({ reactions }: { reactions: MessageStatusReaction[]
           );
         })}
         {extra > 0 && (
-          <span className="z-0 -ml-1.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-yellow-400/40 bg-deep-black-light text-[11px] font-medium text-yellow-200">
+          <Badge tone="warning" >
             +{extra}
-          </span>
+          </Badge>
         )}
       </span>
       {reactions.length === 1 && (
-        <span className="max-w-[96px] truncate text-xs font-medium text-yellow-200/90">
+        <span className="max-w-[96px] truncate text-xs font-medium text-warning">
           {reactions[0].actor_name || reactions[0].actor_id}
         </span>
       )}
@@ -753,7 +756,7 @@ function MessageBubble({
 
   const moreButton = !isRecalled && (displayText || canQuoteReply || canRecall) && (
     <div className="relative shrink-0">
-      <button
+      <IconButton size="sm" label="More actions"
         ref={moreButtonRef}
         type="button"
         onClick={(event) => {
@@ -765,12 +768,12 @@ function MessageBubble({
           updateActionMenuPosition();
           setMenuOpen(true);
         }}
-        className={`liquid-message-action flex h-8 w-8 max-md:h-11 max-md:w-11 items-center justify-center rounded-xl text-text-secondary transition-colors ${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none focus:opacity-100 focus:pointer-events-auto"}`}
+        className={`flex items-center justify-center${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none focus:opacity-100 focus:pointer-events-auto"} `}
         aria-label="More actions"
         aria-expanded={menuOpen}
       >
         <MoreHorizontal className="h-3.5 w-3.5" />
-      </button>
+      </IconButton>
       {menuOpen && menuPosition && typeof document !== "undefined" && createPortal(
         <div
           ref={actionMenuRef}
@@ -779,53 +782,53 @@ function MessageBubble({
           onMouseDown={(event) => event.stopPropagation()}
         >
           {canQuoteReply && (
-            <button
+            <Button variant="row"
               data-message-action-item
               type="button"
               onClick={() => { handleReplyClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+              className="flex w-full items-center gap-2"
             >
-              <CornerUpLeft className="h-3.5 w-3.5 text-zinc-500" />
+              <CornerUpLeft className="h-3.5 w-3.5 text-text-secondary" />
               {locale === "zh" ? "回复" : "Reply"}
-            </button>
+            </Button>
           )}
           {displayText && (
-            <button
+            <Button variant="row"
               data-message-action-item
               type="button"
               onClick={() => { handleForwardClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+              className="flex w-full items-center gap-2"
             >
-              <Forward className="h-3.5 w-3.5 text-zinc-500" />
+              <Forward className="h-3.5 w-3.5 text-text-secondary" />
               转发
-            </button>
+            </Button>
           )}
           {canRecall && (
-            <button
+            <Button variant="row"
               data-message-action-item
               type="button"
               disabled={recallPending}
               onClick={() => { void handleRecallClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+              className="flex w-full items-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <RotateCcw className="h-3.5 w-3.5 text-zinc-500" />
+              <RotateCcw className="h-3.5 w-3.5 text-text-secondary" />
               {locale === "zh" ? "撤回" : "Recall"}
-            </button>
+            </Button>
           )}
           {displayText && (
-            <button
+            <Button variant="row"
               data-message-action-item
               type="button"
               onClick={() => { void handleCopyClick(); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+              className="flex w-full items-center gap-2"
             >
               {copied ? (
-                <Check className="h-3.5 w-3.5 text-emerald-400" />
+                <Check className="h-3.5 w-3.5 text-success" />
               ) : (
-                <Copy className="h-3.5 w-3.5 text-zinc-500" />
+                <Copy className="h-3.5 w-3.5 text-text-secondary" />
               )}
               {copied ? "已复制" : "复制"}
-            </button>
+            </Button>
           )}
         </div>,
         document.body,
@@ -851,14 +854,14 @@ function MessageBubble({
       {!isOwn && sideAvatar}
       <div className={fullWidth ? "min-w-0 flex-1" : "min-w-0 max-w-[70%] max-md:max-w-[calc(100%-5.75rem)]"}>
         {!isOwn && roomSummary?.space_kind !== "dm" && !effectiveRoomId?.startsWith("rm_dm_") && !effectiveRoomId?.startsWith("rm_oc_") && (
-          <button
+          <Button variant="row"
             type="button"
             data-sender-name
             onClick={(event) => { event.stopPropagation(); handleSelectSender(); }}
-            className="mb-1 block max-w-full truncate px-1 text-left text-xs leading-4 text-text-secondary hover:text-text-primary hover:underline"
+            className="mb-1 block max-w-full truncate"
           >
             {senderDisplayName}
-          </button>
+          </Button>
         )}
         <div
           className={`liquid-message min-w-0 rounded-2xl border px-3 py-2 ${
@@ -876,9 +879,9 @@ function MessageBubble({
 
           {/* Goal badge */}
           {!isRecalled && message.goal && (
-            <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-neon-cyan/20 bg-neon-cyan/5 px-2 py-1.5">
-              <span className="mt-px text-xs text-neon-cyan/70">🎯</span>
-              <span className="text-xs leading-relaxed text-neon-cyan/90">{message.goal}</span>
+            <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border border-neon-cyan/20 bg-accent-soft px-2 py-1.5">
+              <span className="mt-px text-xs text-accent-text">🎯</span>
+              <span className="text-xs leading-relaxed text-accent-text">{message.goal}</span>
             </div>
           )}
 
@@ -897,29 +900,29 @@ function MessageBubble({
           )}
 
           {isRecalled ? (
-            <p className="mt-1 text-sm italic text-text-secondary/70">
+            <p className="mt-1 text-sm italic text-text-secondary">
               {recalledMessageLabel(locale)}
             </p>
           ) : isErrorMessage ? (
-            <button
+            <Button variant="row"
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
                 setShowErrorDetails(true);
               }}
-              className="mt-1.5 flex w-full min-w-0 items-start gap-2 rounded-md border border-zinc-700/45 bg-zinc-900/35 px-2.5 py-2 text-left text-xs transition-colors hover:border-zinc-600/70 hover:bg-zinc-900/55"
+              className="mt-1.5 flex w-full min-w-0 items-start gap-2"
             >
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-secondary" />
               <span className="min-w-0 flex-1">
-                <span className="block font-medium text-zinc-300/80">
+                <span className="block font-medium text-text-secondary">
                   {errorTitle}
                 </span>
-                <span className="mt-0.5 block truncate text-zinc-500">
+                <span className="mt-0.5 block truncate text-text-secondary">
                   {displayText || "Runtime error"}
                 </span>
-                <span className="mt-1 block text-xs text-zinc-600">{errorDetailsLabel}</span>
+                <span className="mt-1 block text-xs text-text-secondary">{errorDetailsLabel}</span>
               </span>
-            </button>
+            </Button>
           ) : transferInfo ? (
             <TransferCard info={transferInfo} isNotice={displayText?.startsWith("[BotCord Notice]")} />
           ) : (
@@ -949,24 +952,24 @@ function MessageBubble({
 
           {/* Footer: time + type + state */}
           <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${isOwn ? "justify-end" : ""}`}>
-            <span className="font-mono text-xs text-text-secondary/50">
+            <span className="font-mono text-xs text-text-secondary">
               {timestampLabel}
             </span>
             {message.type !== "message" && (
-              <span className="rounded bg-glass-bg px-1 font-mono text-xs text-text-secondary/70">
+              <Badge tone="neutral" >
                 {message.type}
-              </span>
+              </Badge>
             )}
             <ReplyingAvatarStack reactions={activeStatusReactions.filter((reaction) => reaction.kind === "replying")} />
             {activeStatusReactions.filter((reaction) => reaction.kind !== "replying").map((reaction) => (
-              <span
+              <Badge tone="warning"
                 key={`${reaction.actor_id}:${reaction.kind}`}
-                className="inline-flex items-center gap-1 rounded border border-yellow-400/25 bg-yellow-400/10 px-1 py-px text-xs font-medium text-yellow-200"
+
                 title={`${reaction.actor_name || reaction.actor_id} replying`}
               >
                 <span className="text-xs leading-none">{reaction.emoji}</span>
                 <span className="max-w-[96px] truncate">{reaction.actor_name || reaction.actor_id}</span>
-              </span>
+              </Badge>
             ))}
             {showMessageStatus && !(teamFeedback && message.sender_kind === "human") && (
               <>

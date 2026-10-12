@@ -55,7 +55,7 @@ describe("composer interaction", () => {
     expect(input().getAttribute("aria-controls")).toBe(document.querySelector('[role="listbox"]')?.id);
     await click(options()[0]);
     expect(input().value).toBe("@Alice ");
-    expect(host.querySelector('[aria-hidden="true"] .text-neon-cyan')?.textContent).toBe("@Alice");
+    expect(host.querySelector('[aria-hidden="true"] .text-accent-text')?.textContent).toBe("@Alice");
     await click(host.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!);
     expect(onSend).toHaveBeenCalledWith("@Alice(hu_alice) ", [], ["hu_alice"]);
     expect(document.activeElement).toBe(input());

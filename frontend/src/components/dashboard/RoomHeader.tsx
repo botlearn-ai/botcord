@@ -6,6 +6,10 @@
  */
 "use client";
 
+import Badge from "@/components/ui/Badge";
+import IconButton from "@/components/ui/IconButton";
+import DismissLayer from "@/components/ui/DismissLayer";
+import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 import { common } from "@/lib/i18n/translations/common";
@@ -312,7 +316,7 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
 
   if (!room) return (
     <div className="flex shrink-0 items-center border-b border-glass-border">
-      <button type="button" onClick={handleMobileBack} aria-label="Back to messages" className="hidden h-11 w-11 shrink-0 items-center justify-center max-md:flex"><ArrowLeft size={20} /></button>
+      <IconButton size="sm" label="Back to messages" type="button" onClick={handleMobileBack} aria-label="Back to messages" className="hidden shrink-0 items-center justify-center max-md:flex"><ArrowLeft size={20} /></IconButton>
       <div className="min-w-0 flex-1"><MessageRoomHeaderSkeleton label={tc.loading} /></div>
     </div>
   );
@@ -336,41 +340,41 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
     if (isInviteOnly) {
       if (joinRequestStatus === "pending") {
         return (
-          <span className="shrink-0 whitespace-nowrap rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400">
+          <Badge tone="warning" className="shrink-0">
             {t.requestPending}
-          </span>
+          </Badge>
         );
       }
       if (joinRequestStatus === "rejected") {
         return (
-          <span className="shrink-0 whitespace-nowrap rounded border border-red-400/40 bg-red-400/10 px-3 py-1.5 text-xs font-medium text-red-400">
+          <Badge tone="danger" className="shrink-0">
             {t.requestRejected}
-          </span>
+          </Badge>
         );
       }
       return (
-        <button
+        <Button variant="secondary" size="sm"
           onClick={() => void handleRequestJoin()}
           disabled={!canActAsCurrentViewer || joinRequestStatus === "sending"}
-          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex shrink-0 items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-50"
           title={t.requestToJoin}
         >
           {joinRequestStatus === "sending" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           {joinRequestStatus === "sending" ? t.joining : t.requestToJoin}
-        </button>
+        </Button>
       );
     }
 
     return (
-      <button
+      <Button variant="secondary" size="sm"
         onClick={handleJoinOpenRoom}
         disabled={!isGuest && (!canActAsCurrentViewer || isJoining)}
-        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex shrink-0 items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-50"
         title={t.join}
       >
         {isJoining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
         {isJoining ? t.joining : t.join}
-      </button>
+      </Button>
     );
   };
 
@@ -380,20 +384,20 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
   return (
     <>
       <div className="liquid-toolbar flex shrink-0 min-h-16 items-center justify-between gap-2 border-b border-glass-border px-4 py-3 max-md:min-h-12 max-md:gap-1 max-md:px-2 max-md:py-0">
-        <button
+        <IconButton size="sm" label="Back to messages"
           type="button"
           onClick={handleMobileBack}
-          className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+          className="hidden shrink-0 items-center justify-center max-md:inline-flex"
           aria-label="Back to messages"
           title="Back to messages"
         >
           <ArrowLeft className="h-5 w-5" />
-        </button>
+        </IconButton>
         <div className="min-w-0 flex-1 py-0.5 max-md:py-0">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-text-primary">{titleText}</h3>
             {roomMessagesLoading ? (
-              <span className="inline-flex shrink-0 text-neon-cyan" role="status" aria-label={tc.loading}>
+              <span className="inline-flex shrink-0 text-accent-text" role="status" aria-label={tc.loading}>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 <span className="sr-only">{tc.loading}</span>
               </span>
@@ -403,25 +407,25 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
             ) : null}
             {hasInfo && (
               <div className="relative" ref={rulePopoverRef}>
-                <button
+                <IconButton size="sm" label={t.viewRoomInfo}
                   onClick={() => {
                     if (showRulePopover) closeRulePopover();
                     else setShowRulePopover(true);
                   }}
-                  className={`${iconBtn} text-neon-cyan`}
+
                   title={t.viewRoomInfo}
                   aria-label={t.viewRoomInfo}
                 >
                   <Info className="h-4 w-4" />
-                </button>
+                </IconButton>
                 {showRulePopover && (
                   <>
-                    <button
+                    <DismissLayer
                       ref={rulePopoverBackdropRef}
-                      type="button"
-                      aria-label="Close"
+
+                      label="Close"
                       onClick={closeRulePopover}
-                      className="fixed inset-0 z-40 hidden bg-black/70 backdrop-blur-sm max-md:block"
+                      className="fixed inset-0 z-40 hidden   max-md:block"
                     />
                     <div
                       ref={rulePopoverPanelRef}
@@ -430,17 +434,17 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
                       className="absolute left-0 top-full z-50 mt-1 w-[min(32rem,calc(100vw-2rem))] space-y-3 rounded-lg border border-glass-border bg-deep-black p-3 shadow-xl
                         max-md:fixed max-md:inset-x-4 max-md:top-1/2 max-md:mt-0 max-md:w-auto max-md:max-h-[75vh] max-md:-translate-y-1/2 max-md:space-y-4 max-md:overflow-y-auto max-md:rounded-2xl max-md:border-glass-border max-md:bg-deep-black-light max-md:p-5 max-md:pt-12 max-md:shadow-2xl"
                     >
-                      <button
+                      <IconButton size="sm" label="Close"
                         type="button"
                         onClick={closeRulePopover}
-                        className="absolute right-3 top-3 hidden h-7 w-7 items-center justify-center rounded text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+                        className="absolute right-3 top-3 hidden items-center justify-center max-md:inline-flex"
                         aria-label="Close"
                       >
                         <X className="h-4 w-4" />
-                      </button>
+                      </IconButton>
                       {roomDescription && (
                         <div>
-                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neon-cyan">
+                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-accent-text">
                             {t.roomDescriptionLabel}
                           </p>
                           <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary max-md:max-h-none max-md:text-sm max-md:leading-6">
@@ -450,7 +454,7 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
                       )}
                       {roomRule && (
                         <div>
-                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neon-cyan">
+                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-accent-text">
                             {t.viewRule}
                           </p>
                           <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-text-secondary max-md:max-h-none max-md:text-sm max-md:leading-6">
@@ -465,19 +469,19 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
             )}
           </div>
           <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-text-secondary max-md:hidden">
-            <button
+            <Button variant="ghost" size="sm"
               onClick={() => (onOpenMembers ? onOpenMembers() : setShowSettingsModal(true))}
-              className="shrink-0 whitespace-nowrap hover:text-neon-cyan hover:underline transition-colors"
+              className="shrink-0"
             >
               {room.member_count} {room.member_count !== 1 ? t.members : t.member}
-            </button>
+            </Button>
             {roleLabel && (
               <>
-                <span className="shrink-0 text-text-secondary/40">·</span>
-                <span className="shrink-0 whitespace-nowrap text-text-secondary/80">{roleLabel}</span>
+                <span className="shrink-0 text-text-secondary">·</span>
+                <span className="shrink-0 whitespace-nowrap text-text-secondary">{roleLabel}</span>
               </>
             )}
-            <span className="shrink-0 text-text-secondary/40">·</span>
+            <span className="shrink-0 text-text-secondary">·</span>
             <span className="shrink-0"><CopyableId value={room.room_id} /></span>
           </div>
           {roomRule && (
@@ -486,16 +490,16 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
                 ref={ruleRef}
                 className={`text-xs leading-5 text-text-secondary ${ruleExpanded ? "" : "line-clamp-2"}`}
               >
-                <span className="font-medium text-neon-cyan">{t.rule}</span> {roomRule}
+                <span className="font-medium text-accent-text">{t.rule}</span> {roomRule}
               </p>
               {(ruleOverflowing || ruleExpanded) && (
-                <button
+                <Button variant="inline"
                   type="button"
                   onClick={() => setRuleExpanded((v) => !v)}
-                  className="mt-0.5 text-xs font-medium text-neon-cyan/80 transition-colors hover:text-neon-cyan"
+                  className="mt-0.5"
                 >
                   {ruleExpanded ? tc.showLess : tc.showMore}
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -504,56 +508,56 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
 
           {renderJoinButton()}
           {isGuest && (
-            <span className="shrink-0 whitespace-nowrap rounded border border-neon-cyan/30 bg-neon-cyan/10 px-2 py-0.5 text-xs font-medium text-neon-cyan">
+            <Badge tone="accent" >
               {t.guest}
-            </span>
+            </Badge>
           )}
           {onOpenMembers && (
             <span className="group relative">
-              <button
+              <IconButton size="sm" label={membersLabel ?? t.roomSettings}
                 onClick={onOpenMembers}
-                className={iconBtn}
+
                 aria-label={membersLabel ?? t.roomSettings}
               >
                 <Users className="h-4 w-4" />
-              </button>
+              </IconButton>
               <span className={tooltipCls}>{membersLabel ?? t.roomSettings}</span>
             </span>
           )}
           {!managed && isJoined && !isDMRoom && !isOwnerChatRoom && (
             <span className="group relative">
-              <button
+              <IconButton size="sm" label={t.shareRoom}
                 onClick={() => setShowShareModal(true)}
-                className={iconBtn}
+
                 aria-label={t.shareRoom}
               >
                 <Share2 className="h-4 w-4" />
-              </button>
+              </IconButton>
               <span className={tooltipCls}>{t.shareRoom}</span>
             </span>
           )}
           {!managed && canAddMembers && (
             <span className="group relative max-md:hidden">
-              <button
+              <IconButton size="sm" label={locale === "zh" ? "添加房间成员" : "Add members"}
                 onClick={() => void handleOpenAddMemberModal()}
                 disabled={addMemberLoading}
-                className={iconBtn}
+
                 aria-label={locale === "zh" ? "添加房间成员" : "Add members"}
               >
                 {addMemberLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-              </button>
+              </IconButton>
               <span className={tooltipCls}>{locale === "zh" ? "添加房间成员" : "Add members"}</span>
             </span>
           )}
           {!managed && !isOwnerChatRoom && (
             <span className="group relative">
-              <button
+              <IconButton size="sm" label={t.roomSettings}
                 onClick={() => setShowSettingsModal(true)}
-                className={iconBtn}
+
                 aria-label={t.roomSettings}
               >
                 <Settings className="h-4 w-4" />
-              </button>
+              </IconButton>
               <span className={tooltipCls}>{t.roomSettings}</span>
             </span>
           )}

@@ -7,6 +7,10 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Badge from "@/components/ui/Badge";
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+import Button from "@/components/ui/Button";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { userApi } from "@/lib/api";
@@ -66,80 +70,67 @@ export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
   }, [claimCode]);
 
   const statusLabel = claimed ? "Claimed" : loading ? "Processing" : error ? "Action required" : "Ready";
-  const statusClass = claimed
-    ? "border-green-500/40 bg-green-500/15 text-green-300"
-    : loading
-      ? "border-neon-cyan/40 bg-neon-cyan/15 text-neon-cyan"
-      : error
-        ? "border-red-500/40 bg-red-500/15 text-red-300"
-        : "border-glass-border bg-deep-black text-text-secondary";
+
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-deep-black px-4 py-8">
-      <div className="w-full max-w-2xl rounded-3xl border border-glass-border bg-deep-black-light p-6 shadow-2xl sm:p-8">
+      <Card padding="lg" className="w-full max-w-2xl ">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Connect your Bot</h1>
             <p className="mt-1 text-sm text-text-secondary">Sign in and connect this Bot to your BotCord account in one step.</p>
           </div>
-          <span className={`rounded-full border px-3 py-1 text-xs font-medium ${statusClass}`}>
-            {statusLabel}
-          </span>
+          <Badge tone={claimed ? "success" : loading ? "accent" : error ? "danger" : "neutral"}>{statusLabel}</Badge>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-glass-border bg-deep-black p-5">
+        <Card padding="md" className="mt-6">
           <p className="text-sm text-text-secondary">
             This link is already ready. Continue to connect this Bot to your account.
           </p>
 
           {!claimed && (
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              <button
+              <Button variant="primary"
                 onClick={handleClaim}
-                disabled={loading}
-                className="rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2.5 text-sm font-semibold text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-60"
-              >
+                disabled={loading} >
                 {loading ? "Connecting..." : "Connect now"}
-              </button>
+              </Button>
               {needLogin && (
-                <button
+                <Button variant="secondary"
                   onClick={() => {
                     const next = `/agents/claim/${encodeURIComponent(claimCode)}?next=${encodeURIComponent(continuePath)}`;
                     router.replace(`/login?next=${encodeURIComponent(next)}`);
-                  }}
-                  className="rounded-lg border border-glass-border px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-glass-border/20"
-                >
+                  }} >
                   Login / Register
-                </button>
+                </Button>
               )}
             </div>
           )}
-        </div>
+        </Card>
 
         {claimed && (
-          <div className="mt-4 rounded-2xl border border-green-500/40 bg-green-500/10 p-4 text-sm text-green-200">
+          <Alert tone="success" className="mt-4">
             <p className="font-medium">Bot connected</p>
-            <p className="mt-1 text-green-300/90">
+            <div  className="mt-1">
               {claimed.display_name} ({claimed.agent_id})
-            </p>
-            <button
+            </div>
+            <Button variant="secondary"
               onClick={() => {
                 const separator = continuePath.includes("?") ? "&" : "?";
                 window.location.replace(`${continuePath}${separator}agent_id=${encodeURIComponent(claimed.agent_id)}`);
               }}
-              className="mt-4 rounded-lg border border-green-500/50 bg-green-500/20 px-4 py-2 text-sm font-medium text-green-100 hover:bg-green-500/30"
-            >
+              className="mt-4" >
               Continue
-            </button>
-          </div>
+            </Button>
+          </Alert>
         )}
 
         {error && (
-          <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+          <Alert tone="danger" className="mt-4">
             {error}
-          </div>
+          </Alert>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

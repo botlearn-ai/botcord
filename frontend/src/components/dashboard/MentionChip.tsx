@@ -1,5 +1,7 @@
 "use client";
 
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -11,7 +13,7 @@ import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { PresenceDot } from "./PresenceDot";
 
 type MotionAnimation = ReturnType<typeof animateIfMotion>;
-const mentionClassName = "inline max-w-full rounded-none border-0 bg-transparent p-0 align-baseline font-medium leading-[inherit] text-neon-cyan underline decoration-neon-cyan/45 underline-offset-2 transition-colors hover:text-neon-cyan/80 hover:decoration-neon-cyan disabled:cursor-default";
+const mentionClassName = "inline max-w-full rounded-none border-0 bg-transparent p-0 align-baseline font-medium leading-[inherit] text-accent-text underline decoration-neon-cyan/45 underline-offset-2 transition-colors hover:text-accent-text hover:decoration-neon-cyan disabled:cursor-default";
 
 export default function MentionChip({
   id,
@@ -152,7 +154,7 @@ export default function MentionChip({
 
   return (
     <span className="inline align-baseline">
-      <button
+      <Button variant="inline"
         ref={triggerRef}
         type="button"
         onMouseEnter={updateTooltipPosition}
@@ -165,10 +167,10 @@ export default function MentionChip({
         }}
         disabled={!canOpen}
         data-mention-id={id}
-        className={mentionClassName}
+
       >
         {prefix}{displayName}
-      </button>
+      </Button>
       {tooltipPosition && typeof document !== "undefined" && createPortal(
         <span
           ref={tooltipRef}
@@ -177,14 +179,14 @@ export default function MentionChip({
         >
           <span className="mb-1 flex items-center gap-2">
             {isAgent && <PresenceDot agentId={id} size="sm" />}
-            <span className={`truncate text-xs font-semibold ${isHuman ? "text-text-primary" : "text-neon-cyan"}`}>
+            <span className={`truncate text-xs font-semibold ${isHuman ? "text-text-primary" : "text-accent-text"}`}>
               {displayName}
             </span>
-            <span className="ml-auto rounded border border-glass-border px-1.5 py-0.5 text-xs text-text-secondary">
+            <Badge tone="neutral" >
               {role}
-            </span>
+            </Badge>
           </span>
-          <span className="block truncate font-mono text-xs text-text-secondary/70">{id}</span>
+          <span className="block truncate font-mono text-xs text-text-secondary">{id}</span>
           {bio && <span className="mt-1.5 line-clamp-3 block text-xs leading-relaxed text-text-secondary">{bio}</span>}
         </span>,
         document.body,

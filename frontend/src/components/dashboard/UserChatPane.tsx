@@ -1,5 +1,8 @@
 "use client";
 
+import Badge from "@/components/ui/Badge";
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
 import MessageHistoryControl, { canAutoLoadHistory } from "./MessageHistoryControl";
 
 /**
@@ -692,47 +695,47 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     const canReply = canReplyToOwnerChatMessage(msg);
     return (
       <div className="relative shrink-0 self-start pt-1">
-        <button
+        <IconButton size="sm" label="More actions"
           type="button"
           onClick={(event) => { actionAnchorRef.current = event.currentTarget; setActionMenuOpenId((current) => current === msg.clientId ? null : msg.clientId); }}
           aria-expanded={menuOpen}
-          className={`liquid-message-action flex h-8 w-8 max-md:h-11 max-md:w-11 items-center justify-center rounded-xl text-text-secondary transition-colors ${visible ? "opacity-100" : "opacity-0 pointer-events-none focus:opacity-100 focus:pointer-events-auto"}`}
+          className={`flex items-center justify-center${visible ? "opacity-100" : "opacity-0 pointer-events-none focus:opacity-100 focus:pointer-events-auto"} `}
           aria-label="More actions"
         >
           <MoreHorizontal className="h-3.5 w-3.5" />
-        </button>
+        </IconButton>
         {menuOpen && (
           <ComposerPopover anchorRef={actionAnchorRef} onClose={() => setActionMenuOpenId(null)} className="py-1">
             {canReply && (
-              <button
+              <Button variant="row"
                 type="button"
                 onClick={() => { handleReply(msg); }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+                className="flex w-full items-center gap-2"
               >
-                <CornerUpLeft className="h-3.5 w-3.5 text-zinc-500" />
+                <CornerUpLeft className="h-3.5 w-3.5 text-text-secondary" />
                 {replyLabel}
-              </button>
+              </Button>
             )}
-            <button
+            <Button variant="row"
               type="button"
               onClick={() => { handleForward(msg); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+              className="flex w-full items-center gap-2"
             >
-              <Forward className="h-3.5 w-3.5 text-zinc-500" />
+              <Forward className="h-3.5 w-3.5 text-text-secondary" />
               {forwardLabel}
-            </button>
-            <button
+            </Button>
+            <Button variant="row"
               type="button"
               onClick={() => { void handleCopy(msg); }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 min-h-11 text-left text-xs text-text-primary hover:bg-glass-bg transition-colors"
+              className="flex w-full items-center gap-2"
             >
               {copied ? (
-                <Check className="h-3.5 w-3.5 text-emerald-400" />
+                <Check className="h-3.5 w-3.5 text-success" />
               ) : (
-                <Copy className="h-3.5 w-3.5 text-zinc-500" />
+                <Copy className="h-3.5 w-3.5 text-text-secondary" />
               )}
               {copied ? copiedLabel : copyLabel}
-            </button>
+            </Button>
           </ComposerPopover>
         )}
       </div>
@@ -749,12 +752,12 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     router.push("/chats/messages");
   };
 
-  const mobileBack = <button type="button" onClick={handleMobileBack} aria-label="Back to messages" className="hidden h-11 shrink-0 items-center gap-2 border-b border-glass-border px-3 text-sm max-md:flex"><ArrowLeft size={20} />{locale === "zh" ? "返回" : "Back"}</button>;
+  const mobileBack = <Button variant="secondary" size="sm" type="button" onClick={handleMobileBack} aria-label="Back to messages" className="hidden shrink-0 items-center gap-2 max-md:flex"><ArrowLeft size={20} />{locale === "zh" ? "返回" : "Back"}</Button>;
   // ------ Render guards ------
 
   if (!chatAgentId) {
     return (
-      <div className="flex h-full flex-col text-zinc-500">
+      <div className="flex h-full flex-col text-text-secondary">
         {mobileBack}<p className="m-auto">Select a Bot to start chatting</p>
       </div>
     );
@@ -775,7 +778,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
 
   if (initError || (storeError && !historyLoaded && messages.length === 0)) {
     return (
-      <div className="flex h-full flex-col text-red-400">
+      <div className="flex h-full flex-col text-danger">
         {mobileBack}<p className="m-auto">{initError || storeError}</p>
       </div>
     );
@@ -786,22 +789,22 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     <div className="dashboard-main relative flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
       {storeError && (
-        <div role="status" className="shrink-0 border-b border-amber-400/20 px-4 py-2 text-xs text-amber-300">
+        <div role="status" className="shrink-0 border-b border-warning/40 px-4 py-2 text-xs text-warning">
           {locale === "zh" ? "消息刷新失败，已保留当前内容。" : "Could not refresh messages. Current messages are still available."}
         </div>
       )}
       {/* Header */}
       <div className="liquid-toolbar flex shrink-0 items-center gap-2 border-b border-glass-border px-4 py-3 max-md:px-3">
-        <button
+        <IconButton size="sm" label="Back"
           type="button"
           onClick={handleMobileBack}
-          className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary max-md:inline-flex"
+          className="hidden shrink-0 items-center justify-center max-md:inline-flex"
           aria-label="Back"
           title="Back"
         >
           <ArrowLeft className="h-4 w-4" />
-        </button>
-        <MessageSquare className="w-4 h-4 text-cyan-400" />
+        </IconButton>
+        <MessageSquare className="w-4 h-4 text-accent-text" />
         <h2 className="min-w-0 truncate text-sm font-medium text-text-primary">
           {chatRoomName || "Agent"}
         </h2>
@@ -810,16 +813,16 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Live" />
           )}
           {ownedAgent && (
-            <button
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={() => setBotDetailAgentId(ownedAgent.agent_id)}
               title={settingsLabel}
               aria-label={settingsLabel}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 px-2.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              className="inline-flex items-center gap-1.5"
             >
               <Settings2 className="h-3.5 w-3.5" />
               <span>{settingsLabel}</span>
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -831,13 +834,13 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
         ) : moreError ? (
           <div className="mb-1 flex items-center justify-center gap-2 text-xs text-text-secondary" role="status">
             <span>{tMessages.loadEarlierFailed}</span>
-            <button
+            <Button variant="inline"
               type="button"
               onClick={requestMoreMessages}
-              className="rounded px-1.5 py-0.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+
             >
               {locale === "zh" ? "重试" : "Retry"}
-            </button>
+            </Button>
           </div>
         ) : hasMore ? (
           <MessageHistoryControl onLoad={requestMoreMessages} loadLabel={tMessages.loadEarlier} scrollLabel={tMessages.scrollUp} />
@@ -865,11 +868,11 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 data-owner-msg-key={msg.clientId}
                 className="flex justify-center"
               >
-                <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs bg-amber-500/10 text-amber-300 border border-amber-500/20 flex items-start gap-2">
+                <div className="max-w-[85%] rounded-lg px-3 py-2 text-xs bg-warning-soft text-warning border border-warning/40 flex items-start gap-2">
                   <Bell className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                   <div>
                     <ChatMarkdown content={msg.text || ""} mentionCandidates={messageMentionCandidates} />
-                    <div className="text-amber-500/60 mt-1 text-right">
+                    <div className="text-warning mt-1 text-right">
                       {formatMessageTimestamp(msg.createdAt)}
                     </div>
                   </div>
@@ -889,34 +892,34 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                   <div className="liquid-message liquid-message-error max-w-[75%] max-md:max-w-[calc(100%-3.25rem)] rounded-2xl border px-3 py-2 text-sm text-text-primary">
                     <div className="mb-1 flex items-center gap-1.5">
                       <ParticipantAvatar id={chatAgentId || "bot"} avatarUrl={ownedAgent?.avatar_url} isHuman={false} name={msg.senderName || "Bot"} />
-                      <span className="text-xs font-medium text-zinc-300">{msg.senderName}</span>
+                      <span className="text-xs font-medium text-text-secondary">{msg.senderName}</span>
                       {chatAgentId && (
-                        <CopyableId value={chatAgentId} className="text-zinc-500 hover:text-zinc-300" />
+                        <CopyableId value={chatAgentId} className="text-text-secondary hover:text-text-secondary" />
                       )}
                     </div>
-                    <button
+                    <Button variant="row"
                       type="button"
                       onClick={() => setErrorDetailsId(msg.clientId)}
-                      className="flex w-full items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-2.5 py-2 text-left transition-colors hover:bg-amber-400/15"
+                      className="flex w-full items-start gap-2"
                     >
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
                       <span className="min-w-0 flex-1">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-amber-300">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-warning">
                           Runtime error
                         </span>
-                        <span className="mt-1 line-clamp-3 block break-words text-sm leading-relaxed text-amber-100">
+                        <span className="mt-1 line-clamp-3 block break-words text-sm leading-relaxed text-warning">
                           {errorText}
                         </span>
-                        <span className="mt-1 block text-xs text-amber-300/70">Details</span>
+                        <span className="mt-1 block text-xs text-warning">Details</span>
                       </span>
-                    </button>
+                    </Button>
                     <div className="mt-1 flex items-center gap-1.5">
-                      <span className="text-xs text-zinc-500">
+                      <span className="text-xs text-text-secondary">
                         {formatMessageTimestamp(msg.createdAt)}
                       </span>
-                      <span className="rounded bg-amber-400/10 px-1 font-mono text-xs text-amber-300/80">
+                      <Badge tone="warning" >
                         error
-                      </span>
+                      </Badge>
                     </div>
                   </div>
                 </div>
@@ -965,7 +968,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                 {renderMessageActions(msg)}
                 <div className="liquid-message liquid-message-own max-w-[75%] max-md:max-w-[calc(100%-3.25rem)] rounded-2xl border px-3 py-2 text-sm text-text-primary">
                   <div className="mb-1 flex items-center justify-end gap-1.5">
-                    <span className="text-xs font-medium text-neon-cyan">
+                    <span className="text-xs font-medium text-accent-text">
                       {msg.senderName}
                     </span>
                     <ParticipantAvatar id={ownerHumanId || "human"} avatarUrl={humanAvatarUrl} isHuman name={msg.senderName || "User"} />
@@ -973,28 +976,28 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                   <ChatMarkdown content={msg.text} mentionCandidates={messageMentionCandidates} />
                   <div className="flex items-center justify-end gap-1.5 mt-1">
                     {msg.status === "optimistic" && (
-                      <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
+                      <Loader2 className="w-3 h-3 animate-spin text-accent-text" />
                     )}
                     {msg.status === "failed" && (
                       <>
                         <span className="relative group">
                           <span className="flex items-center gap-1 cursor-default">
-                            <AlertCircle className="w-3 h-3 text-red-400" />
-                            <span className="text-xs text-red-400">Failed</span>
+                            <AlertCircle className="w-3 h-3 text-danger" />
+                            <span className="text-xs text-danger">Failed</span>
                           </span>
                           {msg.error && (
-                            <span className="absolute bottom-full right-0 mb-1 hidden group-hover:block px-2 py-1 text-xs text-zinc-200 bg-zinc-800 border border-zinc-600 rounded shadow-lg whitespace-nowrap z-50">
+                            <span className="absolute bottom-full right-0 mb-1 hidden group-hover:block px-2 py-1 text-xs text-text-primary bg-surface-sunken border border-border rounded shadow-lg whitespace-nowrap z-50">
                               {msg.error}
                             </span>
                           )}
                         </span>
-                        <button
+                        <Button variant="inline"
                           onClick={() => handleRetry(msg)}
-                          className="flex items-center gap-0.5 text-xs text-cyan-400 hover:text-cyan-300 transition-colors ml-1"
+                          className="flex items-center gap-0.5 ml-1"
                         >
                           <RotateCcw className="w-3 h-3" />
                           Retry
-                        </button>
+                        </Button>
                       </>
                     )}
                   </div>
@@ -1044,7 +1047,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                     <div className={`mb-1 flex items-center gap-1.5 ${isUser ? "justify-end" : ""}`}>
                       {isUser ? (
                         <>
-                          <span className="text-xs font-medium text-neon-cyan">
+                          <span className="text-xs font-medium text-accent-text">
                             {msg.senderName}
                           </span>
                           <ParticipantAvatar id={ownerHumanId || "human"} avatarUrl={humanAvatarUrl} isHuman name={msg.senderName || "User"} />
@@ -1056,7 +1059,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                             {msg.senderName}
                           </span>
                           {chatAgentId && (
-                            <CopyableId value={chatAgentId} className="text-zinc-500 hover:text-zinc-300" />
+                            <CopyableId value={chatAgentId} className="text-text-secondary hover:text-text-secondary" />
                           )}
                         </>
                       )}
@@ -1104,7 +1107,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                         ))}
                       </div>
                     )}
-                    <div className="text-xs text-zinc-500 mt-1 text-right">
+                    <div className="text-xs text-text-secondary mt-1 text-right">
                       {formatMessageTimestamp(msg.createdAt)}
                     </div>
                   </div>
@@ -1120,9 +1123,9 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
           <div ref={typingIndicatorRef} className="flex justify-start">
             <div className="liquid-message liquid-message-peer rounded-2xl border px-3 py-2">
               <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0ms]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:150ms]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:300ms]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-surface-sunken animate-bounce [animation-delay:0ms]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-surface-sunken animate-bounce [animation-delay:150ms]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-surface-sunken animate-bounce [animation-delay:300ms]" />
               </div>
             </div>
           </div>
@@ -1150,16 +1153,16 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
         </div>
       </div>
       {showScrollToBottomButton && (
-        <button
+        <IconButton size="sm" label={scrollToLatestLabel}
           ref={scrollToBottomButtonElementRef}
           type="button"
           onClick={() => scrollToBottom("auto")}
           aria-label={scrollToLatestLabel}
           title={scrollToLatestLabel}
-          className="absolute bottom-[5.25rem] left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-neon-cyan/40 bg-deep-black-light/95 text-neon-cyan shadow-lg shadow-black/30 backdrop-blur transition-colors hover:bg-neon-cyan/15 hover:text-neon-cyan max-md:bottom-[5.75rem]"
+          className="absolute bottom-[5.25rem] left-1/2 z-20 flex items-center justify-center max-md:bottom-[5.75rem]"
         >
           <ArrowDown className="h-4 w-4" />
-        </button>
+        </IconButton>
       )}
       </div>
       {attachmentPreview?.kind === "document" && (
@@ -1230,24 +1233,24 @@ function OwnerChatReplyingToBar({ target, locale, onCancel }: OwnerChatReplyingT
 
   return (
     <div ref={barRef} className="mx-1 flex items-start gap-2 rounded-md border-l-2 border-neon-cyan/60 bg-glass-bg/60 pl-2 pr-1 py-1.5 text-xs">
-      <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-neon-cyan/80" />
+      <CornerUpLeft className="mt-0.5 h-3 w-3 shrink-0 text-accent-text" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium text-neon-cyan/90">
+        <div className="truncate text-xs font-medium text-accent-text">
           {replyingLabel} · {name}
         </div>
         {preview && (
-          <div className="truncate text-xs text-text-secondary/80">{preview}</div>
+          <div className="truncate text-xs text-text-secondary">{preview}</div>
         )}
       </div>
-      <button
+      <IconButton size="sm" label={cancelLabel}
         type="button"
         onClick={onCancel}
-        className="rounded p-0.5 text-text-secondary/60 hover:bg-glass-bg hover:text-text-secondary transition-colors"
+
         aria-label={cancelLabel}
         title={cancelLabel}
       >
         <X className="h-3.5 w-3.5" />
-      </button>
+      </IconButton>
     </div>
   );
 }

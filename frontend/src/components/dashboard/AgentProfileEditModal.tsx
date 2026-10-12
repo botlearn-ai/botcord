@@ -1,4 +1,12 @@
 "use client";
+import Field from "@/components/ui/Field";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -41,7 +49,7 @@ function AgentProfileEditModal({
   const [closing, setClosing] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const errorRef = useRef<HTMLParagraphElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<ReturnType<typeof animateOverlayPanelEnter>>(null);
   const errorAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
 
@@ -69,20 +77,12 @@ function AgentProfileEditModal({
   useLayoutEffect(() => {
     animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
       contentSelector: "[data-agent-profile-modal-part]",
-      onComplete: () => {
+      onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none";
         animationRef.current = null;
       },
     });
     return () => cleanupAnime(animationRef.current);
   }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !showUnbind) closeWithMotion();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion, showUnbind]);
 
   useEffect(() => {
     if (!error || !errorRef.current) return;
@@ -125,35 +125,22 @@ function AgentProfileEditModal({
   const tDelete = locale === "zh" ? "删除 Bot" : "Delete Bot";
 
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-[110] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeWithMotion();
-      }}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-dialog relative w-full max-w-md rounded-2xl p-5"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <button
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<><Settings className="h-5 w-5 text-neon-cyan" />{tTitle}</>} overlayClassName="z-[110]" className="max-w-md p-5">
+        <IconButton label="Close"
           onClick={() => closeWithMotion()}
           disabled={saving}
-          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+          className="absolute right-4"
         >
           <X className="h-5 w-5" />
-        </button>
+        </IconButton>
 
         <div data-agent-profile-modal-part className="mb-5 pr-8">
-          <h3 className="flex items-center gap-2 text-xl font-bold text-text-primary">
+          <h3 className="flex items-center gap-2 text-xl font-semibold text-text-primary">
             <Settings className="h-5 w-5 text-neon-cyan" />
             {tTitle}
           </h3>
           <p className="mt-2 text-sm text-text-secondary">{tDesc}</p>
-          <p className="mt-1 font-mono text-xs text-text-secondary/60">{agentId}</p>
+          <p className="mt-1 font-mono text-xs text-text-secondary">{agentId}</p>
         </div>
 
         <div data-agent-profile-modal-part className="mb-3">
@@ -169,49 +156,49 @@ function AgentProfileEditModal({
           />
         </div>
 
-        <label data-agent-profile-modal-part className="mb-3 block">
-          <span className="mb-1 block text-xs font-medium text-text-secondary">{tNameLabel}</span>
-          <input
+        <Field label={<>{tNameLabel}</>} data-agent-profile-modal-part className="mb-3 block">
+
+          <Input
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={saving}
             maxLength={128}
-            className="liquid-input w-full rounded-lg border px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
+            className="w-full"
           />
-        </label>
+        </Field>
 
-        <label data-agent-profile-modal-part className="block">
-          <span className="mb-1 block text-xs font-medium text-text-secondary">{tBioLabel}</span>
-          <textarea
+        <Field label={<>{tBioLabel}</>} data-agent-profile-modal-part className="block">
+
+          <Textarea
             value={bio}
             onChange={(e) => setBio(e.target.value)}
             disabled={saving}
             rows={4}
             maxLength={4000}
             placeholder={tBioPlaceholder}
-            className="liquid-input w-full resize-none rounded-lg border px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-neon-cyan/50 disabled:opacity-60"
+            className="w-full"
           />
-        </label>
+        </Field>
 
         {error && (
-          <p ref={errorRef} className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
+          <Alert tone="danger" ref={errorRef} className="mt-3">
             {error}
-          </p>
+          </Alert>
         )}
 
         <div data-agent-profile-modal-part className="mt-6 flex items-center justify-end gap-3">
-          <button
+          <Button variant="secondary"
             onClick={() => closeWithMotion()}
             disabled={saving}
-            className="liquid-action rounded-xl px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+
           >
             {tCancel}
-          </button>
-          <button
+          </Button>
+          <Button variant="primary"
             onClick={handleSave}
             disabled={!canSave}
-            className="liquid-action flex items-center gap-2 rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:opacity-60"
+
           >
             {saving ? (
               <>
@@ -221,33 +208,19 @@ function AgentProfileEditModal({
             ) : (
               tSave
             )}
-          </button>
+          </Button>
         </div>
 
         <div data-agent-profile-modal-part className="mt-6 border-t border-glass-border pt-4">
-          <button
+          <Button variant="danger"
             onClick={() => setShowUnbind(true)}
             disabled={saving}
-            className="liquid-action flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 disabled:opacity-60"
+            className="w-full"
           >
             <Trash2 className="h-4 w-4" />
             {tDelete}
-          </button>
+          </Button>
         </div>
-      </div>
-
-      {showUnbind && (
-        <UnbindAgentDialog
-          agentId={agentId}
-          agentName={initialDisplayName}
-          onClose={() => setShowUnbind(false)}
-          onUnbound={async () => {
-            await refreshUserProfile();
-            onSaved?.();
-            closeWithMotion(true);
-          }}
-        />
-      )}
-    </div>
+      </DialogSurface>
   );
 }

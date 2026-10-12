@@ -1,4 +1,7 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 
 /**
  * [INPUT]: 依赖 teamSpacesApi 读取组织邀请链接的公开预览与接受；依赖 Supabase session 判断登录态
@@ -7,29 +10,40 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { Building2, Loader2, Users } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
-import { userApi } from "@/lib/api";
-import { createClient } from "@/lib/supabase/client";
-import { spaceError, teamSpacesApi, type OrgInvitePreview } from "@/lib/team-spaces";
-import { inviteUnavailableReason } from "@/lib/org-invite-links";
 import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import LinkButton from "@/components/ui/LinkButton";
+import { userApi } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
+import { inviteUnavailableReason } from "@/lib/org-invite-links";
+import { createClient } from "@/lib/supabase/client";
+import {
+  spaceError,
+  teamSpacesApi,
+  type OrgInvitePreview,
+} from "@/lib/team-spaces";
+import { Building2, Loader2, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export type OrgInviteAuth = "pending" | "guest" | "authed";
 
 /** Public preview and session resolution complete independently; either may fail alone. */
-export function loadOrgInviteLanding(code: string, handlers: {
-  preview: (preview: OrgInvitePreview) => void;
-  error: (error: unknown) => void;
-  auth: (mode: OrgInviteAuth) => void;
-}) {
+export function loadOrgInviteLanding(
+  code: string,
+  handlers: {
+    preview: (preview: OrgInvitePreview) => void;
+    error: (error: unknown) => void;
+    auth: (mode: OrgInviteAuth) => void;
+  },
+) {
   let cancelled = false;
   const controller = new AbortController();
   void teamSpacesApi.orgInvite(code, controller.signal).then(
-    (preview) => { if (!cancelled) handlers.preview(preview); },
-    (error) => { if (!cancelled) handlers.error(error); },
+    (preview) => {
+      if (!cancelled) handlers.preview(preview);
+    },
+    (error) => {
+      if (!cancelled) handlers.error(error);
+    },
   );
   void (async () => {
     try {
@@ -74,14 +88,10 @@ export function OrgInviteCard({
   const zh = useLanguage() === "zh";
   const t = (cn: string, en: string) => (zh ? cn : en);
   const name = preview.organization_name;
-  const primary =
-    "inline-flex w-full items-center justify-center gap-2 rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-3 text-sm font-medium text-neon-cyan hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto";
-  const secondary =
-    "inline-flex w-full items-center justify-center rounded-xl border border-glass-border px-4 py-3 text-sm text-text-secondary hover:text-text-primary sm:w-auto";
 
   return (
     <div className="mx-auto w-full max-w-lg px-4 pb-10 pt-20 sm:pt-28">
-      <div className="rounded-2xl border border-glass-border bg-glass-bg p-5 sm:p-8">
+      <Card>
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neon-cyan/80">
           {t("组织邀请", "Organization invite")}
         </p>
@@ -107,7 +117,10 @@ export function OrgInviteCard({
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">
           <span className="inline-flex items-center gap-1">
             <Users size={14} />
-            {t(`${preview.member_count} 位成员`, `${preview.member_count} member${preview.member_count === 1 ? "" : "s"}`)}
+            {t(
+              `${preview.member_count} 位成员`,
+              `${preview.member_count} member${preview.member_count === 1 ? "" : "s"}`,
+            )}
           </span>
           {preview.status === "active" && (
             <span>
@@ -119,33 +132,49 @@ export function OrgInviteCard({
         </div>
 
         {error && (
-          <p role="alert" className="mt-5 rounded-xl border border-red-500/30 p-3 text-sm text-red-500">
+          <Alert tone="danger" className="mt-5">
             {error}
-          </p>
+          </Alert>
         )}
 
         {preview.status !== "active" ? (
           <div className="mt-6 space-y-4">
-            <p role="alert" className="rounded-xl border border-glass-border bg-deep-black-light p-4 text-sm text-text-secondary">
-              {inviteUnavailableReason(preview.status, zh, preview.single_use === true)}
-            </p>
-            <Link href="/" className={secondary}>{t("返回首页", "Go home")}</Link>
+            <Alert tone="danger">
+              {inviteUnavailableReason(
+                preview.status,
+                zh,
+                preview.single_use === true,
+              )}
+            </Alert>
+            <LinkButton variant="secondary" href="/">
+              {t("返回首页", "Go home")}
+            </LinkButton>
           </div>
         ) : (
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             {auth === "pending" ? (
-              <button type="button" disabled aria-busy="true" className={primary}>
+              <Button variant="primary" type="button" disabled aria-busy="true">
                 {t("正在确认登录状态…", "Checking sign-in…")}
-              </button>
+              </Button>
             ) : auth === "guest" ? (
-              <Link href={`/login?next=${encodeURIComponent(joinPath(code))}`} className={primary}>
+              <LinkButton
+                variant="primary"
+                href={`/login?next=${encodeURIComponent(joinPath(code))}`}
+              >
                 {t("登录 / 注册后加入", "Sign in or sign up to join")}
-              </Link>
+              </LinkButton>
             ) : (
-              <button type="button" className={primary} disabled={joining} onClick={onJoin}>
+              <Button
+                variant="primary"
+                type="button"
+                disabled={joining}
+                onClick={onJoin}
+              >
                 {joining && <Loader2 size={16} className="animate-spin" />}
-                {joining ? t("正在加入…", "Joining…") : t(`加入 ${name}`, `Join ${name}`)}
-              </button>
+                {joining
+                  ? t("正在加入…", "Joining…")
+                  : t(`加入 ${name}`, `Join ${name}`)}
+              </Button>
             )}
           </div>
         )}
@@ -157,7 +186,7 @@ export function OrgInviteCard({
             )}
           </p>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
@@ -201,10 +230,10 @@ function OrgInviteLandingContent({ code }: { code: string }) {
   if (loadError != null) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-4 pt-16 text-center">
-        <p role="alert" className="max-w-sm text-base text-red-400">{spaceError(loadError, zh)}</p>
-        <Link href="/" className="rounded-xl border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary">
+        <Alert tone="danger">{spaceError(loadError, zh)}</Alert>
+        <LinkButton variant="primary" href="/">
           {t("返回首页", "Go home")}
-        </Link>
+        </LinkButton>
       </div>
     );
   }

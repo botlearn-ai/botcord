@@ -4,12 +4,14 @@ import { Geist, Geist_Mono } from "next/font/google";
 // CJK falls back to the system stack defined in the VI tokens.
 export const geistSans = Geist({
   subsets: ["latin"],
-  variable: "--font-sans",
+  variable: "--font-geist-sans",
+  fallback: ["PingFang SC", "Noto Sans SC", "Microsoft YaHei", "system-ui", "sans-serif"],
   display: "swap",
 });
 
 export const geistMono = Geist_Mono({
   subsets: ["latin"],
-  variable: "--font-mono",
+  variable: "--font-geist-mono",
+  fallback: ["SFMono-Regular", "Menlo", "monospace"],
   display: "swap",
 });

@@ -1,0 +1,144 @@
+/*
+ * [INPUT]: 依赖 VI token（--bc-ease-standard）；由 app/globals.css 引入
+ * [OUTPUT]: 对外提供 ui 原语的状态动画类：bc-signal-*（SignalDot）、bc-avatar-orbit（Avatar 回复中）、bc-cord-*（NodeCordStatus）
+ * [POS]: components/ui 身份与状态组件的动效层；几何与节奏以 docs/brand/botcord-vi/VI.md §6.3、§8 与 index.html §8 为准
+ * [PROTOCOL]: 变更时更新此头部；新增循环动画必须在下方 reduced-motion 块里关闭
+ *
+ * Base styles are the reduced-motion end state: one-shot / travelling marks
+ * (ripple, courier) start hidden, steady marks (blink ring, orbit) stay visible.
+ */
+
+/* SignalDot · thinking: the signal dot breathes (VI §6.3, 1.3s). */
+.bc-signal-breathe {
+  animation: bc-signal-breathe 1.3s ease-in-out infinite;
+}
+
+/* SignalDot · waiting: the outer ring blinks. */
+.bc-signal-blink {
+  animation: bc-blink 1.6s ease-in-out infinite;
+}
+
+/* SignalDot · done: a single ripple when the state is entered. */
+.bc-signal-ripple {
+  opacity: 0;
+  animation: bc-signal-ripple 1.6s var(--bc-ease-standard) 1 both;
+}
+
+/* Avatar · replying: a cord arc turns around the avatar. */
+.bc-avatar-orbit {
+  animation: bc-orbit 1.4s linear infinite;
+}
+
+/* NodeCordStatus · sending: a courier dot travels along the cord. */
+.bc-cord-courier {
+  opacity: 0;
+  offset-path: path("M8.5 34 C 24 34, 24 14, 39.5 14");
+  offset-rotate: 0deg;
+  animation: bc-cord-travel 1.4s linear infinite;
+}
+
+/* NodeCordStatus · thinking: the signal node breathes (r 7 → 8.6). */
+.bc-cord-breathe {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bc-cord-breathe 1.3s ease-in-out infinite;
+}
+
+/* NodeCordStatus · delivered: a success ripple leaves the signal node. */
+.bc-cord-ripple {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bc-cord-ripple 1.6s linear infinite;
+}
+
+/* NodeCordStatus · waiting: the outer ring blinks. */
+.bc-cord-blink {
+  animation: bc-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes bc-signal-breathe {
+  50% {
+    transform: scale(1.35);
+  }
+}
+
+@keyframes bc-blink {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes bc-signal-ripple {
+  from {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+@keyframes bc-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bc-cord-travel {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes bc-cord-breathe {
+  50% {
+    transform: scale(1.23);
+  }
+}
+
+@keyframes bc-cord-ripple {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bc-signal-breathe,
+  .bc-signal-blink,
+  .bc-signal-ripple,
+  .bc-avatar-orbit,
+  .bc-cord-courier,
+  .bc-cord-breathe,
+  .bc-cord-ripple,
+  .bc-cord-blink {
+    animation: none;
+  }
+}

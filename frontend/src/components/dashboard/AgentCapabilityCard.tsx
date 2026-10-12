@@ -7,6 +7,7 @@
  * [PROTOCOL]: update header on changes
  */
 
+import Card from "@/components/ui/Card";
 import { useEffect, useState } from "react";
 import { userApi } from "@/lib/api";
 import type {
@@ -297,18 +298,18 @@ export default function AgentCapabilityCard({ agentId }: { agentId: string }) {
 
   if (failed) {
     return (
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
-        <p className="text-xs text-text-secondary/55">{copy.loadFailed}</p>
-      </section>
+      <Card as="section" padding="md" className="">
+        <p className="text-xs text-text-secondary">{copy.loadFailed}</p>
+      </Card>
     );
   }
   if (!data) return null;
 
   return (
-    <section className="liquid-card rounded-2xl border border-glass-border p-4">
-      <h3 className="mb-3 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-text-secondary/70">
+    <Card as="section" padding="md" className="">
+      <h3 className="mb-3 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-text-secondary">
         <span>{copy.title}</span>
-        <span className="font-normal normal-case tracking-normal text-text-secondary/50">
+        <span className="font-normal normal-case tracking-normal text-text-secondary">
           {copy.window(data.window_days)}
         </span>
       </h3>
@@ -316,7 +317,7 @@ export default function AgentCapabilityCard({ agentId }: { agentId: string }) {
       <div className="grid grid-cols-2 gap-2">
         {LAYERS.map((layer) => (
           <div key={layer} className="liquid-tool-surface rounded-lg px-3 py-2">
-            <div className="flex items-center gap-1.5 text-xs text-text-secondary/70">
+            <div className="flex items-center gap-1.5 text-xs text-text-secondary">
               <svg width="14" height="4" aria-hidden>
                 <line
                   x1="0"
@@ -348,7 +349,7 @@ export default function AgentCapabilityCard({ agentId }: { agentId: string }) {
                 <ScoreBadge key={layer} layer={layer} score={axis.layers[layer].score} />
               ))}
             </div>
-            <div className="mt-0.5 space-y-px text-xs text-text-secondary/55">
+            <div className="mt-0.5 space-y-px text-xs text-text-secondary">
               {LAYERS.map((layer) => (
                 <p key={layer} className="truncate">
                   <span className="mr-1 font-mono">{layer.toUpperCase()}</span>
@@ -359,6 +360,6 @@ export default function AgentCapabilityCard({ agentId }: { agentId: string }) {
           </li>
         ))}
       </ul>
-    </section>
+    </Card>
   );
 }

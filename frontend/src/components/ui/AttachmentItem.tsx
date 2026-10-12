@@ -87,7 +87,7 @@ function AttachmentFileLink({
       <FileText className="h-4 w-4 shrink-0 text-text-secondary" />
       <span className="truncate">{attachment.filename || "Attachment"}</span>
       {attachment.size_bytes != null && (
-        <span className="shrink-0 text-text-secondary/50">{formatFileSize(attachment.size_bytes)}</span>
+        <span className="shrink-0 text-text-secondary">{formatFileSize(attachment.size_bytes)}</span>
       )}
     </>
   );
@@ -165,7 +165,7 @@ export default function AttachmentItem({ attachment, previewAttachments, onPrevi
             />
           </button>
           {attachment.filename && (
-            <span className="mt-0.5 block text-xs text-text-secondary/60">{attachment.filename}</span>
+            <span className="mt-0.5 block text-xs text-text-secondary">{attachment.filename}</span>
           )}
         </div>
         {!onPreview && previewOpen && (

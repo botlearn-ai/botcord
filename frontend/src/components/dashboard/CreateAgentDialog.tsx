@@ -1,4 +1,16 @@
 "use client";
+import EmptyState from "@/components/ui/EmptyState";
+import Field from "@/components/ui/Field";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Input";
+import Checkbox from "@/components/ui/Checkbox";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -239,14 +251,14 @@ function StepperPill({
     : isActive
       ? "border-neon-cyan bg-neon-cyan/20 text-neon-cyan"
       : isLocked
-        ? "border-glass-border text-text-tertiary"
+        ? "border-glass-border text-text-secondary"
         : "border-glass-border text-text-secondary";
   const labelClass = isActive
     ? "text-text-primary"
     : isDone
       ? "text-text-primary/85"
       : isLocked
-        ? "text-text-tertiary"
+        ? "text-text-secondary"
         : "text-text-secondary";
   return (
     <div className="flex items-center gap-2">
@@ -366,20 +378,12 @@ function CreateAgentDialog({
 
   useLayoutEffect(() => {
     animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
-      onComplete: () => {
+      onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none";
         animationRef.current = null;
       },
     });
     return () => cleanupAnime(animationRef.current);
   }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
 
   // Brief celebratory state when a daemon transitions from offline to online
   // while the user is staring at step 1. Without this, the dialog snaps to
@@ -396,14 +400,6 @@ function CreateAgentDialog({
     }
     prevHadOnlineRef.current = hasOnline;
   }, [loaded, onlineDaemons.length]);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
 
   // Brief celebratory state when a daemon transitions from offline to online
   // while the user is staring at step 1. Without this, the dialog snaps to
@@ -796,20 +792,7 @@ function CreateAgentDialog({
     ) : null;
 
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-[110] flex items-center justify-center p-4 ${closing ? "pointer-events-none" : ""}`}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closeWithMotion();
-      }}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-agent-title"
-        className="liquid-dialog relative flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl"
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<><Bot className="h-4 w-4 text-neon-cyan" />{t.title}</>} overlayClassName="z-[110]" className="max-w-xl overflow-hidden">
         {(() => {
           const onStep1 = showEmptyState || addingDevice;
           const currentStep: 1 | 2 = onStep1 ? 1 : 2;
@@ -839,20 +822,20 @@ function CreateAgentDialog({
                     />
                   )}
                 </div>
-                <button
+                <IconButton label={t.cancel}
                   type="button"
                   onClick={() => closeWithMotion()}
                   disabled={submitting}
                   aria-label={t.cancel}
-                  className="liquid-action shrink-0 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+                  className="shrink-0"
                 >
                   <X className="h-5 w-5" />
-                </button>
+                </IconButton>
               </div>
               <div className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
               {onStep1 && !addingDevice ? (
                 <div className="mb-4">
-                  <h3 id="create-agent-title" className="flex items-center gap-2 text-xl font-bold text-text-primary">
+                  <h3 id="create-agent-title" className="flex items-center gap-2 text-xl font-semibold text-text-primary">
                     <Server className="h-5 w-5 text-neon-cyan" />
                     {step1Title}
                   </h3>
@@ -863,7 +846,7 @@ function CreateAgentDialog({
               ) : null}
               {!hasExistingBots && !onStep1 && (
                 <div className="mb-4">
-                  <h3 id="create-agent-title" className="flex items-center gap-2 text-xl font-bold text-text-primary">
+                  <h3 id="create-agent-title" className="flex items-center gap-2 text-xl font-semibold text-text-primary">
                     <Bot className="h-5 w-5 text-neon-cyan" />
                     {t.title}
                   </h3>
@@ -887,9 +870,9 @@ function CreateAgentDialog({
           />
         ) : justConnected ? (
           <div className="animate-in fade-in duration-200 flex flex-col items-center gap-3 py-10 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-full border border-neon-green/40 bg-neon-green/10 text-neon-green">
+            <Badge tone="success" className="flex w-12 items-center justify-center">
               <Check className="h-6 w-6" />
-            </span>
+            </Badge>
             <div className="text-base font-semibold text-text-primary">
               {locale === "zh" ? "设备已就绪" : "Device connected"}
             </div>
@@ -899,14 +882,14 @@ function CreateAgentDialog({
           </div>
         ) : addingDevice ? (
           <div className="space-y-4">
-            <button
+            <Button variant="secondary"
               type="button"
               onClick={() => setAddingDevice(false)}
-              className="liquid-action inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary"
+
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               {t.backLabel}
-            </button>
+            </Button>
             <DeviceConnectPanel
               connected={false}
               daemonLoading={loading}
@@ -921,13 +904,13 @@ function CreateAgentDialog({
                 {t.runtimeSectionLabel}
               </div>
             )}
-            <div className={hasExistingBots ? "space-y-3.5" : "liquid-card space-y-3.5 rounded-2xl p-3.5"}>
+            <div className="space-y-3.5">
             <section>
               <div className="mb-1.5 flex items-center justify-between gap-3">
-                <label className="text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
+                <label className="text-[13px] font-semibold text-text-secondary">
                   {t.daemonLabel}
                 </label>
-                <button
+                <Button variant="primary"
                   type="button"
                   onClick={() => {
                     addDeviceExistingIdsRef.current = new Set(
@@ -936,11 +919,11 @@ function CreateAgentDialog({
                     setAddingDevice(true);
                   }}
                   disabled={submitting}
-                  className="liquid-action inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-neon-cyan/80 transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
+
                 >
                   <Plus className="h-3 w-3" />
                   {t.addDeviceLabel}
-                </button>
+                </Button>
               </div>
               {deviceOptions.length > 1 ? (
                 <DashboardSelect
@@ -955,27 +938,27 @@ function CreateAgentDialog({
                       ? <Cloud className="h-3.5 w-3.5 text-neon-cyan" />
                       : <Server className="h-3.5 w-3.5 text-neon-cyan" />
                   }
-                  buttonClassName="min-h-11 pl-3"
+
                   options={deviceOptions}
                 />
               ) : isCloudAgentSelected ? (
-                <div className="liquid-card flex h-11 items-center gap-2 rounded-xl px-3 text-xs text-text-secondary">
+                <Card padding="none" className="flex min-h-10 items-center gap-2 px-3">
                   <Cloud className="h-3.5 w-3.5 text-neon-cyan" />
                   <span className="text-text-primary">
                     {t.cloudAgentOptionLabel}
                   </span>
-                  <span className="ml-auto text-xs text-text-secondary/70">
+                  <span className="ml-auto text-xs text-text-secondary">
                     {t.cloudAgentOptionHint}
                   </span>
-                </div>
+                </Card>
               ) : selectedDaemon ? (
-                <div className="liquid-card flex h-11 items-center gap-2 rounded-xl px-3 text-xs text-text-secondary">
+                <Card padding="none" className="flex min-h-10 items-center gap-2 px-3">
                   <Server className="h-3.5 w-3.5 text-neon-cyan" />
                   <span className="text-text-primary">
                     {selectedDaemon.label || selectedDaemon.id}
                   </span>
                   <span className="ml-auto inline-flex h-1.5 w-1.5 rounded-full bg-neon-green" />
-                </div>
+                </Card>
               ) : null}
             </section>
 
@@ -1049,27 +1032,27 @@ function CreateAgentDialog({
                 {t.identitySectionLabel}
               </div>
             )}
-            <div className={hasExistingBots ? "space-y-3.5" : "liquid-card space-y-3.5 rounded-2xl p-3.5"}>
+            <div className="space-y-3.5">
             <section>
               <div className="mb-1 flex items-center justify-between gap-3">
-                <label className="text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
+                <label className="text-[13px] font-semibold text-text-secondary">
                   {t.nameLabel}
                 </label>
-                <button
+                <IconButton label={t.randomizeTooltip}
                   type="button"
                   onClick={handleRandomize}
                   disabled={submitting}
                   title={t.randomizeTooltip}
                   aria-label={t.randomizeTooltip}
-                  className="liquid-action inline-flex items-center justify-center rounded-md p-1 text-text-secondary transition-colors hover:text-neon-cyan disabled:opacity-50"
+
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                </button>
+                </IconButton>
               </div>
               <p className="mb-1.5 text-xs leading-5 text-text-secondary">
                 {t.nameHint}
               </p>
-              <input
+              <Input
                 type="text"
                 value={name}
                 onChange={(e) => {
@@ -1084,25 +1067,25 @@ function CreateAgentDialog({
                 }}
                 placeholder={t.namePlaceholder}
                 disabled={submitting}
-                className="liquid-input h-10 w-full rounded-xl border px-3 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+                className="w-full"
                 maxLength={64}
               />
             </section>
 
             <section>
-              <label className="mb-1 block text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
+              <label className="mb-1 block text-[13px] font-semibold text-text-secondary">
                 {t.bioLabel}
               </label>
               <p className="mb-1.5 text-xs leading-5 text-text-secondary">
                 {t.bioHint}
               </p>
-              <textarea
+              <Textarea
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 placeholder={t.bioPlaceholder}
                 disabled={submitting}
                 rows={2}
-                className="liquid-input h-16 w-full resize-none rounded-xl border px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+                className="w-full"
                 maxLength={240}
               />
             </section>
@@ -1111,27 +1094,27 @@ function CreateAgentDialog({
         )}
 
         {error && (
-          <p className="mt-4 rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
+          <Alert tone="danger" className="mt-4">
             {error}
-          </p>
+          </Alert>
         )}
               </div>
 
               {!showEmptyState && !addingDevice && loaded && (
                 <div className="liquid-toolbar flex shrink-0 items-center justify-end gap-3 border-t px-4 py-3 sm:px-5">
-                  <button
+                  <Button variant="secondary"
                     type="button"
                     onClick={() => closeWithMotion()}
                     disabled={submitting}
-                    className="liquid-action rounded-xl px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+
                   >
                     {t.cancel}
-                  </button>
-                  <button
+                  </Button>
+                  <Button variant="primary"
                     type="button"
                     onClick={() => void handleSubmit()}
                     disabled={!canSubmit}
-                    className="liquid-action flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm font-bold text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+
                   >
                     {submitting ? (
                       <>
@@ -1141,14 +1124,13 @@ function CreateAgentDialog({
                     ) : (
                       t.submit
                     )}
-                  </button>
+                  </Button>
                 </div>
               )}
             </>
           );
         })()}
-      </div>
-    </div>
+      </DialogSurface>
   );
 }
 
@@ -1192,16 +1174,16 @@ function RuntimePicker({
   return (
     <section>
       <div className="mb-2 flex items-center justify-between gap-3">
-        <label className="text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
+        <label className="text-[13px] font-semibold text-text-secondary">
           {hasAny
             ? labels.runtimeLabelWithCount(availableRuntimes.length)
             : labels.runtimeLabel}
         </label>
-        <button
+        <Button variant="primary"
           type="button"
           onClick={onRefresh}
           disabled={refreshing || disabled || !daemon}
-          className="liquid-action inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-text-secondary transition-colors hover:border-neon-cyan/60 hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
+
         >
           {refreshing ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -1209,13 +1191,11 @@ function RuntimePicker({
             <RefreshCcw className="h-3 w-3" />
           )}
           {labels.probeRuntimes}
-        </button>
+        </Button>
       </div>
 
       {!hasAny ? (
-        <div className="liquid-empty-state rounded-xl border border-dashed px-3 py-4 text-center text-xs text-text-secondary">
-          {labels.noRuntimesDetected}
-        </div>
+        <EmptyState compact bordered title={<>{labels.noRuntimesDetected}</>} />
       ) : (
         <div className="grid gap-3">
           {availableRuntimes.length > 0 ? (
@@ -1238,24 +1218,22 @@ function RuntimePicker({
               })}
             </div>
           ) : (
-            <div className="liquid-empty-state rounded-xl border border-dashed px-3 py-4 text-center text-xs text-text-secondary">
-              {labels.noRuntimesDetected}
-            </div>
+            <EmptyState compact bordered title={<>{labels.noRuntimesDetected}</>} />
           )}
 
           {unavailableRuntimes.length > 0 ? (
             <div>
-              <button
+              <Button variant="secondary"
                 type="button"
                 aria-expanded={unavailableExpanded}
                 onClick={() => setUnavailableExpanded((expanded) => !expanded)}
-                className="liquid-action flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:text-text-primary"
+                className="w-full"
               >
                 <span>
-                  <span className="font-semibold uppercase tracking-wider">
+                  <span className="font-semibold">
                     {labels.runtimeUnavailableGroup}
                   </span>
-                  <span className="ml-2 text-text-secondary/60">
+                  <span className="ml-2 text-text-secondary">
                     {labels.runtimeUnavailableCount(unavailableRuntimes.length)}
                   </span>
                 </span>
@@ -1267,7 +1245,7 @@ function RuntimePicker({
                     }`}
                   />
                 </span>
-              </button>
+              </Button>
               {unavailableExpanded ? (
                 <div className="mt-2 grid gap-2">
                   {unavailableRuntimes.map((r) => (
@@ -1345,19 +1323,12 @@ function RuntimeCard({
   unavailableLabel: string;
   availableLabel?: string;
 }) {
-  const base =
-    "liquid-action flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors";
-  const state = !runtime.available
-    ? "cursor-not-allowed border-glass-border bg-glass-bg/35 text-text-secondary/75"
-    : selected
-      ? "border-neon-cyan bg-neon-cyan/15 text-text-primary"
-      : "border-glass-border text-text-primary hover:border-neon-cyan/45 hover:bg-neon-cyan/10";
   return (
-    <button
+    <Card as="button" variant="interactive" padding="sm" aria-pressed={selected} className="flex items-center gap-3"
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`${base} ${state}`}
+
       title={runtime.path || runtime.error || runtime.id}
     >
       <RuntimeLogo runtimeId={runtime.id} dimmed={!runtime.available} />
@@ -1368,9 +1339,9 @@ function RuntimeCard({
             {runtime.version ? ` @ ${runtime.version}` : ""}
           </span>
           {runtime.available && availableLabel ? (
-            <span className="shrink-0 rounded border border-neon-green/30 bg-neon-green/10 px-1 py-px font-sans text-xs font-semibold uppercase tracking-wide text-neon-green">
+            <Badge tone="success" className="shrink-0">
               {availableLabel}
-            </span>
+            </Badge>
           ) : null}
         </span>
         {!runtime.available && (
@@ -1382,7 +1353,7 @@ function RuntimeCard({
       {selected && runtime.available && (
         <Check className="h-4 w-4 flex-shrink-0 text-neon-cyan" />
       )}
-    </button>
+    </Card>
   );
 }
 
@@ -1426,11 +1397,11 @@ function RuntimeModelOptions({
   if (models.length === 0 && !hasReasoning && !hasThinking) return null;
 
   return (
-    <section className="liquid-card rounded-xl p-2.5">
+    <Card as="section" padding="none" className="p-2.5">
       <div className="grid gap-2.5 sm:grid-cols-2">
         {models.length > 0 ? (
           <div className={hasReasoning || hasThinking ? "" : "sm:col-span-2"}>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+            <label className="mb-1 block text-xs font-semibold text-text-secondary">
               {labels.modelLabel}
             </label>
             <DashboardSelect
@@ -1455,7 +1426,7 @@ function RuntimeModelOptions({
 
         {hasReasoning ? (
           <div className={models.length > 0 ? "" : "sm:col-span-2"}>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+            <label className="mb-1 block text-xs font-semibold text-text-secondary">
               {labels.reasoningEffortLabel}
             </label>
             {reasoningValues.length > 0 ? (
@@ -1475,7 +1446,7 @@ function RuntimeModelOptions({
                 }))}
               />
             ) : (
-              <input
+              <Input
                 disabled={disabled}
                 type="text"
                 value={selectedReasoningEffort ?? ""}
@@ -1483,26 +1454,17 @@ function RuntimeModelOptions({
                 onChange={(event) =>
                   onSelectReasoningEffort(event.target.value.trim() || null)
                 }
-                className="liquid-input h-10 w-full rounded-xl border px-3 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+                className="w-full"
               />
             )}
           </div>
         ) : null}
 
         {hasThinking ? (
-          <label className="liquid-card flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm text-text-primary sm:col-span-2">
-            <input
-              type="checkbox"
-              checked={selectedThinking === true}
-              disabled={disabled}
-              onChange={(event) => onSelectThinking(event.target.checked)}
-              className="h-4 w-4 rounded border-glass-border bg-transparent text-neon-cyan focus:ring-neon-cyan/50"
-            />
-            <span>{labels.thinkingLabel}</span>
-          </label>
+          <Card padding="sm"><Checkbox checked={selectedThinking === true} disabled={disabled} onCheckedChange={(checked) => onSelectThinking(checked)} label={<><span>{labels.thinkingLabel}</span></>} /></Card>
         ) : null}
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -1538,19 +1500,16 @@ function OpenclawGatewayPicker({
   const boundCount = agents.length - availableAgents.length;
   if (endpoints.length === 0) {
     return (
-      <div className="liquid-empty-state rounded-xl border border-dashed px-3 py-3 text-xs text-text-secondary">
-        No OpenClaw gateways configured on this daemon. Add an entry to
-        <code className="mx-1 font-mono">openclawGateways</code>
-        in the daemon config and refresh.
-      </div>
+      <EmptyState compact bordered title={<>No OpenClaw gateways configured on this daemon. Add an entry to
+        <code className="mx-1 font-mono">openclawGateways</code>in the daemon config and refresh.</>} />
     );
   }
   return (
     <section>
-      <div className="liquid-card rounded-xl p-2.5">
+      <Card padding="none" className="p-2.5">
         <div className="grid gap-2.5">
       <div>
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-text-secondary">
+        <label className="mb-1 block text-xs font-semibold text-text-secondary">
           Gateway
         </label>
         <div className="relative">
@@ -1568,32 +1527,32 @@ function OpenclawGatewayPicker({
           />
         </div>
         {reachable.length === 0 && (
-          <p className="mt-1 text-xs text-orange-400">
+          <p className="mt-1 text-xs text-warning">
             No reachable gateways. Check tokens, daemon network access, or refresh runtimes.
           </p>
         )}
       </div>
       <div>
         <div className="mb-1 flex items-center gap-2">
-          <label className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+          <label className="text-xs font-semibold text-text-secondary">
             {labels.subagentLabel}
           </label>
           <span
             title={labels.subagentInfo}
-            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-glass-border text-text-tertiary"
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-glass-border text-text-secondary"
             aria-label={labels.subagentInfo}
           >
             <Info className="h-3 w-3" />
           </span>
         </div>
         {agents.length === 0 ? (
-          <input
+          <Input
             disabled={disabled || !selectedGateway}
             type="text"
             value={selectedAgent ?? ""}
             placeholder={labels.subagentPlaceholder}
             onChange={(e) => onSelectAgent(e.target.value.trim() || null)}
-            className="liquid-input h-10 w-full rounded-xl border px-3 text-sm text-text-primary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+            className="w-full"
           />
         ) : (
           <div className="relative">
@@ -1615,13 +1574,13 @@ function OpenclawGatewayPicker({
           </div>
         )}
         {boundCount > 0 && (
-          <p className="mt-1 text-xs text-text-tertiary">
+          <p className="mt-1 text-xs text-text-secondary">
             {labels.boundProfiles(boundCount)}
           </p>
         )}
       </div>
         </div>
-      </div>
+      </Card>
     </section>
   );
 }
@@ -1643,17 +1602,13 @@ function HermesProfilePicker({
   }
   if (profiles.length === 0) {
     return (
-      <div className="liquid-empty-state rounded-xl border border-dashed px-3 py-3 text-xs text-text-secondary">
-        No hermes profiles detected. Make sure hermes is installed and run{" "}
-        <code className="mx-1 font-mono">hermes profile create &lt;name&gt;</code>
-        on this device, then refresh runtimes.
-      </div>
+      <EmptyState compact bordered title={<>No hermes profiles detected. Make sure hermes is installed and run{" "}<code className="mx-1 font-mono">hermes profile create &lt;name&gt;</code>on this device, then refresh runtimes.</>} />
     );
   }
   const allOccupied = profiles.every((p) => !!p.occupiedBy);
   return (
     <section>
-      <label className="mb-1.5 block text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
+      <label className="mb-1.5 block text-[13px] font-semibold text-text-secondary">
         Hermes profile
       </label>
       <div className="relative">
@@ -1682,13 +1637,13 @@ function HermesProfilePicker({
           })}
         />
       </div>
-      <p className="mt-1 text-xs text-text-tertiary">
+      <p className="mt-1 text-xs text-text-secondary">
         BotCord agent attaches to this profile&apos;s{" "}
         <code className="font-mono">HERMES_HOME</code>; sessions, memory and
         skills are shared with your command-line <code className="font-mono">hermes</code>.
       </p>
       {allOccupied && (
-        <p className="mt-1 text-xs text-orange-400">
+        <p className="mt-1 text-xs text-warning">
           All profiles are bound. Run{" "}
           <code className="font-mono">hermes profile create &lt;name&gt; --clone</code>{" "}
           on this device and refresh.
@@ -1794,7 +1749,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
           : "The host couldn't auto-register this agent in ~/.openclaw/openclaw.json.";
     return (
       <div className="space-y-4">
-        <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200">
+        <div className="rounded-xl border border-warning/40 bg-warning-soft p-3 text-sm text-amber-200">
           <p className="font-semibold">Agent created — manual attach required</p>
           <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
             <span className="font-mono">{manualAttachNotice.agentId}</span> was
@@ -1805,13 +1760,13 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
           <p className="mt-2 text-xs text-amber-100/70">{reasonText}</p>
         </div>
         <div className="flex justify-end">
-          <button
+          <Button variant="secondary"
             type="button"
             onClick={onClose}
-            className="liquid-action rounded-xl px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
+
           >
             Got it
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -1835,7 +1790,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
   return (
     <div className="space-y-4">
       <div>
-        <label className="mb-1.5 block text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
+        <label className="mb-1.5 block text-[13px] font-semibold text-text-secondary">
           OpenClaw host
         </label>
         <div className="grid grid-cols-1 gap-2">
@@ -1848,83 +1803,77 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
               disabled={submitting}
             />
           ))}
-          <button
+          <Button aria-pressed={target.kind === "new"} variant="row"
             type="button"
             onClick={() => setTarget({ kind: "new" })}
             disabled={submitting}
-            className={`liquid-action flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
-              target.kind === "new"
-                ? "border-neon-cyan/60 bg-neon-cyan/10 text-text-primary"
-                : "border-glass-border text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-            }`}
+
           >
             <span className="flex items-center gap-2">
               <Server className="h-4 w-4" />
               Add a new OpenClaw host
             </span>
             {target.kind === "new" && <Check className="h-4 w-4 text-neon-cyan" />}
-          </button>
+          </Button>
         </div>
         {!loaded && (
           <MobileBotCordLoading
             label="Loading registered hosts…"
             size="sm"
             className="mt-2 justify-start"
-            textClassName="text-xs text-text-tertiary"
+            textClassName="text-xs text-text-secondary"
           />
         )}
       </div>
 
-      <div>
-        <label className="mb-1.5 block text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
-          Agent name
-        </label>
-        <input
+      <Field label={<>Agent name
+        </>}>
+
+        <Input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. research-bot"
           disabled={submitting}
-          className="liquid-input w-full rounded-xl border px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+          className="w-full"
           maxLength={64}
         />
-      </div>
+      </Field>
 
-      <div>
-        <label className="mb-1.5 block text-[13px] font-semibold uppercase tracking-wider text-text-secondary">
-          Bio (optional)
-        </label>
-        <textarea
+      <Field label={<>Bio (optional)
+        </>}>
+
+        <Textarea
           value={bio}
           onChange={(e) => setBio(e.target.value)}
           placeholder="What this bot is for"
           disabled={submitting}
           rows={2}
-          className="liquid-input w-full resize-none rounded-xl border px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:border-neon-cyan focus:outline-none focus:ring-1 focus:ring-neon-cyan/50 disabled:opacity-50"
+          className="w-full"
           maxLength={240}
         />
-      </div>
+      </Field>
 
       {error && (
-        <p className="rounded-lg border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-400">
+        <Alert tone="danger" >
           {error}
-        </p>
+        </Alert>
       )}
 
       <div className="flex items-center justify-end gap-3">
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={onClose}
           disabled={submitting}
-          className="liquid-action rounded-xl px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button variant="primary"
           type="button"
           onClick={() => void handleSubmit()}
           disabled={submitting || !name.trim()}
-          className="liquid-action flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2.5 text-sm font-bold text-neon-cyan transition-all hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+
         >
           {submitting ? (
             <>
@@ -1936,7 +1885,7 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
           ) : (
             "Create"
           )}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -1954,15 +1903,11 @@ function HostCard({
   disabled: boolean;
 }) {
   return (
-    <button
+    <Button aria-pressed={selected} variant="row"
       type="button"
       onClick={onSelect}
       disabled={disabled || !host.online}
-      className={`liquid-action flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
-        selected
-          ? "border-neon-cyan/60 bg-neon-cyan/10 text-text-primary"
-          : "border-glass-border text-text-secondary hover:bg-glass-bg hover:text-text-primary"
-      } ${!host.online ? "cursor-not-allowed opacity-60" : ""}`}
+
     >
       <span className="flex items-center gap-2">
         <Server className="h-4 w-4 text-neon-cyan" />
@@ -1970,14 +1915,14 @@ function HostCard({
         {host.online ? (
           <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-neon-green" />
         ) : (
-          <span className="ml-1 text-xs uppercase tracking-wider text-text-tertiary">
+          <span className="ml-1 text-xs text-text-secondary">
             offline
           </span>
         )}
       </span>
-      <span className="text-xs text-text-tertiary">
+      <span className="text-xs text-text-secondary">
         {host.agent_count} agent{host.agent_count === 1 ? "" : "s"}
       </span>
-    </button>
+    </Button>
   );
 }

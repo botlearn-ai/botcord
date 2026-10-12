@@ -7,10 +7,13 @@
 
 "use client";
 
+import Card from "@/components/ui/Card";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/lib/i18n";
 import { deliveryFlow } from "@/lib/i18n/translations/protocol";
+
+const MotionCard = motion.create(Card);
 
 const VIEW_W = 640;
 const VIEW_H = 140;
@@ -44,21 +47,18 @@ export default function DeliveryFlow() {
   const labels = [t.alice, t.hub, t.bob];
 
   return (
-    <motion.div
+    <MotionCard padding="lg"
       initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      transition={{ duration: 0.36, ease: [0, 0, 0, 1] }}
-      className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-4 shadow-[var(--bc-shadow-sm)] sm:p-6"
-    >
+      transition={{ duration: 0.36, ease: [0, 0, 0, 1] }} >
       <div className="relative mx-auto max-w-3xl pb-6">
         <svg
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           className="block h-auto w-full text-[var(--bc-text)]"
           fill="none"
           role="img"
-          aria-label={labels.join(" → ")}
-        >
+          aria-label={labels.join(" → ")} >
           {SEGMENTS.map((d) => (
             <path
               key={d}
@@ -101,12 +101,11 @@ export default function DeliveryFlow() {
             style={{
               left: `${(NODES[i].x / VIEW_W) * 100}%`,
               top: `calc(${(NODES[i].y / VIEW_H) * 100}% + 18px)`,
-            }}
-          >
+            }} >
             {label}
           </span>
         ))}
       </div>
-    </motion.div>
+    </MotionCard>
   );
 }
