@@ -9,6 +9,7 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 
 - 视觉规范：`docs/brand/botcord-vi/VI.md`（唯一文字来源，数值以 `tokens/botcord.tokens.json` 为准）
 - 全仓组件盘点：`docs/brand/botcord-vi/COMPONENT-INVENTORY.md`（`cd frontend && node scripts/audit-ui-components.mjs` 重新生成）
+- 迁移实施与待验：`docs/brand/botcord-vi/MIGRATION-REPORT.md`
 - 迁移基线与验收边界：`docs/brand/botcord-vi/RELEASE-READINESS.md`；真实页面试点 `/design/pilot`（仅本地内存数据）
 - 组件 API 契约：`docs/brand/botcord-vi/COMPONENTS.md`
 - Tailwind 颜色桥：`frontend/src/styles/botcord-tailwind.css`；旧 token 映射：`frontend/src/app/globals.css` 顶部
@@ -23,8 +24,9 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 | 需要 | 用 |
 |---|---|
 | 纯图标按钮 | `IconButton`，必须提供 `label`，不要只提供 title |
-| 按钮 | `Button`（`variant: primary \| secondary \| ghost \| danger`，`size: sm \| md`，`loading`）。一屏只有一个 `primary` |
-| 输入框 / 多行输入 | `Input` / `Textarea`（`invalid`）；带标签、提示、错误时外面包 `Field` |
+| 按钮 | `Button`（`variant: primary \| secondary \| ghost \| danger \| row \| inline`，`size: sm \| md`，`loading`）。一屏只有一个 `primary` |
+| 导航链接 | `LinkButton`；保留 href、键盘与新标签页语义 |
+| 输入框 / 多行输入 | `Input` / `Textarea`（`invalid`；`variant: default / composer / message`）；带标签、提示、错误时外面包 `Field` |
 | 原生下拉 / 带说明单选 / 多选 | `Select` / `SingleSelect` / `MultiSelect`；原生表单提交用 Select，旧 DashboardSelect / DashboardMultiSelect 是兼容导出 |
 | 搜索框 | `SearchInput`；防抖和 API 请求留在业务层 |
 | 单选按钮 | `Radio`；组内共享 name，外层提供 label / fieldset |
@@ -32,6 +34,8 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 | 抽屉 | `DrawerShell`；复杂业务抽屉迁移时保留嵌套确认与生命周期 |
 | 数据表 / 指标卡 / 折叠区 | `Table` 系列 / `MetricCard` / `Disclosure` |
 | 弹窗 | `DialogShell` + `useDialogClose`；dashboard 弹窗外层再包 `withDashboardOverlayPortal` |
+| 自有动画的复杂弹层 | `DialogSurface`；调用方保留动画 / ref，共享滚动锁、焦点和 Esc；非模态侧栏显式 modal=false |
+| 仅点击关闭的导航遮罩 | `DismissLayer`；必须提供 label，调用方管理键盘与焦点 |
 | 确认 / 提示框 | `useConfirm()`（`ConfirmDialog`），不要用 `window.confirm` |
 | 结果反馈（已保存、失败） | `toast({ title, tone })`（`<Toaster />` 挂在 `app/layout.tsx`） |
 | 头像（agent / 人类 / room） | `Avatar kind="agent" \| "human" \| "room"`；旧的 `BotAvatar` / `ParticipantAvatar` 只做兼容，新代码不用 |
@@ -158,7 +162,7 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 
 ## 7. 迁移规则（Polar 规则）
 
-前端里还有大量旧写法（neon / glass / zinc / 手写弹窗）。改到某个旧文件时：
+全站通用控件已迁移到 46 个共享 UI 模块。业务文件禁止新增原生 button / input / textarea / select / table / dialog / details；仅保留 MessageComposer 隐藏文件上传 input，由 `src/ui-migration.test.ts` 检查。专业业务组件保留原语义。处理剩余样式兼容时：
 
 1. 迁移你改到的部分：手写按钮 → `Button`，手写输入 → `Input`，手写弹窗 → `DialogShell`，手写徽章 → `Badge`，旧头像 → `Avatar`，sub-12px → `text-xs`，hex / rgba → 语义类。
 2. 不顺手重写和本次任务无关的整个文件；范围大时单独提 PR。
@@ -186,7 +190,7 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 
 ### v1 接口与迁移范围
 
-- 以 RELEASE-READINESS.md 的分组为准；基础组件可迁移，复杂消息、编辑器、业务抽屉不得机械替换。
+- 以 RELEASE-READINESS.md 的分组为准；基础组件已迁移，复杂消息、编辑器保留业务逻辑；业务抽屉使用共享外壳与 DashboardOverlayPortal，不得机械替换状态与生命周期。
 - 不改现有回调参数以统一命名；原生 Select 与受控 SingleSelect / MultiSelect 的表单语义不同。
 - className 只安排外部布局，不覆盖 VI 字体、颜色、焦点、触控尺寸或 busy 行为；外观扩展使用命名 variant。
 - 每批以完整页面验收，保留 API 与权限；测试失败、加载、长内容、嵌套弹层、焦点返回和移动端。预览 fixture 不能作为生产权限验证。

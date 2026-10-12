@@ -54,7 +54,7 @@ const RULES: Rule[] = [
     id: "fixed-inset-scrim",
     description: "不要手写 `fixed inset-0` 遮罩，弹窗用 DialogShell（dashboard 外层加 withDashboardOverlayPortal）",
     pattern: /(?<![\w-])fixed(?![\w-])[^"'`\n]*?(?<![\w-])inset-0(?![\w-])|(?<![\w-])inset-0(?![\w-])[^"'`\n]*?(?<![\w-])fixed(?![\w-])/g,
-    allow: ["components/ui/DialogShell.tsx"],
+    allow: ["components/ui/DialogShell.tsx", "components/ui/DialogSurface.tsx"],
   },
   {
     id: "neon-purple",
