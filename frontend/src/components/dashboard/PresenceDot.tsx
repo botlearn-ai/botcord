@@ -66,7 +66,7 @@ export function PresenceDot({
       aria-label={status}
       title={title ?? LABEL_MAP[status]}
       className={clsx(
-        "inline-block rounded-full ring-1 ring-[#0a0a0f]",
+        "inline-block rounded-full ring-1 ring-deep-black",
         SIZE_MAP[size],
         COLOR_MAP[status],
         className,

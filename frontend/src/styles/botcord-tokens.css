@@ -1,0 +1,165 @@
+/* Copied from docs/brand/botcord-vi/tokens/botcord.css (VI v1.0). Regenerate there, then copy; do not edit here. */
+/*
+ * BotCord design tokens · VI v1.0 (Node·Cord)
+ * Generated from botcord.tokens.json — do not edit by hand.
+ * Theme switch: html[data-theme="dark"] (matches the dashboard).
+ */
+
+:root {
+  --bc-cyan-50: #DFFCFF;
+  --bc-cyan-100: #C3F2F7;
+  --bc-cyan-200: #98E3EC;
+  --bc-cyan-300: #50CFDD;
+  --bc-cyan-400: #0BB6C5;
+  --bc-cyan-500: #0D98A4;
+  --bc-cyan-600: #017E88;
+  --bc-cyan-700: #02646D;
+  --bc-cyan-800: #024C52;
+  --bc-cyan-900: #02353A;
+  --bc-cyan-950: #011F22;
+  --bc-neutral-0: #FFFFFF;
+  --bc-neutral-25: #F7FAFE;
+  --bc-neutral-50: #F1F6FA;
+  --bc-neutral-100: #E7ECF0;
+  --bc-neutral-200: #DADEE3;
+  --bc-neutral-300: #C7CBD0;
+  --bc-neutral-400: #A1A5A9;
+  --bc-neutral-500: #777B7F;
+  --bc-neutral-600: #5A5E62;
+  --bc-neutral-700: #3F4347;
+  --bc-neutral-800: #26292D;
+  --bc-neutral-850: #181B1E;
+  --bc-neutral-900: #13161A;
+  --bc-neutral-950: #090B0E;
+  --bc-neutral-1000: #040608;
+  --bc-green-50: #E4FDE8;
+  --bc-green-100: #CFF3D5;
+  --bc-green-200: #ABE5B6;
+  --bc-green-300: #7AD28E;
+  --bc-green-400: #50BB6D;
+  --bc-green-500: #2E9E52;
+  --bc-green-600: #02853C;
+  --bc-green-700: #026A2E;
+  --bc-green-800: #015122;
+  --bc-green-900: #013916;
+  --bc-green-950: #00220A;
+  --bc-amber-50: #FFF3E6;
+  --bc-amber-100: #FFE3C3;
+  --bc-amber-200: #FACB95;
+  --bc-amber-300: #EFAB56;
+  --bc-amber-400: #DC8E12;
+  --bc-amber-500: #B87501;
+  --bc-amber-600: #996103;
+  --bc-amber-700: #7A4D04;
+  --bc-amber-800: #5E3900;
+  --bc-amber-900: #422701;
+  --bc-amber-950: #281600;
+  --bc-red-50: #FEF2F0;
+  --bc-red-100: #FEE0DC;
+  --bc-red-200: #FEC4BE;
+  --bc-red-300: #FE9B94;
+  --bc-red-400: #FF6B65;
+  --bc-red-500: #E24947;
+  --bc-red-600: #C52B30;
+  --bc-red-700: #A70119;
+  --bc-red-800: #810010;
+  --bc-red-900: #5D0009;
+  --bc-red-950: #3A0104;
+  --bc-agent-coral: #C25D58;
+  --bc-agent-amber: #B46D10;
+  --bc-agent-lime: #7E8814;
+  --bc-agent-green: #3B9555;
+  --bc-agent-cyan: #03919D;
+  --bc-agent-blue: #3A84CA;
+  --bc-agent-violet: #8071C8;
+  --bc-agent-pink: #AF609F;
+
+  --bc-bg: var(--bc-neutral-25);
+  --bc-surface: var(--bc-neutral-0);
+  --bc-surface-raised: var(--bc-neutral-0);
+  --bc-surface-sunken: var(--bc-neutral-50);
+  --bc-border: var(--bc-neutral-200);
+  --bc-border-strong: var(--bc-neutral-300);
+  --bc-text: var(--bc-neutral-900);
+  --bc-text-secondary: var(--bc-neutral-600);
+  --bc-text-tertiary: var(--bc-neutral-500);
+  --bc-brand: var(--bc-cyan-500);
+  --bc-accent: var(--bc-cyan-600);
+  --bc-accent-hover: var(--bc-cyan-700);
+  --bc-accent-text: var(--bc-cyan-700);
+  --bc-accent-soft: var(--bc-cyan-50);
+  --bc-on-accent: var(--bc-neutral-0);
+  --bc-success: var(--bc-green-600);
+  --bc-success-soft: var(--bc-green-50);
+  --bc-warning: var(--bc-amber-600);
+  --bc-warning-soft: var(--bc-amber-50);
+  --bc-danger: var(--bc-red-600);
+  --bc-danger-soft: var(--bc-red-50);
+  --bc-focus-ring: var(--bc-cyan-500);
+
+  --bc-font-sans: "Geist", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --bc-font-mono: "Geist Mono", SFMono-Regular, Menlo, monospace;
+  --bc-text-display: 600 56px/1.05 var(--bc-font-sans);
+  --bc-tracking-display: -0.04em;
+  --bc-text-h1: 600 36px/1.15 var(--bc-font-sans);
+  --bc-tracking-h1: -0.03em;
+  --bc-text-h2: 600 28px/1.2 var(--bc-font-sans);
+  --bc-tracking-h2: -0.025em;
+  --bc-text-h3: 600 22px/1.3 var(--bc-font-sans);
+  --bc-tracking-h3: -0.02em;
+  --bc-text-h4: 600 18px/1.4 var(--bc-font-sans);
+  --bc-tracking-h4: -0.01em;
+  --bc-text-body-lg: 400 16px/1.6 var(--bc-font-sans);
+  --bc-text-body: 400 14px/1.6 var(--bc-font-sans);
+  --bc-text-body-sm: 400 13px/1.5 var(--bc-font-sans);
+  --bc-text-caption: 500 12px/1.45 var(--bc-font-sans);
+  --bc-text-mono: 400 13px/1.5 var(--bc-font-mono);
+  --bc-radius-xs: 4px;
+  --bc-radius-sm: 6px;
+  --bc-radius-md: 8px;
+  --bc-radius-lg: 12px;
+  --bc-radius-xl: 16px;
+  --bc-radius-2xl: 24px;
+  --bc-radius-full: 9999px;
+  --bc-shadow-sm: 0 1px 2px #13161A0F;
+  --bc-shadow-md: 0 4px 16px -2px #13161A14;
+  --bc-shadow-lg: 0 16px 40px -8px #13161A1F;
+  --bc-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --bc-ease-enter: cubic-bezier(0, 0, 0, 1);
+  --bc-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --bc-duration-fast: 140ms;
+  --bc-duration-base: 220ms;
+  --bc-duration-slow: 360ms;
+}
+
+html[data-theme="dark"] {
+  --bc-bg: var(--bc-neutral-950);
+  --bc-surface: var(--bc-neutral-850);
+  --bc-surface-raised: var(--bc-neutral-800);
+  --bc-surface-sunken: var(--bc-neutral-1000);
+  --bc-border: var(--bc-neutral-800);
+  --bc-border-strong: var(--bc-neutral-700);
+  --bc-text: var(--bc-neutral-50);
+  --bc-text-secondary: var(--bc-neutral-400);
+  --bc-text-tertiary: var(--bc-neutral-500);
+  --bc-brand: var(--bc-cyan-400);
+  --bc-accent: var(--bc-cyan-400);
+  --bc-accent-hover: var(--bc-cyan-300);
+  --bc-accent-text: var(--bc-cyan-300);
+  --bc-accent-soft: var(--bc-cyan-950);
+  --bc-on-accent: var(--bc-neutral-950);
+  --bc-success: var(--bc-green-400);
+  --bc-success-soft: var(--bc-green-950);
+  --bc-warning: var(--bc-amber-400);
+  --bc-warning-soft: var(--bc-amber-950);
+  --bc-danger: var(--bc-red-400);
+  --bc-danger-soft: var(--bc-red-950);
+  --bc-focus-ring: var(--bc-cyan-400);
+  --bc-shadow-sm: 0 1px 2px #0000004D;
+  --bc-shadow-md: 0 4px 16px -2px #00000066;
+  --bc-shadow-lg: 0 16px 40px -8px #00000080;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --bc-duration-fast: 0ms; --bc-duration-base: 0ms; --bc-duration-slow: 0ms; }
+}

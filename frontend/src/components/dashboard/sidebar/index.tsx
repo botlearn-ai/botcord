@@ -7,6 +7,7 @@
  * [PROTOCOL]: update header on changes
  */
 
+import BrandMark from "@/components/ui/BrandMark";
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
@@ -408,7 +409,8 @@ function Sidebar({
           className="dashboard-brand-link mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-glass-border bg-deep-black-light transition-colors hover:border-neon-cyan/50 hover:bg-glass-bg max-md:mb-0 max-md:mr-2 max-md:hidden"
           title={tNav.home}
         >
-          <img src="/logo.svg" alt="BotCord" className="h-6 w-6" />
+          <BrandMark className="h-6 w-6 text-text-primary" />
+          <span className="sr-only">BotCord</span>
         </Link>
         <div className="flex flex-1 flex-col items-center gap-1 pt-1 max-md:min-w-0 max-md:flex-row max-md:justify-around max-md:pt-0">
           {navItems.map((item) => {
@@ -419,7 +421,7 @@ function Sidebar({
               badge = (
                 <span
                   data-primary-nav-badge
-                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold leading-none text-[var(--color-on-accent)] shadow-[0_0_12px_rgba(34,211,238,0.45)]"
+                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold leading-none text-[var(--color-on-accent)] "
                 >
                   {formatBadgeCount(unreadMessageCount)}
                 </span>
@@ -429,7 +431,7 @@ function Sidebar({
               badge = (
                 <span
                   data-primary-nav-badge
-                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold text-[var(--color-on-accent)] shadow-[0_0_12px_rgba(34,211,238,0.45)]"
+                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-[9px] font-bold text-[var(--color-on-accent)] "
                 >
                   {formatBadgeCount(pendingContactRequests)}
                 </span>

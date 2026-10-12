@@ -39,13 +39,13 @@ export function createTimelineIfMotion(
 
 export const animeStagger = utils.stagger;
 
-export function animatePulse(target: HTMLElement, color = "rgba(0, 240, 255, 0.52)"): JSAnimation | null {
+export function animatePulse(target: HTMLElement, color = "rgba(13, 152, 164, 0.4)"): JSAnimation | null {
   return animateIfMotion(target, {
     scale: [1, 1.025, 1],
     boxShadow: [
-      "0 0 0 rgba(0, 240, 255, 0)",
-      `0 0 18px ${color}`,
-      "0 0 0 rgba(0, 240, 255, 0)",
+      "0 0 0 0 rgba(13, 152, 164, 0)",
+      `0 0 0 4px ${color}`,
+      "0 0 0 0 rgba(13, 152, 164, 0)",
     ],
     duration: 520,
     ease: "out(3)",
