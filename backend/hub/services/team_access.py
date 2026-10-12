@@ -302,8 +302,12 @@ async def room_agent_access(db: AsyncSession, space_id: UUID, room_id: str, user
     for agent in agents:
         if owners.get(agent.agent_id) == user_id or agent.user_id == user_id:
             capability, basis = "full", "owner"
-        elif (grant := grants.get(agent.agent_id)) is not None:
+        elif (grant := grants.get(agent.agent_id)) is not None and (room.space_kind != "dm" or grant.space_id == room.space_id):
             capability, basis = ("collaborator" if grant.role == "collaborator" else "consult"), "grant"
+        elif room.space_kind == "dm":
+            # Match assert_org_send_allowed: room membership alone never grants
+            # access to an agent DM, including after revocation or expiry.
+            capability, basis = "deny", "none"
         else:
             capability, basis = (room_caps.get(agent.agent_id) or "consult"), "room"
         # Pre-filled cache: _attention_for then needs no queries.

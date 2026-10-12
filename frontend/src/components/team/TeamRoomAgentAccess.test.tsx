@@ -56,3 +56,11 @@ it("starts mobile permissions collapsed with the agent count and keeps desktop c
   expect(html).toContain('class="hidden md:contents"');
   expect(renderToStaticMarkup(<RoomAgentChips agents={[]} />)).toBe("");
 });
+
+it("shows denied access instead of read-only and suppresses reply promises", () => {
+  const denied: RoomAgentAccess[] = [{ ...agents[0], my_capability: "deny", basis: "none" }];
+  const html = renderToStaticMarkup(<RoomAgentChips agents={denied} />);
+  expect(html).toContain("无权限");
+  expect(html).not.toContain("只读");
+  expect(renderToStaticMarkup(<RoomReplyHints agents={denied} />)).toBe("");
+});

@@ -6,7 +6,7 @@ import AgentDefaultPermission from "./AgentDefaultPermission";
 
 it("explains the scope of the default permission", () => {
   const html = renderToStaticMarkup(<AgentDefaultPermission agentId="ag_x" />);
-  expect(html).toContain("别人使用这个 Agent 时的默认权限");
-  expect(html).toContain("新加的好友、新加入的群和公开这个 Agent；已有的关系不变");
+  expect(html).toContain("默认权限");
+  expect(html).toContain("设置他人使用时能做什么。适用于之后新增的好友和群聊。也用于公开此 Agent。已有关系的权限不变。");
   expect(html).toContain("正在加载");
 });
