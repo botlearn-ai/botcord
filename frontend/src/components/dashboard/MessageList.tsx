@@ -1,5 +1,10 @@
 "use client";
 
+import Card from "@/components/ui/Card";
+import EmptyState from "@/components/ui/EmptyState";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import IconButton from "@/components/ui/IconButton";
 import { observeChatViewportResize } from "./mobileChat";
 import MessageHistoryControl, { canAutoLoadHistory } from "./MessageHistoryControl";
 
@@ -38,10 +43,10 @@ import { animateIfMotion, animatePop, cleanupAnime } from "@/lib/anime";
 import { MessageFeedSkeleton, MessageHistoryLoading } from "./DashboardMessagePaneSkeleton";
 
 const topicStatusColors: Record<string, { color: string; icon: string }> = {
-  open:      { color: "text-neon-cyan bg-neon-cyan/10 border-neon-cyan/30",       icon: "●" },
-  completed: { color: "text-green-400 bg-green-400/10 border-green-400/30",       icon: "✔" },
-  failed:    { color: "text-red-400 bg-red-400/10 border-red-400/30",             icon: "✗" },
-  expired:   { color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/30",    icon: "⏱" },
+  open:      { color: "text-accent-text bg-accent-soft border-neon-cyan/30",       icon: "●" },
+  completed: { color: "text-success bg-green-400/10 border-green-400/30",       icon: "✔" },
+  failed:    { color: "text-danger bg-danger-soft border-danger/40",             icon: "✗" },
+  expired:   { color: "text-warning bg-warning-soft border-warning/40",    icon: "⏱" },
 };
 
 function useTopicStatusConfig() {
@@ -153,18 +158,18 @@ export function TopicCard({
     <div className="mb-4">
       {/* Topic label row — sits above the first message like a lightweight title */}
       <div className="mb-1 flex items-center gap-2 px-1">
-        <span className="text-xs text-neon-cyan/70">💬</span>
+        <span className="text-xs text-accent-text">💬</span>
         <span className="truncate text-xs font-medium text-text-secondary">
           {group.topicName}
         </span>
         {sc && (
-          <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-px text-xs font-medium ${sc.color}`}>
+          <Badge tone="neutral" >
             <span className="text-xs">{sc.icon}</span>
             {sc.label}
-          </span>
+          </Badge>
         )}
         {group.topicInfo?.goal && (
-          <span className="hidden sm:inline-flex items-center gap-1 truncate text-xs text-neon-cyan/70 max-w-[260px]">
+          <span className="hidden sm:inline-flex items-center gap-1 truncate text-xs text-accent-text max-w-[260px]">
             🎯 {group.topicInfo.goal}
           </span>
         )}
@@ -206,10 +211,10 @@ export function TopicCard({
           group.messages[0]?.sender_id === currentAgentId ? "mr-3 ml-auto max-w-[70%]" : "max-w-[70%]"
         }`}
       >
-        <div className="flex items-center gap-1 text-xs text-neon-cyan/70 transition-colors group-hover:text-neon-cyan">
+        <div className="flex items-center gap-1 text-xs text-accent-text transition-colors group-hover:text-accent-text">
           <span>💬</span>
           <span>{t.viewThread}</span>
-          <span className="text-text-secondary/50">
+          <span className="text-text-secondary">
             · {group.messages.length} {group.messages.length !== 1 ? t.msgs : t.msg}
           </span>
           <span>→</span>
@@ -245,65 +250,53 @@ function EmptyRoomGuide({
 
   return (
     <div className="flex flex-1 items-center justify-center overflow-y-auto px-4 py-8">
-      <div className="liquid-empty-state w-full max-w-2xl rounded-lg border border-glass-border p-5 shadow-lg shadow-black/20">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan">
-            <Bot className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="text-base font-semibold text-text-primary">
-              {isDm ? t.emptyDmTitle : t.emptyTitle}
-            </h3>
-            <p className="mt-1 text-sm leading-6 text-text-secondary">
-              {isDm ? t.emptyDmDesc : hasOtherMembers ? t.emptyGroupDesc : t.emptySoloDesc}
-            </p>
-          </div>
-        </div>
+      <Card className="w-full max-w-2xl">
+        <EmptyState compact icon={<Bot size={24} strokeWidth={1.75} />} title={isDm ? t.emptyDmTitle : t.emptyTitle} description={isDm ? t.emptyDmDesc : hasOtherMembers ? t.emptyGroupDesc : t.emptySoloDesc} />
 
         {canManageRoom && (
           <div className="mt-4 flex flex-wrap gap-2">
-            <button
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent(OPEN_ROOM_ADD_MEMBER_EVENT))}
-              className="inline-flex items-center gap-2 rounded-md border border-neon-cyan/30 bg-neon-cyan/10 px-3 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              className="inline-flex items-center gap-2"
             >
               <UserPlus className="h-4 w-4" />
               {t.emptyAddMember}
-            </button>
-            <button
+            </Button>
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent(OPEN_ROOM_SETTINGS_EVENT))}
-              className="inline-flex items-center gap-2 rounded-md border border-glass-border bg-glass-bg px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary"
+              className="inline-flex items-center gap-2"
             >
               <Settings className="h-4 w-4" />
               {t.emptyRoomSettings}
-            </button>
+            </Button>
           </div>
         )}
 
         <div className="mt-5">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary/70">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary">
             {t.emptyPromptLabel}
           </p>
           <div className="grid gap-2">
             {starterPrompts.map((prompt) => (
-              <button
+              <Button variant="row"
                 type="button"
                 key={prompt}
                 onClick={() => prefillComposer(prompt)}
-                className="liquid-list-row group flex items-start justify-between gap-3 rounded-md border border-glass-border px-3 py-2 text-left transition-colors hover:border-neon-cyan/40 hover:bg-neon-cyan/5"
+                className="group flex items-start justify-between gap-3"
               >
                 <span className="min-w-0 text-sm leading-5 text-text-secondary group-hover:text-text-primary">
                   {prompt}
                 </span>
-                <span className="shrink-0 rounded border border-neon-cyan/30 px-2 py-1 text-xs font-medium text-neon-cyan">
+                <Badge tone="accent" >
                   {t.emptyTryPrompt}
-                </span>
-              </button>
+                </Badge>
+              </Button>
             ))}
           </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -766,17 +759,13 @@ export default function MessageList({
   if (!hasMessagesCache && roomMessageError) {
     return (
       <div className="flex flex-1 items-center justify-center px-4 py-8" role="alert">
-        <div className="liquid-empty-state w-full max-w-sm rounded-2xl border border-glass-border px-5 py-6 text-center">
-          <p className="text-sm font-medium text-text-primary">{t.loadMessagesFailed}</p>
-          <p className="mt-1 text-xs text-text-secondary">{roomMessageError}</p>
-          <button
+        <EmptyState compact bordered title={<>{t.loadMessagesFailed}</>} description={<>{roomMessageError}</>} action={<><Button variant="secondary" size="sm"
             type="button"
             onClick={() => void loadRoomMessages(roomId, { force: true })}
-            className="liquid-action mt-4 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+            className="mt-4"
           >
             {tc.retry}
-          </button>
-        </div>
+          </Button></>} />
       </div>
     );
   }
@@ -786,15 +775,15 @@ export default function MessageList({
       <div className="relative flex min-h-0 flex-1">
         <EmptyRoomGuide room={currentRoom} />
         {roomMessageError ? (
-          <div className="absolute inset-x-0 top-0 z-20 flex min-h-7 items-center justify-center gap-2 border-b border-amber-300/15 bg-amber-300/[0.06] px-3 text-xs text-text-secondary" role="status">
+          <div className="absolute inset-x-0 top-0 z-20 flex min-h-7 items-center justify-center gap-2 border-b border-warning/40 bg-amber-300/[0.06] px-3 text-xs text-text-secondary" role="status">
             <span>{t.loadMessagesFailed}</span>
-            <button
+            <Button variant="inline"
               type="button"
               onClick={() => void loadRoomMessages(roomId, { force: true })}
-              className="rounded px-1.5 py-0.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+
             >
               {tc.retry}
-            </button>
+            </Button>
           </div>
         ) : isRoomMessagesLoading ? (
           <div className="dashboard-message-loading-bar absolute inset-x-0 top-0" role="status" aria-label={t.loadingMessages} />
@@ -804,30 +793,30 @@ export default function MessageList({
   }
 
   const scrollToBottomButton = showScrollToBottomButton && (
-    <button
+    <IconButton size="sm" label={t.scrollToLatest}
       ref={scrollToBottomButtonRef}
       type="button"
       onClick={() => scrollToBottom("auto")}
       aria-label={t.scrollToLatest}
       title={t.scrollToLatest}
-      className="liquid-action absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-neon-cyan/40 text-neon-cyan shadow-lg shadow-black/30 backdrop-blur transition-colors hover:bg-neon-cyan/15 hover:text-neon-cyan max-md:bottom-6"
+      className="absolute bottom-4 left-1/2 z-20 flex items-center justify-center max-md:bottom-6"
     >
       <ArrowDown className="h-4 w-4" />
-    </button>
+    </IconButton>
   );
 
   return (
     <div className="relative flex-1" aria-busy={isRoomMessagesLoading}>
       {roomMessageError ? (
-        <div className="absolute inset-x-0 top-0 z-20 flex min-h-7 items-center justify-center gap-2 border-b border-amber-300/15 bg-amber-300/[0.06] px-3 text-xs text-text-secondary" role="status">
+        <div className="absolute inset-x-0 top-0 z-20 flex min-h-7 items-center justify-center gap-2 border-b border-warning/40 bg-amber-300/[0.06] px-3 text-xs text-text-secondary" role="status">
           <span>{t.loadMessagesFailed}</span>
-          <button
+          <Button variant="inline"
             type="button"
             onClick={() => void loadRoomMessages(roomId, { force: true })}
-            className="rounded px-1.5 py-0.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+
           >
             {tc.retry}
-          </button>
+          </Button>
         </div>
       ) : isRoomMessagesLoading ? (
         <div className="dashboard-message-loading-bar absolute inset-x-0 top-0 z-20" role="status" aria-label={t.loadingMessages} />
@@ -842,13 +831,13 @@ export default function MessageList({
         ) : roomMoreError ? (
           <div className="mb-2 flex items-center justify-center gap-2 text-xs text-text-secondary" role="status">
             <span>{t.loadEarlierFailed}</span>
-            <button
+            <Button variant="inline"
               type="button"
               onClick={requestMoreMessages}
-              className="rounded px-1.5 py-0.5 font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+
             >
               {tc.retry}
-            </button>
+            </Button>
           </div>
         ) : hasMore ? (
           <MessageHistoryControl onLoad={requestMoreMessages} loadLabel={t.loadEarlier} scrollLabel={t.scrollUp} />

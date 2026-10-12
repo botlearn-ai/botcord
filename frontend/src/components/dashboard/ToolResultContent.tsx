@@ -5,6 +5,10 @@
  * copy-to-clipboard, and full-screen overlay for large payloads.
  */
 
+import DialogSurface from "@/components/ui/DialogSurface";
+import Badge from "@/components/ui/Badge";
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Copy, Check, Maximize2, X } from "lucide-react";
@@ -57,7 +61,7 @@ function JsonHighlight({ text }: { text: string }) {
         return (
           <>
             <span>{indent}</span>
-            <span className="text-cyan-400">{key}</span>
+            <span className="text-accent-text">{key}</span>
             <span className="text-text-secondary">{colon}</span>
             <span className={getValueClass(value)}>{value}</span>
           </>
@@ -89,8 +93,8 @@ function JsonHighlight({ text }: { text: string }) {
 
 function getValueClass(value: string): string {
   const v = value.trim().replace(/,\s*$/, "");
-  if (v.startsWith('"')) return "text-emerald-400";
-  if (v === "true" || v === "false") return "text-amber-400";
+  if (v.startsWith('"')) return "text-success";
+  if (v === "true" || v === "false") return "text-warning";
   if (v === "null") return "italic text-text-secondary";
   if (/^-?\d/.test(v)) return "text-purple-400";
   return "text-text-secondary"; // punctuation: {, }, [, ]
@@ -114,17 +118,17 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
   }, [text]);
 
   return (
-    <button
+    <IconButton size="sm" label="复制"
       onClick={handleCopy}
-      className={`liquid-action rounded p-1 transition-colors ${className ?? ""}`}
+
       title="复制"
     >
       {copied ? (
-        <Check className="w-3 h-3 text-emerald-400" />
+        <Check className="w-3 h-3 text-success" />
       ) : (
         <Copy className="h-3 w-3 text-text-secondary" />
       )}
-    </button>
+    </IconButton>
   );
 }
 
@@ -159,45 +163,32 @@ function FullScreenOverlay({
   useEffect(() => {
     animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
       direction: "bottom",
+      onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
     });
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeWithMotion();
-    };
-    document.addEventListener("keydown", handler);
-    return () => {
-      document.removeEventListener("keydown", handler);
-      cleanupAnime(animationRef.current);
-    };
+    return () => cleanupAnime(animationRef.current);
   }, [closeWithMotion]);
 
   return createPortal(
-    <div
-      ref={overlayRef}
-      className="liquid-scrim fixed inset-0 z-[9999] flex flex-col backdrop-blur-sm"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) closeWithMotion();
-      }}
-    >
-      <div ref={panelRef} role="dialog" aria-modal="true" className="liquid-dialog flex min-h-0 flex-1 flex-col rounded-none border-x-0 border-y-0">
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} title={title} onClose={closeWithMotion} size="full" className="h-[90dvh]" overlayClassName="z-[9999]">
         {/* Header */}
         <div className="liquid-toolbar flex items-center justify-between border-b border-glass-border px-6 py-3">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-mono text-emerald-400">{title}</span>
-            <span className="liquid-card rounded px-2 py-0.5 text-xs text-text-secondary">
+            <span className="text-sm font-mono text-success">{title}</span>
+            <Badge tone="neutral" className="">
               {contentType.toUpperCase()}
-            </span>
-            <span className="text-xs text-text-secondary/75">
+            </Badge>
+            <span className="text-xs text-text-secondary">
               {rawText.length.toLocaleString()} 字符
             </span>
           </div>
           <div className="flex items-center gap-2">
             <CopyButton text={rawText} />
-            <button
+            <IconButton label="关闭预览 / Close preview" size="sm"
               onClick={closeWithMotion}
-              className="liquid-action rounded p-1 transition-colors"
+
             >
               <X className="h-4 w-4 text-text-secondary" />
-            </button>
+            </IconButton>
           </div>
         </div>
         {/* Content */}
@@ -206,8 +197,7 @@ function FullScreenOverlay({
             <ResultRenderer text={rawText} contentType={contentType} fullMode />
           </div>
         </div>
-      </div>
-    </div>,
+    </DialogSurface>,
     document.body,
   );
 }
@@ -308,18 +298,18 @@ export default function ToolResultContent({
     <div className="liquid-tool-surface mt-1 ml-5 rounded-lg p-1.5">
       {/* Toolbar */}
       <div className="flex items-center gap-1 mb-1">
-        <span className="liquid-card rounded px-1.5 py-0.5 text-xs text-text-secondary">
+        <Badge tone="neutral" className="">
           {contentType === "json" ? "JSON" : contentType === "markdown" ? "Markdown" : "Text"}
-        </span>
+        </Badge>
         <CopyButton text={rawText} />
         {(truncated || rawText.length > 500) && (
-          <button
+          <IconButton size="sm" label="全屏查看"
             onClick={() => setFullScreen(true)}
-            className="liquid-action rounded p-1 transition-colors"
+
             title="全屏查看"
           >
             <Maximize2 className="h-3 w-3 text-text-secondary" />
-          </button>
+          </IconButton>
         )}
       </div>
 
@@ -329,12 +319,12 @@ export default function ToolResultContent({
       </div>
 
       {truncated && (
-        <button
+        <Button variant="inline"
           onClick={() => setFullScreen(true)}
-          className="mt-1 text-xs text-cyan-500 hover:text-cyan-400 transition-colors"
+          className="mt-1"
         >
           内容过长，点击查看全文（{rawText.length.toLocaleString()} 字符）
-        </button>
+        </Button>
       )}
 
       {/* Full-screen overlay */}

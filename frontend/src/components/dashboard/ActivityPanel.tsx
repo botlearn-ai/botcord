@@ -1,5 +1,9 @@
 "use client";
 
+import EmptyState from "@/components/ui/EmptyState";
+import Card from "@/components/ui/Card";
+import Tabs from "@/components/ui/Tabs";
+import Button from "@/components/ui/Button";
 import { useState, useEffect, memo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDashboardActivityStore } from "@/store/useDashboardActivityStore";
@@ -28,19 +32,19 @@ function StatCard({
   tone?: "cyan" | "green" | "red" | "purple";
 }) {
   const toneMap = {
-    cyan: "text-neon-cyan",
-    green: "text-neon-green",
-    red: "text-red-400",
-    purple: "text-neon-cyan",
+    cyan: "text-accent-text",
+    green: "text-success",
+    red: "text-danger",
+    purple: "text-accent-text",
   };
   return (
-    <div className="liquid-card rounded-xl border border-glass-border p-4">
+    <Card padding="md" className="">
       <p className="mb-1 text-xs font-medium uppercase tracking-wider text-text-secondary">
         {label}
       </p>
       <p className={`font-mono text-lg font-semibold ${toneMap[tone]}`}>{value}</p>
       {sub && <p className="mt-0.5 text-xs text-text-secondary">{sub}</p>}
-    </div>
+    </Card>
   );
 }
 
@@ -49,13 +53,13 @@ function StatCard({
 // ---------------------------------------------------------------------------
 
 const EVENT_CONFIG: Record<string, { icon: string; color: string }> = {
-  message_sent: { icon: "\u2197", color: "text-neon-cyan" },
-  message_received: { icon: "\u2199", color: "text-neon-green" },
-  message_failed: { icon: "\u2715", color: "text-red-400" },
-  topic_created: { icon: "+", color: "text-neon-cyan" },
-  topic_completed: { icon: "\u2713", color: "text-neon-green" },
-  topic_failed: { icon: "\u2715", color: "text-red-400" },
-  topic_expired: { icon: "\u23F1", color: "text-yellow-400" },
+  message_sent: { icon: "\u2197", color: "text-accent-text" },
+  message_received: { icon: "\u2199", color: "text-success" },
+  message_failed: { icon: "\u2715", color: "text-danger" },
+  topic_created: { icon: "+", color: "text-accent-text" },
+  topic_completed: { icon: "\u2713", color: "text-success" },
+  topic_failed: { icon: "\u2715", color: "text-danger" },
+  topic_expired: { icon: "\u23F1", color: "text-warning" },
 };
 
 function feedTitle(item: ActivityFeedItem, zh: boolean): string {
@@ -134,10 +138,10 @@ function FeedItem({ item, zh }: { item: ActivityFeedItem; zh: boolean }) {
     : null;
 
   return (
-    <div className="liquid-list-row flex gap-3 rounded-xl border border-glass-border p-3 transition-colors hover:border-glass-border/80">
+    <Card padding="sm" className="flex gap-3">
       {/* Icon */}
       <div
-        className={`liquid-tool-surface flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${ev.color}`}
+        className={`liquid-tool-surface flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-semibold ${ev.color}`}
       >
         {ev.icon}
       </div>
@@ -152,7 +156,7 @@ function FeedItem({ item, zh }: { item: ActivityFeedItem; zh: boolean }) {
         <div className="mt-1 flex items-center gap-3 text-xs text-text-secondary">
           {subtitle && <span>{subtitle}</span>}
           {item.type === "message_failed" && item.meta?.error && (
-            <span className="text-red-400/70">{item.meta.error}</span>
+            <span className="text-danger">{item.meta.error}</span>
           )}
           {(item.type === "topic_completed" ||
             item.type === "topic_created") &&
@@ -167,7 +171,7 @@ function FeedItem({ item, zh }: { item: ActivityFeedItem; zh: boolean }) {
       <span className="shrink-0 pt-0.5 text-xs text-text-secondary">
         {timeAgo(item.timestamp, zh)}
       </span>
-    </div>
+    </Card>
   );
 }
 
@@ -219,21 +223,7 @@ function ActivityPanel() {
           {t.activity}
         </h1>
         {showPeriodTabs && (
-          <div className="liquid-tabs flex gap-1 rounded-lg border border-glass-border p-0.5">
-            {(["today", "7d", "30d"] as Period[]).map((p) => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  period === p
-                    ? "bg-neon-cyan/15 text-neon-cyan"
-                    : "text-text-secondary hover:text-text-primary"
-                }`}
-              >
-                {periodLabels[p]}
-              </button>
-            ))}
-          </div>
+          <Tabs ariaLabel={t.activity} value={period} onValueChange={(value) => setPeriod(value as Period)} size="sm" items={(["today", "7d", "30d"] as Period[]).map((value) => ({ value, label: periodLabels[value] }))} />
         )}
       </div>
 
@@ -241,13 +231,13 @@ function ActivityPanel() {
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
         {error && feed.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-12">
-            <p className="text-sm text-red-400">{error}</p>
-            <button
+            <p className="text-sm text-danger">{error}</p>
+            <Button variant="secondary" size="sm"
               onClick={() => void loadFeed()}
-              className="liquid-action rounded-lg border border-glass-border px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
+
             >
               {zh ? "\u91CD\u8BD5" : "Retry"}
-            </button>
+            </Button>
           </div>
         ) : (!loaded || loading) && feed.length === 0 ? (
           <DashboardMainSkeleton variant="activity" />
@@ -286,11 +276,9 @@ function ActivityPanel() {
                 {zh ? "\u6700\u8FD1\u52A8\u6001" : "Recent Activity"}
               </h2>
               {feed.length === 0 ? (
-                <div className="liquid-empty-state rounded-xl border border-glass-border p-8 text-center">
-                  <p className="text-xs text-text-secondary">
+                <EmptyState compact bordered title={<>
                     {zh ? "\u6682\u65E0\u52A8\u6001" : "No activity yet"}
-                  </p>
-                </div>
+                  </>} />
               ) : (
                 <div className="space-y-2">
                   {feed.map((item, i) => (
@@ -301,10 +289,10 @@ function ActivityPanel() {
                     />
                   ))}
                   {hasMore && (
-                    <button
+                    <Button variant="secondary" size="sm"
                       onClick={loadMore}
                       disabled={loadingMore}
-                      className="liquid-action mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-glass-border py-2 text-xs text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+                      className="mt-2 flex w-full items-center justify-center gap-2 disabled:opacity-50"
                     >
                       {loadingMore ? (
                         <>
@@ -321,7 +309,7 @@ function ActivityPanel() {
                       ) : (
                         zh ? "\u52A0\u8F7D\u66F4\u591A" : "Load more"
                       )}
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}

@@ -1,4 +1,5 @@
 "use client";
+import Alert from "@/components/ui/Alert";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useState } from "react";
@@ -90,13 +91,13 @@ function UnbindAgentDialog({
       <p className="mt-4 text-xs text-text-secondary">
         {copy.targetAgent}
         <span className="font-mono text-text-primary">{agentName}</span>
-        <span className="ml-1 text-text-tertiary">({agentId})</span>
+        <span className="ml-1 text-text-secondary">({agentId})</span>
       </p>
 
       {error && (
-        <p className="mt-4 rounded-lg border border-danger/25 bg-danger-soft p-2 text-xs text-danger">
+        <Alert tone="danger" className="mt-4">
           {error}
-        </p>
+        </Alert>
       )}
     </DialogShell>
   );

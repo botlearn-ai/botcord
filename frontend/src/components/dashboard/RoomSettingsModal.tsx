@@ -1,4 +1,15 @@
 "use client";
+import Avatar from "@/components/ui/Avatar";
+import Field from "@/components/ui/Field";
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import { Textarea } from "@/components/ui/Input";
+import Checkbox from "@/components/ui/Checkbox";
 
 import Radio from "@/components/ui/Radio";
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
@@ -83,69 +94,61 @@ function ActionConfirmDialog({
   onConfirm,
 }: ActionConfirmDialogProps) {
   return (
-    <div
-      className="liquid-scrim fixed inset-0 z-[70] flex items-center justify-center p-4 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="liquid-dialog relative w-full max-w-md rounded-2xl border p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
+    <DialogSurface onClose={onClose} title={<>{title}</>} overlayClassName="z-[70]" className="max-w-md p-5">
+        <IconButton label={cancelLabel}
           type="button"
           onClick={onClose}
           disabled={loading}
-          className="liquid-action absolute right-4 top-4 rounded-full p-1.5 text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+          className="absolute right-4"
           aria-label={cancelLabel}
         >
           <X className="h-5 w-5" />
-        </button>
+        </IconButton>
 
         <div className="pr-8">
-          <h3 className="text-xl font-bold text-text-primary">{title}</h3>
+          <h3 className="text-xl font-semibold text-text-primary">{title}</h3>
           <p className="mt-2 text-sm text-text-secondary">{description}</p>
         </div>
 
         {confirmTextLabel ? (
-          <label className="mt-5 block">
-            <span className="mb-1.5 block text-xs text-text-secondary">{confirmTextLabel}</span>
-            <input
+          <Field label={<>{confirmTextLabel}</>} className="mt-5 block">
+
+            <Input
               type="text"
               value={confirmValue}
               onChange={(e) => onConfirmValueChange?.(e.target.value)}
               placeholder={confirmPlaceholder}
-              className="liquid-input w-full rounded-xl border border-glass-border px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-secondary/40"
+              className="w-full"
             />
-          </label>
+          </Field>
         ) : null}
 
         {warning ? (
-          <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3">
-            <p className="text-xs leading-5 text-amber-300">{warning}</p>
+          <div className="mt-4 rounded-xl border border-warning/20 bg-warning-soft p-3">
+            <p className="text-xs leading-5 text-warning">{warning}</p>
           </div>
         ) : null}
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button
+          <Button variant="secondary"
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="liquid-action rounded-xl px-4 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
+
           >
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button variant="danger"
             type="button"
             onClick={onConfirm}
             disabled={confirmDisabled || loading}
-            className="liquid-action inline-flex items-center gap-2 rounded-xl border border-red-400/50 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-300 transition-all hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {loading ? loadingLabel ?? confirmLabel : confirmLabel}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }
 
@@ -297,20 +300,12 @@ function RoomSettingsModal({
   }, [onClose]);
 
   useEffect(() => {
-    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
+    motionRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
       direction: "right",
       contentSelector: "[data-overlay-section]",
     });
     return () => cleanupAnime(motionRef.current);
   }, []);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWithAnimation();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [closeWithAnimation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -683,43 +678,33 @@ function RoomSettingsModal({
   };
 
   return (
-    <div ref={overlayRef} className="liquid-scrim fixed inset-0 z-50 backdrop-blur-sm" onClick={closeWithAnimation}>
-      <div
-        ref={panelRef}
-        className="liquid-drawer ml-auto flex h-full w-full max-w-[520px] flex-col overflow-hidden border-l"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="room-settings-title"
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithAnimation} title={<>{t.title}</>} placement="right" busy={closingRef.current} overlayClassName="z-50" className="max-w-[520px] overflow-hidden">
         <div className="flex items-center justify-between border-b border-glass-border px-6 py-4">
           <h2 id="room-settings-title" className="text-xl font-semibold text-text-primary">{t.title}</h2>
-          <button
+          <IconButton label={t.cancel}
             type="button"
             onClick={closeWithAnimation}
-            className="liquid-action rounded-full p-2 text-text-secondary transition-colors hover:text-text-primary"
+
             aria-label={t.cancel}
           >
             <X className="h-5 w-5" />
-          </button>
+          </IconButton>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {error && (
-            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            <Alert tone="danger" className="mb-4">
               {error}
-            </div>
+            </Alert>
           )}
 
           <div className="divide-y divide-glass-border/80">
             <section className="py-5" data-overlay-section>
               <div className="flex items-start gap-4">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-neon-cyan/30 bg-neon-cyan/10 text-2xl font-semibold text-neon-cyan">
-                  {groupInitial}
-                </div>
+                <Avatar kind="room" id={roomId} name={name || initialName} size="xl" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xl font-semibold text-text-primary">{name || initialName}</p>
-                  <div className="mt-3 text-xs text-text-secondary/70">
+                  <div className="mt-3 text-xs text-text-secondary">
                     <CopyableId value={roomId} />
                   </div>
                 </div>
@@ -728,64 +713,60 @@ function RoomSettingsModal({
               <div className="mt-5 space-y-4 border-t border-glass-border pt-4">
                 {canEditBasics ? (
                   <>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                        {t.nameLabel}
-                      </label>
-                      <input
+                    <Field label={<>{t.nameLabel}</>}>
+
+                      <Input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         maxLength={120}
-                        className="liquid-input w-full rounded-xl border border-glass-border px-3 py-2.5 text-sm text-text-primary outline-none"
+                        className="w-full"
                       />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
-                        {t.descriptionLabel}
-                      </label>
-                      <textarea
+                    </Field>
+                    <Field label={<>{t.descriptionLabel}</>}>
+
+                      <Textarea
                         rows={3}
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         maxLength={500}
-                        className="liquid-input w-full resize-none rounded-xl border border-glass-border px-3 py-2.5 text-sm text-text-primary outline-none"
+                        className="w-full"
                       />
-                    </div>
+                    </Field>
                     <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                      <label className="mb-1.5 block text-xs font-semibold text-text-secondary">
                         {t.ruleLabel}
                       </label>
-                      <p className="mb-1 text-xs text-text-secondary/60">{t.ruleHint}</p>
-                      <textarea
+                      <p className="mb-1 text-xs text-text-secondary">{t.ruleHint}</p>
+                      <Textarea
                         value={rule}
                         onChange={(e) => setRule(e.target.value)}
                         rows={4}
                         maxLength={4000}
-                        className="liquid-input w-full resize-none rounded-xl border border-glass-border px-3 py-2.5 text-sm leading-relaxed text-text-primary outline-none"
+                        className="w-full"
                       />
                     </div>
                   </>
                 ) : (
                   <>
                     <div>
-                      <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                      <p className="mb-1 text-xs font-semibold text-text-secondary">
                         {t.descriptionLabel}
                       </p>
                       {description ? (
                         <p className="text-sm leading-relaxed text-text-primary/90 whitespace-pre-wrap">{description}</p>
                       ) : (
-                        <p className="text-sm text-text-secondary/40">{locale === "zh" ? "暂无描述" : "No description"}</p>
+                        <p className="text-sm text-text-secondary">{locale === "zh" ? "暂无描述" : "No description"}</p>
                       )}
                     </div>
                     <div>
-                      <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+                      <p className="mb-1 text-xs font-semibold text-text-secondary">
                         {t.ruleLabel}
                       </p>
                       {rule ? (
                         <p className="text-sm leading-relaxed text-text-primary/90 whitespace-pre-wrap">{rule}</p>
                       ) : (
-                        <p className="text-sm text-text-secondary/40">{locale === "zh" ? "暂无公告" : "No announcement"}</p>
+                        <p className="text-sm text-text-secondary">{locale === "zh" ? "暂无公告" : "No announcement"}</p>
                       )}
                     </div>
                   </>
@@ -797,43 +778,43 @@ function RoomSettingsModal({
               <div className="flex items-center justify-between py-1">
                 <div>
                   <p className="text-lg font-semibold text-text-primary">{t.membersSection}</p>
-                  <p className="mt-1 text-xs text-text-secondary/70">
+                  <p className="mt-1 text-xs text-text-secondary">
                     {filteredMembers.length} {tm.members}
                   </p>
                 </div>
                 {canManageMembers && (
-                  <button
+                  <Button variant="primary"
                     type="button"
                     onClick={() => setAddMemberModalOpen(true)}
-                    className="liquid-action rounded-xl border border-neon-cyan/30 bg-neon-cyan/10 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/15"
+
                   >
                     {tm.addMembersEntry}
-                  </button>
+                  </Button>
                 )}
               </div>
 
               <div className="mt-4 space-y-4">
                 <div className="liquid-input flex items-center gap-2 rounded-xl border px-3">
-                  <Search className="h-4 w-4 text-text-secondary/70" />
-                  <input
+                  <Search className="h-4 w-4 text-text-secondary" />
+                  <Input
                     value={memberQuery}
                     onChange={(e) => setMemberQuery(e.target.value)}
                     placeholder={tm.searchAddableMembers}
-                    className="w-full bg-transparent py-2.5 text-sm text-text-primary outline-none"
+                    className="w-full"
                   />
                 </div>
 
-                <div className="liquid-card max-h-72 overflow-y-auto rounded-xl border">
+                <Card padding="none" className="max-h-72 overflow-y-auto">
                   {membersLoading ? (
                     <MobileBotCordLoading
                       label={tm.loadingMembers}
                       className="px-4 py-4 justify-start"
-                      textClassName="text-xs text-text-secondary animate-pulse"
+                      textClassName="text-xs text-text-secondary "
                     />
                   ) : membersError ? (
-                    <p className="px-4 py-4 text-xs text-red-400">{membersError}</p>
+                    <Alert tone="danger" >{membersError}</Alert>
                   ) : filteredMembers.length === 0 ? (
-                    <p className="px-4 py-4 text-xs text-text-secondary/60">{tm.noMembers}</p>
+                    <p className="px-4 py-4 text-xs text-text-secondary">{tm.noMembers}</p>
                   ) : (
                     <div className="divide-y divide-glass-border/70">
                       {filteredMembers.map((member) => {
@@ -869,7 +850,7 @@ function RoomSettingsModal({
                                   {member.role}
                                 </span>
                               </div>
-                              <div className="mt-1 text-xs text-text-secondary/70">
+                              <div className="mt-1 text-xs text-text-secondary">
                                 <CopyableId value={member.agent_id} />
                               </div>
                             </div>
@@ -877,31 +858,31 @@ function RoomSettingsModal({
                               {isOwner && !isSelf && member.role !== "owner" && (
                                 confirmRemoveId === member.agent_id ? (
                                   <>
-                                    <button
+                                    <Button variant="secondary"
                                       type="button"
                                       onClick={() => setConfirmRemoveId(null)}
-                                      className="liquid-action rounded px-2 py-1 text-xs text-text-secondary transition-colors"
+
                                     >
                                       取消
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button variant="danger"
                                       type="button"
                                       disabled={removingId === member.agent_id}
                                       onClick={() => void handleRemoveMember(member.agent_id)}
-                                      className="liquid-action rounded border border-red-500/25 bg-red-500/15 px-2 py-1 text-xs text-red-400 hover:bg-red-500/25 disabled:opacity-50 transition-colors"
+
                                     >
                                       {removingId === member.agent_id ? "…" : "确认移除"}
-                                    </button>
+                                    </Button>
                                   </>
                                 ) : (
-                                  <button
+                                  <IconButton label="移除成员" danger
                                     type="button"
                                     onClick={() => setConfirmRemoveId(member.agent_id)}
-                                    className="liquid-action rounded p-1.5 text-text-secondary/50 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+
                                     title="移除成员"
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                  </IconButton>
                                 )
                               )}
                               {canManageMembers && !isSelf && (
@@ -919,18 +900,18 @@ function RoomSettingsModal({
                       })}
                     </div>
                   )}
-                </div>
+                </Card>
               </div>
             </section>
 
             {sessionOwnedAgents.length > 0 ? (
               <section className="border-t border-glass-border/40 py-5">
-                <div className="liquid-card rounded-xl border px-3 py-3">
+                <Card padding="none" className="px-3 py-3">
                   <div className="mb-3">
                     <p className="text-sm font-semibold text-text-primary">
                       {locale === "zh" ? "本房间回复策略" : "Reply policy for this room"}
                     </p>
-                    <p className="mt-1 text-xs text-text-secondary/70">
+                    <p className="mt-1 text-xs text-text-secondary">
                       {locale === "zh"
                         ? "选择一个自己的 Bot，设置它在这个房间的应答规则"
                         : "Choose one of your bots and configure how it responds in this room"}
@@ -943,54 +924,54 @@ function RoomSettingsModal({
                       disabled={roomOwnedAgents.length === 0}
                       placeholder={locale === "zh" ? "当前群里没有你的 Bot" : "No owned bots in this room"}
                       className="min-w-0 flex-1"
-                      buttonClassName="min-h-10 rounded-lg px-2 py-2 text-sm"
+
                       options={roomOwnedAgents.map((agent) => ({
                         value: agent.agent_id,
                         label: agent.display_name,
                         sublabel: agent.agent_id,
                       }))}
                     />
-                    <button
+                    <Button variant="primary"
                       type="button"
                       onClick={() => setShowPolicyModal(true)}
                       disabled={!policyAgentId}
-                      className="liquid-action inline-flex items-center justify-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+
                     >
                       {locale === "zh" ? "设置" : "Configure"}
                       <ChevronDown className="h-4 w-4 shrink-0 -rotate-90" />
-                    </button>
+                    </Button>
                   </div>
                   {members.length > 0 && roomOwnedAgents.length === 0 ? (
-                    <p className="mt-2 text-xs text-text-secondary/70">
+                    <p className="mt-2 text-xs text-text-secondary">
                       {locale === "zh"
                         ? "只能设置已经在当前群里的自有 Bot。"
                         : "Only owned bots that are already in this room can be configured."}
                     </p>
                   ) : null}
-                </div>
+                </Card>
               </section>
             ) : null}
 
             <section className="py-5" data-overlay-section>
-              <button
+              <Button variant="row"
                 type="button"
                 onClick={() => setAdvancedOpen((v) => !v)}
-                className="flex w-full items-center justify-between py-1 text-left"
+                className="w-full"
               >
                 <div>
                   <p className="text-lg font-semibold text-text-primary">{ta.sectionTitle}</p>
                   {!advancedOpen && (
-                    <p className="mt-1 text-xs text-text-secondary/70">{ta.sectionHint}</p>
+                    <p className="mt-1 text-xs text-text-secondary">{ta.sectionHint}</p>
                   )}
                 </div>
                 <ChevronDown
                   className={`h-4 w-4 text-text-secondary transition-transform ${advancedOpen ? "rotate-180" : ""}`}
                 />
-              </button>
+              </Button>
               {advancedOpen && (
                 <div className="mt-4 space-y-4 border-t border-glass-border pt-4">
                   {!isOwner && (
-                    <p className="text-xs text-text-secondary/70">{ta.ownerOnly}</p>
+                    <p className="text-xs text-text-secondary">{ta.ownerOnly}</p>
                   )}
                   <div className="grid gap-4">
                     <label className="block">
@@ -1002,7 +983,7 @@ function RoomSettingsModal({
                           if (value) setVisibility(value);
                         }}
                         placeholder={ta.visibilityLabel}
-                        buttonClassName="liquid-action"
+
                         options={[
                           { value: "private", label: ta.visibilityPrivate },
                           { value: "public", label: ta.visibilityPublic },
@@ -1018,7 +999,7 @@ function RoomSettingsModal({
                           if (value) setJoinPolicy(value);
                         }}
                         placeholder={ta.joinPolicyLabel}
-                        buttonClassName="liquid-action"
+
                         options={[
                           { value: "invite_only", label: ta.joinPolicyInviteOnly },
                           { value: "open", label: ta.joinPolicyOpen },
@@ -1027,92 +1008,65 @@ function RoomSettingsModal({
                     </label>
                   </div>
                   <div className="grid gap-3">
-                    <label className="liquid-card flex items-center gap-2 rounded-xl border px-3 py-3 text-xs text-text-secondary">
-                      <input
-                        type="checkbox"
-                        disabled={!isOwner}
-                        checked={defaultSend}
-                        onChange={(e) => setDefaultSend(e.target.checked)}
-                        className="accent-neon-cyan"
-                      />
-                      {ta.defaultSendLabel}
-                    </label>
-                    <label className="liquid-card flex items-center gap-2 rounded-xl border px-3 py-3 text-xs text-text-secondary">
-                      <input
-                        type="checkbox"
-                        disabled={!isOwner}
-                        checked={defaultInvite}
-                        onChange={(e) => setDefaultInvite(e.target.checked)}
-                        className="accent-neon-cyan"
-                      />
-                      {ta.defaultInviteLabel}
-                    </label>
-                    <label className="liquid-card flex items-center gap-2 rounded-xl border px-3 py-3 text-xs text-text-secondary">
-                      <input
-                        type="checkbox"
-                        disabled={!isOwner}
-                        checked={allowHumanSend}
-                        onChange={(e) => setAllowHumanSend(e.target.checked)}
-                        className="accent-neon-cyan"
-                      />
-                      {ta.allowHumanSendLabel}
-                    </label>
+                    <Card padding="sm"><Checkbox disabled={!isOwner} checked={defaultSend} onCheckedChange={(checked) => setDefaultSend(checked)} label={<>{ta.defaultSendLabel}</>} /></Card>
+                    <Card padding="sm"><Checkbox disabled={!isOwner} checked={defaultInvite} onCheckedChange={(checked) => setDefaultInvite(checked)} label={<>{ta.defaultInviteLabel}</>} /></Card>
+                    <Card padding="sm"><Checkbox disabled={!isOwner} checked={allowHumanSend} onCheckedChange={(checked) => setAllowHumanSend(checked)} label={<>{ta.allowHumanSendLabel}</>} /></Card>
                   </div>
                 </div>
               )}
             </section>
 
             <section className="py-5" data-overlay-section>
-              <button
+              <Button variant="row"
                 type="button"
                 onClick={() => setSubscriptionOpen((v) => !v)}
-                className="flex w-full items-center justify-between py-1 text-left"
+                className="w-full"
               >
                 <div>
                   <p className="text-lg font-semibold text-text-primary">{ta.subscriptionSection}</p>
                   {!subscriptionOpen && (
-                    <p className="mt-1 text-xs text-text-secondary/70">{ta.subscriptionHint}</p>
+                    <p className="mt-1 text-xs text-text-secondary">{ta.subscriptionHint}</p>
                   )}
                 </div>
                 <ChevronDown
                   className={`h-4 w-4 text-text-secondary transition-transform ${subscriptionOpen ? "rotate-180" : ""}`}
                 />
-              </button>
+              </Button>
               {subscriptionOpen && (
                 <div className="mt-4 space-y-3 border-t border-glass-border pt-4">
                   {!isOwner && (
-                    <p className="text-xs text-text-secondary/70">{ta.ownerOnly}</p>
+                    <p className="text-xs text-text-secondary">{ta.ownerOnly}</p>
                   )}
-                  <div className="liquid-card flex items-center justify-between gap-4 rounded-xl border px-4 py-3">
+                  <Card padding="none" className="flex items-center justify-between gap-4 px-4 py-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-text-primary">{ta.subscriptionToggleLabel}</p>
-                      <p className="mt-1 text-xs text-text-secondary/70">
+                      <p className="mt-1 text-xs text-text-secondary">
                         {subscriptionEnabled ? ta.subscriptionEnabledHint : ta.subscriptionDisabledHint}
                       </p>
                     </div>
-                    <button
+                    <Button aria-pressed={subscriptionEnabled} variant="row"
                       type="button"
                       disabled={!isOwner || multiRoomBlocked}
                       onClick={() => setSubscriptionEnabled((v) => !v)}
-                      className={`liquid-action shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${subscriptionEnabled ? "border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan" : "border-glass-border text-text-secondary"}`}
+                      className="shrink-0"
                     >
                       {subscriptionEnabled ? ta.subscriptionToggleOn : ta.subscriptionToggleOff}
-                    </button>
-                  </div>
+                    </Button>
+                  </Card>
 
                   {multiRoomBlocked && (
-                    <p className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
+                    <p className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-yellow-200">
                       {ta.subscriptionMultiRoomBlock}
                     </p>
                   )}
 
                   {subscriptionEnabled && isOwner && (
-                    <div className="liquid-card space-y-3 rounded-xl border px-4 py-3">
+                    <Card padding="none" className="space-y-3 px-4 py-3">
                       <div className="flex items-center gap-3">
                         <label className="text-sm text-text-primary">
                           {ta.subscriptionPriceLabel}
                         </label>
-                        <input
+                        <Input
                           type="number"
                           min="1"
                           step="1"
@@ -1125,9 +1079,9 @@ function RoomSettingsModal({
                               setPriceInput(e.target.value);
                             }
                           }}
-                          className="liquid-input w-28 rounded-lg border border-glass-border px-2 py-1 text-sm text-text-primary"
+                          className="w-28"
                         />
-                        <span className="text-xs text-text-secondary/80">Coin</span>
+                        <span className="text-xs text-text-secondary">Coin</span>
                       </div>
                       <div className="flex items-center gap-4">
                         <label className="text-sm text-text-primary">
@@ -1169,7 +1123,7 @@ function RoomSettingsModal({
                             disabled={multiRoomBlocked || ownedAgents.length === 0}
                             placeholder={ta.subscriptionProviderEmpty ?? "No bots available"}
                             className="min-w-[240px] flex-1"
-                            buttonClassName="min-h-9 rounded-lg px-2 text-sm"
+
                             options={ownedAgents.map((agent) => ({
                               value: agent.agent_id,
                               label: agent.display_name,
@@ -1179,16 +1133,16 @@ function RoomSettingsModal({
                         </div>
                       )}
                       {subscriberCount !== null && (
-                        <p className="text-xs text-text-secondary/80">
+                        <p className="text-xs text-text-secondary">
                           {ta.subscriptionCurrentSubscribers}: {subscriberCount}
                         </p>
                       )}
                       {!initialSubscriptionProductId && (
-                        <p className="text-xs text-text-secondary/70">
+                        <p className="text-xs text-text-secondary">
                           {ta.subscriptionGrandfatherHint}
                         </p>
                       )}
-                    </div>
+                    </Card>
                   )}
                 </div>
               )}
@@ -1204,64 +1158,64 @@ function RoomSettingsModal({
                   <div className="flex items-center justify-between gap-4 border-t border-glass-border/80 py-3 first:border-t-0">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-text-primary">{tm.leaveRoom}</p>
-                      <p className="mt-1 text-xs text-text-secondary/70">
+                      <p className="mt-1 text-xs text-text-secondary">
                         {t.leaveRoomDescription}
                       </p>
                     </div>
-                    <button
+                    <Button variant="danger"
                       onClick={() => setLeaveDialogOpen(true)}
                       disabled={isLeaving}
-                      className="liquid-action shrink-0 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="shrink-0"
                     >
                       {isLeaving ? tm.leavingRoom : tm.leaveRoom}
-                    </button>
+                    </Button>
                   </div>
                 )}
                 {activeSubscription ? (
                   <div className="flex items-center justify-between gap-4 border-t border-glass-border/80 py-3 first:border-t-0">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-text-primary">{tm.cancelSubscription}</p>
-                      <p className="mt-1 text-xs text-text-secondary/70">{ta.subscriptionHint}</p>
+                      <p className="mt-1 text-xs text-text-secondary">{ta.subscriptionHint}</p>
                     </div>
-                    <button
+                    <Button variant="secondary"
                       onClick={() => void handleCancelSubscription()}
                       disabled={cancellingSubscription}
-                      className="liquid-action shrink-0 rounded-lg border border-yellow-500/30 px-3 py-1.5 text-xs font-medium text-yellow-300 transition-colors hover:bg-yellow-500/10 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="shrink-0"
                     >
                       {cancellingSubscription ? tm.cancellingSubscription : tm.cancelSubscription}
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
                 {canManageMembers && isOwner && humanId && (
                   <div className="flex items-center justify-between gap-4 border-t border-glass-border/80 py-3 first:border-t-0">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-text-primary">{tm.transferOwnership}</p>
-                      <p className="mt-1 text-xs text-text-secondary/70">{tm.ownerCannotLeave}</p>
+                      <p className="mt-1 text-xs text-text-secondary">{tm.ownerCannotLeave}</p>
                     </div>
-                    <button
+                    <Button variant="primary"
                       onClick={() => setTransferDialogOpen(true)}
-                      className="liquid-action shrink-0 rounded-lg border border-neon-cyan/30 px-3 py-1.5 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+                      className="shrink-0"
                     >
                       {tm.transferOwnership}
-                    </button>
+                    </Button>
                   </div>
                 )}
                 {isOwner && (
-                  <div className="flex items-center justify-between gap-4 border-t border-red-500/20 py-3 first:border-t-0">
+                  <div className="flex items-center justify-between gap-4 border-t border-danger/20 py-3 first:border-t-0">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-red-200">{t.dissolveRoom}</p>
                       <p className="mt-1 text-xs text-red-200/70">{t.dissolveRoomDescription}</p>
                     </div>
-                    <button
+                    <Button variant="danger"
                       onClick={() => {
                         setDissolveConfirmText("");
                         setDissolveDialogOpen(true);
                       }}
                       disabled={dissolving}
-                      className="liquid-action shrink-0 rounded-lg border border-red-500/35 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="shrink-0"
                     >
                       {dissolving ? t.dissolvingRoom : t.dissolveRoom}
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
@@ -1270,119 +1224,24 @@ function RoomSettingsModal({
         </div>
 
         <div className="flex justify-end gap-2 border-t border-glass-border px-6 py-4">
-          <button
+          <Button variant="secondary"
             onClick={closeWithAnimation}
             disabled={saving}
-            className="liquid-action rounded-xl px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary disabled:opacity-50"
+
           >
             {t.cancel}
-          </button>
+          </Button>
           {canEditBasics && (
-            <button
+            <Button variant="primary"
               onClick={() => void handleSave()}
               disabled={saving}
-              className="liquid-action inline-flex items-center gap-2 rounded-xl border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2.5 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {saving ? t.saving : t.save}
-            </button>
+            </Button>
           )}
         </div>
-      </div>
-
-      {addMemberModalOpen && canManageMembers && (
-        <AddRoomMemberModal
-          roomId={roomId}
-          existingMemberIds={members.map((member) => member.agent_id)}
-          onClose={() => setAddMemberModalOpen(false)}
-          onAdded={refreshRoomDetails}
-        />
-      )}
-
-      {showPolicyModal && selectedPolicyAgent ? (
-        <RoomPolicyModal
-          agentId={selectedPolicyAgent.agent_id}
-          agentDisplayName={selectedPolicyAgent.display_name}
-          roomId={roomId}
-          onClose={() => setShowPolicyModal(false)}
-        />
-      ) : null}
-
-      {transferDialogOpen && canManageMembers && isOwner && humanId && (
-        <TransferOwnershipDialog
-          roomId={roomId}
-          roomName={initialName}
-          viewerHumanId={humanId}
-          members={members}
-          onClose={() => setTransferDialogOpen(false)}
-          onSuccess={() => {
-            void refreshRoomDetails();
-          }}
-          onError={(msg) => setError(msg)}
-        />
-      )}
-
-      {leaveDialogOpen && !isOwner && (
-        <PortaledActionConfirmDialog
-          title={t.leaveRoomConfirmTitle}
-          description={t.leaveRoomConfirmDescription}
-          warning={t.leaveRoomWarning}
-          confirmLabel={tm.leaveRoom}
-          cancelLabel={t.cancel}
-          confirmDisabled={isLeaving}
-          loading={isLeaving}
-          loadingLabel={tm.leavingRoom}
-          onClose={() => setLeaveDialogOpen(false)}
-          onConfirm={() => {
-            void handleLeave();
-          }}
-        />
-      )}
-
-      {planChangeDialogOpen && isOwner && (
-        <PlanChangeConfirmDialog
-          fromLabel={
-            subscriptionProduct
-              ? `${formatWholeCoinAmount(subscriptionProduct.amount_minor)} Coin / ${subscriptionProduct.billing_interval}`
-              : "—"
-          }
-          toLabel={`${priceInput || "0"} Coin / ${billingInterval}`}
-          affectedCount={planChangeAffected}
-          loading={planChangeBusy}
-          onClose={() => {
-            if (planChangeBusy) return;
-            setPlanChangeDialogOpen(false);
-          }}
-          onConfirm={() => {
-            void confirmPlanChange();
-          }}
-        />
-      )}
-
-      {dissolveDialogOpen && isOwner && (
-        <PortaledActionConfirmDialog
-          title={t.dissolveRoomConfirmTitle}
-          description={t.dissolveRoomConfirmDescription}
-          warning={t.dissolveRoomWarning}
-          confirmLabel={t.dissolveRoom}
-          cancelLabel={t.cancel}
-          confirmTextLabel={t.confirmRoomNameLabel.replace("{room}", persistedRoomName)}
-          confirmPlaceholder={persistedRoomName}
-          confirmValue={dissolveConfirmText}
-          onConfirmValueChange={setDissolveConfirmText}
-          confirmDisabled={!dissolveConfirmArmed || dissolving}
-          loading={dissolving}
-          loadingLabel={t.dissolvingRoom}
-          onClose={() => {
-            if (dissolving) return;
-            setDissolveDialogOpen(false);
-            setDissolveConfirmText("");
-          }}
-          onConfirm={() => {
-            void handleDissolve();
-          }}
-        />
-      )}
-    </div>
+      </DialogSurface>
   );
 }

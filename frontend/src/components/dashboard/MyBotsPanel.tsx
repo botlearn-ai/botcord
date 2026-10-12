@@ -1,5 +1,9 @@
 "use client";
 
+import Badge from "@/components/ui/Badge";
+import Tabs from "@/components/ui/Tabs";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 import { memo, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useShallow } from "zustand/shallow";
@@ -50,48 +54,30 @@ function MyBotsPanel() {
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-text-primary">{t.pageTitle}</h1>
-          <p className="mt-1 text-sm text-text-secondary/70">
+          <p className="mt-1 text-sm text-text-secondary">
             {myBotsTab === "bots" ? t.botsSubtitle : t.devicesSubtitle}
           </p>
         </div>
 
         {/* Sub-tab pill control + matching create action on the right. */}
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <div className="liquid-tabs inline-flex items-center gap-1 rounded-full border border-glass-border p-1">
-            {SUB_TABS.map((tab) => {
-              const active = myBotsTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => {
-                    setMyBotsTab(tab.key);
-                    setSelectedDeviceId(null);
-                  }}
-                  className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                    active ? "bg-text-primary text-deep-black" : "text-text-secondary hover:text-text-primary"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+          <Tabs ariaLabel={t.pageTitle} value={myBotsTab} onValueChange={(value) => { setMyBotsTab(value as "bots" | "devices"); setSelectedDeviceId(null); }} items={SUB_TABS.map((tab) => ({ value: tab.key, label: tab.label }))} />
           {myBotsTab === "bots" ? (
-            <button
+            <Button variant="primary" size="sm"
               onClick={handleCreateBot}
-              className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              className="inline-flex items-center gap-1.5"
             >
               <Plus className="h-4 w-4" />
               {t.createBot}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button variant="secondary" size="sm"
               onClick={() => setShowAddDevice(true)}
-              className="liquid-action inline-flex items-center gap-1.5 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+              className="inline-flex items-center gap-1.5"
             >
               <Plus className="h-4 w-4" />
               {t.addDevice}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -156,10 +142,10 @@ function BotsView({
             const stats = statsById[agent.agent_id] ?? null;
             const online = agent.ws_online;
             return (
-              <button
+              <Card as="button" variant="interactive" padding="md"
                 key={agent.agent_id}
                 onClick={() => setBotDetailAgentId(agent.agent_id)}
-                className="liquid-card rounded-2xl border border-glass-border p-5 text-left transition-colors hover:border-neon-cyan/40"
+
               >
                 <div className="mb-4 flex items-start gap-3">
                   <BotAvatar agentId={agent.agent_id} avatarUrl={agent.avatar_url} size={48} alt={agent.display_name} />
@@ -168,26 +154,22 @@ function BotsView({
                       <h2 className="truncate text-base font-semibold text-text-primary">
                         {agent.display_name}
                       </h2>
-                      <span
-                        className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-xs ${
-                          online
-                            ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
-                            : "border-glass-border bg-glass-bg text-text-secondary/70"
-                        }`}
+                      <Badge tone="success"
+
                       >
                         <span className={`h-1 w-1 rounded-full ${online ? "bg-neon-green" : "bg-text-secondary/40"}`} />
                         {online ? "Online" : "Offline"}
-                      </span>
+                      </Badge>
                       {agent.is_default ? (
-                        <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-xs text-neon-cyan">
+                        <Badge tone="accent" >
                           {t.defaultBadge}
-                        </span>
+                        </Badge>
                       ) : null}
                     </div>
-                    <p className="mt-1 line-clamp-2 text-xs text-text-secondary/70">
+                    <p className="mt-1 line-clamp-2 text-xs text-text-secondary">
                       {agent.bio || t.noBio}
                     </p>
-                    <div className="mt-2 font-mono text-xs text-text-secondary/55">
+                    <div className="mt-2 font-mono text-xs text-text-secondary">
                       {agent.agent_id}
                     </div>
                   </div>
@@ -203,16 +185,16 @@ function BotsView({
                 ) : null}
 
                 {stats ? (
-                  <div className="mt-3 flex items-center justify-between border-t border-glass-border pt-2 text-xs text-text-secondary/55">
+                  <div className="mt-3 flex items-center justify-between border-t border-glass-border pt-2 text-xs text-text-secondary">
                     <span>{t.sentReceived(stats.messages_sent, stats.messages_received)}</span>
                     <span>{t.viewDetails}</span>
                   </div>
                 ) : (
-                  <div className="mt-3 flex justify-end border-t border-glass-border pt-2 text-xs text-text-secondary/55">
+                  <div className="mt-3 flex justify-end border-t border-glass-border pt-2 text-xs text-text-secondary">
                     {t.viewDetails}
                   </div>
                 )}
-              </button>
+              </Card>
             );
           })}
         </div>
@@ -224,10 +206,10 @@ function BotsView({
 function Stat({ label, value, delta }: { label: string; value: number | string; delta?: string }) {
   return (
     <div className="liquid-tool-surface rounded-lg px-2 py-1.5">
-      <div className="text-xs uppercase tracking-wider text-text-secondary/60">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-text-secondary">{label}</div>
       <div className="flex items-baseline gap-1">
         <span className="text-sm font-semibold text-text-primary">{value}</span>
-        {delta ? <span className="text-xs font-medium text-neon-green">{delta}</span> : null}
+        {delta ? <span className="text-xs font-medium text-success">{delta}</span> : null}
       </div>
     </div>
   );

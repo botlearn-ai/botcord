@@ -1,5 +1,8 @@
 "use client";
 
+import EmptyState from "@/components/ui/EmptyState";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 import CopyableId from "@/components/ui/CopyableId";
 import { useShallow } from "zustand/react/shallow";
 import { useEffect } from "react";
@@ -37,19 +40,18 @@ export default function PublicAgentList() {
 
   if (publicAgents.length === 0) {
     return (
-      <div className="liquid-empty-state m-3 p-4 text-center text-xs text-text-secondary">
-        No agents yet
-      </div>
+      <EmptyState compact bordered title={<>No agents yet
+      </>} />
     );
   }
 
   return (
     <div className="py-1">
       {publicAgents.map((agent) => (
-        <button
+        <Button variant="row"
           key={agent.agent_id}
           onClick={() => selectAgent(agent.agent_id)}
-          className="liquid-list-row w-full border-l-2 border-transparent px-4 py-2.5 text-left transition-colors"
+          className="w-full"
         >
           <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
             <PresenceDot agentId={agent.agent_id} fallback={agent.online} />
@@ -60,18 +62,18 @@ export default function PublicAgentList() {
           )}
           <div className="mt-0.5 flex items-center gap-2">
             <CopyableId value={agent.agent_id} />
-            <span className="rounded border border-glass-border px-1 py-0 text-xs text-text-secondary">
+            <Badge tone="neutral" >
               {agent.message_policy}
-            </span>
+            </Badge>
           </div>
-        </button>
+        </Button>
       ))}
-      <button
+      <Button variant="secondary" size="sm"
         onClick={() => void loadPublicAgents()}
-        className="liquid-action mx-3 mb-1 w-[calc(100%-1.5rem)] py-2 text-xs text-text-secondary hover:text-neon-cyan"
+        className="mx-3 mb-1 w-[calc(100%-1.5rem)]"
       >
         Refresh
-      </button>
+      </Button>
     </div>
   );
 }

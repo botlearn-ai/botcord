@@ -7,6 +7,10 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Badge from "@/components/ui/Badge";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
+import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/i18n";
@@ -168,15 +172,9 @@ export default function SubscriptionBadge({
     if (!showModal) return;
     animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
       contentSelector: "[data-motion-item]",
+      onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
     });
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWithMotion();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      cleanupAnime(animationRef.current);
-    };
+    return () => cleanupAnime(animationRef.current);
   }, [closeWithMotion, showModal]);
 
   if (!productId) return null;
@@ -249,8 +247,8 @@ export default function SubscriptionBadge({
 
   const badgeLabel = alreadySubscribed ? t.subscribed : t.paid;
   const badgeClasses = alreadySubscribed
-    ? "bg-neon-green/15 text-neon-green hover:bg-neon-green/20"
-    : "bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500/30";
+    ? "bg-success-soft text-success hover:bg-success-soft"
+    : "bg-warning-soft text-warning hover:bg-warning-soft";
   const primaryLabel = isGuest
     ? t.loginToSubscribe
     : !isAuthedReady || !isAgentMode
@@ -267,17 +265,17 @@ export default function SubscriptionBadge({
     `${(minor / 100).toFixed(2)} Coin`;
 
   const trigger = variant === "button" ? (
-    <button
+    <Button variant="secondary" size="sm"
       onClick={handleOpen}
-      className={`rounded border border-yellow-500/40 bg-yellow-500/12 px-3 py-1.5 text-xs font-medium text-yellow-400 transition-colors hover:bg-yellow-500/20 ${className}`}
+
       title={alreadySubscribed ? t.subscriptionActiveTip : t.subscriptionRequiredTip}
     >
       {triggerLabel || t.joinRoom}
-    </button>
+    </Button>
   ) : (
-    <button
+    <Button variant="inline"
       onClick={handleOpen}
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium transition-colors ${badgeClasses} ${className}`}
+      className={`inline-flex items-center gap-1  `}
       title={alreadySubscribed ? t.subscriptionActiveTip : t.subscriptionRequiredTip}
     >
       <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
@@ -287,7 +285,7 @@ export default function SubscriptionBadge({
       {productData?.active_subscriber_count != null && (
         <span className="ml-0.5 opacity-75">· {productData.active_subscriber_count}</span>
       )}
-    </button>
+    </Button>
   );
 
   return (
@@ -296,22 +294,8 @@ export default function SubscriptionBadge({
 
       {showModal && (
         <DashboardOverlayPortal>
-          <div
-            className="liquid-scrim fixed inset-0 z-50 flex items-center justify-center p-4"
-            onClick={(event) => {
-              event.stopPropagation();
-              closeWithMotion();
-            }}
-            ref={overlayRef}
-          >
-            <div
-              ref={panelRef}
-              role="dialog"
-              aria-modal="true"
-              className="liquid-dialog w-full max-w-sm rounded-xl border border-glass-border p-6 shadow-xl"
-              onClick={(event) => event.stopPropagation()}
-            >
-            <h2 data-motion-item className="mb-2 flex items-center gap-2 text-lg font-semibold text-yellow-500">
+          <DialogSurface overlayRef={overlayRef} panelRef={panelRef} title={t.modalTitle} onClose={() => closeWithMotion()} busy={subscribing} size="sm" className="overflow-y-auto p-6">
+            <h2 data-motion-item className="mb-2 flex items-center gap-2 text-lg font-semibold text-warning">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
@@ -333,21 +317,17 @@ export default function SubscriptionBadge({
                       <p className="mt-1 text-sm text-text-secondary">{productData.description}</p>
                     ) : null}
                   </div>
-                  <span
-                    className={`shrink-0 rounded border px-2 py-1 text-xs font-medium ${
-                      alreadySubscribed
-                        ? "border-neon-green/30 bg-neon-green/10 text-neon-green"
-                        : "border-yellow-500/40 bg-yellow-500/10 text-yellow-400"
-                    }`}
+                  <Badge tone="warning"
+
                   >
                     {alreadySubscribed ? t.active : t.required}
-                  </span>
+                  </Badge>
                 </div>
 
-                <div className="flex items-center justify-between rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4">
+                <div className="flex items-center justify-between rounded-lg border border-warning/40 bg-warning-soft p-4">
                   <div>
                     <div className="text-xs uppercase tracking-wider text-text-secondary">{t.price}</div>
-                    <div className="text-xl font-bold text-yellow-500">
+                    <div className="text-xl font-semibold text-warning">
                       {formatAmount(productData.amount_minor, productData.asset_code)}
                     </div>
                   </div>
@@ -368,19 +348,19 @@ export default function SubscriptionBadge({
                 </div>
 
                 {subscription ? (
-                  <div className="rounded border border-neon-green/30 bg-neon-green/5 px-3 py-2 text-xs text-neon-green">
+                  <div className="rounded border border-neon-green/30 bg-success-soft px-3 py-2 text-xs text-success">
                     {t.activeUntil} {new Date(subscription.current_period_end).toLocaleString()}
                   </div>
                 ) : null}
 
                 {!subscription && !isGuest && !isAgentMode ? (
-                  <div className="rounded border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
+                  <div className="rounded border border-warning/40 bg-warning-soft px-3 py-2 text-xs text-warning">
                     {t.chooseAgentHint}
                   </div>
                 ) : null}
 
                 {error ? (
-                  <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-400 animate-[shake_0.3s_ease-in-out]">
+                  <Alert tone="danger" className="flex items-start gap-2">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0">
                       <circle cx="12" cy="12" r="10" />
                       <line x1="12" y1="8" x2="12" y2="12" />
@@ -389,56 +369,55 @@ export default function SubscriptionBadge({
                     <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
                       <span>{error}</span>
                       {isInsufficientBalance ? (
-                        <button
+                        <Button variant="danger" size="sm"
                           onClick={handleOpenWallet}
-                          className="shrink-0 rounded border border-red-400/40 bg-red-400/10 px-2.5 py-1 text-xs font-semibold text-red-200 transition-colors hover:bg-red-400/20"
+                          className="shrink-0"
                         >
                           Top up wallet
-                        </button>
+                        </Button>
                       ) : null}
                     </div>
-                  </div>
+                  </Alert>
                 ) : null}
 
                 <div className="flex justify-end gap-2 pt-2">
-                  <button
+                  <Button variant="secondary" size="sm"
                     onClick={() => closeWithMotion()}
-                    className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+
                   >
                     {t.close}
-                  </button>
-                  <button
+                  </Button>
+                  <Button variant="secondary" size="sm"
                     onClick={handlePrimaryAction}
                     disabled={subscribing || (!isGuest && !isAgentMode)}
-                    className="inline-flex items-center gap-2 rounded border border-yellow-500/50 bg-yellow-500/20 px-4 py-2 text-sm font-medium text-yellow-500 hover:bg-yellow-500/30 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 disabled:opacity-50"
                   >
                     {subscribing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     {subscribing ? t.processing : primaryLabel}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-400">
+                <Alert tone="danger" className="flex items-start gap-2">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0">
                     <circle cx="12" cy="12" r="10" />
                     <line x1="12" y1="8" x2="12" y2="12" />
                     <line x1="12" y1="16" x2="12.01" y2="16" />
                   </svg>
                   <span>{error || t.failedToLoadDetails}</span>
-                </div>
+                </Alert>
                 <div className="flex justify-end">
-                  <button
+                  <Button variant="secondary" size="sm"
                     onClick={() => closeWithMotion()}
-                    className="rounded border border-glass-border px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+
                   >
                     {t.close}
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
-            </div>
-          </div>
+          </DialogSurface>
         </DashboardOverlayPortal>
       )}
     </>

@@ -7,6 +7,9 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Badge from "@/components/ui/Badge";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ChevronDown, Loader2, Mail, Send } from "lucide-react";
@@ -232,11 +235,11 @@ export default function ContactRequestsInbox({
                     {botApprovalGroups.map((group) => {
                       const expanded = expandedBotGroups[group.agentId] ?? true;
                       return (
-                        <div
+                        <Card padding="none"
                           key={group.agentId}
-                          className="liquid-card overflow-hidden rounded-2xl border border-glass-border"
+                          className="overflow-hidden"
                         >
-                          <button
+                          <Button variant="row"
                             type="button"
                             onClick={() =>
                               setExpandedBotGroups((prev) => ({
@@ -244,24 +247,24 @@ export default function ContactRequestsInbox({
                                 [group.agentId]: !(prev[group.agentId] ?? true),
                               }))
                             }
-                            className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-glass-bg/50"
+                            className="flex w-full items-center gap-3"
                           >
                             <BotAvatar agentId={group.agentId} avatarUrl={group.avatarUrl} alt={group.displayName} size={36} />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-semibold text-text-primary">
                                 {group.displayName}
                               </p>
-                              <p className="truncate font-mono text-xs text-text-secondary/60">
+                              <p className="truncate font-mono text-xs text-text-secondary">
                                 {group.agentId}
                               </p>
                             </div>
-                            <span className="rounded-full bg-neon-cyan px-1.5 text-xs font-bold text-[var(--color-on-accent)]">
+                            <Badge tone="neutral" >
                               {group.approvals.length}
-                            </span>
+                            </Badge>
                             <ChevronDown
                               className={`h-4 w-4 shrink-0 text-text-secondary transition-transform ${expanded ? "rotate-180" : ""}`}
                             />
-                          </button>
+                          </Button>
                           {expanded ? (
                             <div className="grid grid-cols-1 gap-3 border-t border-glass-border p-3 md:grid-cols-2 xl:grid-cols-3">
                               {group.approvals.map((approval) => (
@@ -277,7 +280,7 @@ export default function ContactRequestsInbox({
                               ))}
                             </div>
                           ) : null}
-                        </div>
+                        </Card>
                       );
                     })}
                   </div>
@@ -285,7 +288,7 @@ export default function ContactRequestsInbox({
               ) : null}
 
               {botApprovalsError ? (
-                <p className="text-xs text-red-300">{botApprovalsError}</p>
+                <p className="text-xs text-danger">{botApprovalsError}</p>
               ) : null}
             </div>
           )
@@ -343,7 +346,7 @@ function RequestStartedAt({
   const formatted = formatRequestStartedAt(value, locale);
   if (!formatted) return null;
   return (
-    <p className="mt-3 text-xs text-text-secondary/50">
+    <p className="mt-3 text-xs text-text-secondary">
       {label} {formatted}
     </p>
   );
@@ -369,10 +372,10 @@ function ReceivedRequestCard({
   const isHuman = isHumanId(req.from_agent_id);
   const initial = (req.from_display_name || req.from_agent_id).trim().charAt(0).toUpperCase();
   return (
-    <div className="liquid-card rounded-2xl border border-glass-border p-4">
+    <Card padding="md" className="">
       <div className="flex items-start gap-3">
         {isHuman ? (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neon-cyan/15 text-sm font-semibold text-neon-cyan">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent-text">
             {initial || "?"}
           </div>
         ) : (
@@ -385,7 +388,7 @@ function ReceivedRequestCard({
             </p>
             <TypeBadge isHuman={isHuman} locale={locale} />
           </div>
-          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/60">
+          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">
             {req.from_agent_id}
           </p>
         </div>
@@ -395,24 +398,24 @@ function ReceivedRequestCard({
       </p>
       <RequestStartedAt value={req.created_at} locale={locale} label={t.requestStartedAt} />
       <div className="mt-3 flex items-center gap-2">
-        <button
+        <Button variant="secondary" size="sm"
           onClick={() => onRespond(req.id, "accept")}
           disabled={isProcessing}
-          className="inline-flex items-center gap-1.5 rounded border border-neon-green/40 bg-neon-green/10 px-3 py-1 text-xs text-neon-green disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 disabled:opacity-50"
         >
           {isAccepting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           {isAccepting ? t.accepting : t.accept}
-        </button>
-        <button
+        </Button>
+        <Button variant="danger" size="sm"
           onClick={() => onRespond(req.id, "reject")}
           disabled={isProcessing}
-          className="inline-flex items-center gap-1.5 rounded border border-red-400/40 bg-red-400/10 px-3 py-1 text-xs text-red-300 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 disabled:opacity-50"
         >
           {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           {isRejecting ? t.rejecting : t.reject}
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -443,7 +446,7 @@ function BotApprovalCard({
     <div className="rounded-xl border border-glass-border bg-deep-black p-4">
       <div className="flex items-start gap-3">
         {isHuman ? (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neon-cyan/15 text-sm font-semibold text-neon-cyan">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent-text">
             {initial || "?"}
           </div>
         ) : (
@@ -454,7 +457,7 @@ function BotApprovalCard({
             <p className="truncate text-sm font-semibold text-text-primary">{fromName}</p>
             <TypeBadge isHuman={isHuman} locale={locale} />
           </div>
-          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/60">
+          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">
             {fromId}
           </p>
         </div>
@@ -464,24 +467,24 @@ function BotApprovalCard({
       </p>
       <RequestStartedAt value={approval.created_at} locale={locale} label={t.requestStartedAt} />
       <div className="mt-3 flex items-center gap-2">
-        <button
+        <Button variant="secondary" size="sm"
           type="button"
           onClick={() => onResolve(approval.id, "approve")}
           disabled={processing}
-          className="inline-flex items-center gap-1.5 rounded border border-neon-green/40 bg-neon-green/10 px-3 py-1 text-xs text-neon-green disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 disabled:opacity-50"
         >
           {isApproving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           {isApproving ? t.accepting : t.accept}
-        </button>
-        <button
+        </Button>
+        <Button variant="danger" size="sm"
           type="button"
           onClick={() => onResolve(approval.id, "reject")}
           disabled={processing}
-          className="inline-flex items-center gap-1.5 rounded border border-red-400/40 bg-red-400/10 px-3 py-1 text-xs text-red-300 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 disabled:opacity-50"
         >
           {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           {isRejecting ? t.rejecting : t.reject}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -504,10 +507,10 @@ function SentRequestCard({
         : t.sentRequestRejected;
   const stateClass =
     req.state === "pending"
-      ? "border-amber-400/40 bg-amber-400/10 text-amber-300"
+      ? "border-warning/40 bg-warning-soft text-warning"
       : req.state === "accepted"
-        ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
-        : "border-red-400/40 bg-red-400/10 text-red-300";
+        ? "border-neon-green/40 bg-success-soft text-success"
+        : "border-danger/40 bg-danger-soft text-danger";
   const toIsHuman = isHumanId(req.to_agent_id);
   const toInitial = (req.to_display_name || req.to_agent_id).trim().charAt(0).toUpperCase();
 
@@ -515,7 +518,7 @@ function SentRequestCard({
     <div className="rounded-2xl border border-glass-border bg-deep-black-light p-4">
       <div className="flex items-start gap-3">
         {toIsHuman ? (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neon-cyan/15 text-sm font-semibold text-neon-cyan">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent-text">
             {toInitial || "?"}
           </div>
         ) : (
@@ -528,13 +531,13 @@ function SentRequestCard({
             </p>
             <TypeBadge isHuman={toIsHuman} locale={locale} />
           </div>
-          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/60">
+          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">
             {req.to_agent_id}
           </p>
         </div>
-        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${stateClass}`}>
+        <Badge tone="neutral" >
           {stateLabel}
-        </span>
+        </Badge>
       </div>
       <p className="mt-3 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
         {req.message || t.noRequestMessage}
@@ -546,15 +549,11 @@ function SentRequestCard({
 
 function TypeBadge({ isHuman, locale }: { isHuman: boolean; locale: Locale }) {
   return (
-    <span
-      className={`shrink-0 rounded-full border px-1.5 py-px text-xs font-medium uppercase tracking-wider ${
-        isHuman
-          ? "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan"
-          : "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan"
-      }`}
+    <Badge tone="accent"
+
     >
       {isHuman ? (locale === "zh" ? "真人" : "Human") : "Bot"}
-    </span>
+    </Badge>
   );
 }
 
@@ -572,25 +571,19 @@ function TabButton({
   count: number;
 }) {
   return (
-    <button
+    <Button variant="ghost" size="sm" aria-pressed={active}
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-        active
-          ? "bg-text-primary text-deep-black"
-          : "text-text-secondary hover:text-text-primary"
-      }`}
+      className={`inline-flex items-center gap-1.5 `}
     >
       {icon}
       {label}
       {count > 0 ? (
-        <span
-          className={`rounded-full px-1.5 text-xs font-semibold ${
-            active ? "bg-deep-black/15 text-deep-black" : "bg-text-secondary/15 text-text-secondary/80"
-          }`}
+        <Badge tone="neutral"
+
         >
           {count}
-        </span>
+        </Badge>
       ) : null}
-    </button>
+    </Button>
   );
 }

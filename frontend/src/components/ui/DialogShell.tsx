@@ -12,6 +12,7 @@ import { Children, createContext, useCallback, useContext, useEffect, useId, use
 import type { ReactNode } from "react";
 import { clsx } from "clsx";
 import IconButton from "./IconButton";
+import { useDialogInteractions } from "./use-dialog-interactions";
 import { X } from "lucide-react";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 
@@ -29,9 +30,6 @@ const SIZE: Record<DialogSize, string> = {
 function hasUtility(classes: string | undefined, prefix: string): boolean {
   return Boolean(classes?.split(/\s+/).some((name) => name.startsWith(prefix)));
 }
-
-let openDialogCount = 0;
-let originalBodyOverflow = "";
 
 const DialogCloseContext = createContext<() => void>(() => {});
 
@@ -110,41 +108,13 @@ export default function DialogShell({
     });
   }, [closing, onClose]);
 
+  useDialogInteractions(panelRef, close, busy || closing);
   useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (openDialogCount++ === 0) { originalBodyOverflow = document.body.style.overflow; document.body.style.overflow = "hidden"; }
     animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
-      // An identity transform still traps fixed descendants in this panel.
       onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; },
     });
-    panelRef.current?.focus({ preventScroll: true });
-    return () => {
-      cleanupAnime(animationRef.current);
-      if (--openDialogCount === 0) document.body.style.overflow = originalBodyOverflow;
-      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
-    };
+    return () => cleanupAnime(animationRef.current);
   }, []);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.defaultPrevented) return;
-      const panel = panelRef.current;
-      const nativeModal = document.querySelector("dialog[open]");
-      if (!panel || (nativeModal && !panel.contains(nativeModal))) return;
-      const modals = [...document.querySelectorAll('[aria-modal="true"]')];
-      if (modals.at(-1) !== panel) return;
-      if (event.key === "Escape") { event.preventDefault(); close(); }
-      if (event.key === "Tab") {
-        const controls = [...panel.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter((node) => !node.hidden && node.getAttribute("aria-hidden") !== "true");
-        const first = controls[0], last = controls.at(-1);
-        if (!first) { event.preventDefault(); panel.focus(); }
-        else if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last?.focus(); }
-        else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel)) { event.preventDefault(); first.focus(); }
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [close]);
 
   // Conditional children (e.g. `{invite && …}`) can render nothing; skip the padded body then.
   const hasBody = Children.toArray(children).length > 0;

@@ -1,4 +1,8 @@
 "use client";
+import { X } from "lucide-react";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import IconButton from "@/components/ui/IconButton";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -36,50 +40,28 @@ function SettingsModal({ onClose }: SettingsModalProps) {
   useLayoutEffect(() => {
     animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
       contentSelector: "[data-settings-modal-part]",
-      onComplete: () => {
+      onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none";
         animationRef.current = null;
       },
     });
     return () => cleanupAnime(animationRef.current);
   }, []);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWithMotion();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
-
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-50 flex items-start justify-center overflow-y-auto backdrop-blur-sm py-8 px-4 ${closing ? "pointer-events-none" : ""}`}
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-dialog relative w-full max-w-2xl rounded-2xl border"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} ariaLabel="Settings Modal" overlayClassName="z-50" className="max-w-2xl">
         <div data-settings-modal-part className="flex items-center justify-between border-b border-glass-border/50 px-6 py-4">
           <span className="text-sm font-semibold text-text-primary">设置</span>
-          <button
+          <IconButton label="Close"
             type="button"
             onClick={closeWithMotion}
-            className="liquid-action flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary/60 transition-colors hover:text-text-primary"
+            className="w-7"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
+            <X aria-hidden strokeWidth={1.75} className="h-4 w-4" />
+          </IconButton>
         </div>
         <div data-settings-modal-part className="px-6 py-6">
           <PolicySettingsClient />
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }

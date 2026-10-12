@@ -7,6 +7,14 @@
  * [PROTOCOL]: update header on changes
  */
 
+import Badge from "@/components/ui/Badge";
+import Alert from "@/components/ui/Alert";
+import Skeleton from "@/components/ui/Skeleton";
+import Checkbox from "@/components/ui/Checkbox";
+import UICard from "@/components/ui/Card";
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 import Radio from "@/components/ui/Radio";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, Bot, Loader2, MessageSquare, Shield, UserRound, X } from "lucide-react";
@@ -52,7 +60,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mb-6 rounded-2xl border border-glass-border bg-glass-bg/40 p-6">
+    <UICard as="section" padding="lg" className="mb-6">
       <header className="mb-4">
         <h2 className="text-base font-semibold text-text-primary">{title}</h2>
         {description ? (
@@ -60,7 +68,7 @@ function Card({
         ) : null}
       </header>
       {children}
-    </section>
+    </UICard>
   );
 }
 
@@ -82,21 +90,14 @@ function RadioGroup<T extends string>({
       {options.map((opt) => {
         const selected = value === opt.value;
         return (
-          <label
-            key={opt.value}
-            className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition-colors ${
-              selected
-                ? "border-neon-cyan/40 bg-neon-cyan/5"
-                : "border-glass-border bg-transparent hover:bg-glass-bg/60"
-            } ${disabled ? "pointer-events-none opacity-50" : ""}`}
-          >
+          <UICard key={opt.value} padding="sm" data-active={selected}><label className="flex cursor-pointer items-start gap-3">
             <Radio
 
               name={name}
               value={opt.value}
               checked={selected}
               onChange={() => onChange(opt.value)}
-              className="mt-1 accent-neon-cyan"
+              className="mt-1"
               disabled={disabled}
             />
             <div className="flex-1">
@@ -105,7 +106,7 @@ function RadioGroup<T extends string>({
                 <div className="text-xs text-text-secondary">{opt.hint}</div>
               ) : null}
             </div>
-          </label>
+          </label></UICard>
         );
       })}
     </div>
@@ -145,28 +146,25 @@ function KeywordChips({
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-1.5">
         {value.length === 0 ? (
-          <span className="text-xs text-text-tertiary">尚未配置关键词</span>
+          <span className="text-xs text-text-secondary">尚未配置关键词</span>
         ) : (
           value.map((kw) => (
             <span
               key={kw}
-              className="inline-flex items-center gap-1 rounded-full border border-neon-cyan/30 bg-neon-cyan/5 px-2 py-0.5 text-xs text-neon-cyan"
-            >
-              {kw}
-              <button
+              className="inline-flex items-center gap-1" >
+              <Badge tone="accent">{kw}</Badge>
+              <IconButton label={`移除关键词 ${kw}`}
                 type="button"
                 onClick={() => remove(kw)}
                 disabled={disabled}
-                className="rounded-full p-0.5 hover:bg-neon-cyan/10 disabled:opacity-50"
-                aria-label={`移除关键词 ${kw}`}
-              >
+                aria-label={`移除关键词 ${kw}`} >
                 <X className="h-3 w-3" />
-              </button>
+              </IconButton>
             </span>
           ))
         )}
       </div>
-      <input
+      <Input
         type="text"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -178,8 +176,8 @@ function KeywordChips({
         }}
         onBlur={() => add(draft)}
         disabled={disabled}
+        aria-label="关键词"
         placeholder="输入关键词后按回车添加"
-        className="rounded-xl border border-glass-border bg-deep-black/40 px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-neon-cyan/40 focus:outline-none disabled:opacity-50"
       />
     </div>
   );
@@ -268,7 +266,6 @@ export default function PolicySettingsClient() {
           onChange={(value) => setSelectedAgentId(value || null)}
           placeholder="选择 Agent"
           className="min-w-48"
-          buttonClassName="min-h-8 rounded-lg bg-deep-black/40 px-2 text-xs"
           options={agents.map((a) => ({
             value: a.agent_id,
             label: a.display_name,
@@ -282,16 +279,15 @@ export default function PolicySettingsClient() {
     return (
       <div className="max-w-3xl">
         <Header />
-        <div className="rounded-2xl border border-red-400/20 bg-red-400/5 p-4 text-sm text-red-300">
+        <Alert tone="danger" >
           加载 Agent 列表失败：{agentsError}
-          <button
+          <Button variant="danger" size="sm"
             type="button"
             onClick={() => void fetchAgents()}
-            className="ml-3 rounded border border-red-400/40 px-2 py-0.5 text-xs text-red-200 hover:bg-red-400/10"
-          >
+            className="ml-3" >
             重试
-          </button>
-        </div>
+          </Button>
+        </Alert>
       </div>
     );
   }
@@ -309,9 +305,9 @@ export default function PolicySettingsClient() {
     return (
       <div className="max-w-3xl">
         <Header />
-        <div className="rounded-2xl border border-glass-border bg-glass-bg/40 p-6 text-sm text-text-secondary">
+        <UICard padding="lg" >
           你还没有任何 Agent，先去创建一个吧。
-        </div>
+        </UICard>
       </div>
     );
   }
@@ -321,22 +317,21 @@ export default function PolicySettingsClient() {
       <Header right={headerNode} />
 
       {loadError ? (
-        <div className="mb-4 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+        <Alert tone="danger" className="mb-4">
           加载策略失败：{loadError}
-          <button
+          <Button variant="danger" size="sm"
             type="button"
             onClick={() => void reloadPolicy()}
-            className="ml-3 rounded border border-red-400/40 px-2 py-0.5 text-xs text-red-200 hover:bg-red-400/10"
-          >
+            className="ml-3" >
             重试
-          </button>
-        </div>
+          </Button>
+        </Alert>
       ) : null}
 
       {saveError ? (
-        <div className="mb-4 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+        <Alert tone="danger" className="mb-4">
           保存失败：{saveError}
-        </div>
+        </Alert>
       ) : null}
 
       {!policy ? (
@@ -374,27 +369,27 @@ function PolicyFormSkeleton() {
     <>
       <div className="mb-6 grid gap-3 md:grid-cols-3">
         {Array.from({ length: 3 }).map((_, idx) => (
-          <div key={idx} className="rounded-xl border border-glass-border px-3 py-3">
+          <UICard key={idx} padding="sm">
             <div className="mb-1 flex items-center gap-1.5">
-              <div className="dashboard-skeleton-block h-4 w-4 rounded" />
-              <div className="dashboard-skeleton-block h-2.5 w-16 rounded" />
+              <Skeleton className="h-4 w-4 rounded" />
+              <Skeleton className="h-2.5 w-16 rounded" />
             </div>
-            <div className="dashboard-skeleton-block h-4 w-24 rounded" />
-          </div>
+            <Skeleton className="h-4 w-24 rounded" />
+          </UICard>
         ))}
       </div>
       {Array.from({ length: 2 }).map((_, idx) => (
-        <section key={idx} className="mb-6 rounded-2xl border border-glass-border bg-glass-bg/40 p-6">
+        <UICard key={idx} as="section" padding="lg" className="mb-6">
           <header className="mb-4">
-            <div className="dashboard-skeleton-block h-4 w-32 rounded" />
-            <div className="dashboard-skeleton-block mt-2 h-3 w-4/5 rounded" />
+            <Skeleton className="h-4 w-32 rounded" />
+            <Skeleton className="mt-2 h-3 w-4/5 rounded" />
           </header>
           <div className="space-y-2">
-            <div className="dashboard-skeleton-block h-10 rounded-lg" />
-            <div className="dashboard-skeleton-block h-10 rounded-lg" />
-            <div className="dashboard-skeleton-block h-10 rounded-lg" />
+            <Skeleton className="h-10 rounded-lg" />
+            <Skeleton className="h-10 rounded-lg" />
+            <Skeleton className="h-10 rounded-lg" />
           </div>
-        </section>
+        </UICard>
       ))}
     </>
   );
@@ -437,8 +432,7 @@ function PolicyForm({
 
       <Card
         title="直接联系我"
-        description="Hub 准入权限：控制谁可以把私聊消息送到这个 Bot。Blocklist 仍然拥有最高优先级。"
-      >
+        description="Hub 准入权限：控制谁可以把私聊消息送到这个 Bot。Blocklist 仍然拥有最高优先级。" >
         <RadioGroup
           name="contact_policy"
           value={policy.contact_policy}
@@ -447,38 +441,14 @@ function PolicyForm({
           disabled={saving}
         />
 
-        <div className="mt-5 rounded-xl border border-glass-border bg-deep-black/20 p-3">
+        <UICard padding="sm" className="mt-5">
           <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
             <Bot className="h-3.5 w-3.5" />
             允许的发送者类型
           </div>
-          <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-glass-border/70 bg-glass-bg/30 px-3 py-2 text-sm text-text-primary">
-            <span>
-              Agent
-              <span className="ml-2 text-xs text-text-secondary">其他 bot / agent</span>
-            </span>
-            <input
-              type="checkbox"
-              checked={policy.allow_agent_sender}
-              onChange={(e) => onPatch({ allow_agent_sender: e.target.checked })}
-              disabled={saving}
-              className="accent-neon-cyan"
-            />
-          </label>
-          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-glass-border/70 bg-glass-bg/30 px-3 py-2 text-sm text-text-primary">
-            <span>
-              Human
-              <span className="ml-2 text-xs text-text-secondary">人类用户 / dashboard</span>
-            </span>
-            <input
-              type="checkbox"
-              checked={policy.allow_human_sender}
-              onChange={(e) => onPatch({ allow_human_sender: e.target.checked })}
-              disabled={saving}
-              className="accent-neon-cyan"
-            />
-          </label>
-        </div>
+          <Checkbox checked={policy.allow_agent_sender} onCheckedChange={(checked) => onPatch({ allow_agent_sender: checked })} disabled={saving} label={<>Agent <span className="text-xs text-text-secondary">其他 bot / agent</span></>} className="mb-2 flex" />
+          <Checkbox checked={policy.allow_human_sender} onCheckedChange={(checked) => onPatch({ allow_human_sender: checked })} disabled={saving} label={<>Human <span className="text-xs text-text-secondary">人类用户 / dashboard</span></>} className="mb-2 flex" />
+        </UICard>
 
         <div className="mt-5">
           <div className="mb-2 text-xs font-medium uppercase tracking-normal text-text-secondary">
@@ -496,8 +466,7 @@ function PolicyForm({
 
       <Card
         title="默认房间回复"
-        description="Daemon 注意力策略：消息已进入 inbox 后，是否值得唤醒 Bot。这个设置只作为房间默认值，单个房间可以覆盖。"
-      >
+        description="Daemon 注意力策略：消息已进入 inbox 后，是否值得唤醒 Bot。这个设置只作为房间默认值，单个房间可以覆盖。" >
         <RadioGroup
           name="default_attention"
           value={policy.default_attention}
@@ -517,9 +486,9 @@ function PolicyForm({
           </div>
         ) : null}
 
-        <p className="mt-4 rounded-lg border border-glass-border/60 bg-glass-bg/40 px-3 py-2 text-xs text-text-secondary">
+        <Alert className="mt-4">
           私聊 DM 当前强制始终唤醒；房间消息会先看房间级覆盖，没有覆盖时继承这里的默认策略。
-        </p>
+        </Alert>
       </Card>
 
       {saving ? (
@@ -543,21 +512,5 @@ function SummaryTile({
   value: string;
   tone: "cyan" | "green" | "yellow" | "red";
 }) {
-  const toneClass =
-    tone === "green"
-      ? "border-neon-green/30 bg-neon-green/5 text-neon-green"
-      : tone === "yellow"
-        ? "border-yellow-400/30 bg-yellow-400/5 text-yellow-300"
-        : tone === "red"
-          ? "border-red-400/30 bg-red-400/5 text-red-300"
-          : "border-neon-cyan/30 bg-neon-cyan/5 text-neon-cyan";
-  return (
-    <div className={`rounded-xl border px-3 py-3 ${toneClass}`}>
-      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-normal opacity-80">
-        {icon}
-        {label}
-      </div>
-      <div className="text-sm font-semibold leading-snug">{value}</div>
-    </div>
-  );
+  return <UICard padding="sm"><div className="mb-1 flex items-center gap-1.5 type-caption text-text-secondary">{icon}{label}</div><Badge tone={tone === "green" ? "success" : tone === "yellow" ? "warning" : tone === "red" ? "danger" : "accent"}>{value}</Badge></UICard>;
 }

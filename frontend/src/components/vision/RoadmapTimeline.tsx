@@ -1,5 +1,6 @@
 "use client";
 
+import Card from "@/components/ui/Card";
 import { motion } from "framer-motion";
 import { milestones } from "@/data/roadmap";
 import { useLanguage } from "@/lib/i18n";
@@ -32,12 +33,10 @@ export default function RoadmapTimeline() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-50px" }}
               transition={{ duration: 0.36, delay: i * 0.03, ease: [0, 0, 0, 1] }}
-              className={`flex items-start gap-6 ${isLeft ? "md:flex-row" : "md:flex-row-reverse"}`}
-            >
+              className={`flex items-start gap-6 ${isLeft ? "md:flex-row" : "md:flex-row-reverse"}`} >
               <div
-                className={`hidden flex-1 md:block ${isLeft ? "text-right" : "text-left"}`}
-              >
-                <div className="inline-block rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-4 shadow-[var(--bc-shadow-sm)]">
+                className={`hidden flex-1 md:block ${isLeft ? "text-right" : "text-left"}`} >
+                <Card padding="md" className="inline-block">
                   <div className="flex items-center gap-2">
                     <span
                       className="h-2 w-2 rounded-full"
@@ -56,20 +55,19 @@ export default function RoadmapTimeline() {
                   <p className="mt-1 text-sm leading-[1.6] text-[var(--bc-text-secondary)]">
                     {t.milestones[i].description}
                   </p>
-                </div>
+                </Card>
               </div>
 
               {/* Center node */}
               <div
                 className="relative z-10 mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 bg-[var(--bc-bg)] font-mono text-xs font-semibold text-[var(--bc-text)]"
-                style={{ borderColor: color }}
-              >
+                style={{ borderColor: color }} >
                 {ms.id}
               </div>
 
               {/* Mobile card */}
               <div className="flex-1 md:hidden">
-                <div className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-4 shadow-[var(--bc-shadow-sm)]">
+                <Card padding="md" >
                   <div className="flex items-center gap-2">
                     <span
                       className="h-2 w-2 rounded-full"
@@ -83,7 +81,7 @@ export default function RoadmapTimeline() {
                   <p className="mt-1 text-sm leading-[1.6] text-[var(--bc-text-secondary)]">
                     {t.milestones[i].description}
                   </p>
-                </div>
+                </Card>
               </div>
 
               <div className="hidden flex-1 md:block" />

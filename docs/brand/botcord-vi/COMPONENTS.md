@@ -191,3 +191,21 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 ## 迁移基线
 
 组件成熟度、稳定接口、样式覆盖限制、真实页面试点和验收边界见 [RELEASE-READINESS.md](./RELEASE-READINESS.md)。
+
+
+## 全站迁移新增组合能力
+
+| 组件 / 变体 | 契约与用途 |
+| --- | --- |
+| Button `row` | 多行列表动作，无固定高度；aria-pressed / aria-selected / aria-current=page / data-active=true 表示选中；调用方只补布局 |
+| Button `inline` | 正文中的行内动作，保留文字流；不用于常规表单提交或工具栏主操作 |
+| LinkButton | Button 同源视觉，href + 原生 anchor attrs/ref；站内用 Next Link，保留修饰键、新标签和 target/rel |
+| Input / Textarea `composer` | 嵌入式无边框输入，无内边距和固定高度；保留原生事件/ref，业务持有自动高度和IME逻辑 |
+| Input / Textarea `message` | 消息覆盖层配套，px-3 py-2、min-h-11；与高亮层使用相同行高和字体 |
+| Checkbox `wrapLabel=false` | 放在已有 label 内，避免嵌套标签；默认 true 兼容独立标签 |
+| Card `as=li/dl` | 保留列表/术语表语义；interactive支持aria-checked/pressed/selected/current选中 |
+| Alert `ref` | 暴露HTMLDivElement给已有错误提示动画，不改变live role |
+| DialogSurface | 无内置动画和内边距的组合壳；overlayRef/panelRef由业务动画使用；统一Esc/焦点/滚动锁，busy/closing阻止关闭；modal=false用于桌面非模态检查器 |
+| DismissLayer | 既有响应式导航的关闭遮罩，保留HTMLButtonElement ref和onClick；无操作按钮高度；调用方负责几何位置、Esc与焦点 |
+
+新表单优先 DialogShell / DrawerShell；仅在必须保留旧业务动画生命周期时使用 DialogSurface。动画结束后清除无意义的 identity transform，避免改变内部 fixed 元素定位。所有表单提交按钮显式写 `type="submit"`，共享 Button 默认 `type="button"`。

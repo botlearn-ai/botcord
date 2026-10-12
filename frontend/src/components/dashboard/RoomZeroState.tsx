@@ -7,6 +7,9 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import EmptyState from "@/components/ui/EmptyState";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 import { useEffect, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
@@ -114,38 +117,34 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
 
   if (compact) {
     return (
-      <div className="liquid-empty-state m-3 rounded-2xl border border-dashed border-glass-border p-4">
-        <p className="text-sm font-semibold text-text-primary">{titleCopy}</p>
-        <p className="mt-1 text-xs leading-5 text-text-secondary">{descCopy}</p>
-        <div className="mt-3 flex flex-col gap-2">
+      <EmptyState compact bordered title={<>{titleCopy}</>} description={<>{descCopy}</>} action={<><div className="mt-3 flex flex-col gap-2">
           {!isGuest && human && (
-            <button
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={() => setShowCreateRoom(true)}
-              className="rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+
             >
               {locale === "zh" ? "创建房间" : "Create a room"}
-            </button>
+            </Button>
           )}
-          <button
+          <Button variant="secondary" size="sm"
             type="button"
             onClick={() => router.push("/chats/explore/rooms")}
-            className="liquid-action rounded-xl border border-glass-border px-4 py-2 text-xs font-medium text-text-primary transition-colors hover:border-neon-cyan/35 hover:text-neon-cyan"
+
           >
             {t.openExplore}
-          </button>
+          </Button>
           {isGuest && (
-            <button
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={() => router.push("/login")}
-              className="rounded-xl border border-neon-cyan/25 bg-neon-cyan/10 px-4 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+
             >
               {t.loginToCreate}
-            </button>
+            </Button>
           )}
         </div>
-        {showCreateRoom && <CreateRoomModal onClose={() => setShowCreateRoom(false)} onCreated={handleCreatedRoom} />}
-      </div>
+{showCreateRoom && <CreateRoomModal onClose={() => setShowCreateRoom(false)} onCreated={handleCreatedRoom} />}</>} />
     );
   }
 
@@ -156,22 +155,22 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
         <p className="mt-2 text-sm leading-6 text-text-secondary">{descCopy}</p>
         <div className="mt-4 flex flex-wrap justify-center gap-3">
           {!isGuest && human && (
-            <button
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={() => setShowCreateRoom(true)}
-              className="rounded-xl border border-neon-cyan/40 bg-neon-cyan/10 px-4 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+
             >
               {locale === "zh" ? "创建房间" : "Create a room"}
-            </button>
+            </Button>
           )}
           {isGuest && (
-            <button
+            <Button variant="secondary" size="sm"
               type="button"
               onClick={() => router.push("/login")}
-              className="rounded-xl border border-neon-cyan/25 bg-neon-cyan/10 px-4 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20"
+
             >
               {t.loginToCreate}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -180,13 +179,13 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">{t.trendingRooms}</h3>
-            <button
+            <Button variant="inline"
               type="button"
               onClick={() => router.push("/chats/explore/rooms")}
-              className="text-xs text-neon-cyan transition-colors hover:text-neon-cyan/80"
+
             >
               {t.viewAllRooms}
-            </button>
+            </Button>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {topRooms.map((room) => {
@@ -194,12 +193,12 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
               const initials = initialsFromName(room.name || "Room");
               const memberWord = room.member_count === 1 ? "Member" : "Members";
               return (
-                <button
+                <Card as="button" variant="interactive" padding="md"
                   key={room.room_id}
                   type="button"
                   disabled={joiningId === room.room_id}
                   onClick={() => handleJoin(room)}
-                  className="liquid-card group overflow-hidden rounded-xl border border-glass-border text-left transition-all hover:border-neon-cyan/60 hover:shadow-md hover:shadow-neon-cyan/10 disabled:opacity-60"
+                  className="group overflow-hidden disabled:opacity-60"
                 >
                   <div
                     className="relative h-14 w-full"
@@ -211,7 +210,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                   >
                     <div className="absolute left-3 top-2">
                       <div
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-white/90 backdrop-blur-sm"
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-semibold text-white/90 backdrop-blur-sm"
                         style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}55` }}
                       >
                         {initials}
@@ -230,7 +229,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                       {room.description || (locale === "zh" ? "暂无描述" : "No description yet.")}
                     </p>
                   </div>
-                </button>
+                </Card>
               );
             })}
           </div>
@@ -241,26 +240,26 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">{t.featuredAgents}</h3>
-            <button
+            <Button variant="inline"
               type="button"
               onClick={() => router.push("/chats/explore/agents")}
-              className="text-xs text-neon-cyan transition-colors hover:text-neon-cyan/80"
+
             >
               {t.viewAllAgents}
-            </button>
+            </Button>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {topAgents.map((agent) => {
               const initials = initialsFromName(agent.display_name);
               return (
-                <button
+                <Card as="button" variant="interactive" padding="md"
                   key={agent.agent_id}
                   type="button"
                   onClick={() => selectAgent(agent.agent_id)}
-                  className="liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg"
+                  className="group"
                 >
                   <div className="mb-2 flex items-center gap-2">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-cyan/30 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-cyan/30 bg-accent-soft text-xs font-semibold text-accent-text">
                       {agent.avatar_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={agent.avatar_url} alt={agent.display_name} className="h-full w-full object-cover" />
@@ -273,7 +272,7 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                   {agent.bio && (
                     <p className="line-clamp-2 text-xs leading-4 text-text-secondary">{agent.bio}</p>
                   )}
-                </button>
+                </Card>
               );
             })}
           </div>
@@ -284,23 +283,23 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">{t.featuredHumans}</h3>
-            <button
+            <Button variant="inline"
               type="button"
               onClick={() => router.push("/chats/explore/humans")}
-              className="text-xs text-neon-green transition-colors hover:text-neon-green/80"
+
             >
               {t.viewAllHumans}
-            </button>
+            </Button>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {topHumans.map((human) => {
               const initials = initialsFromName(human.display_name);
               return (
-                <button
+                <Card as="button" variant="interactive" padding="md"
                   key={human.human_id}
                   type="button"
                   onClick={() => onHumanOpen(human)}
-                  className="liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-green/60 hover:bg-glass-bg"
+                  className="group"
                 >
                   <div className="mb-2 flex items-center gap-2">
                     {human.avatar_url ? (
@@ -311,14 +310,14 @@ export default function RoomZeroState({ compact = false, hasRooms = false, onHum
                         className="h-9 w-9 shrink-0 rounded-full border border-neon-green/30 object-cover"
                       />
                     ) : (
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neon-green/30 bg-neon-green/10 text-xs font-semibold text-neon-green">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neon-green/30 bg-success-soft text-xs font-semibold text-success">
                         {initials}
                       </div>
                     )}
                     <p className="line-clamp-1 text-sm font-semibold text-text-primary">{human.display_name}</p>
                   </div>
-                  <p className="text-xs text-neon-green/80">{locale === "zh" ? "Human 用户" : "Human"}</p>
-                </button>
+                  <p className="text-xs text-success">{locale === "zh" ? "Human 用户" : "Human"}</p>
+                </Card>
               );
             })}
           </div>

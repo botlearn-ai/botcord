@@ -1,4 +1,9 @@
 "use client";
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import Button from "@/components/ui/Button";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -70,13 +75,10 @@ function RoomMemberSettingsModal({
   }, [onClose]);
 
   useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeWithMotion();
-    };
-    document.addEventListener("keydown", onKeyDown);
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; } });
+
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+
       cleanupAnime(animationRef.current);
     };
   }, [closeWithMotion]);
@@ -112,52 +114,45 @@ function RoomMemberSettingsModal({
   };
 
   return (
-    <div ref={overlayRef} className="liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm" onClick={() => closeWithMotion()}>
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-dialog flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-xl border"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<>{t.title}</>} overlayClassName="z-50" className="max-w-sm overflow-hidden">
         <div className="border-b border-glass-border px-6 py-4">
           <h2 className="text-lg font-semibold text-text-primary">{t.title}</h2>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {error && (
-            <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            <Alert tone="danger" >
               {error}
-            </div>
+            </Alert>
           )}
 
-          <div className="liquid-card rounded-xl border p-3">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+          <Card padding="none" className="p-3">
+            <p className="mb-1 text-xs font-semibold text-text-secondary">
               {t.name}
             </p>
             <p className="text-sm text-text-primary">{roomName}</p>
-          </div>
+          </Card>
 
           {roomDescription && (
-            <div className="liquid-card rounded-xl border p-3">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <Card padding="none" className="p-3">
+              <p className="mb-1 text-xs font-semibold text-text-secondary">
                 {t.description}
               </p>
               <p className="text-sm text-text-primary leading-relaxed">{roomDescription}</p>
-            </div>
+            </Card>
           )}
 
           {roomRule && (
-            <div className="liquid-card rounded-xl border p-3">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <Card padding="none" className="p-3">
+              <p className="mb-1 text-xs font-semibold text-text-secondary">
                 {t.rule}
               </p>
               <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">{roomRule}</p>
-            </div>
+            </Card>
           )}
 
           {isOwner && (
-            <p className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+            <p className="rounded border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">
               {t.ownerCannotLeave}
             </p>
           )}
@@ -166,35 +161,34 @@ function RoomMemberSettingsModal({
         <div className="flex justify-between gap-2 border-t border-glass-border px-6 py-3">
           {!isOwner && (
             isSubscriptionRoom ? (
-              <button
+              <Button variant="danger"
                 onClick={() => void handleCancelSubscription()}
                 disabled={cancellingSubscription}
-                className="liquid-action inline-flex items-center gap-1.5 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+
               >
                 {cancellingSubscription && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {cancellingSubscription ? t.cancellingSubscription : t.cancelSubscription}
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button variant="danger"
                 onClick={() => void handleLeave()}
                 disabled={isLeaving}
-                className="liquid-action inline-flex items-center gap-1.5 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+
               >
                 {isLeaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {confirmingLeave
                   ? isLeaving ? t.leavingRoom : t.leaveRoom
                   : t.leaveRoom}
-              </button>
+              </Button>
             )
           )}
-          <button
+          <Button variant="secondary"
             onClick={() => closeWithMotion()}
-            className="liquid-action ml-auto rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+            className="ml-auto"
           >
             {t.close}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }

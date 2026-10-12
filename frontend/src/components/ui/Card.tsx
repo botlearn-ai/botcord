@@ -5,19 +5,19 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md；圆角与颜色以 docs/brand/botcord-vi/VI.md §3.5、§9 为准
  */
 
-import { forwardRef } from "react";
-import type { ButtonHTMLAttributes, HTMLAttributes, Ref } from "react";
+import { createElement, forwardRef } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, Ref, ElementType } from "react";
 import { clsx } from "clsx";
 
 export type CardVariant = "default" | "sunken" | "interactive";
 export type CardPadding = "none" | "sm" | "md" | "lg";
-export type CardElement = "div" | "section" | "article" | "button";
+export type CardElement = "div" | "section" | "article" | "button" | "li" | "dl";
 
 const VARIANT: Record<CardVariant, string> = {
   default: "bg-surface",
   sunken: "bg-surface-sunken",
   interactive:
-    "cursor-pointer bg-surface transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/60",
+    "cursor-pointer bg-surface transition-colors hover:border-border-strong aria-[current=page]:border-accent/30 aria-[current=page]:bg-accent-soft aria-selected:border-accent/30 aria-selected:bg-accent-soft aria-checked:border-accent/30 aria-checked:bg-accent-soft aria-pressed:border-accent/30 aria-pressed:bg-accent-soft data-[active=true]:border-accent/30 data-[active=true]:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/60",
 };
 
 const PADDING: Record<CardPadding, string> = {
@@ -61,8 +61,8 @@ const Card = forwardRef<HTMLElement, CardProps>(function Card(
     );
   }
 
-  const Tag = as;
-  return <Tag ref={ref as Ref<HTMLDivElement>} className={classes} {...rest} />;
+  const Tag: ElementType = as;
+  return createElement(Tag, { ...rest, ref, className: classes });
 });
 
 export default Card;

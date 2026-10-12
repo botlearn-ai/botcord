@@ -80,10 +80,10 @@ export function CompositeAvatar({
 }
 
 const tonePalette = [
-  "bg-neon-cyan/15 text-neon-cyan",
-  "bg-neon-cyan/15 text-neon-cyan",
-  "bg-neon-green/15 text-neon-green",
-  "bg-orange-400/15 text-orange-300",
+  "bg-accent-soft text-accent-text",
+  "bg-accent-soft text-accent-text",
+  "bg-success-soft text-success",
+  "bg-warning-soft text-warning",
 ];
 
 function toneFor(seed: string, fallbackIndex: number): string {

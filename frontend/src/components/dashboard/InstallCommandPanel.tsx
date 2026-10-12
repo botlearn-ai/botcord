@@ -1,4 +1,7 @@
 "use client";
+import Card from "@/components/ui/Card";
+
+import Button from "@/components/ui/Button";
 
 /**
  * [INPUT]: ticket {bindCode, installCommand, expiresAt}; status polling via useOpenclawHostStore
@@ -98,7 +101,7 @@ export default function InstallCommandPanel({ ticket, onClaimed, onCancel }: Pro
 
   return (
     <div className="space-y-4">
-      <div className="liquid-card rounded-xl border border-glass-border p-3">
+      <Card padding="none" className="p-3">
         <p className="mb-2 text-xs text-text-secondary">
           Run this on your OpenClaw host (one-line install + bind):
         </p>
@@ -106,10 +109,10 @@ export default function InstallCommandPanel({ ticket, onClaimed, onCancel }: Pro
           <code className="liquid-tool-surface flex-1 overflow-x-auto whitespace-nowrap rounded-lg border border-glass-border px-3 py-2 font-mono text-xs text-text-primary">
             {ticket.installCommand}
           </code>
-          <button
+          <Button variant="secondary"
             type="button"
             onClick={() => void handleCopy()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-glass-border px-3 py-2 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+
           >
             {copied ? (
               <>
@@ -122,28 +125,28 @@ export default function InstallCommandPanel({ ticket, onClaimed, onCancel }: Pro
                 Copy
               </>
             )}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       <div className="liquid-tool-surface flex items-center justify-between rounded-xl border border-glass-border px-3 py-2 text-xs">
         <span className="flex items-center gap-2 text-text-secondary">
           {!expired && <Loader2 className="h-3.5 w-3.5 animate-spin text-neon-cyan" />}
           {statusMessage}
         </span>
-        <span className={`font-mono ${expired ? "text-red-400" : "text-text-primary"}`}>
+        <span className={`font-mono ${expired ? "text-danger" : "text-text-primary"}`}>
           {formatRemaining(secondsLeft)}
         </span>
       </div>
 
       <div className="flex justify-end">
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={() => void handleCancel()}
-          className="rounded-xl border border-glass-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary"
+
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );

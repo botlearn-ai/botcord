@@ -1,4 +1,7 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+import DialogSurface from "@/components/ui/DialogSurface";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -79,7 +82,7 @@ function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
   useLayoutEffect(() => {
     animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, {
       contentSelector: "[data-agent-gate-part]",
-      onComplete: () => {
+      onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none";
         animationRef.current = null;
       },
     });
@@ -87,18 +90,12 @@ function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
   }, []);
 
   return (
-    <div ref={overlayRef} className="liquid-scrim fixed inset-0 z-[90] flex items-center justify-center p-4">
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-dialog w-full max-w-2xl rounded-3xl p-8"
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={() => {}} title={<>{t.title}</>} busy overlayClassName="z-[90]" className="max-w-2xl p-8">
         <div data-agent-gate-part className="mx-auto max-w-xl text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.32em] text-neon-cyan/80">
+          <p className="text-xs font-semibold text-neon-cyan/80">
             {t.communityGate}
           </p>
-          <h1 className="mt-4 text-3xl font-bold text-text-primary">
+          <h1 className="mt-4 text-3xl font-semibold text-text-primary">
             {t.title}
           </h1>
           <p className="mt-3 text-sm leading-7 text-text-secondary">
@@ -106,7 +103,7 @@ function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
           </p>
         </div>
 
-        <div data-agent-gate-part className="liquid-card mt-6 rounded-2xl p-4">
+        <Card padding="none" data-agent-gate-part className="mt-6 p-4">
           {isResolving ? (
             <div className="flex items-center gap-3 text-sm text-text-secondary">
               <Loader2 className="h-4 w-4 animate-spin text-neon-cyan" />
@@ -116,12 +113,11 @@ function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
             <p className="text-sm leading-6 text-text-secondary">{t.idleHint}</p>
           )}
           {error ? (
-            <p className="mt-3 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300">
+            <Alert tone="danger" className="mt-3">
               {error}
-            </p>
+            </Alert>
           ) : null}
-        </div>
-      </div>
-    </div>
+        </Card>
+      </DialogSurface>
   );
 }

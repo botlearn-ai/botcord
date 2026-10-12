@@ -7,6 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Skeleton from "@/components/ui/Skeleton";
 import WorkspaceModeSwitch from "./WorkspaceModeSwitch";
 import TeamWorkspaceSkeleton from "@/components/team/TeamWorkspaceSkeleton";
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
@@ -23,7 +24,7 @@ import { usePathname } from "next/navigation";
 type ShellSkeletonVariant = "home" | "messages" | "bots" | "contacts" | "explore" | "wallet" | "activity" | "team";
 
 function SkeletonLine({ className }: { className: string }) {
-  return <div className={`dashboard-skeleton-block rounded ${className}`} />;
+  return <Skeleton className={` ${className} `} />;
 }
 
 /**
@@ -64,7 +65,7 @@ function SecondaryPanelSkeleton({ variant }: { variant: ShellSkeletonVariant }) 
     return (
       <div className="liquid-panel flex h-full w-[200px] shrink-0 flex-col border-r border-glass-border">
         <div className="flex h-14 items-center justify-between border-b border-glass-border px-3">
-          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">分组</span>
+          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary">分组</span>
           <SkeletonLine className="h-3.5 w-3.5 bg-glass-border/50" />
         </div>
         <div className="flex-1 py-2">
@@ -154,12 +155,12 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
                     key={item.key}
                     className={`${["explore", "wallet", "activity"].includes(item.key) ? "max-md:hidden" : ""} group relative flex h-12 w-14 flex-col items-center justify-center rounded-xl transition-all duration-200 ${
                       item.key === variant
-                        ? "bg-neon-cyan/15 text-neon-cyan"
+                        ? "bg-accent-soft text-accent-text"
                         : "text-text-secondary"
                     }`}
                   >
                     {item.icon}
-                    <span className="mt-0.5 max-w-full truncate text-[11px] font-medium leading-none">{item.label}</span>
+                    <span className="mt-0.5 max-w-full truncate text-xs font-medium leading-none">{item.label}</span>
                   </div>
                 ))}
               </div>

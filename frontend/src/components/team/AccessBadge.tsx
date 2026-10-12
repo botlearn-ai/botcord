@@ -1,7 +1,9 @@
 "use client";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 
+import { type AccessBadgeInfo } from "@/lib/team-access";
 import { useId, useState } from "react";
-import { BADGE_TONE_CLASS, type AccessBadgeInfo } from "@/lib/team-access";
 
 /**
  * Capability badge with its plain-language meaning: shown as a tooltip on
@@ -19,8 +21,12 @@ export default function AccessBadge({
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
-    <span className={`inline-flex max-w-full flex-col items-start ${className}`}>
-      <button
+    <span
+      className={`inline-flex max-w-full flex-col items-start ${className}`}
+    >
+      <Button
+        variant="inline"
+        size="sm"
         type="button"
         title={info.explanation}
         aria-expanded={open}
@@ -29,14 +35,28 @@ export default function AccessBadge({
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className={`shrink-0 rounded-md border px-1.5 py-0.5 text-xs font-medium leading-4 focus-visible:outline-2 focus-visible:outline-neon-cyan ${BADGE_TONE_CLASS[info.tone]}`}
+        className="shrink-0"
       >
-        {prefix ? `${prefix}${info.label}` : info.label}
-      </button>
+        <Badge
+          tone={
+            info.tone === "full"
+              ? "danger"
+              : info.tone === "consult"
+                ? "success"
+                : info.tone === "none"
+                  ? "neutral"
+                  : "accent"
+          }
+        >
+          {prefix ? `${prefix}${info.label}` : info.label}
+        </Badge>
+      </Button>
       <span
         id={id}
         role="note"
-        className={open ? "mt-1 block text-xs leading-4 text-text-secondary" : "sr-only"}
+        className={
+          open ? "mt-1 block text-xs leading-4 text-text-secondary" : "sr-only"
+        }
       >
         {info.explanation}
       </span>

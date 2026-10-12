@@ -7,6 +7,11 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+import { Input } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import { Textarea } from "@/components/ui/Input";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, KeyRound, Mail } from "lucide-react";
@@ -131,41 +136,40 @@ export default function InvitePage() {
       <div className="w-full max-w-lg space-y-4">
         {/* Header */}
         <div className="text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.32em] text-neon-cyan/80">BotCord 公测</p>
-          <h1 className="mt-3 text-3xl font-bold text-text-primary">申请公测资格</h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-neon-cyan/80">BotCord 公测</p>
+          <h1 className="mt-3 text-3xl font-semibold text-text-primary">申请公测资格</h1>
           <p className="mt-2 text-sm text-text-secondary">
             {pageState === "guest" ? "登录后使用邀请码激活，或申请加入等待列表。" : "输入邀请码立即激活，或申请加入等待列表。"}
           </p>
         </div>
 
         {/* Invite code section */}
-        <div className="rounded-3xl border border-glass-border bg-deep-black-light p-6">
+        <Card padding="lg" >
           <div className="flex items-center gap-2 text-text-primary">
             <KeyRound className="h-4 w-4 text-neon-cyan" />
             <span className="text-sm font-semibold">已有邀请码？</span>
           </div>
           <div className="mt-4 flex gap-2">
-            <input
+            <Input
               type="text"
+              aria-label="邀请码"
               placeholder="输入邀请码，如 KOL-ABCD1234"
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === "Enter" && handleRedeem()}
               disabled={codeLoading || codeSuccess || pageState === "guest"}
-              className="flex-1 rounded-xl border border-glass-border bg-deep-black px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary outline-none focus:border-neon-cyan/50 disabled:opacity-50"
+              className="flex-1"
             />
-            <button
+            <Button variant="primary"
               onClick={handleRedeem}
-              disabled={codeLoading || !code.trim() || codeSuccess || pageState === "guest"}
-              className="rounded-xl bg-neon-cyan/10 px-5 py-2.5 text-sm font-semibold text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
+              disabled={codeLoading || !code.trim() || codeSuccess || pageState === "guest"} >
               {codeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "激活"}
-            </button>
+            </Button>
           </div>
           {codeError && (
-            <p className="mt-2 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300">
+            <Alert tone="danger" className="mt-2">
               {codeError}
-            </p>
+            </Alert>
           )}
           {codeSuccess && (
             <p className="mt-2 text-xs text-neon-cyan">激活成功，正在跳转…</p>
@@ -179,61 +183,61 @@ export default function InvitePage() {
               再激活邀请码。
             </p>
           )}
-        </div>
+        </Card>
 
         {/* Divider */}
         <div className="flex items-center gap-3 px-2">
           <div className="h-px flex-1 bg-glass-border" />
-          <span className="text-xs text-text-tertiary">没有邀请码？</span>
+          <span className="text-xs text-text-secondary">没有邀请码？</span>
           <div className="h-px flex-1 bg-glass-border" />
         </div>
 
         {/* Waitlist section */}
-        <div className="rounded-3xl border border-glass-border bg-deep-black-light p-6">
+        <Card padding="lg" >
           <div className="flex items-center gap-2 text-text-primary">
             <Mail className="h-4 w-4 text-neon-cyan" />
             <span className="text-sm font-semibold">申请公测资格</span>
           </div>
           {waitlistSuccess ? (
-            <div className="mt-4 rounded-xl border border-neon-cyan/20 bg-neon-cyan/5 px-4 py-3">
+            <Card padding="md" className="mt-4">
               <p className="text-sm text-neon-cyan">申请已提交！审核通过后，邀请码将发送至你的邮箱。</p>
-            </div>
+            </Card>
           ) : (
             <>
               <div className="mt-4 space-y-3">
-                <input
+                <Input
                   type="email"
+                  aria-label="邮箱"
                   placeholder="你的邮箱"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={waitlistLoading || pageState === "guest"}
-                  className="w-full rounded-xl border border-glass-border bg-deep-black px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary outline-none focus:border-neon-cyan/50 disabled:opacity-50"
                 />
-                <textarea
+                <Textarea
+                  aria-label="使用场景（选填）"
                   placeholder="简单介绍你的使用场景（选填）"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   rows={2}
                   disabled={waitlistLoading || pageState === "guest"}
-                  className="w-full resize-none rounded-xl border border-glass-border bg-deep-black px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary outline-none focus:border-neon-cyan/50 disabled:opacity-50"
+                  className="resize-none"
                 />
               </div>
               {waitlistError && (
-                <p className="mt-2 rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300">
+                <Alert tone="danger" className="mt-2">
                   {waitlistError}
-                </p>
+                </Alert>
               )}
-              <button
+              <Button variant="secondary"
                 onClick={handleWaitlist}
                 disabled={waitlistLoading || !email.trim() || pageState === "guest"}
-                className="mt-4 w-full rounded-xl border border-glass-border bg-glass-bg py-2.5 text-sm font-semibold text-text-primary transition-colors hover:border-neon-cyan/40 hover:bg-glass-bg/80 disabled:cursor-not-allowed disabled:opacity-50"
-              >
+                className="mt-4 w-full" >
                 {waitlistLoading ? (
                   <Loader2 className="mx-auto h-4 w-4 animate-spin" />
                 ) : (
                   "提交申请"
                 )}
-              </button>
+              </Button>
               {pageState === "guest" && (
                 <p className="mt-2 text-xs text-text-secondary">
                   请先{" "}
@@ -243,10 +247,10 @@ export default function InvitePage() {
                   再提交申请。
                 </p>
               )}
-              <p className="mt-3 text-xs text-text-tertiary">审核通过后，邀请码将发送至你的邮箱。</p>
+              <p className="mt-3 text-xs text-text-secondary">审核通过后，邀请码将发送至你的邮箱。</p>
             </>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

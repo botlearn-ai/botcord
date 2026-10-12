@@ -2,7 +2,7 @@
 
 由 `cd frontend && node scripts/audit-ui-components.mjs` 生成。扫描非测试 TS/TSX 静态 import、re-export 和 JSX，不计动态拼装的组件名。
 
-共 244 个 TSX 文件、202 个组件模块，其中 UI 组件库 43 个模块。
+共 247 个 TSX 文件、205 个组件模块，其中 UI 组件库 46 个模块。
 
 “预览可达”表示从 /design 或根布局的 ConfirmDialog / Toaster 宿主可达，不代表全部业务状态均已演示。生产引用不包含 /design；兼容导出也算引用。
 
@@ -12,61 +12,71 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 
 | 元素 | 出现次数 | 文件数 |
 |---|---:|---:|
-| button | 569 | 119 |
-| details | 4 | 4 |
-| dialog | 6 | 6 |
-| input | 77 | 36 |
+| button | 22 | 14 |
+| details | 1 | 1 |
+| input | 5 | 5 |
 | select | 1 | 1 |
-| table | 3 | 3 |
-| textarea | 28 | 18 |
+| table | 2 | 2 |
+| textarea | 1 | 1 |
+
+## 业务界面原生控件例外
+
+业务接口中的 button/input/textarea/select/table/dialog/details 由 ui-migration.test.ts 防止回退。隐藏原生文件选择器保留浏览器文件访问语义；布局容器、文本链接、图解与专业消息结构不按原生控件违规计数。
+
+| 文件与元素 | 数量 |
+|---|---:|
+| components/dashboard/MessageComposer.tsx · input | 1 |
 
 ## 组件库
 
 | 模块 | 生产引用文件数 | 预览可达 |
 |---|---:|---|
-| [components/ui/Alert.tsx](../../../frontend/src/components/ui/Alert.tsx) | 5 | 是 |
+| [components/ui/Alert.tsx](../../../frontend/src/components/ui/Alert.tsx) | 61 | 是 |
 | [components/ui/AttachmentItem.tsx](../../../frontend/src/components/ui/AttachmentItem.tsx) | 5 | 是 |
-| [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 2 | 是 |
-| [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 1 | 是 |
-| [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 26 | 是 |
+| [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 14 | 是 |
+| [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 55 | 是 |
+| [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 34 | 是 |
 | [components/ui/BrandMark.tsx](../../../frontend/src/components/ui/BrandMark.tsx) | 6 | 是 |
-| [components/ui/Button.tsx](../../../frontend/src/components/ui/Button.tsx) | 9 | 是 |
-| [components/ui/Card.tsx](../../../frontend/src/components/ui/Card.tsx) | 1 | 是 |
-| [components/ui/Checkbox.tsx](../../../frontend/src/components/ui/Checkbox.tsx) | 0 | 是 |
+| [components/ui/Button.tsx](../../../frontend/src/components/ui/Button.tsx) | 106 | 是 |
+| [components/ui/Card.tsx](../../../frontend/src/components/ui/Card.tsx) | 83 | 是 |
+| [components/ui/Checkbox.tsx](../../../frontend/src/components/ui/Checkbox.tsx) | 9 | 是 |
 | [components/ui/ConfirmDialog.tsx](../../../frontend/src/components/ui/ConfirmDialog.tsx) | 1 | 是 |
 | [components/ui/CopyableId.tsx](../../../frontend/src/components/ui/CopyableId.tsx) | 11 | 是 |
 | [components/ui/CordField.tsx](../../../frontend/src/components/ui/CordField.tsx) | 2 | 是 |
-| [components/ui/DialogShell.tsx](../../../frontend/src/components/ui/DialogShell.tsx) | 10 | 是 |
-| [components/ui/Disclosure.tsx](../../../frontend/src/components/ui/Disclosure.tsx) | 1 | 是 |
-| [components/ui/DrawerShell.tsx](../../../frontend/src/components/ui/DrawerShell.tsx) | 0 | 是 |
-| [components/ui/EmptyState.tsx](../../../frontend/src/components/ui/EmptyState.tsx) | 1 | 是 |
-| [components/ui/Field.tsx](../../../frontend/src/components/ui/Field.tsx) | 1 | 是 |
-| [components/ui/IconButton.tsx](../../../frontend/src/components/ui/IconButton.tsx) | 1 | 是 |
+| [components/ui/DialogShell.tsx](../../../frontend/src/components/ui/DialogShell.tsx) | 19 | 是 |
+| [components/ui/DialogSurface.tsx](../../../frontend/src/components/ui/DialogSurface.tsx) | 27 | 是 |
+| [components/ui/Disclosure.tsx](../../../frontend/src/components/ui/Disclosure.tsx) | 4 | 是 |
+| [components/ui/DismissLayer.tsx](../../../frontend/src/components/ui/DismissLayer.tsx) | 3 | 是 |
+| [components/ui/DrawerShell.tsx](../../../frontend/src/components/ui/DrawerShell.tsx) | 1 | 是 |
+| [components/ui/EmptyState.tsx](../../../frontend/src/components/ui/EmptyState.tsx) | 28 | 是 |
+| [components/ui/Field.tsx](../../../frontend/src/components/ui/Field.tsx) | 19 | 是 |
+| [components/ui/IconButton.tsx](../../../frontend/src/components/ui/IconButton.tsx) | 51 | 是 |
 | [components/ui/ImagePreviewOverlay.tsx](../../../frontend/src/components/ui/ImagePreviewOverlay.tsx) | 4 | 是 |
-| [components/ui/Input.tsx](../../../frontend/src/components/ui/Input.tsx) | 3 | 是 |
+| [components/ui/Input.tsx](../../../frontend/src/components/ui/Input.tsx) | 37 | 是 |
+| [components/ui/LinkButton.tsx](../../../frontend/src/components/ui/LinkButton.tsx) | 9 | 是 |
 | [components/ui/MarkdownContent.tsx](../../../frontend/src/components/ui/MarkdownContent.tsx) | 8 | 是 |
 | [components/ui/MarketingButton.tsx](../../../frontend/src/components/ui/MarketingButton.tsx) | 4 | 是 |
 | [components/ui/MarketingCard.tsx](../../../frontend/src/components/ui/MarketingCard.tsx) | 3 | 是 |
-| [components/ui/Menu.tsx](../../../frontend/src/components/ui/Menu.tsx) | 0 | 是 |
-| [components/ui/MetricCard.tsx](../../../frontend/src/components/ui/MetricCard.tsx) | 1 | 是 |
+| [components/ui/Menu.tsx](../../../frontend/src/components/ui/Menu.tsx) | 3 | 是 |
+| [components/ui/MetricCard.tsx](../../../frontend/src/components/ui/MetricCard.tsx) | 2 | 是 |
 | [components/ui/MultiSelect.tsx](../../../frontend/src/components/ui/MultiSelect.tsx) | 1 | 是 |
 | [components/ui/NodeCordStatus.tsx](../../../frontend/src/components/ui/NodeCordStatus.tsx) | 0 | 是 |
-| [components/ui/Radio.tsx](../../../frontend/src/components/ui/Radio.tsx) | 8 | 是 |
-| [components/ui/SearchInput.tsx](../../../frontend/src/components/ui/SearchInput.tsx) | 1 | 是 |
+| [components/ui/Radio.tsx](../../../frontend/src/components/ui/Radio.tsx) | 9 | 是 |
+| [components/ui/SearchInput.tsx](../../../frontend/src/components/ui/SearchInput.tsx) | 2 | 是 |
 | [components/ui/SectionHeading.tsx](../../../frontend/src/components/ui/SectionHeading.tsx) | 7 | 是 |
 | [components/ui/Select.tsx](../../../frontend/src/components/ui/Select.tsx) | 8 | 是 |
 | [components/ui/SignalDot.tsx](../../../frontend/src/components/ui/SignalDot.tsx) | 1 | 是 |
-| [components/ui/SingleSelect.tsx](../../../frontend/src/components/ui/SingleSelect.tsx) | 1 | 是 |
-| [components/ui/Skeleton.tsx](../../../frontend/src/components/ui/Skeleton.tsx) | 0 | 是 |
+| [components/ui/SingleSelect.tsx](../../../frontend/src/components/ui/SingleSelect.tsx) | 2 | 是 |
+| [components/ui/Skeleton.tsx](../../../frontend/src/components/ui/Skeleton.tsx) | 9 | 是 |
 | [components/ui/StatusCapsule.tsx](../../../frontend/src/components/ui/StatusCapsule.tsx) | 0 | 是 |
-| [components/ui/Switch.tsx](../../../frontend/src/components/ui/Switch.tsx) | 0 | 是 |
+| [components/ui/Switch.tsx](../../../frontend/src/components/ui/Switch.tsx) | 2 | 是 |
 | [components/ui/SystemMessageNotice.tsx](../../../frontend/src/components/ui/SystemMessageNotice.tsx) | 2 | 是 |
-| [components/ui/Table.tsx](../../../frontend/src/components/ui/Table.tsx) | 2 | 是 |
-| [components/ui/Tabs.tsx](../../../frontend/src/components/ui/Tabs.tsx) | 0 | 是 |
+| [components/ui/Table.tsx](../../../frontend/src/components/ui/Table.tsx) | 4 | 是 |
+| [components/ui/Tabs.tsx](../../../frontend/src/components/ui/Tabs.tsx) | 14 | 是 |
 | [components/ui/Toast.tsx](../../../frontend/src/components/ui/Toast.tsx) | 1 | 是 |
-| [components/ui/Tooltip.tsx](../../../frontend/src/components/ui/Tooltip.tsx) | 0 | 是 |
+| [components/ui/Tooltip.tsx](../../../frontend/src/components/ui/Tooltip.tsx) | 1 | 是 |
 | [components/ui/TypewriterCode.tsx](../../../frontend/src/components/ui/TypewriterCode.tsx) | 1 | 是 |
-| [components/ui/UnreadBadge.tsx](../../../frontend/src/components/ui/UnreadBadge.tsx) | 2 | 是 |
+| [components/ui/UnreadBadge.tsx](../../../frontend/src/components/ui/UnreadBadge.tsx) | 4 | 是 |
 
 ## 业务与页面组合组件
 
@@ -97,7 +107,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/dashboard/AgentSchedulesTab.tsx](../../../frontend/src/components/dashboard/AgentSchedulesTab.tsx) | 2 | 否 |
 | [components/dashboard/AgentSettingsDrawer.tsx](../../../frontend/src/components/dashboard/AgentSettingsDrawer.tsx) | 1 | 否 |
 | [components/dashboard/AgentSkillsTab.tsx](../../../frontend/src/components/dashboard/AgentSkillsTab.tsx) | 2 | 否 |
-| [components/dashboard/BotAvatar.tsx](../../../frontend/src/components/dashboard/BotAvatar.tsx) | 16 | 否 |
+| [components/dashboard/BotAvatar.tsx](../../../frontend/src/components/dashboard/BotAvatar.tsx) | 15 | 否 |
 | [components/dashboard/BotDetailDrawer.tsx](../../../frontend/src/components/dashboard/BotDetailDrawer.tsx) | 1 | 否 |
 | [components/dashboard/BotRuntimeCapabilitiesPanel.tsx](../../../frontend/src/components/dashboard/BotRuntimeCapabilitiesPanel.tsx) | 2 | 否 |
 | [components/dashboard/BotWalletTab.tsx](../../../frontend/src/components/dashboard/BotWalletTab.tsx) | 1 | 否 |
@@ -115,10 +125,10 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/dashboard/DashboardApp.tsx](../../../frontend/src/components/dashboard/DashboardApp.tsx) | 0 | 否 |
 | [components/dashboard/DashboardMessagePaneSkeleton.tsx](../../../frontend/src/components/dashboard/DashboardMessagePaneSkeleton.tsx) | 6 | 否 |
 | [components/dashboard/DashboardMultiSelect.tsx](../../../frontend/src/components/dashboard/DashboardMultiSelect.tsx) | 3 | 否 |
-| [components/dashboard/DashboardOverlayPortal.tsx](../../../frontend/src/components/dashboard/DashboardOverlayPortal.tsx) | 37 | 否 |
+| [components/dashboard/DashboardOverlayPortal.tsx](../../../frontend/src/components/dashboard/DashboardOverlayPortal.tsx) | 44 | 否 |
 | [components/dashboard/DashboardSelect.tsx](../../../frontend/src/components/dashboard/DashboardSelect.tsx) | 8 | 否 |
 | [components/dashboard/DashboardShellSkeleton.tsx](../../../frontend/src/components/dashboard/DashboardShellSkeleton.tsx) | 2 | 否 |
-| [components/dashboard/DashboardTabSkeleton.tsx](../../../frontend/src/components/dashboard/DashboardTabSkeleton.tsx) | 6 | 否 |
+| [components/dashboard/DashboardTabSkeleton.tsx](../../../frontend/src/components/dashboard/DashboardTabSkeleton.tsx) | 5 | 否 |
 | [components/dashboard/DeviceDetailDrawer.tsx](../../../frontend/src/components/dashboard/DeviceDetailDrawer.tsx) | 1 | 否 |
 | [components/dashboard/DiscoverRoomList.tsx](../../../frontend/src/components/dashboard/DiscoverRoomList.tsx) | 0 | 否 |
 | [components/dashboard/DocumentPreviewPane.tsx](../../../frontend/src/components/dashboard/DocumentPreviewPane.tsx) | 2 | 否 |
@@ -210,7 +220,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/share/SharedRoomView.tsx](../../../frontend/src/components/share/SharedRoomView.tsx) | 1 | 否 |
 | [components/team/AccessBadge.tsx](../../../frontend/src/components/team/AccessBadge.tsx) | 4 | 否 |
 | [components/team/AccessOverviewSection.tsx](../../../frontend/src/components/team/AccessOverviewSection.tsx) | 1 | 否 |
-| [components/team/AccessRequestDialog.tsx](../../../frontend/src/components/team/AccessRequestDialog.tsx) | 3 | 否 |
+| [components/team/AccessRequestDialog.tsx](../../../frontend/src/components/team/AccessRequestDialog.tsx) | 1 | 否 |
 | [components/team/AccessRequestsInbox.tsx](../../../frontend/src/components/team/AccessRequestsInbox.tsx) | 2 | 否 |
 | [components/team/AddAgentDialog.tsx](../../../frontend/src/components/team/AddAgentDialog.tsx) | 1 | 否 |
 | [components/team/AgentAccessGrants.tsx](../../../frontend/src/components/team/AgentAccessGrants.tsx) | 1 | 否 |
@@ -220,7 +230,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/team/OrgInviteLinks.tsx](../../../frontend/src/components/team/OrgInviteLinks.tsx) | 1 | 否 |
 | [components/team/RoomReplyModeControl.tsx](../../../frontend/src/components/team/RoomReplyModeControl.tsx) | 2 | 否 |
 | [components/team/TeamAgentsPage.tsx](../../../frontend/src/components/team/TeamAgentsPage.tsx) | 1 | 否 |
-| [components/team/TeamConversationDialog.tsx](../../../frontend/src/components/team/TeamConversationDialog.tsx) | 5 | 否 |
+| [components/team/TeamConversationDialog.tsx](../../../frontend/src/components/team/TeamConversationDialog.tsx) | 1 | 否 |
 | [components/team/TeamMessageFeedback.tsx](../../../frontend/src/components/team/TeamMessageFeedback.tsx) | 3 | 否 |
 | [components/team/TeamRoomAgentAccess.tsx](../../../frontend/src/components/team/TeamRoomAgentAccess.tsx) | 1 | 否 |
 | [components/team/TeamRoomMembersDialog.tsx](../../../frontend/src/components/team/TeamRoomMembersDialog.tsx) | 1 | 否 |

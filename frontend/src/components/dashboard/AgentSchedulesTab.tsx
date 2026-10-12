@@ -1,4 +1,12 @@
 "use client";
+import EmptyState from "@/components/ui/EmptyState";
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+
+import Button from "@/components/ui/Button";
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Input";
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CirclePlay, Clock, Loader2, Pause, Pencil, Play, Plus, RefreshCw, Trash2, X } from "lucide-react";
@@ -89,9 +97,9 @@ function sessionPolicyLabel(policy?: ScheduleSessionPolicy): string {
 }
 
 function statusClass(status?: string): string {
-  if (status === "dispatched") return "border-green-400/20 bg-green-400/10 text-green-300";
-  if (status === "offline") return "border-yellow-400/20 bg-yellow-400/10 text-yellow-300";
-  if (status === "failed") return "border-red-400/20 bg-red-400/10 text-red-300";
+  if (status === "dispatched") return "border-success/20 bg-success-soft text-success";
+  if (status === "offline") return "border-warning/20 bg-warning-soft text-warning";
+  if (status === "failed") return "border-danger/20 bg-danger-soft text-danger";
   return "border-glass-border bg-glass-bg/60 text-text-secondary";
 }
 
@@ -296,40 +304,38 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
           <h3 className="text-sm font-semibold text-text-primary">自主执行</h3>
           <p className="text-xs text-text-secondary">配置 Agent 定期主动推进目标。</p>
         </div>
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-glass-border bg-glass-bg text-text-secondary hover:text-text-primary disabled:opacity-60"
+          className="w-9"
           title="刷新"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-        </button>
+        </Button>
       </div>
 
       {error ? (
-        <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-300">
+        <Alert tone="danger" >
           {error}
-        </div>
+        </Alert>
       ) : null}
 
       {schedules.length === 0 && !loading ? (
-        <div className="liquid-empty-state rounded-xl border border-glass-border px-4 py-8 text-center text-sm text-text-secondary">
-          暂无 schedule
-        </div>
+        <EmptyState compact bordered title={<>暂无 schedule</>} />
       ) : (
         <div className="space-y-3">
           {schedules.map((schedule) => {
             const lastRun = runsBySchedule[schedule.id]?.[0];
             const isRunningThisSchedule = runningScheduleId === schedule.id;
             return (
-              <section key={schedule.id} className="liquid-card rounded-xl border border-glass-border p-4">
+              <Card as="section" padding="none" key={schedule.id} className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4 text-text-secondary" />
                       <h4 className="truncate text-sm font-semibold text-text-primary">{schedule.name}</h4>
-                      <span className={`rounded border px-1.5 py-0.5 text-xs ${schedule.enabled ? "border-green-400/20 text-green-300" : "border-glass-border text-text-secondary"}`}>
+                      <span className={`rounded border px-1.5 py-0.5 text-xs ${schedule.enabled ? "border-success/20 text-success" : "border-glass-border text-text-secondary"}`}>
                         {schedule.enabled ? "启用" : "暂停"}
                       </span>
                     </div>
@@ -339,29 +345,29 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                     <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{schedule.payload.message}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <button
+                    <IconButton label="编辑"
                       type="button"
                       onClick={() => startEdit(schedule)}
                       disabled={saving}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary disabled:opacity-60"
+                      className="w-8"
                       title="编辑"
                     >
                       <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
+                    </IconButton>
+                    <Button variant="secondary"
                       type="button"
                       onClick={() => void patchSchedule(schedule.id, { enabled: !schedule.enabled })}
                       disabled={saving}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary disabled:opacity-60"
+                      className="w-8"
                       title={schedule.enabled ? "暂停" : "恢复"}
                     >
                       {schedule.enabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                    </button>
-                    <button
+                    </Button>
+                    <Button variant="secondary"
                       type="button"
                       onClick={() => void runSchedule(schedule.id)}
                       disabled={saving || isRunningThisSchedule}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary disabled:opacity-60"
+                      className="w-8"
                       title={isRunningThisSchedule ? "正在运行" : "立即运行"}
                     >
                       {isRunningThisSchedule ? (
@@ -369,16 +375,16 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                       ) : (
                         <CirclePlay className="h-3.5 w-3.5" />
                       )}
-                    </button>
-                    <button
+                    </Button>
+                    <IconButton label="删除" danger
                       type="button"
                       onClick={() => void deleteSchedule(schedule.id)}
                       disabled={saving}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-400/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-60"
+                      className="w-8"
                       title="删除"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    </IconButton>
                   </div>
                 </div>
                 {lastRun ? (
@@ -387,91 +393,83 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                     {lastRun.error ? ` · ${lastRun.error}` : ""}
                   </div>
                 ) : null}
-              </section>
+              </Card>
             );
           })}
         </div>
       )}
 
-      <section className="liquid-card rounded-xl border border-glass-border p-4">
+      <Card as="section" padding="none" className="p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
             {editingScheduleId ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
             {editingScheduleId ? "编辑 schedule" : "新建 schedule"}
           </div>
           {editingScheduleId ? (
-            <button
+            <Button variant="secondary"
               type="button"
               onClick={resetForm}
               disabled={saving}
-              className="inline-flex items-center gap-1 rounded-lg border border-glass-border bg-deep-black/40 px-2 py-1 text-xs text-text-secondary hover:text-text-primary disabled:opacity-60"
+
             >
               <X className="h-3.5 w-3.5" />
               取消
-            </button>
+            </Button>
           ) : null}
         </div>
         <div className="grid gap-3">
-          <input
+          <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="liquid-input rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
+
             placeholder="名称"
           />
           <div className="grid grid-cols-3 gap-2">
             {(["every", "daily", "weekly"] as const).map((mode) => (
-              <button
+              <Button aria-pressed={scheduleMode === mode} variant="row"
                 key={mode}
                 type="button"
                 onClick={() => setScheduleMode(mode)}
-                className={`rounded-lg border px-3 py-2 text-sm ${
-                  scheduleMode === mode
-                    ? "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan"
-                    : "border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary"
-                }`}
+
               >
                 {mode === "every" ? "间隔" : mode === "daily" ? "每天" : "每周"}
-              </button>
+              </Button>
             ))}
           </div>
           {scheduleMode === "every" ? (
             <label className="grid gap-1 text-xs text-text-secondary">
               间隔分钟
-              <input
+              <Input
                 type="number"
                 min={5}
                 step={5}
                 value={everyMinutes}
                 onChange={(e) => setEveryMinutes(Number(e.target.value))}
-                className="liquid-input rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
+
               />
             </label>
           ) : (
             <div className="grid gap-3">
               <label className="grid gap-1 text-xs text-text-secondary">
                 时间
-                <input
+                <Input
                   type="time"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  className="liquid-input rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
+
                 />
               </label>
               {scheduleMode === "weekly" ? (
                 <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
                   {WEEKDAYS.map((day) => (
-                    <button
+                    <Button aria-pressed={weekdays.includes(day.value)} variant="row"
                       key={day.value}
                       type="button"
                       onClick={() => toggleWeekday(day.value)}
-                      className={`rounded-lg border px-2 py-2 text-xs ${
-                        weekdays.includes(day.value)
-                          ? "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan"
-                          : "border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary"
-                      }`}
+
                     >
                       {day.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               ) : null}
@@ -481,32 +479,28 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
             <div className="text-xs text-text-secondary">运行方式</div>
             <div className="grid grid-cols-2 gap-2">
               {SESSION_POLICY_OPTIONS.map((option) => (
-                <button
+                <Button aria-pressed={sessionPolicy === option.value} variant="row"
                   key={option.value}
                   type="button"
                   onClick={() => setSessionPolicy(option.value)}
-                  className={`rounded-lg border px-3 py-2 text-sm ${
-                    sessionPolicy === option.value
-                      ? "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan"
-                      : "border-glass-border bg-deep-black/40 text-text-secondary hover:text-text-primary"
-                  }`}
+
                 >
                   {option.label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
-          <textarea
+          <Textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={3}
-            className="liquid-input resize-none rounded-lg border border-glass-border px-3 py-2 text-sm text-text-primary outline-none"
+
           />
-          <button
+          <Button variant="primary"
             type="button"
             onClick={() => void saveSchedule()}
             disabled={!canSaveForm}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-sm font-semibold text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-60"
+
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -516,9 +510,9 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
               <Plus className="h-4 w-4" />
             )}
             {editingScheduleId ? "保存" : "创建"}
-          </button>
+          </Button>
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

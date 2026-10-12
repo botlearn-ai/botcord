@@ -1,9 +1,12 @@
 "use client";
 
+import Card from "@/components/ui/Card";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLanguage } from "@/lib/i18n";
 import { envelopeStructure } from "@/lib/i18n/translations/protocol";
+
+const MotionCard = motion.create(Card);
 
 const fields = [
   "v",
@@ -25,7 +28,7 @@ export default function EnvelopeStructure() {
   return (
     <div className="grid gap-8 lg:grid-cols-2">
       {/* JSON structure */}
-      <div className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface-sunken)] p-6 font-mono text-[13px]">
+      <Card padding="lg" className="font-mono">
         <div className="mb-3 text-xs text-[var(--bc-text-secondary)]">
           {t.title}
         </div>
@@ -40,8 +43,7 @@ export default function EnvelopeStructure() {
                   : "hover:bg-[var(--bc-surface)]"
               }`}
               onMouseEnter={() => setActiveField(field)}
-              onMouseLeave={() => setActiveField(null)}
-            >
+              onMouseLeave={() => setActiveField(null)} >
               <span className="text-[var(--bc-accent-text)]">
                 {"  "}"{field}"
               </span>
@@ -50,35 +52,32 @@ export default function EnvelopeStructure() {
           ))}
           <span className="text-[var(--bc-text-secondary)]">{"}"}</span>
         </div>
-      </div>
+      </Card>
 
       {/* Description panel */}
       <div className="flex items-center">
         <AnimatePresence mode="wait">
           {activeField ? (
-            <motion.div
+            <MotionCard padding="lg"
               key={activeField}
               initial={{ opacity: 0, x: 10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.2 }}
-              className="rounded-xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-6 shadow-[var(--bc-shadow-sm)]"
-            >
+              transition={{ duration: 0.2 }} >
               <h4 className="font-mono text-lg font-semibold text-[var(--bc-accent-text)]">
                 {activeField}
               </h4>
               <p className="mt-2 text-sm leading-[1.6] text-[var(--bc-text-secondary)]">
                 {t.fields[activeField]}
               </p>
-            </motion.div>
+            </MotionCard>
           ) : (
             <motion.div
               key="hint"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-center text-sm text-[var(--bc-text-secondary)]"
-            >
+              className="text-center text-sm text-[var(--bc-text-secondary)]" >
               <p>{t.hoverHint}</p>
             </motion.div>
           )}

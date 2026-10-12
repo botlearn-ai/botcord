@@ -12,12 +12,14 @@
  * in the same commit, otherwise the first frame after a tab click no longer
  * matches what loads.
  */
+import Skeleton from "@/components/ui/Skeleton";
+import Card from "@/components/ui/Card";
 import DashboardMessagePaneSkeleton from "./DashboardMessagePaneSkeleton";
 
 type TabSkeletonVariant = "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
 
 export function SkeletonBlock({ className }: { className: string }) {
-  return <div className={`dashboard-skeleton-block rounded ${className}`} />;
+  return <Skeleton className={` ${className} `} />;
 }
 
 /**
@@ -127,7 +129,7 @@ function SectionHeaderSkeleton({ titleWidth = "w-28", subtitleWidth = "w-56", wi
 /** `HomePanel`'s BotActivityCard: 36px avatar + name/status, then a 2x2 stat grid. */
 function BotActivityCardSkeleton() {
   return (
-    <div className="liquid-card w-full rounded-2xl border border-glass-border p-4">
+    <Card padding="md" className="w-full">
       <div className="mb-3 flex items-center gap-2.5">
         <SkeletonBlock className="h-9 w-9 shrink-0 rounded-xl bg-glass-border/45" />
         <div className="min-w-0 flex-1">
@@ -143,14 +145,14 @@ function BotActivityCardSkeleton() {
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }
 
 /** `HomePanel`'s PersonCard: 40px avatar + name + badge pill, then a two-line bio. */
 function PersonCardSkeleton() {
   return (
-    <div className="liquid-card flex flex-col rounded-2xl border border-glass-border p-4">
+    <Card padding="md" className="flex flex-col">
       <div className="mb-2 flex items-center gap-2">
         <SkeletonBlock className="h-10 w-10 shrink-0 rounded-full bg-glass-border/45" />
         <div className="min-w-0 flex-1">
@@ -162,14 +164,14 @@ function PersonCardSkeleton() {
         <SkeletonBlock className="h-2.5 w-full bg-glass-border/40" />
         <SkeletonBlock className="mt-1.5 h-2.5 w-4/5 bg-glass-border/40" />
       </div>
-    </div>
+    </Card>
   );
 }
 
 /** `ExploreEntityCard` kind="room": 56px patterned cover, then px-3 py-2 body. */
 function RoomEntityCardSkeleton() {
   return (
-    <div className="liquid-card overflow-hidden rounded-xl border border-glass-border">
+    <Card padding="none" className="overflow-hidden">
       <div className="relative h-14 w-full bg-glass-bg/40">
         <SkeletonBlock className="absolute left-3 top-2 h-7 w-7 rounded-md bg-glass-border/45" />
         <SkeletonBlock className="absolute right-2 top-2 h-4 w-14 rounded-full bg-glass-border/35" />
@@ -183,14 +185,14 @@ function RoomEntityCardSkeleton() {
           <SkeletonBlock className="h-2.5 w-12 bg-glass-border/30" />
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
 /** `ExploreEntityCard` kind="agent"/"human": rounded-xl p-3, 36px avatar + two-line bio. */
 function PersonEntityCardSkeleton() {
   return (
-    <div className="liquid-card rounded-xl border border-glass-border p-3">
+    <Card padding="sm" className="">
       <div className="flex items-start gap-2.5">
         <SkeletonBlock className="h-9 w-9 shrink-0 rounded-full bg-glass-border/45" />
         <div className="min-w-0 flex-1">
@@ -203,7 +205,7 @@ function PersonEntityCardSkeleton() {
       </div>
       <SkeletonBlock className="mt-1.5 h-2.5 w-full bg-glass-border/40" />
       <SkeletonBlock className="mt-1 h-2.5 w-5/6 bg-glass-border/40" />
-    </div>
+    </Card>
   );
 }
 
@@ -241,7 +243,7 @@ function ContactsGridSkeleton({ rows = 6 }: { rows?: number }) {
 /** `MyBotsPanel`'s BotsView card: rounded-2xl p-5, 48px avatar, 4-column stats. */
 function BotCardSkeleton() {
   return (
-    <div className="liquid-card rounded-2xl border border-glass-border p-5">
+    <Card padding="md" className="">
       <div className="mb-4 flex items-start gap-3">
         <SkeletonBlock className="h-12 w-12 shrink-0 rounded-xl bg-glass-border/45" />
         <div className="min-w-0 flex-1">
@@ -266,7 +268,7 @@ function BotCardSkeleton() {
         <SkeletonBlock className="h-2.5 w-24 bg-glass-border/30" />
         <SkeletonBlock className="h-2.5 w-16 bg-glass-border/30" />
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -275,11 +277,11 @@ function ActivityStatsSkeleton() {
   return (
     <div className="grid grid-cols-3 gap-3">
       {Array.from({ length: 3 }).map((_, idx) => (
-        <div key={idx} className="liquid-card rounded-xl border border-glass-border p-4">
+        <Card padding="md" key={idx} className="">
           <SkeletonBlock className="mb-2 h-2 w-20 bg-glass-border/45" />
           <SkeletonBlock className="h-5 w-16" />
           <SkeletonBlock className="mt-2 h-2.5 w-24 bg-glass-border/35" />
-        </div>
+        </Card>
       ))}
     </div>
   );
@@ -293,14 +295,14 @@ function ActivitySkeleton() {
         <SkeletonBlock className="mb-3 h-3.5 w-24" />
         <div className="space-y-2">
           {Array.from({ length: 7 }).map((_, idx) => (
-            <div key={idx} className="liquid-list-row flex gap-3 rounded-xl border border-glass-border p-3">
+            <Card padding="sm" key={idx} className="flex gap-3">
               <SkeletonBlock className="h-8 w-8 shrink-0 rounded-lg" />
               <div className="min-w-0 flex-1">
                 <SkeletonBlock className="h-3.5 w-3/5" />
                 <SkeletonBlock className="mt-1.5 h-2.5 w-4/5 bg-glass-border/40" />
                 <SkeletonBlock className="mt-1.5 h-2 w-1/4 bg-glass-border/30" />
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       </div>
@@ -356,10 +358,10 @@ function HomeSectionsSkeleton() {
         <SectionHeaderSkeleton titleWidth="w-24" subtitleWidth="w-64" />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, idx) => <BotActivityCardSkeleton key={idx} />)}
-          <div className="liquid-empty-state flex min-h-[148px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-glass-border/80 p-4">
+          <Card padding="md" className="flex flex-col items-center justify-center">
             <SkeletonBlock className="mb-3 h-11 w-11 rounded-xl bg-glass-border/35" />
             <SkeletonBlock className="h-3.5 w-24 bg-glass-border/40" />
-          </div>
+          </Card>
         </div>
       </section>
 
@@ -391,7 +393,7 @@ function HomeSectionsSkeleton() {
 function WalletSectionsSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="liquid-card rounded-2xl border border-glass-border p-6">
+      <Card padding="md" className="">
         <SkeletonBlock className="mb-1 h-3 w-28 bg-glass-border/45" />
         <SkeletonBlock className="mb-5 h-9 w-56" />
         <div className="grid grid-cols-2 gap-4">
@@ -407,9 +409,9 @@ function WalletSectionsSkeleton() {
             <SkeletonBlock key={idx} className="h-11 rounded-xl bg-glass-border/35" />
           ))}
         </div>
-      </div>
+      </Card>
 
-      <div className="liquid-card rounded-2xl border border-glass-border p-5">
+      <Card padding="md" className="">
         <SkeletonBlock className="mb-3 h-3.5 w-28" />
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, idx) => (
@@ -426,9 +428,9 @@ function WalletSectionsSkeleton() {
             </div>
           ))}
         </div>
-      </div>
+      </Card>
 
-      <div className="liquid-card rounded-2xl border border-glass-border p-5">
+      <Card padding="md" className="">
         <SkeletonBlock className="h-3.5 w-36" />
         <SkeletonBlock className="mt-1.5 h-2.5 w-52 bg-glass-border/40" />
         <div className="liquid-tool-surface mt-3 overflow-hidden rounded-xl border border-glass-border">
@@ -448,7 +450,7 @@ function WalletSectionsSkeleton() {
             </div>
           ))}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

@@ -1,4 +1,12 @@
 "use client";
+import Tabs from "@/components/ui/Tabs";
+import Alert from "@/components/ui/Alert";
+import Card from "@/components/ui/Card";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import Button from "@/components/ui/Button";
+import { Textarea } from "@/components/ui/Input";
+import { Input } from "@/components/ui/Input";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,46 +60,16 @@ function AddFriendModal({ onClose }: AddFriendModalProps) {
   }, [closing, onClose]);
 
   useEffect(() => {
-    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current);
+    animationRef.current = animateOverlayPanelEnter(overlayRef.current, panelRef.current, { onComplete: () => { if (panelRef.current) panelRef.current.style.transform = "none"; } });
     return () => cleanupAnime(animationRef.current);
   }, []);
 
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeWithMotion();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeWithMotion]);
-
   return (
-    <div
-      ref={overlayRef}
-      className={`liquid-scrim fixed inset-0 z-50 flex items-center justify-center px-4 ${closing ? "pointer-events-none" : ""}`}
-      onClick={closeWithMotion}
-    >
-      <div
-        ref={panelRef}
-        className="liquid-dialog flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeWithMotion} title={<>{t.title}</>} overlayClassName="z-50" className="max-w-lg overflow-hidden">
         <div className="liquid-toolbar border-b px-6 pt-4">
           <h2 className="mb-3 text-lg font-semibold text-text-primary">{t.title}</h2>
-          <div className="liquid-tabs flex gap-1">
-            {(["search", "invite"] as TabKey[]).map((k) => (
-              <button
-                key={k}
-                onClick={() => setTab(k)}
-                className={`rounded-t border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
-                  tab === k
-                    ? "border-neon-cyan text-neon-cyan"
-                    : "border-transparent text-text-secondary hover:text-text-primary"
-                }`}
-              >
-                {k === "search" ? t.tabSearch : t.tabInvite}
-              </button>
-            ))}
-          </div>
+          <Tabs value={tab} onValueChange={(value) => setTab(value as TabKey)} variant="underline" ariaLabel={t.title}
+            items={[{ value: "search", label: t.tabSearch }, { value: "invite", label: t.tabInvite }]} />
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -99,15 +77,14 @@ function AddFriendModal({ onClose }: AddFriendModalProps) {
         </div>
 
         <div className="liquid-toolbar flex justify-end gap-2 border-t px-6 py-3">
-          <button
+          <Button variant="secondary"
             onClick={closeWithMotion}
-            className="liquid-action rounded-lg px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+
           >
             {t.close}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogSurface>
   );
 }
 
@@ -120,7 +97,7 @@ function PeerKindBadge({ kind }: { kind: PeerKind }) {
       ? "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan"
       : "border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan";
   return (
-    <span className={`shrink-0 rounded border px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide ${cls}`}>
+    <span className={`shrink-0 rounded border px-1.5 py-0.5 text-xs font-medium ${cls}`}>
       {label}
     </span>
   );
@@ -265,19 +242,19 @@ function SearchPane({ onClose }: { onClose: () => void }) {
     const isContact = contactIds.has(selected.id);
     return (
       <div className="space-y-4">
-        <button
+        <Button variant="secondary"
           onClick={() => {
             setSelected(null);
             setStatus("idle");
             setMessage("");
             setError(null);
           }}
-          className="liquid-action inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-text-secondary hover:text-text-primary"
+
         >
           <ArrowLeft className="h-3 w-3" /> {t.back}
-        </button>
+        </Button>
 
-        <div className="liquid-card rounded-xl p-4">
+        <Card padding="none" className="p-4">
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold text-text-primary">{selected.display_name}</p>
             <PeerKindBadge kind={selected.kind} />
@@ -286,48 +263,48 @@ function SearchPane({ onClose }: { onClose: () => void }) {
           {selected.bio && (
             <p className="mt-2 text-xs text-text-secondary">{selected.bio}</p>
           )}
-        </div>
+        </Card>
 
         {status === "sent" ? (
           <div ref={statusRef} className="rounded border border-neon-green/40 bg-neon-green/10 px-3 py-2 text-sm text-neon-green">
             {t.requestSent}
           </div>
         ) : status === "exists" ? (
-          <div ref={statusRef} className="liquid-card rounded-lg px-3 py-2 text-sm text-text-secondary">
+          <Card padding="none" ref={statusRef} className="px-3 py-2">
             {t.alreadyContact}
-          </div>
+          </Card>
         ) : status === "pending" ? (
-          <div ref={statusRef} className="liquid-card rounded-lg px-3 py-2 text-sm text-text-secondary">
+          <Card padding="none" ref={statusRef} className="px-3 py-2">
             {t.alreadyRequested}
-          </div>
+          </Card>
         ) : isContact ? (
-          <div className="liquid-card rounded-lg px-3 py-2 text-sm text-text-secondary">
+          <Card padding="none" className="px-3 py-2">
             {t.alreadyContact}
-          </div>
+          </Card>
         ) : (
           <>
-            <textarea
+            <Textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder={t.requestMessagePlaceholder}
               rows={3}
               maxLength={500}
-              className="liquid-input w-full resize-none rounded-lg border px-3 py-2 text-sm text-text-primary outline-none focus:border-neon-cyan/60"
+              className="w-full"
             />
             {error && (
-              <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              <Alert tone="danger" ref={errorRef} >
                 {error}
-              </div>
+              </Alert>
             )}
-            <button
+            <Button variant="primary"
               onClick={handleSend}
               disabled={sending || !identityReady}
               title={!identityReady ? t.requestFailed : undefined}
-              className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+              className="w-full"
             >
               {sending && <Loader2 className="h-4 w-4 animate-spin" />}
               {sending ? t.sending : t.sendRequest}
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -337,36 +314,36 @@ function SearchPane({ onClose }: { onClose: () => void }) {
   return (
     <div className="space-y-3">
       <div className="liquid-input flex items-center gap-2 rounded-lg border px-3">
-        <Search className="h-4 w-4 text-text-secondary/70" />
-        <input
+        <Search className="h-4 w-4 text-text-secondary" />
+        <Input
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t.searchPlaceholder}
-          className="w-full bg-transparent py-2 text-sm text-text-primary outline-none"
+          className="w-full"
         />
         {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-text-secondary" />}
       </div>
 
       {error && (
-        <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+        <Alert tone="danger" ref={errorRef} >
           {error}
-        </div>
+        </Alert>
       )}
 
       {query.trim().length < 2 ? (
-        <p className="py-8 text-center text-xs text-text-secondary/60">{t.searchHint}</p>
+        <p className="py-8 text-center text-xs text-text-secondary">{t.searchHint}</p>
       ) : !loading && results.length === 0 ? (
-        <p className="py-8 text-center text-xs text-text-secondary/60">{t.searchEmpty}</p>
+        <p className="py-8 text-center text-xs text-text-secondary">{t.searchEmpty}</p>
       ) : (
-        <div className="liquid-card divide-y divide-glass-border/60 overflow-hidden rounded-xl">
+        <Card padding="none" className="overflow-hidden">
           {results.map((a) => {
             const isContact = contactIds.has(a.id);
             return (
-              <button
+              <Button variant="row"
                 key={a.id}
                 onClick={() => setSelected(a)}
-                className="liquid-list-row flex w-full items-center gap-3 px-3 py-2.5 text-left"
+                className="w-full"
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neon-cyan/15 text-xs font-semibold uppercase text-neon-cyan">
                   {a.display_name.slice(0, 1)}
@@ -376,7 +353,7 @@ function SearchPane({ onClose }: { onClose: () => void }) {
                     <p className="truncate text-sm text-text-primary">{a.display_name}</p>
                     <PeerKindBadge kind={a.kind} />
                   </div>
-                  <p className="truncate font-mono text-xs text-text-secondary/70">
+                  <p className="truncate font-mono text-xs text-text-secondary">
                     {a.id}
                   </p>
                 </div>
@@ -387,10 +364,10 @@ function SearchPane({ onClose }: { onClose: () => void }) {
                 ) : (
                   <span className="text-xs text-neon-cyan">{t.applyLabel}</span>
                 )}
-              </button>
+              </Button>
             );
           })}
-        </div>
+        </Card>
       )}
     </div>
   );
@@ -451,40 +428,40 @@ function InvitePane() {
       <p className="text-sm text-text-secondary">{t.inviteDescription}</p>
 
       {error && (
-        <div ref={errorRef} className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+        <Alert tone="danger" ref={errorRef} >
           {error}
-        </div>
+        </Alert>
       )}
 
       {!invite ? (
-        <button
+        <Button variant="primary"
           onClick={create}
           disabled={loading}
-          className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 px-4 py-2 text-sm text-neon-cyan hover:bg-neon-cyan/20 disabled:opacity-50"
+          className="w-full"
         >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           {loading ? t.creating : t.createInvite}
-        </button>
+        </Button>
       ) : (
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <span className="text-xs font-semibold text-text-secondary">
               {t.invitePrompt}
             </span>
-            <button
+            <Button variant="primary"
               ref={copyRef}
               onClick={() => copy("prompt")}
-              className="liquid-action inline-flex items-center gap-1 rounded-lg border border-neon-cyan/50 bg-neon-cyan/10 px-2.5 py-1 text-xs text-neon-cyan hover:bg-neon-cyan/20"
+
             >
               <Copy className="h-3 w-3" />
               {copied === "prompt" ? t.copied : t.copyPrompt}
-            </button>
+            </Button>
           </div>
-          <textarea
+          <Textarea
             readOnly
             rows={6}
             value={buildFriendInvitePrompt({ inviteCode: invite.code, locale })}
-            className="liquid-input w-full resize-none rounded-lg border px-3 py-2 font-mono text-xs leading-relaxed text-text-primary outline-none"
+            className="w-full"
           />
         </div>
       )}

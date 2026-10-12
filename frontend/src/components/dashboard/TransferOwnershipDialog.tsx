@@ -1,4 +1,5 @@
 "use client";
+import Field from "@/components/ui/Field";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -98,7 +99,7 @@ function TransferOwnershipDialog({
                 if (value) setSelectedId(value);
               }}
               placeholder={t.transferSelectLabel}
-              buttonClassName="min-h-9 rounded px-2 text-xs"
+
               options={candidates.map((c) => ({
                 value: c.agent_id,
                 label: c.display_name,
@@ -107,17 +108,15 @@ function TransferOwnershipDialog({
             />
           </label>
 
-          <label className="mb-3 block">
-            <span className="mb-1 block text-xs text-text-secondary">
-              {t.transferConfirmLabel.replace("{room}", roomName)}
-            </span>
+          <Field label={<>{t.transferConfirmLabel.replace("{room}", roomName)}</>} className="mb-3 block">
+
             <Input
               type="text"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder={roomName}
             />
-          </label>
+          </Field>
 
           <p className="text-xs leading-5 text-warning">
             {t.transferWarning}

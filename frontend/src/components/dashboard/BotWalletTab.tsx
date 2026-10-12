@@ -1,4 +1,8 @@
 "use client";
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+
+import Button from "@/components/ui/Button";
 
 /**
  * [INPUT]: 依赖 wallet store 的 per-viewer slice 获取指定 bot 的余额/账本/提现申请；依赖三个 Dialog 完成充值/转账/提现
@@ -127,18 +131,18 @@ export default function BotWalletTab({
       <div className="flex flex-col items-center justify-center py-10 gap-3">
         {walletError && isCurrentViewer ? (
           <>
-            <div className="text-sm text-red-400">{walletError}</div>
-            <button
+            <Alert tone="danger" >{walletError}</Alert>
+            <Button variant="secondary"
               onClick={() => void loadWallet()}
-              className="rounded border border-glass-border px-4 py-2 text-xs text-text-secondary hover:text-text-primary"
+
             >
               {tc.retry}
-            </button>
+            </Button>
           </>
         ) : (
           <MobileBotCordLoading
             label={tc.loading}
-            textClassName="animate-pulse text-sm text-neon-cyan"
+            textClassName="text-sm text-neon-cyan"
           />
         )}
       </div>
@@ -150,36 +154,36 @@ export default function BotWalletTab({
   return (
     <div className="space-y-4">
       {/* Balance card */}
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
+      <Card as="section" padding="none" className="p-4">
         <div className="mb-1 flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wider text-text-secondary">
+          <span className="text-xs font-medium text-text-secondary">
             {t.totalBalance}
           </span>
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={toggleWalletAmountsHidden}
             title={walletAmountsHidden ? "显示金额" : "隐藏金额"}
             aria-label={walletAmountsHidden ? "显示金额" : "隐藏金额"}
-            className="inline-flex h-6 w-6 items-center justify-center rounded text-text-secondary/70 transition-colors hover:bg-glass-bg hover:text-text-primary"
+            className="w-6"
           >
             {walletAmountsHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          </button>
+          </Button>
         </div>
         <div className="mb-3 flex items-baseline gap-2">
-          <span className="font-mono text-2xl font-bold text-text-primary">
+          <span className="font-mono text-2xl font-semibold text-text-primary">
             {showAmount(wallet.total_balance_minor, walletAmountsHidden)}
           </span>
           <span className="text-xs font-medium text-text-secondary">{assetCode}</span>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="liquid-tool-surface rounded-lg border border-glass-border p-2.5">
-            <div className="text-xs uppercase tracking-wider text-text-secondary">{t.available}</div>
+            <div className="text-xs text-text-secondary">{t.available}</div>
             <div className="font-mono text-sm font-semibold text-neon-green">
               {showAmount(wallet.available_balance_minor, walletAmountsHidden)}
             </div>
           </div>
           <div className="liquid-tool-surface rounded-lg border border-glass-border p-2.5">
-            <div className="text-xs uppercase tracking-wider text-text-secondary">{t.locked}</div>
+            <div className="text-xs text-text-secondary">{t.locked}</div>
             <div className="font-mono text-sm font-semibold text-text-secondary">
               {showAmount(wallet.locked_balance_minor, walletAmountsHidden)}
             </div>
@@ -187,31 +191,31 @@ export default function BotWalletTab({
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <button
+          <Button variant="secondary"
             onClick={() => setActiveDialog("topup")}
-            className="liquid-action rounded-lg border border-glass-border px-2 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/10"
+
           >
             {t.recharge}
-          </button>
-          <button
+          </Button>
+          <Button variant="primary"
             onClick={() => setActiveDialog("transfer")}
-            className="liquid-action rounded-lg border border-glass-border px-2 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+
           >
             {t.transfer}
-          </button>
-          <button
+          </Button>
+          <Button variant="primary"
             onClick={() => setActiveDialog("withdraw")}
-            className="liquid-action rounded-lg border border-glass-border px-2 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+
           >
             {t.withdraw}
-          </button>
+          </Button>
         </div>
-      </section>
+      </Card>
 
       {/* Ledger */}
-      <section className="liquid-card rounded-2xl border border-glass-border p-4">
+      <Card as="section" padding="none" className="p-4">
         <div className="mb-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary/80">{t.ledger}</h3>
+          <h3 className="text-xs font-semibold text-text-secondary">{t.ledger}</h3>
         </div>
         {walletLedger.length === 0 && !walletLoading ? (
           <div className="rounded-lg border border-dashed border-glass-border bg-deep-black-light p-3 text-xs text-text-secondary">
@@ -241,25 +245,25 @@ export default function BotWalletTab({
                         })}
                       </span>
                     </div>
-                    <div className="mt-0.5 truncate text-xs text-text-secondary/70">
+                    <div className="mt-0.5 truncate text-xs text-text-secondary">
                       {new Date(entry.created_at).toLocaleString()}
                     </div>
                   </div>
-                  <div className="font-mono text-xs text-text-secondary/60">{assetCode}</div>
+                  <div className="font-mono text-xs text-text-secondary">{assetCode}</div>
                 </div>
               );
             })}
           </div>
         )}
         {walletLedgerError && walletLedger.length === 0 ? (
-          <div className="mt-2 text-xs text-red-400">{walletLedgerError}</div>
+          <Alert tone="danger" className="mt-2">{walletLedgerError}</Alert>
         ) : null}
         {walletLedgerHasMore ? (
           <div className="mt-3 flex justify-center">
-            <button
+            <Button variant="secondary"
               onClick={() => void loadWalletLedger(true)}
               disabled={walletLoading}
-              className="inline-flex min-w-[5.5rem] items-center justify-center gap-1.5 rounded-lg border border-glass-border px-3 py-1 text-xs text-text-secondary hover:text-text-primary disabled:opacity-60"
+              className="min-w-[5.5rem]"
             >
               {walletLoading ? (
                 <>
@@ -275,10 +279,10 @@ export default function BotWalletTab({
               ) : (
                 t.loadMore
               )}
-            </button>
+            </Button>
           </div>
         ) : null}
-      </section>
+      </Card>
 
       {/* Withdrawals for this bot */}
       <BotWithdrawals
@@ -350,15 +354,15 @@ function BotWithdrawals({
   return (
     <section className="rounded-2xl border border-glass-border bg-glass-bg/30 p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary/80">{t.recentWithdrawals}</h3>
-        <button
+        <h3 className="text-xs font-semibold text-text-secondary">{t.recentWithdrawals}</h3>
+        <Button variant="secondary"
           onClick={onRefresh}
           disabled={loading && items.length > 0}
-          className="inline-flex items-center gap-1 rounded border border-glass-border px-2 py-0.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-60"
+
         >
           {loading && items.length > 0 ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           {loading && items.length > 0 ? t.refreshing : t.refresh}
-        </button>
+        </Button>
       </div>
       {!loaded && loading ? (
         <MobileBotCordLoading
@@ -367,7 +371,7 @@ function BotWithdrawals({
           textClassName="text-xs text-text-secondary"
         />
       ) : error && items.length === 0 ? (
-        <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-2 text-xs text-red-300">{error}</div>
+        <Alert tone="danger" >{error}</Alert>
       ) : items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-glass-border bg-deep-black-light p-3 text-xs text-text-secondary">
           {t.noWithdrawals}
@@ -378,11 +382,11 @@ function BotWithdrawals({
             const status = item.status;
             const statusClass =
               status === "pending"
-                ? "bg-amber-500/15 text-amber-300"
+                ? "bg-warning-soft text-warning"
                 : status === "completed"
-                  ? "bg-emerald-500/15 text-emerald-300"
+                  ? "bg-success-soft text-success"
                   : status === "rejected"
-                    ? "bg-red-500/15 text-red-300"
+                    ? "bg-danger-soft text-danger"
                     : "bg-white/10 text-text-secondary";
             return (
               <div key={item.withdrawal_id} className="rounded-lg border border-glass-border bg-deep-black-light p-3 text-xs">
@@ -399,14 +403,14 @@ function BotWithdrawals({
                 </div>
                 {item.status === "pending" ? (
                   <div className="mt-2 flex justify-end">
-                    <button
+                    <Button variant="danger"
                       onClick={() => handleCancel(item.withdrawal_id)}
                       disabled={cancellingId === item.withdrawal_id}
-                      className="inline-flex items-center gap-1 rounded border border-red-400/30 px-2 py-0.5 text-xs text-red-300 hover:bg-red-400/10 disabled:opacity-60"
+
                     >
                       {cancellingId === item.withdrawal_id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                       {cancellingId === item.withdrawal_id ? t.cancelling : t.cancelWithdrawal}
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
               </div>

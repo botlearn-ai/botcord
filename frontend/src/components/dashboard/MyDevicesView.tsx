@@ -1,5 +1,7 @@
 "use client";
 
+import Badge from "@/components/ui/Badge";
+import Card from "@/components/ui/Card";
 import { useMemo } from "react";
 import { ChevronRight, Cloud, Cpu } from "lucide-react";
 import { useShallow } from "zustand/shallow";
@@ -47,9 +49,9 @@ export default function MyDevicesView() {
     <div>
       {visibleDaemons.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-glass-border bg-deep-black-light/50 px-8 py-16 text-center">
-          <Cpu className="h-10 w-10 text-text-secondary/50" />
+          <Cpu className="h-10 w-10 text-text-secondary" />
           <p className="mt-3 text-sm font-medium text-text-primary">还没有设备</p>
-          <p className="mt-1 text-xs text-text-secondary/70">添加一台设备开始托管你的 Bot</p>
+          <p className="mt-1 text-xs text-text-secondary">添加一台设备开始托管你的 Bot</p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -59,10 +61,10 @@ export default function MyDevicesView() {
             const bots = botsByDevice.get(device.id) ?? [];
             const DeviceIcon = isCloud ? Cloud : Cpu;
             return (
-              <button
+              <Card as="button" variant="interactive" padding="md"
                 key={device.id}
                 onClick={() => setSelectedDeviceId(device.id)}
-                className="liquid-card w-full rounded-2xl border border-glass-border p-5 text-left transition-colors hover:border-neon-cyan/40"
+                className="w-full"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-start gap-3">
@@ -75,22 +77,18 @@ export default function MyDevicesView() {
                           {device.label || (isCloud ? "BotCord Cloud Device" : device.id)}
                         </h2>
                         {isCloud ? (
-                          <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-xs text-neon-cyan">
+                          <Badge tone="accent" >
                             Cloud
-                          </span>
+                          </Badge>
                         ) : null}
-                        <span
-                          className={`flex items-center gap-1 rounded-full border px-1.5 py-px text-xs ${
-                            online
-                              ? "border-neon-green/40 bg-neon-green/10 text-neon-green"
-                              : "border-glass-border bg-glass-bg text-text-secondary/70"
-                          }`}
+                        <Badge tone="success"
+
                         >
                           <span className={`h-1 w-1 rounded-full ${online ? "bg-neon-green" : "bg-text-secondary/40"}`} />
                           {online ? "Online" : "Offline"}
-                        </span>
+                        </Badge>
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-text-secondary/65">
+                      <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-text-secondary">
                         <span className="font-mono">{device.id}</span>
                         <span>·</span>
                         <span>{daemonVersionLabel(device.daemon_version)}</span>
@@ -99,17 +97,17 @@ export default function MyDevicesView() {
                       </div>
                     </div>
                   </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary/50" />
+                  <ChevronRight className="h-4 w-4 shrink-0 text-text-secondary" />
                 </div>
 
                 <div className="mt-4 border-t border-glass-border pt-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-medium uppercase tracking-wider text-text-secondary/60">
+                    <p className="text-xs font-medium uppercase tracking-wider text-text-secondary">
                       托管的 Bots · {bots.length}
                     </p>
                   </div>
                   {bots.length === 0 ? (
-                    <p className="text-xs text-text-secondary/50">这台设备还没有托管任何 Bot</p>
+                    <p className="text-xs text-text-secondary">这台设备还没有托管任何 Bot</p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {bots.map((bot) => (
@@ -125,16 +123,16 @@ export default function MyDevicesView() {
                           />
                           <span className="text-xs text-text-primary">{bot.display_name}</span>
                           {bot.is_default ? (
-                            <span className="rounded-full border border-neon-cyan/30 bg-neon-cyan/10 px-1.5 py-px text-xs text-neon-cyan">
+                            <Badge tone="accent" >
                               默认
-                            </span>
+                            </Badge>
                           ) : null}
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
-              </button>
+              </Card>
             );
           })}
         </div>

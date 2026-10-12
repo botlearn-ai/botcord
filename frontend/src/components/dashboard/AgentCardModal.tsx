@@ -1,4 +1,8 @@
 "use client";
+import Alert from "@/components/ui/Alert";
+import DialogSurface from "@/components/ui/DialogSurface";
+
+import Button from "@/components/ui/Button";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -212,17 +216,6 @@ function AgentCardModal({
     }
   }, [isOpen, playExit, shouldRender]);
 
-  useEffect(() => {
-    if (!shouldRender) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") handleClose();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleClose, shouldRender]);
-
   useEffect(() => () => cleanupAnime(animationRef.current), []);
 
   useEffect(() => {
@@ -233,20 +226,7 @@ function AgentCardModal({
   if (!shouldRender) return null;
 
   return (
-    <div
-      ref={overlayRef}
-      className="liquid-scrim fixed inset-0 z-40 flex items-center justify-center p-4"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) handleClose();
-      }}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        className="liquid-dialog w-full max-w-md rounded-2xl p-5"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+    <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={handleClose} title={<>{agent?.display_name || "Agent"}</>} overlayClassName="z-40" className="max-w-md p-5">
         <div data-profile-modal-part className="mb-3 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             {agent ? (
@@ -260,12 +240,12 @@ function AgentCardModal({
               <p className="mt-1 text-xs text-text-secondary">{t.agentDetails}</p>
             </div>
           </div>
-          <button
+          <Button variant="secondary"
             onClick={handleClose}
-            className="liquid-action rounded-lg px-2 py-1 text-xs text-text-secondary hover:text-text-primary"
+
           >
             {t.close}
-          </button>
+          </Button>
         </div>
         {loading ? (
           <div data-profile-modal-part className="space-y-3 py-2">
@@ -279,35 +259,35 @@ function AgentCardModal({
             <MobileBotCordLoading
               label="Loading profile..."
               className="justify-start"
-              textClassName="text-xs text-text-secondary animate-pulse"
+              textClassName="text-xs text-text-secondary "
             />
           </div>
         ) : error ? (
           <div data-profile-modal-part className="space-y-3 py-2">
-            <p className="text-sm text-red-400">{error}</p>
-            <button
+            <Alert tone="danger" >{error}</Alert>
+            <Button variant="secondary"
               onClick={onRetry}
-              className="liquid-action w-full rounded-lg py-2 text-xs text-text-primary transition-colors"
+              className="w-full"
             >
               Retry
-            </button>
+            </Button>
           </div>
         ) : (
           <>
             <p data-profile-modal-part className="mb-3 text-sm text-text-secondary">{agent?.bio || t.noBio}</p>
             {agent?.owner_human_id && agent.owner_display_name ? (
               <div data-profile-modal-part className="mb-3 text-xs text-text-secondary">
-                <span className="text-text-secondary/70">Human owner: </span>
-                <button
+                <span className="text-text-secondary">Human owner: </span>
+                <Button variant="ghost"
                   type="button"
                   onClick={() => onOwnerOpen?.({
                     humanId: agent.owner_human_id!,
                     displayName: agent.owner_display_name!,
                   })}
-                  className="rounded text-neon-green transition-colors hover:text-neon-green/80"
+
                 >
                   {agent.owner_display_name}
-                </button>
+                </Button>
               </div>
             ) : null}
             <div data-profile-modal-part className="mb-4 flex items-center gap-2">
@@ -317,38 +297,37 @@ function AgentCardModal({
               </span>
             </div>
             {isOwnAgent ? (
-              <button
+              <Button variant="secondary"
                 data-profile-modal-part
                 onClick={onSendMessage}
-                className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/10 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
+                className="w-full"
               >
                 {t.sendMessage}
-              </button>
+              </Button>
             ) : alreadyInContacts ? (
-              <button
+              <Button variant="secondary"
                 data-profile-modal-part
                 onClick={onSendMessage}
-                className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/10 py-2 text-xs font-medium text-neon-green transition-colors hover:bg-neon-green/20"
+                className="w-full"
               >
                 {t.sendMessage}
-              </button>
+              </Button>
             ) : requestAlreadyPending ? (
               <p data-profile-modal-part className="text-xs text-neon-cyan">{t.friendRequestAlreadyPending}</p>
             ) : (
-              <button
+              <Button variant="primary"
                 data-profile-modal-part
                 onClick={onSendFriendRequest}
                 disabled={sendingFriendRequest}
-                className="liquid-action inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neon-cyan/40 bg-neon-cyan/10 py-2 text-xs font-medium text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full"
               >
                 {sendingFriendRequest ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 {sendingFriendRequest ? t.sendingFriendRequest : t.sendFriendRequest}
-              </button>
+              </Button>
             )}
           </>
         )}
-      </div>
-    </div>
+      </DialogSurface>
   );
 }
 

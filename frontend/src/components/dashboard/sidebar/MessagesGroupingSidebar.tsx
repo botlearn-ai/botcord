@@ -1,5 +1,8 @@
 "use client";
 
+import Badge from "@/components/ui/Badge";
+import IconButton from "@/components/ui/IconButton";
+import Button from "@/components/ui/Button";
 import { useMemo, useState } from "react";
 import { useRouter } from "nextjs-toploader/app";
 import { Bot, ChevronDown, ChevronRight, ChevronsLeft, Eye, Inbox, User, Users, UsersRound } from "lucide-react";
@@ -107,16 +110,16 @@ export default function MessagesGroupingSidebar({
   return (
     <div className={`liquid-rail flex h-full ${fullWidth ? "w-full" : "w-[200px]"} shrink-0 flex-col border-r border-glass-border`}>
       <div className="liquid-toolbar flex h-14 items-center justify-between border-b border-glass-border px-3">
-        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">{t.header}</span>
-        <button
+        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary">{t.header}</span>
+        <IconButton size="sm" label={t.collapse}
           type="button"
           onClick={() => (onCollapse ? onCollapse() : setMessagesGroupingOpen(false))}
           title={t.collapse}
           aria-label={t.collapse}
-          className="liquid-action flex h-7 w-7 items-center justify-center rounded-md text-text-secondary/60 transition-colors hover:bg-glass-bg hover:text-text-primary"
+          className="flex items-center justify-center"
         >
           <ChevronsLeft className="h-3.5 w-3.5" />
-        </button>
+        </IconButton>
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
@@ -187,26 +190,26 @@ function GroupHeader({
   onToggle: () => void;
 }) {
   return (
-    <button
+    <Button variant="row"
       type="button"
       onClick={onToggle}
       aria-expanded={open}
-      className="liquid-list-row flex w-full items-center gap-1.5 px-3 py-2 text-left transition-colors"
+      className="flex w-full items-center gap-1.5"
     >
       {open ? (
-        <ChevronDown className="h-3 w-3 shrink-0 text-text-secondary/60" />
+        <ChevronDown className="h-3 w-3 shrink-0 text-text-secondary" />
       ) : (
-        <ChevronRight className="h-3 w-3 shrink-0 text-text-secondary/40" />
+        <ChevronRight className="h-3 w-3 shrink-0 text-text-secondary" />
       )}
-      <Icon className="h-3.5 w-3.5 shrink-0 text-text-secondary/70" />
+      <Icon className="h-3.5 w-3.5 shrink-0 text-text-secondary" />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary/85">
+        <div className="truncate text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">
           {title}
         </div>
-        <div className="truncate text-xs text-text-secondary/45">{subtitle}</div>
+        <div className="truncate text-xs text-text-secondary">{subtitle}</div>
       </div>
-      <span className="shrink-0 text-xs text-text-secondary/55">{count}</span>
-    </button>
+      <span className="shrink-0 text-xs text-text-secondary">{count}</span>
+    </Button>
   );
 }
 
@@ -223,24 +226,18 @@ function FilterButton({
 }) {
   const Icon = row.icon;
   return (
-    <button
+    <Button variant="row" aria-pressed={active}
       type="button"
       onClick={onClick}
-      className={`liquid-list-row flex w-full items-center justify-between gap-2 py-1.5 pl-[28px] pr-3 text-[12px] transition-colors ${
-        active
-          ? "!bg-neon-cyan/10 text-neon-cyan"
-          : "text-text-secondary hover:bg-glass-bg/50 hover:text-text-primary"
-      }`}
+      className={`flex w-full items-center justify-between gap-2 `}
     >
       <span className="flex min-w-0 items-center gap-2">
         <Icon className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{row.label}</span>
       </span>
-      <span className={`shrink-0 rounded-full px-1.5 text-xs ${
-        active ? "bg-neon-cyan/20 text-neon-cyan" : "bg-text-secondary/15 text-text-secondary/70"
-      }`}>
+      <Badge tone="accent" >
         {count}
-      </span>
-    </button>
+      </Badge>
+    </Button>
   );
 }

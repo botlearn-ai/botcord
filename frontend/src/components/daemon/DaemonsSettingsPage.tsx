@@ -7,6 +7,14 @@
  * [PROTOCOL]: update header on changes
  */
 
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
+import DialogShell from "@/components/ui/DialogShell";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import IconButton from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
+import Table, { TableHead, TableRow, TableHeader, TableBody, TableCell } from "@/components/ui/Table";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -53,19 +61,8 @@ function truncateId(id: string): string {
 }
 
 function StatusBadge({ status }: { status: DaemonInstance["status"] }) {
-  const map: Record<DaemonInstance["status"], string> = {
-    online: "bg-neon-green/10 text-neon-green",
-    offline: "bg-glass-bg text-text-secondary",
-    revoked: "bg-red-400/10 text-red-300",
-    removal_pending: "bg-yellow-400/10 text-yellow-300",
-  };
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${map[status]}`}
-    >
-      {status}
-    </span>
-  );
+  const tones = { online: "success", offline: "neutral", revoked: "danger", removal_pending: "warning" } as const;
+  return <Badge tone={tones[status]}>{status}</Badge>;
 }
 
 function ConfirmDialog({
@@ -80,41 +77,10 @@ function ConfirmDialog({
   pending: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur">
-      <div className="w-full max-w-sm rounded-2xl border border-glass-border bg-deep-black-light p-6 shadow-2xl">
-        <div className="mb-3 flex items-center gap-2 text-red-300">
-          <AlertTriangle className="h-5 w-5" />
-          <h3 className="text-sm font-semibold">Revoke this daemon?</h3>
-        </div>
-        <p className="mb-5 text-sm text-text-secondary">
-          The daemon{" "}
-          <span className="font-medium text-text-primary">
-            {daemon.label || truncateId(daemon.id)}
-          </span>{" "}
-          will lose its credentials and disconnect from the control channel. You
-          can authorize it again later from /activate.
-        </p>
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={pending}
-            className="rounded-xl border border-glass-border px-4 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={pending}
-            className="inline-flex items-center gap-2 rounded-xl bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-300 transition-colors hover:bg-red-500/25 disabled:opacity-50"
-          >
-            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Revoke
-          </button>
-        </div>
-      </div>
-    </div>
+    <DialogShell title="Revoke this daemon?" role="alertdialog" size="sm" onClose={onCancel} busy={pending}
+      footer={(close) => <><Button onClick={close} disabled={pending}>Cancel</Button><Button variant="danger" onClick={onConfirm} loading={pending}>Revoke</Button></>}>
+      <p className="text-sm text-text-secondary">The daemon <span className="font-medium text-text-primary">{daemon.label || truncateId(daemon.id)}</span> will lose its credentials and disconnect from the control channel. You can authorize it again later from /activate.</p>
+    </DialogShell>
   );
 }
 
@@ -125,29 +91,12 @@ function RuntimeChip({ runtime }: { runtime: DaemonRuntime }) {
   const title = runtime.available
     ? runtime.path || label
     : runtime.error || "unavailable";
-  const cls = runtime.available
-    ? "border-neon-cyan/30 bg-neon-cyan/10 text-neon-cyan"
-    : "border-glass-border bg-glass-bg text-text-tertiary";
-  return (
-    <span
-      title={title}
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs ${cls}`}
-    >
-      {label}
-    </span>
-  );
+  return <Badge title={title} tone={runtime.available ? "accent" : "neutral"}>{label}</Badge>;
 }
 
 function DaemonVersionChip({ version }: { version?: string | null }) {
   const label = version || "--";
-  return (
-    <span
-      title="Running botcord-daemon version"
-      className="inline-flex items-center rounded-full border border-glass-border bg-glass-bg px-2 py-0.5 font-mono text-xs text-text-secondary"
-    >
-      daemon {label}
-    </span>
-  );
+  return <Badge title="Running botcord-daemon version">daemon {label}</Badge>;
 }
 
 function RuntimesBlock({
@@ -189,40 +138,38 @@ function RuntimesBlock({
   const diagnosticsDisabled =
     collectingDiagnostics || daemon.status !== "online";
   return (
-    <div className="mt-2 flex flex-col gap-2 rounded-xl border border-glass-border/60 bg-glass-bg/40 p-3">
+    <Card padding="sm" className="mt-2 flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col">
           <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
             Runtimes
           </span>
           {daemon.runtimes_probed_at ? (
-            <span className="text-xs text-text-tertiary">
+            <span className="text-xs text-text-secondary">
               Last probed {relativeTime(daemon.runtimes_probed_at)}
             </span>
           ) : null}
         </div>
         <DaemonVersionChip version={daemon.daemon_version} />
-        <button
+        <Button variant="secondary" size="sm"
           type="button"
           onClick={onRefresh}
-          disabled={disabled}
-          className="inline-flex items-center gap-1 rounded-lg border border-glass-border px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
-        >
+          disabled={disabled} >
           {refreshing ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <RefreshCcw className="h-3 w-3" />
           )}
           Refresh runtimes
-        </button>
+        </Button>
       </div>
 
       {runtimes === null || runtimes === undefined ? (
-        <span className="text-xs text-text-tertiary">
+        <span className="text-xs text-text-secondary">
           No runtime data yet (runs once per daemon connect)
         </span>
       ) : runtimes.length === 0 ? (
-        <span className="text-xs text-text-tertiary">
+        <span className="text-xs text-text-secondary">
           No runtimes detected
         </span>
       ) : (
@@ -234,12 +181,12 @@ function RuntimesBlock({
       )}
 
       {circuitBreakers.length > 0 ? (
-        <div className="rounded-md border border-yellow-400/20 bg-yellow-400/10 px-2 py-1 text-xs text-yellow-200">
+        <Alert tone="warning" >
           <div className="flex items-center gap-1 font-medium">
             <AlertTriangle className="h-3 w-3" />
             Runtime dispatch paused
           </div>
-          <div className="mt-0.5 text-yellow-100/80">
+          <div className="mt-0.5 text-warning">
             {circuitBreakers.map((breaker) => {
               const until = new Date(breaker.blockedUntil);
               const untilText = Number.isNaN(until.getTime())
@@ -248,13 +195,13 @@ function RuntimesBlock({
               return `${breaker.runtimeId} in ${breaker.conversationId}: ${breaker.lastError || "authentication failed"} (${breaker.failures} failures, ${untilText})`;
             }).join("; ")}
           </div>
-        </div>
+        </Alert>
       ) : null}
 
       {errorMsg ? (
-        <span className="rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-xs text-red-300">
+        <Alert tone="danger" >
           {errorMsg}
-        </span>
+        </Alert>
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-glass-border/40 pt-2">
@@ -262,54 +209,50 @@ function RuntimesBlock({
           <span className="text-xs font-medium uppercase tracking-wide text-text-secondary">
             Troubleshooting logs
           </span>
-          <span className="text-xs text-text-tertiary">
+          <span className="text-xs text-text-secondary">
             Recent device logs for support.
           </span>
         </div>
-        <button
+        <Button variant="secondary" size="sm"
           type="button"
           onClick={onCollectDiagnostics}
           disabled={diagnosticsDisabled}
-          className="inline-flex items-center gap-1 rounded-lg border border-glass-border px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
           title={
             daemon.status === "online"
               ? "Collect logs from this device"
               : "Device must be online to collect logs"
-          }
-        >
+          } >
           {collectingDiagnostics ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <FileArchive className="h-3 w-3" />
           )}
           Collect logs
-        </button>
+        </Button>
       </div>
       {diagnosticResult ? (
-        <span className="rounded-md border border-neon-green/20 bg-neon-green/10 px-2 py-1 text-xs text-neon-green">
+        <Alert tone="success" >
           Log file ready: {diagnosticResult.filename} ({diagnosticResult.size_bytes} bytes)
           {diagnosticResult.expires_at
             ? `, expires ${compactDateTime(diagnosticResult.expires_at)}`
             : ""}
           {" · "}
-          <button
+          <Button variant="ghost"
             type="button"
             onClick={() => void downloadApiFile(
               `/daemon/diagnostics/${encodeURIComponent(diagnosticResult.bundle_id)}/download`,
               diagnosticResult.filename,
-            )}
-            className="underline underline-offset-2"
-          >
+            )} >
             Download
-          </button>
-        </span>
+          </Button>
+        </Alert>
       ) : null}
       {diagnosticError ? (
-        <span className="rounded-md border border-red-400/20 bg-red-400/10 px-2 py-1 text-xs text-red-300">
+        <Alert tone="danger" >
           {diagnosticError}
-        </span>
+        </Alert>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -342,21 +285,19 @@ function LabelCell({
       <div className="flex items-center gap-2">
         <span className="text-text-primary">
           {daemon.label || (
-            <span className="text-text-tertiary">unnamed</span>
+            <span className="text-text-secondary">unnamed</span>
           )}
         </span>
         {canEdit && (
-          <button
+          <IconButton label="Rename"
             type="button"
             onClick={onStartEdit}
-            className="rounded p-1 text-text-tertiary transition-colors hover:bg-glass-bg hover:text-text-primary"
-            title="Rename"
-          >
+            title="Rename" >
             <Pencil className="h-3 w-3" />
-          </button>
+          </IconButton>
         )}
         {errorMsg ? (
-          <span className="text-xs text-red-300">{errorMsg}</span>
+          <Alert tone="danger" >{errorMsg}</Alert>
         ) : null}
       </div>
     );
@@ -364,7 +305,7 @@ function LabelCell({
 
   return (
     <div className="flex items-center gap-1.5">
-      <input
+      <Input
         type="text"
         value={draft}
         autoFocus
@@ -375,33 +316,29 @@ function LabelCell({
           if (e.key === "Enter") onSubmit(draft);
           if (e.key === "Escape") onCancel();
         }}
+        aria-label="Daemon label"
         placeholder="Label (optional)"
-        className="w-40 rounded-md border border-glass-border bg-deep-black-light px-2 py-1 text-sm text-text-primary outline-none focus:border-neon-cyan/50 disabled:opacity-50"
       />
-      <button
+      <IconButton label="Save"
         type="button"
         onClick={() => onSubmit(draft)}
         disabled={pending}
-        className="rounded p-1 text-neon-green transition-colors hover:bg-glass-bg disabled:opacity-50"
-        title="Save"
-      >
+        title="Save" >
         {pending ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
         ) : (
           <Check className="h-3.5 w-3.5" />
         )}
-      </button>
-      <button
+      </IconButton>
+      <IconButton label="Cancel"
         type="button"
         onClick={onCancel}
         disabled={pending}
-        className="rounded p-1 text-text-tertiary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
-        title="Cancel"
-      >
+        title="Cancel" >
         <X className="h-3.5 w-3.5" />
-      </button>
+      </IconButton>
       {errorMsg ? (
-        <span className="text-xs text-red-300">{errorMsg}</span>
+        <Alert tone="danger" >{errorMsg}</Alert>
       ) : null}
     </div>
   );
@@ -489,30 +426,28 @@ export default function DaemonsSettingsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-text-primary">Daemons</h2>
+          <h2 className="text-xl font-semibold text-text-primary">Daemons</h2>
           <p className="mt-1 text-sm text-text-secondary">
             Machines authorized to act as your local BotCord agent host.
           </p>
         </div>
-        <button
+        <Button variant="secondary"
           type="button"
           onClick={() => void refresh()}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl border border-glass-border px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-glass-bg hover:text-text-primary disabled:opacity-50"
-        >
+          disabled={loading} >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <RefreshCcw className="h-4 w-4" />
           )}
           Refresh
-        </button>
+        </Button>
       </div>
 
       {error && (
-        <p className="rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-2 text-sm text-red-300">
+        <Alert tone="danger" >
           {error}
-        </p>
+        </Alert>
       )}
 
       {showInstallPanel && (
@@ -524,30 +459,30 @@ export default function DaemonsSettingsPage() {
       )}
 
       {empty ? null : (
-        <div className="overflow-x-auto rounded-2xl border border-glass-border">
-          <table className="w-full text-sm">
-            <thead className="border-b border-glass-border bg-glass-bg">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">Label</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">ID</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">Daemon</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">Last seen</th>
-                <th className="px-4 py-3 text-left text-xs text-text-secondary">Status</th>
-                <th className="px-4 py-3 text-right text-xs text-text-secondary">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="min-w-0">
+          <Table aria-label="Daemons" >
+            <TableHead>
+              <TableRow>
+                <TableHeader>Label</TableHeader>
+                <TableHeader>ID</TableHeader>
+                <TableHeader>Daemon</TableHeader>
+                <TableHeader>Last seen</TableHeader>
+                <TableHeader>Status</TableHeader>
+                <TableHeader className="text-right">Actions</TableHeader>
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {!loaded && loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-text-secondary">
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center">
                     <Loader2 className="mx-auto h-4 w-4 animate-spin" />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : (
                 sorted.map((d) => (
                   <Fragment key={d.id}>
-                    <tr className="border-b border-glass-border/30">
-                      <td className="px-4 pt-3">
+                    <TableRow>
+                      <TableCell>
                         <LabelCell
                           daemon={d}
                           editing={editingId === d.id}
@@ -560,23 +495,23 @@ export default function DaemonsSettingsPage() {
                           }}
                           onCancel={() => setEditingId(null)}
                         />
-                      </td>
-                      <td className="px-4 pt-3 font-mono text-xs text-text-secondary" title={d.id}>
+                      </TableCell>
+                      <TableCell className="font-mono" title={d.id}>
                         {truncateId(d.id)}
-                      </td>
-                      <td className="px-4 pt-3">
+                      </TableCell>
+                      <TableCell>
                         <DaemonVersionChip version={d.daemon_version} />
-                      </td>
-                      <td className="px-4 pt-3 text-xs text-text-secondary">
+                      </TableCell>
+                      <TableCell>
                         {relativeTime(d.last_seen_at)}
-                      </td>
-                      <td className="px-4 pt-3">
+                      </TableCell>
+                      <TableCell>
                         <StatusBadge status={d.status} />
-                      </td>
-                      <td className="px-4 pt-3 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         {d.status !== "revoked" && (
                           <div className="flex justify-end gap-3">
-                            <button
+                            <Button variant="ghost" size="sm"
                               type="button"
                               onClick={() => void restartDevice(d.id)}
                               disabled={
@@ -587,31 +522,27 @@ export default function DaemonsSettingsPage() {
                                 d.status === "online" || d.kind === "cloud"
                                   ? "Pull latest daemon and reconnect"
                                   : "Daemon must be online to restart remotely"
-                              }
-                              className="inline-flex items-center gap-1 text-xs text-text-secondary transition-colors hover:text-neon-cyan disabled:opacity-50"
-                            >
+                              } >
                               {restartingId === d.id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               ) : (
                                 <RefreshCcw className="h-3.5 w-3.5" />
                               )}
                               Restart
-                            </button>
-                            <button
+                            </Button>
+                            <Button variant="danger" size="sm"
                               type="button"
                               onClick={() => setConfirmTarget(d)}
-                              disabled={revokingId === d.id}
-                              className="inline-flex items-center gap-1 text-xs text-text-secondary transition-colors hover:text-red-300 disabled:opacity-50"
-                            >
+                              disabled={revokingId === d.id} >
                               <XCircle className="h-3.5 w-3.5" />
                               Revoke
-                            </button>
+                            </Button>
                           </div>
                         )}
-                      </td>
-                    </tr>
-                    <tr className="border-b border-glass-border/50 last:border-0">
-                      <td colSpan={6} className="px-4 pb-3">
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell colSpan={6} >
                         <RuntimesBlock
                           daemon={d}
                           refreshing={refreshingRuntimesId === d.id}
@@ -622,13 +553,13 @@ export default function DaemonsSettingsPage() {
                           diagnosticResult={diagnosticResults[d.id]}
                           onCollectDiagnostics={() => void collectDiagnostics(d.id)}
                         />
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   </Fragment>
                 ))
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 

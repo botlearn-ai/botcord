@@ -1,4 +1,6 @@
 "use client";
+import Card from "@/components/ui/Card";
+import Alert from "@/components/ui/Alert";
 
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 /**
@@ -91,41 +93,41 @@ function DMSettingsModal({
       )}
     >
       {error && (
-        <div ref={errorRef} className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-sm text-danger">
+        <Alert tone="danger" ref={errorRef} >
           {error}
-        </div>
+        </Alert>
       )}
 
       {isOwnAgent ? (
-        <div className="liquid-card space-y-3 rounded-xl border p-3">
+        <Card padding="none" className="space-y-3 p-3">
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <p className="mb-1 text-xs font-semibold text-text-secondary">
               {t.displayName}
             </p>
             <p className="text-sm text-text-primary">{ownAgentName ?? "—"}</p>
           </div>
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <p className="mb-1 text-xs font-semibold text-text-secondary">
               {t.agentId}
             </p>
             <CopyableId value={ownAgentId ?? ""} />
           </div>
-        </div>
+        </Card>
       ) : (
-        <div className="liquid-card space-y-3 rounded-xl border p-3">
+        <Card padding="none" className="space-y-3 p-3">
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <p className="mb-1 text-xs font-semibold text-text-secondary">
               {t.displayName}
             </p>
             <p className="text-sm text-text-primary">{contact!.display_name}</p>
           </div>
           <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary/70">
+            <p className="mb-1 text-xs font-semibold text-text-secondary">
               {t.agentId}
             </p>
             <CopyableId value={contact!.contact_agent_id} />
           </div>
-        </div>
+        </Card>
       )}
     </DialogShell>
   );

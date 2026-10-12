@@ -6,6 +6,9 @@
  */
 "use client";
 
+import Badge from "@/components/ui/Badge";
+import Card from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import { AgentProfile, PublicHumanProfile, PublicRoom } from "@/lib/types";
 import CopyableId from "@/components/ui/CopyableId";
 import { useLanguage } from "@/lib/i18n";
@@ -81,7 +84,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
   const presence = usePresenceStatus(agentForPresence?.agent_id);
 
   const handleKeyActivate = (
-    event: React.KeyboardEvent<HTMLDivElement>,
+    event: React.KeyboardEvent<HTMLElement>,
     action: () => void,
   ) => {
     if (event.key !== "Enter" && event.key !== " ") {
@@ -98,12 +101,12 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
     const memberWord = room.member_count === 1 ? t.memberSingular : t.memberPlural;
     const roomInitials = initialsFromName(room.name || "Room");
     return (
-      <div
+      <Card variant="interactive" padding="none"
         role="button"
         tabIndex={0}
         onClick={() => props.onRoomOpen?.(room)}
         onKeyDown={(event) => handleKeyActivate(event, () => props.onRoomOpen?.(room))}
-        className={`liquid-card group overflow-hidden rounded-xl border border-glass-border text-left transition-all hover:border-neon-cyan/60 hover:shadow-md hover:shadow-neon-cyan/10 ${className}`}
+        className={`group overflow-hidden ${className} `}
       >
         <div
           className="relative h-14 w-full"
@@ -115,7 +118,7 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         >
           <div className="absolute left-3 top-2 flex items-center gap-2">
             <div
-              className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-text-primary backdrop-blur-sm"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-semibold text-text-primary backdrop-blur-sm"
               style={{ background: theme.accentDim, boxShadow: `0 0 0 1px ${theme.accent}55` }}
             >
               {roomInitials}
@@ -135,20 +138,20 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
               <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
             )}
           </div>
-          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary/60">{room.room_id}</p>
+          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">{room.room_id}</p>
           <p className="mt-1 line-clamp-2 text-xs leading-4 text-text-secondary">
             {room.description || t.noDescriptionYet}
           </p>
-          <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-text-secondary/70">
+          <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-text-secondary">
             <span className="truncate">
               {room.join_policy === "invite_only" && (
-                <span className="font-medium text-amber-400">{t.inviteOnly}</span>
+                <span className="font-medium text-warning">{t.inviteOnly}</span>
               )}
             </span>
             <span className="shrink-0">{formatRelativeTime(room.last_message_at, locale, t)}</span>
           </div>
         </div>
-      </div>
+      </Card>
     );
   }
 
@@ -165,15 +168,15 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
     const online = effectiveStatus !== "offline";
 
     return (
-      <div
+      <Card variant="interactive" padding="sm"
         role="button"
         tabIndex={0}
         onClick={() => props.onAgentOpen?.(agent)}
         onKeyDown={(event) => handleKeyActivate(event, () => props.onAgentOpen?.(agent))}
-        className={`liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-cyan/60 hover:bg-glass-bg ${className}`}
+        className={`group ${className} `}
       >
         <div className="flex items-start gap-2.5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-cyan/30 bg-neon-cyan/10 text-xs font-semibold text-neon-cyan">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neon-cyan/30 bg-accent-soft text-xs font-semibold text-accent-text">
             {agent.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={agent.avatar_url} alt={agent.display_name} className="h-full w-full object-cover" />
@@ -184,18 +187,14 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <p className="min-w-0 truncate text-sm font-semibold text-text-primary">{agent.display_name}</p>
-              <span
-                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs font-medium leading-3 ${
-                  online
-                    ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
-                    : "border-glass-border bg-glass-bg/60 text-text-secondary/60"
-                }`}
+              <Badge tone="success"
+
               >
                 <PresenceDot agentId={agent.agent_id} fallback={agent.online} size="xs" />
                 {online ? t.online : t.offline}
-              </span>
+              </Badge>
             </div>
-            <p className="mt-0.5 text-xs text-neon-cyan/90">{t.personaAgent} · {persona}</p>
+            <p className="mt-0.5 text-xs text-accent-text">{t.personaAgent} · {persona}</p>
           </div>
         </div>
         <p className="mt-1.5 line-clamp-2 text-xs leading-4 text-text-secondary">
@@ -203,23 +202,23 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
         </p>
         {hasOwner ? (
           <div className="mt-2 text-xs leading-4 text-text-secondary">
-            <span className="text-text-secondary/70">Human owner: </span>
-            <button
+            <span className="text-text-secondary">Human owner: </span>
+            <Button variant="ghost" size="sm"
               type="button"
-              className="rounded text-neon-green transition-colors hover:text-neon-green/80"
+
               onClick={(event) => {
                 event.stopPropagation();
                 props.onAgentOwnerOpen?.(agent.owner_human_id!);
               }}
             >
               {agent.owner_display_name}
-            </button>
+            </Button>
           </div>
         ) : null}
         <div className="mt-2">
           <CopyableId value={agent.agent_id} />
         </div>
-      </div>
+      </Card>
     );
   }
 
@@ -228,12 +227,12 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
   if (!human) return null;
   const humanInitials = initialsFromName(human.display_name);
   return (
-    <div
+    <Card variant="interactive" padding="sm"
       role="button"
       tabIndex={0}
       onClick={() => props.onHumanOpen?.(human)}
       onKeyDown={(event) => handleKeyActivate(event, () => props.onHumanOpen?.(human))}
-      className={`liquid-card group rounded-xl border border-glass-border p-3 text-left transition-all hover:border-neon-green/60 hover:bg-glass-bg ${className}`}
+      className={`group ${className} `}
     >
       <div className="flex items-start gap-2.5">
         {human.avatar_url ? (
@@ -244,18 +243,18 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
             className="h-9 w-9 shrink-0 rounded-full border border-neon-green/30 object-cover"
           />
         ) : (
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neon-green/30 bg-neon-green/10 text-xs font-semibold text-neon-green">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neon-green/30 bg-success-soft text-xs font-semibold text-success">
             {humanInitials}
           </div>
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-text-primary">{human.display_name}</p>
-          <p className="mt-0.5 text-xs text-neon-green/90">{t.personaHuman}</p>
+          <p className="mt-0.5 text-xs text-success">{t.personaHuman}</p>
         </div>
       </div>
       <div className="mt-2">
         <CopyableId value={human.human_id} />
       </div>
-    </div>
+    </Card>
   );
 }

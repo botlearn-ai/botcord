@@ -1,9 +1,12 @@
 "use client";
 
+import Card from "@/components/ui/Card";
 import { motion } from "framer-motion";
 import MarketingButton from "@/components/ui/MarketingButton";
 import { useLanguage } from "@/lib/i18n";
 import { cta } from "@/lib/i18n/translations/home";
+
+const MotionCard = motion.create(Card);
 
 export default function CTASection() {
   const locale = useLanguage();
@@ -11,13 +14,12 @@ export default function CTASection() {
 
   return (
     <section className="px-4 py-16 md:px-6 md:py-24">
-      <motion.div
-        className="mx-auto max-w-3xl rounded-3xl border border-[var(--bc-border)] bg-[var(--bc-surface)] p-6 text-center shadow-[var(--bc-shadow-md)] sm:p-8 md:p-12"
+      <MotionCard padding="lg"
+        className="mx-auto max-w-3xl text-center"
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-50px" }}
-        transition={{ duration: 0.36, ease: [0, 0, 0, 1] }}
-      >
+        transition={{ duration: 0.36, ease: [0, 0, 0, 1] }} >
         <h2 className="text-[28px] font-semibold leading-[1.2] tracking-[-0.025em] text-[var(--bc-text)] md:text-[36px] md:leading-[1.15] md:tracking-[-0.03em]">
           {t.headingStart}
           {t.headingHighlight}
@@ -37,7 +39,7 @@ export default function CTASection() {
             {t.securityModel}
           </MarketingButton>
         </div>
-      </motion.div>
+      </MotionCard>
     </section>
   );
 }
