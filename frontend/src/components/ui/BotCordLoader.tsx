@@ -61,11 +61,6 @@ export function BotCordLoader({
       {showLabel ? (
         <span className="inline-flex items-center text-xs font-medium uppercase tracking-[0.16em] text-text-secondary">
           {label}
-          <span className="botcord-loader-dots" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </span>
         </span>
       ) : null}
     </div>
