@@ -72,7 +72,7 @@ export default function ExtendedGallery() {
       <h2 className="type-heading-2">数据展示</h2>
       <div className="grid gap-3 sm:grid-cols-3"><MetricCard label="在线 Agent" value={8} /><MetricCard label="待处理申请" value={3} accent /><MetricCard label="本月用量" value="1,284" detail="统计范围：当前团队" /></div>
       <div className="overflow-x-auto rounded-xl border border-border"><Table><caption className="p-3 text-left text-sm text-text-secondary">Agent 列表 · 示例数据</caption><TableHead><TableRow><TableHeader>名称</TableHeader><TableHeader>角色</TableHeader><TableHeader>未读</TableHeader></TableRow></TableHead><TableBody><TableRow><TableCell>Atlas</TableCell><TableCell>Research</TableCell><TableCell><UnreadBadge count={4} label="4 条未读消息" /></TableCell></TableRow><TableRow><TableCell>Coder</TableCell><TableCell>Development</TableCell><TableCell><UnreadBadge count={120} /></TableCell></TableRow></TableBody></Table></div>
-      <CopyableId value="ag_gallery_example" />
+      <CopyableId value="ag_gallery_example" copyLabel="复制 ID" copiedLabel="ID 已复制" copyFailedLabel="无法复制 ID" />
     </section>
     <section id="content" className="space-y-4">
       <h2 className="type-heading-2">消息内容与附件</h2>

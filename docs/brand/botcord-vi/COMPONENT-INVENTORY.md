@@ -33,7 +33,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 |---|---:|---|
 | [components/ui/Alert.tsx](../../../frontend/src/components/ui/Alert.tsx) | 61 | 是 |
 | [components/ui/AttachmentItem.tsx](../../../frontend/src/components/ui/AttachmentItem.tsx) | 5 | 是 |
-| [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 16 | 是 |
+| [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 17 | 是 |
 | [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 53 | 是 |
 | [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 34 | 是 |
 | [components/ui/BrandMark.tsx](../../../frontend/src/components/ui/BrandMark.tsx) | 6 | 是 |
@@ -41,7 +41,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/Card.tsx](../../../frontend/src/components/ui/Card.tsx) | 78 | 是 |
 | [components/ui/Checkbox.tsx](../../../frontend/src/components/ui/Checkbox.tsx) | 9 | 是 |
 | [components/ui/ConfirmDialog.tsx](../../../frontend/src/components/ui/ConfirmDialog.tsx) | 1 | 是 |
-| [components/ui/CopyableId.tsx](../../../frontend/src/components/ui/CopyableId.tsx) | 11 | 是 |
+| [components/ui/CopyableId.tsx](../../../frontend/src/components/ui/CopyableId.tsx) | 12 | 是 |
 | [components/ui/CordField.tsx](../../../frontend/src/components/ui/CordField.tsx) | 4 | 是 |
 | [components/ui/DialogShell.tsx](../../../frontend/src/components/ui/DialogShell.tsx) | 19 | 是 |
 | [components/ui/DialogSurface.tsx](../../../frontend/src/components/ui/DialogSurface.tsx) | 27 | 是 |
@@ -49,7 +49,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/DismissLayer.tsx](../../../frontend/src/components/ui/DismissLayer.tsx) | 3 | 是 |
 | [components/ui/DrawerShell.tsx](../../../frontend/src/components/ui/DrawerShell.tsx) | 1 | 是 |
 | [components/ui/EmptyState.tsx](../../../frontend/src/components/ui/EmptyState.tsx) | 28 | 是 |
-| [components/ui/Field.tsx](../../../frontend/src/components/ui/Field.tsx) | 19 | 是 |
+| [components/ui/Field.tsx](../../../frontend/src/components/ui/Field.tsx) | 20 | 是 |
 | [components/ui/IconButton.tsx](../../../frontend/src/components/ui/IconButton.tsx) | 51 | 是 |
 | [components/ui/ImagePreviewOverlay.tsx](../../../frontend/src/components/ui/ImagePreviewOverlay.tsx) | 4 | 是 |
 | [components/ui/Input.tsx](../../../frontend/src/components/ui/Input.tsx) | 37 | 是 |

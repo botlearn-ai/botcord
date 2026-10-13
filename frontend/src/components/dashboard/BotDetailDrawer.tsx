@@ -3,6 +3,10 @@ import EmptyState from "@/components/ui/EmptyState";
 import Skeleton from "@/components/ui/Skeleton";
 import Tabs from "@/components/ui/Tabs";
 import Alert from "@/components/ui/Alert";
+import Avatar from "@/components/ui/Avatar";
+import CopyableId from "@/components/ui/CopyableId";
+import Field from "@/components/ui/Field";
+import { toast } from "@/store/useToastStore";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import DialogSurface from "@/components/ui/DialogSurface";
@@ -245,20 +249,20 @@ function BotDetailDrawer() {
       <DialogSurface overlayRef={overlayRef} panelRef={panelRef} onClose={closeDrawer} ariaLabel={t.ariaLabel} placement="right" overlayClassName="z-40" className="max-w-md">
         {/* Header */}
         <div className="liquid-toolbar flex items-center justify-between border-b border-glass-border px-5 py-4" data-overlay-section>
-          <div className="flex min-w-0 items-center gap-3">
-            <BotAvatar agentId={bot.agent_id} avatarUrl={bot.avatar_url} size={40} alt={bot.display_name} />
-            <div className="min-w-0">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <Avatar kind="agent" id={bot.agent_id} src={bot.avatar_url} name={bot.display_name} size="lg" status={online ? "online" : "offline"} />
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="truncate text-base font-semibold text-text-primary">
-                  {bot.display_name}
-                </h2>
-                <Badge tone="accent" >
-                  {bot.is_default ? t.defaultBadge : t.botBadge}
+                <h2 className="truncate text-base font-semibold text-text-primary">{bot.display_name}</h2>
+                {bot.is_default ? <Badge tone="neutral">{t.defaultBadge}</Badge> : null}
+              </div>
+              <CopyableId value={bot.agent_id} copyLabel={t.profile.copy} copiedLabel={t.profile.copied} copyFailedLabel={t.profile.copyFailed} />
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+                <span>{online ? t.online : t.offline}</span>
+                <Badge variant="outline" icon={<RuntimeLogo runtimeId={getBotRuntimeId(bot, device)} />}>
+                  {getBotRuntimeId(bot, device) || t.overview.unknownRuntime}
                 </Badge>
               </div>
-              <p className={`text-xs ${online ? "text-neon-green" : "text-text-secondary"}`}>
-                ● {online ? t.online : t.offline}
-              </p>
             </div>
           </div>
           <IconButton label={t.close}
@@ -281,6 +285,7 @@ function BotDetailDrawer() {
         <div className="flex-1 overflow-y-auto px-5 py-4" data-overlay-section>
           {tab === "overview" && (
             <OverviewTab
+              key={bot.agent_id}
               t={t}
               bot={bot}
               stats={stats}
@@ -366,18 +371,17 @@ function OverviewTab({
   onJumpToGroup: (group: HumanAgentRoomSummary) => void;
   onOpenChat: () => void;
 }) {
-  const runtimeId = getBotRuntimeId(bot, device);
+  const [editingProfile, setEditingProfile] = useState(false);
   const confirm = useConfirm();
   return (
     <div className="space-y-4">
       <ProfileEditor
+        key={bot.agent_id}
         t={t}
         agentId={bot.agent_id}
         initialName={bot.display_name}
         initialBio={bot.bio ?? ""}
-        runtimeLabel={t.overview.runtime}
-        runtimeId={runtimeId}
-        unknownRuntimeLabel={t.overview.unknownRuntime}
+        onEditingChange={setEditingProfile}
       />
 
       {stats ? (
@@ -518,7 +522,7 @@ function OverviewTab({
 
       <Card as="section" padding="none" className="p-4">
         <div className="flex gap-2">
-          <Button variant="primary"
+          <Button variant={editingProfile ? "secondary" : "primary"}
             onClick={onOpenChat}
             className="flex-1"
           >
@@ -592,26 +596,6 @@ function RuntimeLogo({ runtimeId }: { runtimeId: string | null }) {
   );
 }
 
-function RuntimeChip({
-  label,
-  runtimeId,
-  unknownLabel,
-}: {
-  label: string;
-  runtimeId: string | null;
-  unknownLabel: string;
-}) {
-  return (
-    <span
-      title={`${label}: ${runtimeId || unknownLabel}`}
-      className="liquid-tool-surface inline-flex max-w-[180px] shrink-0 items-center gap-1.5 rounded-full border border-glass-border px-2 py-1"
-    >
-      <RuntimeLogo runtimeId={runtimeId} />
-      <span className="truncate font-mono text-xs text-text-primary">{runtimeId || unknownLabel}</span>
-    </span>
-  );
-}
-
 function getBotRuntimeId(bot: UserAgent, device: DaemonInstance | null): string | null {
   if (bot.runtime) return bot.runtime;
   for (const runtime of device?.runtimes ?? []) {
@@ -631,41 +615,61 @@ function getBotRuntimeId(bot: UserAgent, device: DaemonInstance | null): string 
 
 /* --------------------------- Profile --------------------------- */
 
-function ProfileEditor({
+export function ProfileEditor({
   t,
   agentId,
   initialName,
   initialBio,
-  runtimeLabel,
-  runtimeId,
-  unknownRuntimeLabel,
+  onEditingChange,
 }: {
   t: BotDetailDrawerCopy;
   agentId: string;
   initialName: string;
   initialBio: string;
-  runtimeLabel: string;
-  runtimeId: string | null;
-  unknownRuntimeLabel: string;
+  onEditingChange?: (editing: boolean) => void;
 }) {
+  const [profile, setProfile] = useState({ name: initialName, bio: initialBio });
+  const [editing, setEditing] = useState(false);
   const [name, setName] = useState(initialName);
   const [bio, setBio] = useState(initialBio);
-  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dirty = name !== initialName || bio !== initialBio;
+  const dirty = name.trim() !== profile.name || bio.trim() !== profile.bio;
+
+  useEffect(() => {
+    setProfile({ name: initialName, bio: initialBio });
+  }, [initialName, initialBio]);
+
+  const startEditing = () => {
+    setName(profile.name);
+    setBio(profile.bio);
+    setError(null);
+    setEditing(true);
+    onEditingChange?.(true);
+  };
 
   const handleSave = async () => {
-    if (!dirty || saving) return;
+    if (!name.trim() || !dirty || saving) return;
     setSaving(true);
     setError(null);
     try {
-      await userApi.updateAgent(agentId, {
+      const result = await userApi.updateAgent(agentId, {
         display_name: name.trim(),
         bio: bio.trim() || null,
       });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1800);
+      // Keep the drawer header and other Bot lists in sync with the saved values.
+      const patch = { display_name: result.display_name, bio: result.bio };
+      useDashboardSessionStore.setState((state) => ({
+        ownedAgents: state.ownedAgents.map((agent) => agent.agent_id === agentId ? { ...agent, ...patch } : agent),
+        user: state.user ? {
+          ...state.user,
+          agents: state.user.agents.map((agent) => agent.agent_id === agentId ? { ...agent, ...patch } : agent),
+        } : null,
+      }));
+      setProfile({ name: result.display_name, bio: result.bio ?? "" });
+      setEditing(false);
+      onEditingChange?.(false);
+      toast({ title: t.profile.saved, tone: "success" });
     } catch (err) {
       setError(err instanceof Error ? err.message : t.profile.saveFailed);
     } finally {
@@ -674,41 +678,38 @@ function ProfileEditor({
   };
 
   return (
-    <Card as="section" padding="none" className="p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-text-secondary">
-          <Pencil className="h-3.5 w-3.5" />
-          {t.profile.title}
+    <Card as="section" padding="md">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-text-primary">{editing ? t.profile.edit : t.profile.title}</h3>
+        {!editing ? <Button variant="ghost" size="sm" onClick={startEditing}>
+          <Pencil className="size-4" strokeWidth={1.75} aria-hidden="true" />
+          {t.profile.edit}
+        </Button> : null}
+      </div>
+      {editing ? (
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void handleSave(); }}>
+          <Field label={t.profile.displayName} required>
+            <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={128} required disabled={saving} autoFocus />
+          </Field>
+          <Field label={t.profile.bio} hint={t.profile.bioPlaceholder}>
+            <Textarea value={bio} onChange={(event) => setBio(event.target.value)} rows={4} maxLength={4000} disabled={saving} />
+          </Field>
+          {error ? <Alert tone="danger">{error}</Alert> : null}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" disabled={saving} onClick={() => { setEditing(false); onEditingChange?.(false); setError(null); }}>{t.profile.cancel}</Button>
+            <Button variant="primary" type="submit" loading={saving} disabled={!name.trim() || !dirty}>
+              {saving ? t.profile.saving : t.profile.save}
+            </Button>
+          </div>
+        </form>
+      ) : profile.bio ? (
+        <p className="whitespace-pre-wrap break-words text-sm text-text-secondary">{profile.bio}</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-2 text-sm text-text-secondary">
+          <span>{t.profile.emptyBio}</span>
+          <Button variant="inline" onClick={startEditing}>{t.profile.addBio}</Button>
         </div>
-        <RuntimeChip label={runtimeLabel} runtimeId={runtimeId} unknownLabel={unknownRuntimeLabel} />
-      </div>
-      <label className="mb-1 block text-xs text-text-secondary">{t.profile.displayName}</label>
-      <Input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        maxLength={128}
-        className="w-full"
-      />
-      <label className="mb-1 mt-4 block text-xs text-text-secondary">{t.profile.bio}</label>
-      <Textarea
-        value={bio}
-        onChange={(e) => setBio(e.target.value)}
-        rows={4}
-        maxLength={4000}
-        placeholder={t.profile.bioPlaceholder}
-        className="w-full"
-      />
-      <div className="mt-4 flex items-center justify-between">
-        <p className="font-mono text-xs text-text-secondary">{agentId}</p>
-        <Button variant="primary"
-          onClick={() => void handleSave()}
-          disabled={!dirty || saving}
-
-        >
-          {saving ? t.profile.saving : saved ? `${t.profile.saved} ✓` : t.profile.save}
-        </Button>
-      </div>
-      {error ? <Alert tone="danger" className="mt-2">{error}</Alert> : null}
+      )}
     </Card>
   );
 }
