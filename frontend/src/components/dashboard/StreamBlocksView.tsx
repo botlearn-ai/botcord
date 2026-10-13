@@ -4,7 +4,7 @@ import Button from "@/components/ui/Button";
 import SignalDot from "@/components/ui/SignalDot";
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
-import { Search, FileText, CheckCircle2, Circle, Code2, Brain, HelpCircle, ChevronRight, AlertTriangle, ListTodo } from "lucide-react";
+import { Search, FileText, CheckCircle2, Circle, Code2, Brain, ChevronRight, AlertTriangle, ListTodo } from "lucide-react";
 import type { StreamBlockEntry } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
 import { streamProcess } from "@/lib/i18n/translations/dashboard";
@@ -129,7 +129,7 @@ function compareStreamBlockTimeAsc(a: StreamBlockEntry, b: StreamBlockEntry): nu
 /** Normalize a stream block into a displayable view-model, handling both the
  *  legacy payload shape and the daemon-gateway shape (`raw`). */
 interface BlockView {
-  kind: "tool_call" | "tool_result" | "reasoning" | "system" | "error" | "todo" | "unknown";
+  kind: "tool_call" | "tool_result" | "reasoning" | "system" | "marker" | "error" | "todo" | "unknown";
   toolName?: string;
   paramHint?: string | null;
   paramDetails?: string | null;
@@ -513,13 +513,9 @@ function normalizeBlock(
     };
   }
   if (kind === "thinking") {
-    const phase = typeof payload?.phase === "string" ? payload.phase : undefined;
-    const label = typeof payload?.label === "string" ? payload.label : undefined;
-    return {
-      kind: "reasoning",
-      reasoningText: blockDetails(raw, payload),
-      rawKind: label || (phase ? `thinking: ${phase}` : "thinking"),
-    };
+    // Lifecycle marker ({phase, label, source}); `payload.details` only echoes
+    // the label or raw JSON. Runtimes never forward raw chain-of-thought.
+    return { kind: "marker", rawKind: kind };
   }
 
   // Daemon-gateway shape (Codex / Claude-code) ------------------------------
@@ -682,7 +678,7 @@ function normalizeBlock(
  *  folded into one tool step so the user reads one row per action. */
 type ProcessStep =
   | { kind: "tool"; key: string; call?: BlockView; result?: BlockView }
-  | { kind: "reasoning" | "error" | "todo" | "unknown"; key: string; view: BlockView };
+  | { kind: "reasoning" | "error" | "todo"; key: string; view: BlockView };
 
 type ToolStep = Extract<ProcessStep, { kind: "tool" }>;
 
@@ -726,7 +722,9 @@ function buildProcessSteps(blocks: StreamBlockEntry[], toolNameById: Record<stri
       continue;
     }
 
-    if (view.kind === "system") continue;
+    // Lifecycle markers, runtime bookkeeping and unrecognized events carry
+    // nothing the user can read; they only drive the live headline.
+    if (view.kind === "system" || view.kind === "marker" || view.kind === "unknown") continue;
     steps.push({ kind: view.kind, key, view });
   }
 
@@ -951,18 +949,7 @@ function ProcessStepItem({
     );
   }
 
-  return (
-    <li>
-      <StepRow
-        icon={<HelpCircle aria-hidden strokeWidth={1.75} className="size-4" />}
-        expandable={false}
-        expanded={false}
-        onToggle={toggle}
-      >
-        <span className="truncate font-mono text-[13px] text-text-secondary">{view.rawKind}</span>
-      </StepRow>
-    </li>
-  );
+  return null;
 }
 
 /**
@@ -1009,7 +996,8 @@ export default function StreamBlocksView({
     return () => window.clearInterval(timer);
   }, [live]);
 
-  if (steps.length === 0 && !live) return null;
+  const hasThinking = sortedBlocks.some((b) => b.block.kind === "thinking");
+  if (steps.length === 0 && !live && !hasThinking) return null;
 
   const startedAt = sortedBlocks.length > 0 ? streamBlockTime(sortedBlocks[0]) : 0;
   const endedAt = live ? now : sortedBlocks.length > 0 ? streamBlockTime(sortedBlocks[sortedBlocks.length - 1]) : 0;
@@ -1028,7 +1016,7 @@ export default function StreamBlocksView({
     const parts: string[] = [];
     if (reasoningCount > 0) parts.push(labels.thoughtSteps(reasoningCount));
     if (toolCount > 0) parts.push(labels.toolCalls(toolCount));
-    if (parts.length === 0) parts.push(labels.steps(steps.length));
+    if (parts.length === 0) parts.push(steps.length > 0 ? labels.steps(steps.length) : labels.thought);
     headline = parts.join(" · ");
   }
 

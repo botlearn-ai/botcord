@@ -126,6 +126,42 @@ describe("StreamBlocksView", () => {
     expect(html).toBe("");
   });
 
+  it("treats DeepSeek thinking markers as status, not reasoning steps", () => {
+    const marker = (seq: number, raw: Record<string, unknown>): StreamBlockEntry => ({
+      trace_id: "tr_ds",
+      seq,
+      created_at: `2026-05-25T00:00:0${seq}.000Z`,
+      block: {
+        kind: "thinking",
+        payload: { ...raw, details: typeof raw.label === "string" ? raw.label : JSON.stringify(raw) },
+        raw,
+      },
+    });
+    const blocks: StreamBlockEntry[] = [
+      marker(0, { phase: "started", source: "dispatcher" }),
+      marker(1, { phase: "started", label: "Thinking", source: "runtime" }),
+      marker(2, { event: "item.delta", phase: "updated", label: "Reasoning", source: "runtime" }),
+      {
+        trace_id: "tr_ds",
+        seq: 3,
+        created_at: "2026-05-25T00:00:02.500Z",
+        block: { kind: "other", payload: { terminal: true, event: "turn.completed" }, raw: { event: "turn.completed", payload: {} } },
+      },
+    ];
+
+    const delivered = render({ defaultExpanded: true, blocks });
+    expect(delivered).toContain("Thought");
+    expect(delivered).toContain("2s");
+    expect(delivered).not.toContain("<li");
+    expect(delivered).not.toContain("Reasoning");
+    expect(delivered).not.toContain("dispatcher");
+    expect(delivered).not.toContain("other");
+
+    const live = render({ live: true, blocks: blocks.slice(0, 3) });
+    expect(live).toContain("Thinking");
+    expect(live).not.toContain("Thought");
+  });
+
   it("extracts composing text from mixed tool_use blocks", () => {
     expect(buildComposingText([mixedToolUseBlock()])).toBe("draft answer");
   });
