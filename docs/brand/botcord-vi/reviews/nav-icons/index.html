@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>评审：Dashboard 导航图标与层级 · BotCord VI v1.0</title>
+<link rel="icon" href="../../assets/logo/botcord-favicon.svg" type="image/svg+xml" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../../tokens/botcord.css" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bc-bg); color: var(--bc-text); font: var(--bc-text-body); -webkit-font-smoothing: antialiased; }
+  main { max-width: 1080px; margin: 0 auto; padding: 48px 32px 96px; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+  h1 { font: var(--bc-text-h1); letter-spacing: var(--bc-tracking-h1); margin: 0 0 8px; }
+  h2 { font: var(--bc-text-h2); letter-spacing: var(--bc-tracking-h2); margin: 56px 0 6px; }
+  p.lead { color: var(--bc-text-secondary); margin: 0 0 20px; max-width: 760px; }
+  .mono { font-family: var(--bc-font-mono); }
+  .theme { display: inline-flex; border: 1px solid var(--bc-border); border-radius: var(--bc-radius-full); padding: 3px; flex: none; }
+  .theme button { border: 0; background: transparent; color: var(--bc-text-secondary); font: var(--bc-text-caption); padding: 4px 12px; border-radius: var(--bc-radius-full); cursor: pointer; }
+  .theme button[aria-pressed="true"] { background: var(--bc-text); color: var(--bc-bg); }
+  table { width: 100%; border-collapse: collapse; font: var(--bc-text-body-sm); background: var(--bc-surface); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-lg); overflow: hidden; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--bc-border); vertical-align: middle; }
+  th { font: var(--bc-text-caption); color: var(--bc-text-tertiary); background: var(--bc-surface-sunken); }
+  tr:last-child td { border-bottom: 0; }
+  .sub { font: var(--bc-text-caption); font-weight: 400; color: var(--bc-text-tertiary); margin-top: 4px; }
+  .ic { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: var(--bc-radius-md); background: var(--bc-surface-sunken); color: var(--bc-text); }
+  .note { color: var(--bc-text-secondary); }
+  .rule { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .rule div { background: var(--bc-surface); border: 1px solid var(--bc-border); border-radius: var(--bc-radius-lg); padding: 14px 16px; font: var(--bc-text-body-sm); color: var(--bc-text-secondary); }
+  .rule b { display: block; color: var(--bc-text); margin-bottom: 4px; font-weight: 600; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .frame { border: 1px solid var(--bc-border); border-radius: var(--bc-radius-lg); overflow: hidden; background: var(--bc-surface); }
+  .frame .cap { padding: 10px 14px; font: var(--bc-text-caption); color: var(--bc-text-secondary); border-bottom: 1px solid var(--bc-border); display: flex; gap: 8px; align-items: center; }
+  .tag { font: var(--bc-text-caption); padding: 2px 8px; border-radius: var(--bc-radius-full); }
+  .tag.bad { background: var(--bc-danger-soft); color: var(--bc-danger); }
+  .tag.ok { background: var(--bc-success-soft); color: var(--bc-success); }
+  .stage { display: flex; height: 470px; background: var(--bc-bg); }
+  .rail { width: 64px; flex: none; border-right: 1px solid var(--bc-border); background: var(--bc-surface); padding: 12px 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .rail.new { padding: 12px 2px; }
+  .logo { width: 44px; height: 44px; border: 1px solid var(--bc-border); border-radius: var(--bc-radius-lg); display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+  .logo img { width: 24px; }
+  .lm-d { display: none; } html[data-theme="dark"] .lm-l { display: none; } html[data-theme="dark"] .lm-d { display: block; }
+  .nav { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 52px; border: 1px solid transparent; border-radius: var(--bc-radius-md); color: var(--bc-text); }
+  .rail.old .nav { width: 78px; flex: none; align-self: center; padding: 8px 12px; }
+  .rail.new .nav { width: 100%; padding: 8px 2px; }
+  .nav.on { background: var(--bc-accent-soft); color: var(--bc-accent-text); border-color: color-mix(in srgb, var(--bc-accent) 30%, transparent); }
+  .nav .ind { position: absolute; left: 0; top: 50%; width: 2px; height: 20px; transform: translateY(-50%); border-radius: 0 9999px 9999px 0; background: var(--bc-accent); opacity: 0; }
+  .nav.on .ind { opacity: 1; }
+  .iw { position: relative; display: flex; }
+  .nl { margin-top: 2px; font: 500 11px/1 var(--bc-font-sans); white-space: nowrap; }
+  .badge { position: absolute; display: flex; align-items: center; justify-content: center; height: 16px; min-width: 16px; padding: 0 4px; border-radius: 9999px; background: var(--bc-accent); color: var(--bc-on-accent); font: 600 11px/1 var(--bc-font-sans); }
+  .rail.new .badge { right: -10px; top: -6px; }
+  .rail.old .badge { left: 31px; top: -12px; }
+  .rail.old { position: relative; z-index: 0; }
+  .panel { position: relative; z-index: 1; flex: 1; background: var(--bc-surface); padding: 14px 10px; }
+  .ph { font: var(--bc-text-body-sm); color: var(--bc-text-secondary); padding: 0 6px 12px; border-bottom: 1px solid var(--bc-border); margin-bottom: 10px; }
+  .prow { display: flex; justify-content: space-between; padding: 8px 10px; border-radius: var(--bc-radius-md); font: var(--bc-text-body-sm); border: 1px solid transparent; }
+  .prow.on { background: var(--bc-accent-soft); color: var(--bc-accent-text); border-color: color-mix(in srgb, var(--bc-accent) 30%, transparent); }
+  .cnt { font: var(--bc-text-caption); }
+  .hdr { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--bc-surface); }
+  .hdr h4 { margin: 0; font: 600 14px/1.4 var(--bc-font-sans); }
+  .hbs { display: flex; gap: 4px; }
+  .hb { display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; border-radius: var(--bc-radius-md); color: var(--bc-text-secondary); }
+  .hb-old { border: 1px solid var(--bc-border); background: var(--bc-surface-sunken); color: var(--bc-text); }
+  .hb-new:hover { background: var(--bc-surface-sunken); color: var(--bc-text); }
+  .hb-new.pressed { background: var(--bc-accent-soft); color: var(--bc-accent-text); }
+  ul.fix { margin: 12px 0 0; padding-left: 20px; color: var(--bc-text-secondary); font: var(--bc-text-body-sm); }
+  ul.fix li { margin: 4px 0; }
+  code { font-family: var(--bc-font-mono); font-size: 12.5px; background: var(--bc-surface-sunken); padding: 1px 5px; border-radius: var(--bc-radius-xs); }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <h1>Dashboard 导航图标与层级</h1>
+    <p class="lead">评审稿，对应分支 <code>fix/dashboard-rail-icons</code>。依据 VI v1.0 §图标：只用 lucide-react，线宽 1.75，尺寸 16 / 20 / 24，颜色跟随文字。</p>
+  </div>
+  <div class="theme" role="group" aria-label="主题">
+    <button type="button" data-t="light" aria-pressed="true">浅色</button>
+    <button type="button" data-t="dark" aria-pressed="false">深色</button>
+  </div>
+</header>
+
+<h2>1. 左侧导航图标</h2>
+<p class="lead">7 个图标中 6 个是手写 heroicons 路径（线宽 1.5），只有 Bot 用 lucide，两套风格混用。改动后全部用 lucide，线宽 1.75，尺寸 20。</p>
+<div class="rule">
+  <div><b>来源统一</b>全部来自 lucide-react，不再有手写 &lt;svg&gt;。</div>
+  <div><b>线宽统一</b>1.75，与面板内其他图标一致。</div>
+  <div><b>语义去重</b>「发现」不再用放大镜，「联系人」不再与「和真人」分组同形。</div>
+</div>
+<table>
+  <thead><tr><th style="width:120px">Tab</th><th style="width:170px">改动前</th><th style="width:210px">改动后</th><th>说明</th></tr></thead>
+  <tbody>
+  <tr><td><b>首页</b><div class="sub">Home</div></td>
+  <td><span class="ic old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+      </svg></span><div class="sub">heroicons 手写 · 1.5</div></td>
+  <td><span class="ic"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-house" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg></span><div class="sub mono">lucide House · 1.75</div></td>
+  <td class="note">同语义替换</td></tr>
+  <tr><td><b>消息</b><div class="sub">Messages</div></td>
+  <td><span class="ic old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
+      </svg></span><div class="sub">heroicons 手写 · 1.5</div></td>
+  <td><span class="ic"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-circle" aria-hidden="true"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"></path></svg></span><div class="sub mono">lucide MessageCircle · 1.75</div></td>
+  <td class="note">同语义替换</td></tr>
+  <tr><td><b>我的 Bots</b><div class="sub">My Bots</div></td>
+  <td><span class="ic old"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bot" aria-hidden="true"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg></span><div class="sub">lucide Bot · 1.5</div></td>
+  <td><span class="ic"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bot" aria-hidden="true"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg></span><div class="sub mono">lucide Bot · 1.75</div></td>
+  <td class="note">线宽 1.5 → 1.75</td></tr>
+  <tr><td><b>联系人</b><div class="sub">Contacts</div></td>
+  <td><span class="ic old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+      </svg></span><div class="sub">heroicons 手写 · 1.5</div></td>
+  <td><span class="ic"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users-round" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"></path><circle cx="10" cy="8" r="5"></circle><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"></path></svg></span><div class="sub mono">lucide UsersRound · 1.75</div></td>
+  <td class="note">单人 → 双人：避免与「和真人」分组图标重复</td></tr>
+  <tr><td><b>发现</b><div class="sub">Discover</div></td>
+  <td><span class="ic old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607Z" />
+      </svg></span><div class="sub">heroicons 手写 · 1.5</div></td>
+  <td><span class="ic"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-compass" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"></path></svg></span><div class="sub mono">lucide Compass · 1.75</div></td>
+  <td class="note">放大镜 → 指南针：避免与搜索按钮混淆</td></tr>
+  <tr><td><b>钱包</b><div class="sub">Wallet</div></td>
+  <td><span class="ic old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3" />
+      </svg></span><div class="sub">heroicons 手写 · 1.5</div></td>
+  <td><span class="ic"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wallet" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg></span><div class="sub mono">lucide Wallet · 1.75</div></td>
+  <td class="note">同语义替换</td></tr>
+  <tr><td><b>活动</b><div class="sub">Activity</div></td>
+  <td><span class="ic old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+      </svg></span><div class="sub">heroicons 手写 · 1.5</div></td>
+  <td><span class="ic"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chart-column" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg></span><div class="sub mono">lucide ChartColumn · 1.75</div></td>
+  <td class="note">同语义替换</td></tr></tbody>
+</table>
+
+<h2>2. 未读徽章层级</h2>
+<p class="lead">按钮写了 <code>w-14</code>，但被 <code>Button variant="row"</code> 自带的 <code>w-full</code> 覆盖，宽度被标签撑到约 78px，超出 64px 的导航栏。徽章挂在按钮右上角，伸进右侧面板后被面板盖住。</p>
+<div class="compare">
+  <div class="frame"><div class="cap"><span class="tag bad">改动前</span>按钮溢出导航栏，徽章被面板遮挡</div><div class="stage"><div class="rail old" aria-label="改动前"><div class="logo"><img src="../../assets/logo/botcord-mark-light.svg" class="lm-l" alt=""><img src="../../assets/logo/botcord-mark-dark.svg" class="lm-d" alt=""></div><div class="nav"><span class="ind"></span><span class="iw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+      </svg></span><span class="nl">首页</span></div><div class="nav on"><span class="ind"></span><span class="iw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
+      </svg><span class="badge">46</span></span><span class="nl">消息</span></div><div class="nav"><span class="ind"></span><span class="iw"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bot" aria-hidden="true"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg></span><span class="nl">我的 Bots</span></div><div class="nav"><span class="ind"></span><span class="iw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+      </svg></span><span class="nl">联系人</span></div><div class="nav"><span class="ind"></span><span class="iw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607Z" />
+      </svg></span><span class="nl">发现</span></div><div class="nav"><span class="ind"></span><span class="iw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3" />
+      </svg></span><span class="nl">钱包</span></div></div><div class="panel"><div class="ph">分组</div><div class="prow on">全部 <span class="cnt">36</span></div><div class="prow">和我自己的 Bot <span class="cnt">2</span></div></div></div></div>
+  <div class="frame"><div class="cap"><span class="tag ok">改动后</span>按钮收进 64px，徽章挂在图标右上角</div><div class="stage"><div class="rail new" aria-label="改动后"><div class="logo"><img src="../../assets/logo/botcord-mark-light.svg" class="lm-l" alt=""><img src="../../assets/logo/botcord-mark-dark.svg" class="lm-d" alt=""></div><div class="nav"><span class="ind"></span><span class="iw"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-house" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg></span><span class="nl">首页</span></div><div class="nav on"><span class="ind"></span><span class="iw"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-circle" aria-hidden="true"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"></path></svg><span class="badge">46</span></span><span class="nl">消息</span></div><div class="nav"><span class="ind"></span><span class="iw"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bot" aria-hidden="true"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg></span><span class="nl">我的 Bots</span></div><div class="nav"><span class="ind"></span><span class="iw"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users-round" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"></path><circle cx="10" cy="8" r="5"></circle><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"></path></svg></span><span class="nl">联系人</span></div><div class="nav"><span class="ind"></span><span class="iw"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-compass" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"></path></svg></span><span class="nl">发现</span></div><div class="nav"><span class="ind"></span><span class="iw"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wallet" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg></span><span class="nl">钱包</span></div></div><div class="panel"><div class="ph">分组</div><div class="prow on">全部 <span class="cnt">36</span></div><div class="prow">和我自己的 Bot <span class="cnt">2</span></div></div></div></div>
+</div>
+<ul class="fix">
+  <li>导航列表桌面端设 <code>md:w-full md:px-0.5</code>，按钮宽度跟随 64px 导航栏（实测 2–61px）。</li>
+  <li>按钮左右内边距 12px → 2px，英文最长标签 “Messages” 不再截断。</li>
+  <li>徽章定位改为相对图标：<code>-right-2.5 -top-1.5</code>，99+ 时仍在导航栏内（实测 22–52px）。</li>
+</ul>
+
+<h2>3. Messages 头部操作按钮</h2>
+<p class="lead">原来用 <code>Button size="sm"</code>（自带左右 12px 内边距）再加 <code>w-8</code>：32px 宽减去 24px 内边距，图标被压到 8px。改用 VI 规定的 <code>IconButton</code> + <code>Tooltip</code>：32px 按钮、16px 图标、无边框，搜索开启时显示选中态。</p>
+<div class="compare">
+  <div class="frame"><div class="cap"><span class="tag bad">改动前</span>图标被压缩到 8px</div><div class="hdr"><h4>Messages</h4><div class="hbs"><span class="hb hb-old"><svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search" aria-hidden="true"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg></span><span class="hb hb-old"><svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-plus" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" x2="19" y1="8" y2="14"></line><line x1="22" x2="16" y1="11" y2="11"></line></svg></span><span class="hb hb-old"><svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-square-plus" aria-hidden="true"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path><path d="M12 8v6"></path><path d="M9 11h6"></path></svg></span></div></div></div>
+  <div class="frame"><div class="cap"><span class="tag ok">改动后</span>16px 图标；第一个为搜索开启状态</div><div class="hdr"><h4>Messages</h4><div class="hbs"><span class="hb hb-new pressed"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search" aria-hidden="true"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg></span><span class="hb hb-new"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-plus" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" x2="19" y1="8" y2="14"></line><line x1="22" x2="16" y1="11" y2="11"></line></svg></span><span class="hb hb-new"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-square-plus" aria-hidden="true"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path><path d="M12 8v6"></path><path d="M9 11h6"></path></svg></span></div></div></div>
+</div>
+</main>
+<script>
+  document.querySelectorAll(".theme button").forEach((b) => b.addEventListener("click", () => {
+    document.documentElement.dataset.theme = b.dataset.t;
+    document.querySelectorAll(".theme button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  }));
+</script>
+</body>
+</html>
