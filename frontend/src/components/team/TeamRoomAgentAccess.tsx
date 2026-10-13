@@ -1,5 +1,6 @@
 "use client";
 import { useAccessChanges } from "@/store/useTeamAccessStore";
+import Chip from "@/components/ui/Chip";
 import Disclosure from "@/components/ui/Disclosure";
 
 import { useLanguage } from "@/lib/i18n";
@@ -46,22 +47,21 @@ export function RoomAgentChips({ agents }: { agents: RoomAgentAccess[] }) {
   if (!agents.length) return null;
   const chips = (
     <ul
-      className="flex shrink-0 flex-wrap gap-2 border-b border-glass-border px-4 py-2 max-md:px-2 max-md:flex-nowrap max-md:overflow-x-auto max-md:gap-1.5 max-md:py-1"
+      className="flex shrink-0 flex-wrap gap-2 border-b border-border px-4 py-2 max-md:px-2 max-md:flex-nowrap max-md:overflow-x-auto max-md:gap-1.5 max-md:py-1"
       aria-label={
         zh ? "房间里的 Agent 和我的权限" : "Agents here and what you can do"
       }
     >
       {agents.map((agent) => (
-        <li
+        <Chip
+          as="li"
           key={agent.agent_id}
-          className="inline-flex max-w-full shrink-0 items-start gap-1.5 rounded-lg border border-glass-border bg-glass-bg px-2 py-1"
+          align="start"
+          icon={<Bot />}
         >
-          <Bot size={14} className="mt-0.5 shrink-0 text-neon-cyan" />
-          <span className="min-w-0 truncate text-xs leading-5">
-            {agent.display_name}
-          </span>
+          <span className="min-w-0 truncate">{agent.display_name}</span>
           <AccessBadge info={capabilityBadge(agent.my_capability, zh)} />
-        </li>
+        </Chip>
       ))}
     </ul>
   );
@@ -71,7 +71,7 @@ export function RoomAgentChips({ agents }: { agents: RoomAgentAccess[] }) {
       <Disclosure
         title={
           <>
-            <Bot size={13} className="text-neon-cyan" />
+            <Bot size={13} className="text-accent-text" />
             <span>
               {zh
                 ? `Agent 与权限 · ${agents.length}`

@@ -1,4 +1,6 @@
 "use client";
+import PageHeader from "@/components/ui/PageHeader";
+import IconTile from "@/components/ui/IconTile";
 import Alert from "@/components/ui/Alert";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -92,28 +94,26 @@ export function OrgInviteCard({
   return (
     <div className="mx-auto w-full max-w-lg px-4 pb-10 pt-20 sm:pt-28">
       <Card>
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neon-cyan/80">
-          {t("组织邀请", "Organization invite")}
-        </p>
-        <div className="mt-4 flex items-center gap-3">
-          <div className="shrink-0 rounded-xl bg-neon-cyan/10 p-3 text-neon-cyan">
-            <Building2 size={24} />
-          </div>
-          <h1 className="min-w-0 break-words text-xl font-semibold text-text-primary sm:text-2xl">
-            {name}
-          </h1>
-        </div>
-        <p className="mt-4 text-sm leading-6 text-text-secondary">
-          {preview.inviter_name
-            ? t(
-                `${preview.inviter_name} 邀请你加入这个 BotCord 组织，与团队成员和 Agent 协作。`,
-                `${preview.inviter_name} invited you to join this BotCord organization and collaborate with teammates and Agents.`,
-              )
-            : t(
-                "你受邀加入这个 BotCord 组织，与团队成员和 Agent 协作。",
-                "You are invited to join this BotCord organization and collaborate with teammates and Agents.",
-              )}
-        </p>
+        <PageHeader
+          eyebrow={t("组织邀请", "Organization invite")}
+          icon={
+            <IconTile>
+              <Building2 />
+            </IconTile>
+          }
+          title={name}
+          description={
+            preview.inviter_name
+              ? t(
+                  `${preview.inviter_name} 邀请你加入这个 BotCord 组织，与团队成员和 Agent 协作。`,
+                  `${preview.inviter_name} invited you to join this BotCord organization and collaborate with teammates and Agents.`,
+                )
+              : t(
+                  "你受邀加入这个 BotCord 组织，与团队成员和 Agent 协作。",
+                  "You are invited to join this BotCord organization and collaborate with teammates and Agents.",
+                )
+          }
+        />
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">
           <span className="inline-flex items-center gap-1">
             <Users size={14} />

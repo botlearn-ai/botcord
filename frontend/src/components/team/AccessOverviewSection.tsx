@@ -77,7 +77,7 @@ export default function AccessOverviewSection({
   ];
   return (
     <div
-      className="space-y-4 border-t border-glass-border pt-5"
+      className="space-y-4 border-t border-border pt-5"
       aria-label={t("Agent 权限总览", "Agent access overview")}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">

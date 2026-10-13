@@ -1,5 +1,6 @@
 "use client";
 import DashboardOverlayPortal from "@/components/dashboard/DashboardOverlayPortal";
+import ListGroup, { ListGroupItem } from "@/components/ui/ListGroup";
 import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
 import { BotCordLoader } from "@/components/ui/BotCordLoader";
@@ -26,8 +27,6 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { Bot, Loader2, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import RoomReplyModeControl from "./RoomReplyModeControl";
-
-const row = "flex items-center gap-3 rounded-xl px-3 py-2.5";
 
 /** 「成员与 Agent」: who is in an organization room, add org members / Agents, remove. */
 export default function TeamRoomMembersDialog({
@@ -177,7 +176,7 @@ export default function TeamRoomMembersDialog({
     const ownsAgent = p.kind === "agent" && ownedAgentIds.includes(p.id);
     const wakeToggles = p.kind === "human" && !isDm ? ownedHere : [];
     return (
-      <li key={p.id} className={`${row} flex-wrap`}>
+      <ListGroupItem key={p.id} className="flex-wrap">
         <Avatar
           kind={p.kind === "agent" ? "agent" : "human"}
           id={p.id}
@@ -268,7 +267,7 @@ export default function TeamRoomMembersDialog({
             })}
           </div>
         )}
-      </li>
+      </ListGroupItem>
     );
   };
 
@@ -312,12 +311,12 @@ export default function TeamRoomMembersDialog({
                 )}
               </div>
               {adding === "member" && (
-                <ul
-                  className="mb-2 rounded-xl border border-glass-border p-1"
+                <ListGroup
+                  className="mb-2"
                   aria-label={t("可添加的成员", "Members to add")}
                 >
                   {addableUsers.map((u) => (
-                    <li key={u.id} className={row}>
+                    <ListGroupItem key={u.id}>
                       <span className="min-w-0 flex-1 truncate text-sm">
                         {u.display_name}
                       </span>
@@ -339,17 +338,17 @@ export default function TeamRoomMembersDialog({
                         ) : null}
                         {t("添加", "Add")}
                       </Button>
-                    </li>
+                    </ListGroupItem>
                   ))}
                   {!addableUsers.length && (
-                    <li className="px-3 py-2 text-xs text-text-secondary">
+                    <ListGroupItem className="text-xs text-text-secondary">
                       {t(
                         "组织成员都已在房间里。",
                         "Everyone in the organization is already here.",
                       )}
-                    </li>
+                    </ListGroupItem>
                   )}
-                </ul>
+                </ListGroup>
               )}
               <ul>{humans.map(participantRow)}</ul>
             </section>
@@ -382,15 +381,15 @@ export default function TeamRoomMembersDialog({
                 </p>
               ) : (
                 adding === "agent" && (
-                  <ul
-                    className="mb-2 rounded-xl border border-glass-border p-1"
+                  <ListGroup
+                    className="mb-2"
                     aria-label={t("可添加的 Agent", "Agents to add")}
                   >
                     {addableAgents.map((a) => {
                       const blocker = agentAddBlocker(space, a, ownedAgentIds);
                       return (
-                        <li key={a.agent_id} className={row}>
-                          <Bot size={16} className="shrink-0 text-neon-cyan" />
+                        <ListGroupItem key={a.agent_id}>
+                          <Bot size={16} className="shrink-0 text-accent-text" />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm">
                               {a.display_name}
@@ -424,11 +423,11 @@ export default function TeamRoomMembersDialog({
                             ) : null}
                             {t("添加", "Add")}
                           </Button>
-                        </li>
+                        </ListGroupItem>
                       );
                     })}
                     {!addableAgents.length && (
-                      <li className="px-3 py-2 text-xs text-text-secondary">
+                      <ListGroupItem className="text-xs text-text-secondary">
                         {members.agents.some((a) => a.status === "active")
                           ? t(
                               "组织内的 Agent 都已在房间里。",
@@ -438,9 +437,9 @@ export default function TeamRoomMembersDialog({
                               "组织里还没有 Agent，先在「Agent」页添加。",
                               "No Agents in this organization yet. Add one on the Agents page.",
                             )}
-                      </li>
+                      </ListGroupItem>
                     )}
-                  </ul>
+                  </ListGroup>
                 )
               )}
               {!isDm && !agents.length && adding !== "agent" && (

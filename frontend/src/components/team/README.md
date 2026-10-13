@@ -22,6 +22,8 @@ Agent 页：`TeamAgentsPage.tsx`（导航唯一的「Agent」入口，自带标�
 
 `TeamWorkspaceSkeleton.tsx` 与消息工作区三栏形态保持一致，供首次加载、鉴权等待使用。
 
+视觉组件：本目录只组合 `components/ui` 组件，不手写按钮、卡片、徽章样式。团队专用的 IconTile、PresenceIndicator、ChoiceCard、Chip、ListGroup、PageHeader 与 Alert `accent` 已放入组件库，契约见 `docs/brand/botcord-vi/COMPONENTS.md`「Team 模式组件」，预览见 `/design#team`。
+
 `organization_messaging_available` 控制旧 Hub 的兼容降级。Agent 入组后可被拉进组织房间参与对话；执行能力仍由 daemon 按组织上下文独立控制。
 
 测试包括页面结构、旧 Hub 降级、路由、API 用户身份及异步历史合并/取消/撤权。本地隔离测试数据的桌面、移动端与建房截图在 `frontend/docs/screenshots/team-workspace-*.png`；后端真实鉴权与数据库测试另见共享文档 [Team 工作区](../../../../docs/team-workspace-messaging.md)。

@@ -412,14 +412,6 @@ export function agentStatusLabel(status: AgentStatus, zh: boolean): string {
   return (labels[status] ?? labels.offline)[zh ? 0 : 1];
 }
 
-export const AGENT_STATUS_DOT: Record<AgentStatus, string> = {
-  online: "bg-neon-green",
-  working: "bg-neon-cyan animate-pulse",
-  busy: "bg-red-500",
-  away: "bg-amber-400",
-  offline: "bg-text-secondary/40",
-};
-
 const RUNTIME_NAMES: Record<string, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",

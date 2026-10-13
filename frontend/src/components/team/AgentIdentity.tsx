@@ -2,9 +2,9 @@
 
 import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
+import PresenceIndicator from "@/components/ui/PresenceIndicator";
 import { useLanguage } from "@/lib/i18n";
 import {
-  AGENT_STATUS_DOT,
   agentStatusLabel,
   runtimeLabel,
   type AgentStatus,
@@ -34,10 +34,7 @@ export function AgentAvatar({
         name={name}
         size={size <= 28 ? "sm" : size <= 40 ? "md" : "lg"}
       />
-      <span
-        aria-hidden
-        className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-deep-black ${AGENT_STATUS_DOT[status] ?? AGENT_STATUS_DOT.offline}`}
-      />
+      <PresenceIndicator status={status} size="lg" overlay />
     </span>
   );
 }
@@ -49,10 +46,7 @@ export function AgentMeta({ agent }: { agent: DirectoryAgent }) {
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
       <span className="inline-flex items-center gap-1.5">
-        <span
-          aria-hidden
-          className={`h-1.5 w-1.5 rounded-full ${AGENT_STATUS_DOT[agent.status] ?? AGENT_STATUS_DOT.offline}`}
-        />
+        <PresenceIndicator status={agent.status} size="xs" />
         {agentStatusLabel(agent.status, zh)}
       </span>
       {runtime && <Badge>{runtime}</Badge>}

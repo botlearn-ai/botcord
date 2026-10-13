@@ -1,5 +1,6 @@
 "use client";
 import Alert from "@/components/ui/Alert";
+import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Checkbox from "@/components/ui/Checkbox";
@@ -288,7 +289,7 @@ export default function OrgInviteLinks({
         </Disclosure>
         {created && (
           <Card className="space-y-2" role="status">
-            <p className="text-xs text-neon-cyan">
+            <p className="text-xs text-accent-text">
               {created.max_uses === 1
                 ? t(
                     `专属邀请链接已生成${created.label ? `（给 ${created.label}）` : ""} · 仅限 1 人`,
@@ -333,7 +334,7 @@ export default function OrgInviteLinks({
             {t("还没有发出邀请。", "No invites sent yet.")}
           </p>
         ) : (
-          <ul className="divide-y divide-glass-border">
+          <ul className="divide-y divide-border">
             {links.map((link) => (
               <li key={link.id} className="space-y-2 py-3">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
@@ -343,11 +344,12 @@ export default function OrgInviteLinks({
                         ? t("专属邀请", "Personal invite")
                         : t("多人邀请链接", "Shared invite link"))}
                   </span>
-                  <span
-                    className={`rounded-full border px-2 py-0.5 ${link.status === "active" ? "border-neon-cyan/40 text-neon-cyan" : "border-glass-border"}`}
+                  <Badge
+                    variant="outline"
+                    tone={link.status === "active" ? "accent" : "neutral"}
                   >
                     {inviteRowStatus(link, zh)}
-                  </span>
+                  </Badge>
                   {link.max_uses !== 1 && (
                     <span>{inviteUsageLabel(link, zh)}</span>
                   )}

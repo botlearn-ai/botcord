@@ -476,25 +476,24 @@ export default function TeamAgentsPage({
       </header>
 
       {requestsToDecide > 0 && (
-        <div
-          className="flex flex-wrap items-center gap-3 rounded-2xl border border-neon-cyan/30 bg-neon-cyan/5 px-4 py-3"
-          role="status"
+        <Alert
+          tone="accent"
+          icon={<Inbox />}
+          actions={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setDialog("inbox")}
+            >
+              {t("处理", "Review")}
+            </Button>
+          }
         >
-          <Inbox size={18} className="shrink-0 text-neon-cyan" />
-          <p className="min-w-0 flex-1 text-sm">
-            {t(
-              `${requestsToDecide} 个权限申请待处理`,
-              `${requestsToDecide} access request${requestsToDecide > 1 ? "s" : ""} need${requestsToDecide > 1 ? "" : "s"} your action`,
-            )}
-          </p>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setDialog("inbox")}
-          >
-            {t("处理", "Review")}
-          </Button>
-        </div>
+          {t(
+            `${requestsToDecide} 个权限申请待处理`,
+            `${requestsToDecide} access request${requestsToDecide > 1 ? "s" : ""} need${requestsToDecide > 1 ? "" : "s"} your action`,
+          )}
+        </Alert>
       )}
 
       {waiting.length > 0 && (
@@ -505,7 +504,7 @@ export default function TeamAgentsPage({
           <h2 className="text-sm font-medium">
             {t("等待加入组织", "Waiting to join")} · {waiting.length}
           </h2>
-          <ul className="divide-y divide-glass-border">
+          <ul className="divide-y divide-border">
             {waiting.map((agent) => {
               const mine = agent.sponsor_user_membership_id === myMembershipId;
               const sponsor = members.users.find(

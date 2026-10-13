@@ -194,7 +194,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
           {agent.status === "processing" && (
             <span
               aria-hidden="true"
-              className="motion-safe:animate-pulse text-neon-cyan"
+              className="motion-safe:animate-pulse text-accent-text"
             >
               •••
             </span>

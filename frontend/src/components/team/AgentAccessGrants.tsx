@@ -156,7 +156,7 @@ export default function AgentAccessGrants({
             {t("还没有授权任何成员。", "No one has access yet.")}
           </p>
         ) : (
-          <ul className="divide-y divide-glass-border">
+          <ul className="divide-y divide-border">
             {grants.map((grant) => (
               <li
                 key={grant.id}
@@ -211,7 +211,7 @@ export default function AgentAccessGrants({
           </ul>
         )}
       </div>
-      <div className="border-t border-glass-border pt-3">
+      <div className="border-t border-border pt-3">
         <h4 className="mb-2 text-sm font-medium">
           {t("授权新成员", "Give someone access")}
         </h4>

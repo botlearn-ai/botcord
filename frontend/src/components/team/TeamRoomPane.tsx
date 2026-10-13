@@ -72,7 +72,7 @@ export default function TeamRoomPane({
   return (
     <TeamMessageFeedbackContext.Provider value={true}>
       <div
-        className="dashboard-main flex h-full min-h-0 flex-col overflow-hidden bg-deep-black"
+        className="dashboard-main flex h-full min-h-0 flex-col overflow-hidden bg-bg"
         data-team-room={roomId}
       >
         <RoomHeader
@@ -85,7 +85,7 @@ export default function TeamRoomPane({
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {opened && <MessageList key={roomId} />}
         </div>
-        <div className="team-room-composer shrink-0 border-t border-glass-border px-4 py-2 max-md:px-2">
+        <div className="team-room-composer shrink-0 border-t border-border px-4 py-2 max-md:px-2">
           {accessDenied ? (
             <div className="space-y-2 text-center text-sm text-text-secondary" role="status">
               <p>{zh ? "你没有使用该 Agent 的有效授权。" : "You don't have active access to this Agent."}</p>

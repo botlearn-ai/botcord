@@ -1,4 +1,7 @@
 "use client";
+import CopyableId from "@/components/ui/CopyableId";
+import PageHeader from "@/components/ui/PageHeader";
+import IconTile from "@/components/ui/IconTile";
 import Alert from "@/components/ui/Alert";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -222,34 +225,29 @@ export default function TeamSpacesPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-12">
       {!section && (
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-neon-cyan">
-              Team
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              {teamMode
-                ? t("团队空间", "Team workspace")
-                : t("空间与组织", "Spaces & organizations")}
-            </h1>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-text-secondary">
-              {t(
-                "使用同一个账户和 Agent，分别管理个人与组织身份。",
-                "Use the same account and Agents with separate personal and organization memberships.",
-              )}
-            </p>
-          </div>
-          <Button
-            variant="primary"
-
-            disabled={busy || loading || !snapshot}
-            onClick={() => setShowCreate(!showCreate)}
-            aria-expanded={showCreate}
-          >
-            <Plus size={16} />
-            {t("创建组织", "Create organization")}
-          </Button>
-        </header>
+        <PageHeader
+          eyebrow="Team"
+          title={
+            teamMode
+              ? t("团队空间", "Team workspace")
+              : t("空间与组织", "Spaces & organizations")
+          }
+          description={t(
+            "使用同一个账户和 Agent，分别管理个人与组织身份。",
+            "Use the same account and Agents with separate personal and organization memberships.",
+          )}
+          actions={
+            <Button
+              variant="primary"
+              disabled={busy || loading || !snapshot}
+              onClick={() => setShowCreate(!showCreate)}
+              aria-expanded={showCreate}
+            >
+              <Plus size={16} />
+              {t("创建组织", "Create organization")}
+            </Button>
+          }
+        />
       )}
 
       {notice && (
@@ -293,9 +291,9 @@ export default function TeamSpacesPage({
               aria-label={t("选择空间", "Choose space")}
             >
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <div className="rounded-xl bg-neon-cyan/10 p-3 text-neon-cyan">
-                  {personal ? <UserRound size={22} /> : <Building2 size={22} />}
-                </div>
+                <IconTile>
+                  {personal ? <UserRound /> : <Building2 />}
+                </IconTile>
                 <Field label={<>{t("当前空间", "Current space")}</>}>
                   <Select
                     aria-label={t("当前空间", "Current space")}
@@ -373,20 +371,21 @@ export default function TeamSpacesPage({
 
           {teamMode && personal && (
             <section className="mx-auto w-full max-w-3xl py-8 sm:py-16">
-              <div className="mb-8 text-center">
-                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-neon-cyan/20 bg-neon-cyan/10 text-neon-cyan">
-                  <Building2 size={30} />
-                </div>
-                <h2 className="text-2xl font-semibold sm:text-3xl">
-                  {t("开启你的团队空间", "Start your team workspace")}
-                </h2>
-                <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-text-secondary">
-                  {t(
-                    "还没有加入组织。创建一个新组织，或接受邀请，在团队房间里与成员交流。",
-                    "You haven’t joined an organization yet. Create one or accept an invitation to talk with teammates in rooms.",
-                  )}
-                </p>
-              </div>
+              <PageHeader
+                align="center"
+                level={2}
+                className="mb-8"
+                icon={
+                  <IconTile size="lg">
+                    <Building2 />
+                  </IconTile>
+                }
+                title={t("开启你的团队空间", "Start your team workspace")}
+                description={t(
+                  "还没有加入组织。创建一个新组织，或接受邀请，在团队房间里与成员交流。",
+                  "You haven’t joined an organization yet. Create one or accept an invitation to talk with teammates in rooms.",
+                )}
+              />
               <div className="grid gap-4 sm:grid-cols-2">
                 <Card
                   as="button"
@@ -398,7 +397,7 @@ export default function TeamSpacesPage({
                     setShowJoin(false);
                   }}
                 >
-                  <Plus size={24} className="mb-5 text-neon-cyan" />
+                  <Plus size={24} className="mb-5 text-accent-text" />
                   <h3 className="text-lg font-semibold">
                     {t("创建组织", "Create organization")}
                   </h3>
@@ -408,7 +407,7 @@ export default function TeamSpacesPage({
                       "Set up a space for your team, invite people and add Agents.",
                     )}
                   </p>
-                  <span className="mt-5 inline-flex items-center gap-2 text-sm text-neon-cyan">
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm text-accent-text">
                     {t("开始创建", "Get started")} <ArrowRight size={16} />
                   </span>
                 </Card>
@@ -422,7 +421,7 @@ export default function TeamSpacesPage({
                     setShowCreate(false);
                   }}
                 >
-                  <Users size={24} className="mb-5 text-neon-cyan" />
+                  <Users size={24} className="mb-5 text-accent-text" />
                   <h3 className="text-lg font-semibold">
                     {t("加入组织", "Join organization")}
                   </h3>
@@ -432,7 +431,7 @@ export default function TeamSpacesPage({
                       "Already have a team? Ask an administrator for an invite link or an invitation.",
                     )}
                   </p>
-                  <span className="mt-5 inline-flex items-center gap-2 text-sm text-neon-cyan">
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm text-accent-text">
                     {t("查看加入方式", "How to join")} <ArrowRight size={16} />
                   </span>
                 </Card>
@@ -448,9 +447,14 @@ export default function TeamSpacesPage({
                       "The easiest way is to open an invite link from an administrator. Or share your user ID below; once invited, refresh this page to review and accept.",
                     )}
                   </p>
-                  <code className="block select-all break-all rounded-xl bg-deep-black p-3 text-sm">
-                    {snapshot.human.human_id}
-                  </code>
+                  <Card variant="sunken" padding="sm">
+                    <CopyableId
+                      value={snapshot.human.human_id}
+                      copyLabel={t("复制用户 ID", "Copy user ID")}
+                      copiedLabel={t("已复制用户 ID", "User ID copied")}
+                      copyFailedLabel={t("复制失败", "Could not copy user ID")}
+                    />
+                  </Card>
                   <Button
                     variant="primary"
                     disabled={busy || loading}
@@ -542,9 +546,12 @@ export default function TeamSpacesPage({
               <span>
                 {snapshot.user.display_name} ·{" "}
                 {t("你的用户 ID", "Your user ID")}：
-                <code className="select-all break-all text-text-primary">
-                  {snapshot.human.human_id}
-                </code>
+                <CopyableId
+                  value={snapshot.human.human_id}
+                  copyLabel={t("复制用户 ID", "Copy user ID")}
+                  copiedLabel={t("已复制用户 ID", "User ID copied")}
+                  copyFailedLabel={t("复制失败", "Could not copy user ID")}
+                />
               </span>
               <span>
                 {personal
@@ -744,7 +751,7 @@ export default function TeamSpacesPage({
                         }
                       />
                     )}
-                    <ul className="divide-y divide-glass-border">
+                    <ul className="divide-y divide-border">
                       {snapshot.members.users.map((member) => (
                         <li
                           key={member.id}
@@ -823,9 +830,9 @@ export default function TeamSpacesPage({
                     href={`/chats/team?space=${encodeURIComponent(space.id)}&view=agents`}
                   >
                     <span className="flex items-center gap-3">
-                      <span className="rounded-xl bg-neon-cyan/10 p-3 text-neon-cyan">
-                        <Bot size={20} />
-                      </span>
+                      <IconTile>
+                        <Bot />
+                      </IconTile>
                       <span className="min-w-0 flex-1">
                         <span className="block font-semibold">
                           {t("组织 Agent", "Organization Agents")}
@@ -837,7 +844,7 @@ export default function TeamSpacesPage({
                           )}
                         </span>
                       </span>
-                      <span className="inline-flex shrink-0 items-center gap-1 text-sm text-neon-cyan">
+                      <span className="inline-flex shrink-0 items-center gap-1 text-sm text-accent-text">
                         {t("在 Agent 页面管理", "Manage on the Agent page")}
                         <ArrowRight size={16} />
                       </span>
@@ -929,7 +936,7 @@ export default function TeamSpacesPage({
                         "Only the organization owner can change this setting. It can be saved now; the DM content viewing entry is not available yet.",
                       )}
                     </p>
-                    <div className="flex justify-between gap-4 border-t border-glass-border pt-4 text-sm">
+                    <div className="flex justify-between gap-4 border-t border-border pt-4 text-sm">
                       <span>
                         {t(
                           "代表组织对外通信",
