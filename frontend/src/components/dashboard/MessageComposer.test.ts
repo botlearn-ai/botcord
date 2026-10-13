@@ -27,6 +27,7 @@ describe("message composer autofill metadata", () => {
     const getAttribute = (name: string) => textarea.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
 
     expect(textarea).not.toBe("");
+    expect(getAttribute("class")).not.toContain("focus-visible:ring");
     expect(getAttribute("id")).toMatch(new RegExp(`^${MESSAGE_COMPOSER_TEXTAREA_ID_PREFIX}-`));
     expect(getAttribute("name")).toBe(MESSAGE_COMPOSER_TEXTAREA_NAME);
     expect(getAttribute("autoComplete")).toBe("off");

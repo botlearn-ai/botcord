@@ -2,14 +2,15 @@
 
 /**
  * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 的精确 selector 聚合 dashboard 状态，依赖 pathname 同步首帧 tab，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
- * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期、即时 tab 内容切换、统一自有 Bot 聊天入口、缓存资料卡、顶部个人/Team 模式切换与三栏布局编排
+ * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期、即时 tab 内容切换、统一自有 Bot 聊天入口、缓存资料卡、顶部个人/Team 模式切换、移动会话边缘滑动返回与三栏布局编排
  * [POS]: /chats 页面的顶层容器，连接路由状态、实时事件流与拆分后的 dashboard store
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
 import { openOwnerChat } from "@/lib/owner-chat-navigation";
 import { useChatViewport } from "@/hooks/useChatViewport";
-import { useEffect, useMemo, useRef } from "react";
+import { useConversationBackSwipe } from "@/hooks/useConversationBackSwipe";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useLanguage } from "@/lib/i18n";
 import { sidebar as sidebarI18n, chatPane as chatPaneI18n } from "@/lib/i18n/translations/dashboard";
@@ -961,6 +962,18 @@ export default function DashboardApp() {
     uiStore.clearPendingHumanOpen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiStore.pendingHumanOpen]);
+
+  const handleConversationSwipeBack = useCallback(() => {
+    if (teamMode) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("conversation");
+      router.replace(`/chats/team?${params}`);
+    } else {
+      useDashboardUIStore.getState().returnToMessageList();
+      router.replace("/chats/messages");
+    }
+  }, [router, searchParams, teamMode]);
+  useConversationBackSwipe(handleConversationSwipeBack);
 
   if (shouldShowBootstrapSkeleton) {
     return <DashboardShellSkeleton />;

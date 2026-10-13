@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 ui/chat/unread/owner-chat store 的会话状态、缓存消息与后端未读标记，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
- * [OUTPUT]: 对外提供 RoomList 组件，渲染消息会话列表项与刷新骨架，已有数据立即展示，并提供受 reduced-motion 约束的未读/引导动效
+ * [OUTPUT]: 对外提供 RoomList 组件，按统一最新消息排序，支持置顶、隐藏与左滑已读操作，渲染消息会话列表项与刷新骨架，并提供受 reduced-motion 约束的未读/引导动效
  * [POS]: dashboard 左侧消息导航区的会话列表渲染器，被 Sidebar 组合使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -10,7 +10,7 @@
 import EmptyState from "@/components/ui/EmptyState";
 import Badge from "@/components/ui/Badge";
 import Card from "@/components/ui/Card";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from '@/lib/i18n';
 import { roomList, messagesGrouping } from '@/lib/i18n/translations/dashboard';
 import { useRouter } from "nextjs-toploader/app";
@@ -19,8 +19,13 @@ import { useShallow } from "zustand/react/shallow";
 import { animateIfMotion, cleanupAnime } from "@/lib/anime";
 import UnreadBadge from "@/components/ui/UnreadBadge";
 import { ContactInfo, DashboardMessage, DashboardRoom } from "@/lib/types";
-import { isDashboardMessageRecalled, recalledMessageLabel } from "@/lib/message-recall";
-import { excludeSpaceRooms, getIsoTimestampValue, getRoomActivityTimestamp, humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
+import { resolveRoomListPreview } from "@/lib/room-list-preview";
+import { api } from "@/lib/api";
+import { Pin } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
+import { EMPTY_CONVERSATION_PREFERENCES, useConversationPreferencesStore } from "@/store/useConversationPreferencesStore";
+import SwipeableConversationRow from "./SwipeableConversationRow";
+import { excludeSpaceRooms, getIsoTimestampValue, humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
 import { canPrefetchMessagePage } from "@/lib/message-prefetch";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -44,23 +49,14 @@ interface RoomListProps {
 const EMPTY_CONTACTS: ContactInfo[] = [];
 
 function latestPreviewMessage(messages: DashboardMessage[] | undefined): DashboardMessage | null {
-  return messages?.findLast((m) => m.type !== "ack" && m.type !== "result" && m.type !== "error") ?? null;
+  return messages?.reduce<DashboardMessage | null>((latest, message) => {
+    if (["ack", "result", "error"].includes(message.type)) return latest;
+    return !latest || getIsoTimestampValue(message.created_at) > getIsoTimestampValue(latest.created_at) ? message : latest;
+  }, null) ?? null;
 }
 
 function latestOwnerChatPreviewMessage(messages: ReturnType<typeof useOwnerChatStore.getState>["messages"][number][] | undefined) {
   return messages?.findLast((m) => m.type !== "error" && (m.text.trim() || (m.attachments?.length ?? 0) > 0)) ?? null;
-}
-
-function getEffectiveRoomActivityTimestamp(
-  room: DashboardRoom,
-  cachedLatestMessage: DashboardMessage | null,
-  ownerChatLatestMessage: ReturnType<typeof latestOwnerChatPreviewMessage>,
-): number {
-  return Math.max(
-    getRoomActivityTimestamp(room),
-    getIsoTimestampValue(cachedLatestMessage?.created_at),
-    getIsoTimestampValue(ownerChatLatestMessage?.createdAt),
-  );
 }
 
 function buildRoomAvatarLabel(roomName: string): string {
@@ -156,7 +152,16 @@ export default function RoomList({
     }
     return m;
   }, [contacts]);
-  const isRoomUnread = useDashboardUnreadStore((state) => state.isRoomUnread);
+  const { isRoomUnread } = useDashboardUnreadStore(useShallow((state) => ({
+    isRoomUnread: state.isRoomUnread,
+    seen: state.optimisticSeenRoomIds,
+    unread: state.optimisticUnreadRoomIds,
+  })));
+  const account = humanId ? `human:${humanId}` : activeAgentId ? `agent:${activeAgentId}` : "";
+  const preferences = useConversationPreferencesStore((state) => state.accounts[account] ?? EMPTY_CONVERSATION_PREFERENCES);
+  const [openActions, setOpenActions] = useState<string | null>(null);
+  const [markingRead, setMarkingRead] = useState<string | null>(null);
+  useEffect(() => { setOpenActions(null); }, [account]);
   const ownerChatMessages = useOwnerChatStore((state) => state.messages);
   const ownerChatLoading = useOwnerChatStore((state) => state.loading);
   const ownerChatRoomId = useOwnerChatStore((state) => state.roomId);
@@ -191,20 +196,36 @@ export default function RoomList({
   // Only show onboarding state when the owner-chat store has been initialized
   // (roomId is set), to avoid false positives when store is in default empty state.
   const isOwnerChatEmpty = showUserChatEntry && Boolean(ownerChatRoomId) && !ownerChatLoading && ownerChatMessages.length === 0;
-  const displayRooms = useMemo(() => {
-    return rooms
-      .map((room, index) => {
-        const cachedLatestMessage = cachedLatestMessages[room.room_id] ?? null;
-        const ownerChatLatestForRoom = room.room_id === ownerChatRoomId ? ownerChatLatestMessage : null;
-        return {
-          room,
-          index,
-          activity: getEffectiveRoomActivityTimestamp(room, cachedLatestMessage, ownerChatLatestForRoom),
-        };
-      })
-      .sort((a, b) => b.activity - a.activity || a.index - b.index)
-      .map((entry) => entry.room);
-  }, [cachedLatestMessages, ownerChatLatestMessage, ownerChatRoomId, rooms]);
+  const roomEntries = useMemo(() => rooms.map((room, index) => ({
+    room, index,
+    preview: resolveRoomListPreview(room, cachedLatestMessages[room.room_id] ?? null,
+      room.room_id === ownerChatRoomId ? ownerChatLatestMessage : null, locale),
+  })), [rooms, cachedLatestMessages, ownerChatRoomId, ownerChatLatestMessage, locale]);
+  const displayEntries = useMemo(() => roomEntries
+    .filter(({ room, preview }) => normalizedSearchQuery || preferences.hidden[room.room_id] === undefined
+      || preview.timestamp > preferences.hidden[room.room_id])
+    .sort((a, b) => Number(preferences.pinned.includes(b.room.room_id)) - Number(preferences.pinned.includes(a.room.room_id))
+      || b.preview.timestamp - a.preview.timestamp || a.index - b.index),
+  [roomEntries, preferences, normalizedSearchQuery]);
+  useEffect(() => {
+    for (const { room, preview } of roomEntries) {
+      if (preferences.hidden[room.room_id] !== undefined && preview.timestamp > preferences.hidden[room.room_id]) {
+        useConversationPreferencesStore.getState().show(account, room.room_id);
+      }
+    }
+  }, [account, roomEntries, preferences.hidden]);
+  const markRead = async (room: DashboardRoom) => {
+    setMarkingRead(room.room_id);
+    try {
+      await api.markRoomRead(room.room_id);
+      // Do not apply a delayed response to another account's unread state.
+      const session = useDashboardSessionStore.getState();
+      const currentAccount = session.human?.human_id ? `human:${session.human.human_id}` : session.activeAgentId ? `agent:${session.activeAgentId}` : "";
+      if (currentAccount === account) await useDashboardUnreadStore.getState().markRoomSeen(room.room_id, null);
+    } catch {
+      toast({ title: locale === "zh" ? "标为已读失败，请重试" : "Could not mark as read. Please retry.", tone: "danger" });
+    } finally { setMarkingRead(null); }
+  };
   useEffect(() => {
     const shouldPulseOnboarding = showUserChatEntry && isOwnerChatEmpty;
     if (!shouldPulseOnboarding) {
@@ -239,6 +260,7 @@ export default function RoomList({
   }, [isOwnerChatEmpty, showUserChatEntry]);
 
   const handleSelect = async (room: DashboardRoom) => {
+    useConversationPreferencesStore.getState().show(account, room.room_id);
     if (isOwnerChatRoom(room.room_id)) {
       if (canPrefetchMessagePage(room.room_id)) {
         void useDashboardChatStore.getState().prefetchRoomMessages(room.room_id);
@@ -356,39 +378,19 @@ export default function RoomList({
           </div>
         </Card>
       )}
-      {displayRooms.length === 0 && !showUserChatEntry && (
+      {displayEntries.length === 0 && !showUserChatEntry && (
         <EmptyState compact bordered title={<>{t.noRooms}</>} />
       )}
-      {displayRooms.map((room) => {
+      {displayEntries.map(({ room, preview }) => {
         const ownerChatAgentId = isOwnerChatRoom(room.room_id) ? room._originAgent?.agent_id || room.owner_id : null;
         const isSelected = ownerChatAgentId
           ? messagesPane === "user-chat" && ownerChatAgentId === (userChatAgentId || activeAgentId)
           : messagesPane === "room" && focusedRoomId === room.room_id;
-        const cachedLatestMessage = cachedLatestMessages[room.room_id] ?? null;
-        const ownerChatLatestForRoom = room.room_id === ownerChatRoomId ? ownerChatLatestMessage : null;
-        // Preview text and sender must come from the same source to stay consistent
-        let previewText: string;
-        let previewSender: string;
-        if (ownerChatLatestForRoom) {
-          previewText = ownerChatLatestForRoom.text || (ownerChatLatestForRoom.attachments?.length ? "[Attachment]" : t.noMessagesYet);
-          previewSender = ownerChatLatestForRoom.senderName || "";
-        } else if (room.last_message_preview != null || room.last_sender_name != null) {
-          previewText = room.last_message_preview === "Message recalled"
-            ? recalledMessageLabel(locale)
-            : room.last_message_preview ?? t.noMessagesYet;
-          previewSender = room.last_sender_name ?? "";
-        } else if (cachedLatestMessage) {
-          previewText = isDashboardMessageRecalled(cachedLatestMessage)
-            ? recalledMessageLabel(locale)
-            : cachedLatestMessage.text || t.noMessagesYet;
-          previewSender = cachedLatestMessage.sender_name || "";
-        } else {
-          previewText = t.noMessagesYet;
-          previewSender = "";
-        }
-        const previewLine = previewSender ? `${previewSender}: ${previewText}` : previewText;
+        const previewText = preview.text || t.noMessagesYet;
+        const previewLine = preview.sender ? `${preview.sender}: ${previewText}` : previewText;
         const metaLine = roomMeta?.[room.room_id] ?? null;
-        const messageTime = formatLastMessageTime(ownerChatLatestForRoom?.createdAt || room.last_message_at || cachedLatestMessage?.created_at || null);
+        const messageTime = formatLastMessageTime(preview.at);
+        const pinned = preferences.pinned.includes(room.room_id);
         const selfRoomId = viewMode === "human" ? humanId : activeAgentId;
         const displayName = resolveDmDisplayName(
           room.room_id,
@@ -411,8 +413,22 @@ export default function RoomList({
           : null;
 
         return (
+          <SwipeableConversationRow key={room.room_id}
+            open={openActions === room.room_id}
+            onOpenChange={(open) => setOpenActions(open ? room.room_id : null)}
+            label={`${locale === "zh" ? "会话操作" : "Conversation actions"}: ${displayName}`}
+            actions={account ? [
+              { label: pinned ? (locale === "zh" ? "取消置顶" : "Unpin") : (locale === "zh" ? "置顶" : "Pin"),
+                className: "bg-surface-sunken text-text-primary", onClick: () => useConversationPreferencesStore.getState().togglePin(account, room.room_id) },
+              { label: locale === "zh" ? "标为已读" : "Mark read", className: "bg-accent text-on-accent",
+                disabled: !isUnread || markingRead !== null, onClick: () => { void markRead(room); } },
+              { label: locale === "zh" ? "不显示" : "Hide", className: "bg-warning-soft text-warning", onClick: () => {
+                useConversationPreferencesStore.getState().hide(account, room.room_id, preview.timestamp);
+                toast({ title: locale === "zh" ? "已隐藏，有新消息时重新显示" : "Hidden until a new message arrives",
+                  action: { label: locale === "zh" ? "撤销" : "Undo", onClick: () => useConversationPreferencesStore.getState().show(account, room.room_id) } });
+              } },
+            ] : []}>
           <Card variant="interactive" padding="sm"
-            key={room.room_id}
             data-room-list-row="true"
             role="button"
             tabIndex={0}
@@ -423,7 +439,7 @@ export default function RoomList({
             onTouchStart={() => prefetchRoom(room)}
             onFocus={() => prefetchRoom(room)}
             onKeyDown={(event) => handleRoomKeyDown(event, room)}
-            className={`mx-2 my-1  `}
+            className={pinned ? "bg-surface-sunken" : ""}
           >
             <div className="flex items-center gap-3">
               {isGroup && room.members_preview && room.members_preview.length >= 2 ? (
@@ -472,6 +488,7 @@ export default function RoomList({
                     ) : null}
                   </span>
                   <div className="flex shrink-0 items-center gap-2">
+                    {pinned && <Pin size={12} aria-label={locale === "zh" ? "已置顶" : "Pinned"} className="text-accent-text" />}
                     {unreadCount > 0 && (
                       <UnreadBadge count={unreadCount} />
                     )}
@@ -488,7 +505,7 @@ export default function RoomList({
                       <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
                     </span>
                   )}
-                  <p className="min-w-0 truncate text-xs text-text-secondary">
+                  <p className="min-w-0 truncate pr-6 text-xs text-text-secondary">
                     {previewLine}
                   </p>
                 </div>
@@ -500,6 +517,7 @@ export default function RoomList({
               </div>
             </div>
           </Card>
+          </SwipeableConversationRow>
         );
       })}
     </div>
