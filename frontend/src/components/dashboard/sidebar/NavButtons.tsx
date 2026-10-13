@@ -83,7 +83,7 @@ export function PrimaryNavButton({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       aria-label={label}
-      className={`${mobileHidden ? "max-md:hidden" : ""} group relative flex w-14 flex-col items-center justify-center max-md:min-w-0 max-md:flex-1 `}
+      className={`${mobileHidden ? "max-md:hidden" : ""} group relative flex flex-col items-center justify-center md:px-0.5 max-md:min-w-0 max-md:flex-1 `}
       title={title}
     >
       <span
@@ -92,8 +92,10 @@ export function PrimaryNavButton({
           active ? "opacity-100" : "opacity-0"
         }`}
       />
-      {badge}
-      {icon}
+      <span className="relative flex">
+        {icon}
+        {badge}
+      </span>
       <span className="mt-0.5 max-w-full truncate text-[11px] font-medium leading-none">{mobileLabel ? <><span className="max-md:hidden">{label}</span><span className="hidden max-md:inline">{mobileLabel}</span></> : label}</span>
     </Button>
   );

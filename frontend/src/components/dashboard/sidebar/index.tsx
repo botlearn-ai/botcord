@@ -42,7 +42,7 @@ import MessagesGroupingSidebar from "./MessagesGroupingSidebar";
 import BotsPanel from "./BotsPanel";
 import MessagesPanel from "./MessagesPanel";
 
-import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X } from "lucide-react";
+import { UserPlus, LogIn, Bot, Plus, RefreshCw, MessageSquarePlus, Search, X, House, MessageCircle, UsersRound, Compass, Wallet, ChartColumn } from "lucide-react";
 import { useAppStore } from "@/store/useAppStore";
 
 
@@ -50,66 +50,16 @@ function formatBadgeCount(count: number): string {
   return count > 99 ? "99+" : String(count);
 }
 
+const navIconProps = { className: "h-5 w-5", strokeWidth: 1.75, "aria-hidden": true } as const;
+
 const authNavItems = [
-  {
-    key: "home" as const,
-    label: "Home",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-      </svg>
-    ),
-  },
-  {
-    key: "messages" as const,
-    label: "Messages",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
-      </svg>
-    ),
-  },
-  {
-    key: "bots" as const,
-    label: "My Bots",
-    icon: <Bot className="h-5 w-5" strokeWidth={1.5} />,
-  },
-  {
-    key: "contacts" as const,
-    label: "Contacts",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-      </svg>
-    ),
-  },
-  {
-    key: "explore" as const,
-    label: "Explore",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607Z" />
-      </svg>
-    ),
-  },
-  {
-    key: "wallet" as const,
-    label: "Wallet",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3" />
-      </svg>
-    ),
-  },
-  {
-    key: "activity" as const,
-    label: "Activity",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
-      </svg>
-    ),
-  },
+  { key: "home" as const, label: "Home", icon: <House {...navIconProps} /> },
+  { key: "messages" as const, label: "Messages", icon: <MessageCircle {...navIconProps} /> },
+  { key: "bots" as const, label: "My Bots", icon: <Bot {...navIconProps} /> },
+  { key: "contacts" as const, label: "Contacts", icon: <UsersRound {...navIconProps} /> },
+  { key: "explore" as const, label: "Explore", icon: <Compass {...navIconProps} /> },
+  { key: "wallet" as const, label: "Wallet", icon: <Wallet {...navIconProps} /> },
+  { key: "activity" as const, label: "Activity", icon: <ChartColumn {...navIconProps} /> },
 ] as const;
 
 interface SidebarProps {
@@ -415,7 +365,7 @@ function Sidebar({
           <BrandMark className="h-6 w-6 text-text-primary" />
           <span className="sr-only">BotCord</span>
         </Link>
-        <div className="flex flex-1 flex-col items-center gap-1 pt-1 max-md:min-w-0 max-md:flex-row max-md:justify-around max-md:pt-0">
+        <div className="flex flex-1 flex-col items-center gap-1 pt-1 md:w-full md:px-0.5 max-md:min-w-0 max-md:flex-row max-md:justify-around max-md:pt-0">
           {navItems.map((item) => {
             const isActive = visibleSidebarTab === item.key;
             const requiresLogin = isGuest && (item.key === "contacts" || item.key === "activity");
@@ -424,7 +374,7 @@ function Sidebar({
               badge = (
                 <span
                   data-primary-nav-badge
-                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-xs font-semibold leading-none text-[var(--color-on-accent)] "
+                  className="pointer-events-none absolute -right-2.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-xs font-semibold leading-none text-[var(--color-on-accent)] "
                 >
                   {formatBadgeCount(unreadMessageCount)}
                 </span>
@@ -434,7 +384,7 @@ function Sidebar({
               badge = (
                 <span
                   data-primary-nav-badge
-                  className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-xs font-semibold text-[var(--color-on-accent)] "
+                  className="pointer-events-none absolute -right-2.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neon-cyan px-1 text-xs font-semibold text-[var(--color-on-accent)] "
                 >
                   {formatBadgeCount(pendingContactRequests)}
                 </span>
