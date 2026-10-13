@@ -861,6 +861,15 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
 /* Chat must stay within its flex slot; only the feed scrolls. */
 .dashboard-main { min-height: 0; min-width: 0; }
 @media (max-width: 767px) {
+  /* Dashboard panes own scrolling; the document must not scroll behind the
+     fixed shell or rubber-band in the opposite direction at pane boundaries. */
+  html:has(.dashboard-root), body:has(.dashboard-root) {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior-y: none;
+  }
+  .dashboard-main { overscroll-behavior-y: contain; }
   .dashboard-root { height: 100dvh; bottom: auto; padding-top: env(safe-area-inset-top); }
   .dashboard-root[data-mobile-conversation="true"] {
     padding-bottom: env(safe-area-inset-bottom);
