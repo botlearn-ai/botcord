@@ -54,7 +54,7 @@ export default function SingleSelect({
   const checkAnimationRef = useRef<ReturnType<typeof animatePop>>(null);
   const selectCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [open, setOpen] = useState(false);
-  const mobilePickerStyle = useMobilePickerStyle(open);
+  const mobilePickerStyle = useMobilePickerStyle(open, buttonRef);
 
   useEffect(() => {
     if (!open) return;

@@ -76,7 +76,7 @@ export default function MultiSelect({
   const selectionAnimationRefs = useRef<Array<ReturnType<typeof animatePop>>>([]);
   const previousValueRef = useRef(value);
   const [open, setOpen] = useState(false);
-  const mobilePickerStyle = useMobilePickerStyle(open);
+  const mobilePickerStyle = useMobilePickerStyle(open, buttonRef);
   const [query, setQuery] = useState("");
 
   const normalizedGroups = useMemo<MultiSelectGroup[]>(() => {
