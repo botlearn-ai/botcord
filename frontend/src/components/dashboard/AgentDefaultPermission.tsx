@@ -1,5 +1,6 @@
 "use client";
 import Alert from "@/components/ui/Alert";
+import { BotCordLoader } from "@/components/ui/BotCordLoader";
 
 import Button from "@/components/ui/Button";
 
@@ -110,10 +111,7 @@ export default function AgentDefaultPermission({
       )}
       {value == null ? (
         !error && (
-          <p role="status" className="flex items-center gap-2 text-xs text-text-secondary">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            {t("正在加载…", "Loading…")}
-          </p>
+          <BotCordLoader size="xs" label={t("正在加载…", "Loading…")} className="w-full py-3" />
         )
       ) : (
         <div className="flex flex-col gap-2" role="radiogroup">

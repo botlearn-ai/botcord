@@ -62,7 +62,7 @@ import {
 } from "@/store/useOpenclawHostStore";
 import InstallCommandPanel from "./InstallCommandPanel";
 import DaemonInstallCommand from "@/components/daemon/DaemonInstallCommand";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import { DeviceConnectPanel } from "./HomePanel";
 import DashboardSelect from "./DashboardSelect";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
@@ -856,9 +856,8 @@ function CreateAgentDialog({
 
         {!loaded && loading ? (
           <div className="flex items-center justify-center py-10 text-text-secondary">
-            <MobileBotCordLoading
+            <BotCordLoadingBlock
               label={locale === "zh" ? "正在加载设备..." : "Loading devices..."}
-              textClassName="text-sm text-text-secondary"
             />
           </div>
         ) : showEmptyState ? (
@@ -1817,11 +1816,10 @@ function OpenclawBranch({ onSuccess, onClose }: OpenclawBranchProps) {
           </Button>
         </div>
         {!loaded && (
-          <MobileBotCordLoading
+          <BotCordLoadingBlock
             label="Loading registered hosts…"
             size="sm"
             className="mt-2 justify-start"
-            textClassName="text-xs text-text-secondary"
           />
         )}
       </div>

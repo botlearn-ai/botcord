@@ -30,7 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Loader2, RotateCcw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PublicRoomMember } from "@/lib/types";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import {
   usePolicyStore,
   type AttentionMode,
@@ -209,11 +209,10 @@ export default function RoomPolicyModal({
 
         {loading && !data ? (
           <Card padding="none" data-motion-item className="flex items-center gap-2 px-3 py-3">
-            <MobileBotCordLoading
+            <BotCordLoadingBlock
               label="加载中…"
               size="sm"
               className="justify-start"
-              textClassName="text-sm text-text-secondary"
             />
           </Card>
         ) : error && !data ? (
@@ -530,11 +529,10 @@ function OverrideForm({
         <Card padding="none" className="mt-3 p-2">
           {membersLoading ? (
             <div className="flex items-center gap-2 px-1 py-2 text-xs text-text-secondary">
-              <MobileBotCordLoading
+              <BotCordLoadingBlock
                 label="加载成员中…"
                 size="sm"
                 className="justify-start"
-                textClassName="text-xs text-text-secondary"
               />
             </div>
           ) : members.length === 0 ? (

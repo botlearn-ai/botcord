@@ -1,6 +1,7 @@
 "use client";
 
 import IconButton from "@/components/ui/IconButton";
+import { BotCordLoader } from "@/components/ui/BotCordLoader";
 import {
   useCallback,
   useEffect,
@@ -11,7 +12,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Download, FileText, Loader2, X } from "lucide-react";
+import { Download, FileText, X } from "lucide-react";
 import type { Attachment } from "@/lib/types";
 import { cleanupAnime, createTimelineIfMotion } from "@/lib/anime";
 import {
@@ -271,8 +272,8 @@ export default function DocumentPreviewPane({ attachment, onClose }: DocumentPre
     }
     if (loading) {
       return (
-        <div className="flex h-full items-center justify-center text-text-secondary">
-          <Loader2 className="h-5 w-5 animate-spin" />
+        <div className="flex h-full items-center justify-center">
+          <BotCordLoader size="sm" label="Loading preview" showLabel={false} />
         </div>
       );
     }

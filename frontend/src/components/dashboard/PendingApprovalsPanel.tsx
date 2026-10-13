@@ -21,7 +21,7 @@ import { humansApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { pendingApprovalsPanel } from "@/lib/i18n/translations/dashboard";
 import type { PendingApproval } from "@/lib/types";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 
 type ActionState = { id: string; decision: "approve" | "reject" } | null;
 
@@ -71,11 +71,10 @@ export default function PendingApprovalsPanel() {
   if (loading && approvals.length === 0) {
     return (
       <Card padding="sm" className="mb-4">
-        <MobileBotCordLoading
+        <BotCordLoadingBlock
           label={t.loading}
           size="sm"
           className="justify-start"
-          textClassName="text-xs text-text-secondary"
         />
       </Card>
     );

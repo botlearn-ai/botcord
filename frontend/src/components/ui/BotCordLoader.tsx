@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 BrandMark 的 cord 路径、全局 botcord-loader CSS 动效（Node·Cord 发送态）与 clsx 组合外部样式
- * [OUTPUT]: 对外提供 BotCordLoader、BotCordLoadingScreen 与移动端品牌加载状态，统一品牌加载动效
+ * [OUTPUT]: 对外提供 BotCordLoader、BotCordLoadingScreen 与区块级 BotCordLoadingBlock，统一品牌加载动效
  * [POS]: ui 基础加载原语，供 App Router、dashboard 冷启动与公开分享页复用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -24,11 +24,10 @@ interface BotCordLoadingScreenProps {
   className?: string;
 }
 
-interface MobileBotCordLoadingProps {
+interface BotCordLoadingBlockProps {
   label: string;
   size?: BotCordLoaderSize;
   className?: string;
-  textClassName?: string;
 }
 
 const visualSize: Record<BotCordLoaderSize, string> = {
@@ -78,16 +77,14 @@ export function BotCordLoadingScreen({
   );
 }
 
-export function MobileBotCordLoading({
+export function BotCordLoadingBlock({
   label,
   size = "sm",
   className,
-  textClassName,
-}: MobileBotCordLoadingProps) {
+}: BotCordLoadingBlockProps) {
   return (
     <div className={clsx("flex items-center justify-center", className)}>
-      <BotCordLoader label={label} size={size} className="md:hidden" />
-      <span className={clsx("hidden md:inline-flex", textClassName)}>{label}</span>
+      <BotCordLoader label={label} size={size} />
     </div>
   );
 }

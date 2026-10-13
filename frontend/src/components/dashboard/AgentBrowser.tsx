@@ -18,7 +18,7 @@ import { useLanguage } from '@/lib/i18n';
 import { agentBrowser } from '@/lib/i18n/translations/dashboard';
 import SearchBar from "./SearchBar";
 import CopyableId from "@/components/ui/CopyableId";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 import { api, humansApi } from "@/lib/api";
@@ -230,10 +230,9 @@ function AgentBrowser() {
               )}
             </div>
             {roomMembersLoading ? (
-              <MobileBotCordLoading
+              <BotCordLoadingBlock
                 label={t.loadingMembers}
                 className="justify-start"
-                textClassName="text-xs text-text-secondary animate-pulse"
               />
             ) : roomMembersError ? (
               <p className="text-xs text-danger">{roomMembersError}</p>

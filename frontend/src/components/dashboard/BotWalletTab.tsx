@@ -22,7 +22,7 @@ import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useConfirm } from "@/store/useConfirmStore";
-import { BotCordLoader, MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoader, BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import TransferDialog from "./TransferDialog";
 import TopupDialog from "./TopupDialog";
 import WithdrawDialog from "./WithdrawDialog";
@@ -140,9 +140,8 @@ export default function BotWalletTab({
             </Button>
           </>
         ) : (
-          <MobileBotCordLoading
+          <BotCordLoadingBlock
             label={tc.loading}
-            textClassName="text-sm text-neon-cyan"
           />
         )}
       </div>
@@ -365,10 +364,9 @@ function BotWithdrawals({
         </Button>
       </div>
       {!loaded && loading ? (
-        <MobileBotCordLoading
+        <BotCordLoadingBlock
           label={t.loadingWithdrawals}
           className="py-2"
-          textClassName="text-xs text-text-secondary"
         />
       ) : error && items.length === 0 ? (
         <Alert tone="danger" >{error}</Alert>

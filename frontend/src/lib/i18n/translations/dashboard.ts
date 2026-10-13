@@ -3638,6 +3638,7 @@ export const botDetailDrawer: TranslationMap<{
     refresh: string
     daemonUnavailable: string
     loadFailed: string
+    loading: string
     empty: string
     tooLarge: string
     previewTooLarge: string
@@ -3736,6 +3737,7 @@ export const botDetailDrawer: TranslationMap<{
       refresh: 'Refresh',
       daemonUnavailable: 'Daemon is offline or this Agent is not hosted by a daemon',
       loadFailed: 'Failed to load files',
+      loading: 'Loading file…',
       empty: 'No files to display',
       tooLarge: 'Too large',
       previewTooLarge: 'File exceeds the preview size limit',
@@ -3834,6 +3836,7 @@ export const botDetailDrawer: TranslationMap<{
       refresh: '刷新',
       daemonUnavailable: '设备离线，或此 Agent 未由设备托管',
       loadFailed: '读取文件失败',
+      loading: '正在读取文件…',
       empty: '没有可显示的文件',
       tooLarge: '无法预览',
       previewTooLarge: '文件大小超过预览限制',

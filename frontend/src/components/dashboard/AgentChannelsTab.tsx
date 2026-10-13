@@ -46,7 +46,7 @@ import {
   type GatewayStatus,
   type WechatLoginStatus,
 } from "@/store/useAgentGatewayStore";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import { animateOverlayPanelEnter, animateOverlayPanelExit, cleanupAnime } from "@/lib/anime";
 import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
 
@@ -332,11 +332,10 @@ export default function AgentChannelsTab({ agentId, hostingKind }: Props) {
 
         {loading && list.length === 0 ? (
           <Card>
-            <MobileBotCordLoading
+            <BotCordLoadingBlock
               label="加载中…"
               size="sm"
               className="justify-start"
-              textClassName="text-xs text-text-secondary"
             />
           </Card>
         ) : list.length === 0 ? (

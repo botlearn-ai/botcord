@@ -7,6 +7,7 @@ import Avatar from "@/components/ui/Avatar";
 import CopyableId from "@/components/ui/CopyableId";
 import Field from "@/components/ui/Field";
 import { toast } from "@/store/useToastStore";
+import { BotCordLoader } from "@/components/ui/BotCordLoader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import DialogSurface from "@/components/ui/DialogSurface";
@@ -1097,7 +1098,7 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
               </div>
               <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed text-text-secondary">
                 {selectedFileLoading === selectedFile.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <BotCordLoader size="xs" label={t.files.loading} className="w-full py-6" />
                 ) : selectedFile.error
                   ? selectedFile.error
                   : selectedFile.truncated

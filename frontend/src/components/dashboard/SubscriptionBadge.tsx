@@ -19,7 +19,7 @@ import { api } from "@/lib/api";
 import type { SubscriptionProduct } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
 import { Loader2 } from "lucide-react";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardSubscriptionStore } from "@/store/useDashboardSubscriptionStore";
@@ -303,10 +303,9 @@ export default function SubscriptionBadge({
             </h2>
 
             {loading ? (
-              <MobileBotCordLoading
+              <BotCordLoadingBlock
                 label={t.loading}
                 className="py-8"
-                textClassName="text-center text-sm text-text-secondary animate-pulse"
               />
             ) : productData ? (
               <div data-motion-item className="space-y-4">

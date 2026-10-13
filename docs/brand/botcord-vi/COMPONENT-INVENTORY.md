@@ -35,7 +35,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/AttachmentItem.tsx](../../../frontend/src/components/ui/AttachmentItem.tsx) | 5 | 是 |
 | [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 17 | 是 |
 | [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 53 | 是 |
-| [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 34 | 是 |
+| [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 39 | 是 |
 | [components/ui/BrandMark.tsx](../../../frontend/src/components/ui/BrandMark.tsx) | 6 | 是 |
 | [components/ui/Button.tsx](../../../frontend/src/components/ui/Button.tsx) | 106 | 是 |
 | [components/ui/Card.tsx](../../../frontend/src/components/ui/Card.tsx) | 78 | 是 |
@@ -54,7 +54,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/ImagePreviewOverlay.tsx](../../../frontend/src/components/ui/ImagePreviewOverlay.tsx) | 4 | 是 |
 | [components/ui/Input.tsx](../../../frontend/src/components/ui/Input.tsx) | 37 | 是 |
 | [components/ui/LinkButton.tsx](../../../frontend/src/components/ui/LinkButton.tsx) | 10 | 是 |
-| [components/ui/MarkdownContent.tsx](../../../frontend/src/components/ui/MarkdownContent.tsx) | 8 | 是 |
+| [components/ui/MarkdownContent.tsx](../../../frontend/src/components/ui/MarkdownContent.tsx) | 7 | 是 |
 | [components/ui/MarketingButton.tsx](../../../frontend/src/components/ui/MarketingButton.tsx) | 4 | 是 |
 | [components/ui/MarketingCard.tsx](../../../frontend/src/components/ui/MarketingCard.tsx) | 3 | 是 |
 | [components/ui/Menu.tsx](../../../frontend/src/components/ui/Menu.tsx) | 3 | 是 |
@@ -64,8 +64,8 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/Radio.tsx](../../../frontend/src/components/ui/Radio.tsx) | 9 | 是 |
 | [components/ui/SearchInput.tsx](../../../frontend/src/components/ui/SearchInput.tsx) | 2 | 是 |
 | [components/ui/SectionHeading.tsx](../../../frontend/src/components/ui/SectionHeading.tsx) | 5 | 是 |
-| [components/ui/Select.tsx](../../../frontend/src/components/ui/Select.tsx) | 8 | 是 |
-| [components/ui/SignalDot.tsx](../../../frontend/src/components/ui/SignalDot.tsx) | 2 | 是 |
+| [components/ui/Select.tsx](../../../frontend/src/components/ui/Select.tsx) | 7 | 是 |
+| [components/ui/SignalDot.tsx](../../../frontend/src/components/ui/SignalDot.tsx) | 3 | 是 |
 | [components/ui/SingleSelect.tsx](../../../frontend/src/components/ui/SingleSelect.tsx) | 2 | 是 |
 | [components/ui/Skeleton.tsx](../../../frontend/src/components/ui/Skeleton.tsx) | 9 | 是 |
 | [components/ui/StatusCapsule.tsx](../../../frontend/src/components/ui/StatusCapsule.tsx) | 2 | 是 |
@@ -75,7 +75,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/Table.tsx](../../../frontend/src/components/ui/Table.tsx) | 4 | 是 |
 | [components/ui/Tabs.tsx](../../../frontend/src/components/ui/Tabs.tsx) | 14 | 是 |
 | [components/ui/Toast.tsx](../../../frontend/src/components/ui/Toast.tsx) | 2 | 是 |
-| [components/ui/Tooltip.tsx](../../../frontend/src/components/ui/Tooltip.tsx) | 1 | 是 |
+| [components/ui/Tooltip.tsx](../../../frontend/src/components/ui/Tooltip.tsx) | 2 | 是 |
 | [components/ui/TypewriterCode.tsx](../../../frontend/src/components/ui/TypewriterCode.tsx) | 1 | 是 |
 | [components/ui/UnreadBadge.tsx](../../../frontend/src/components/ui/UnreadBadge.tsx) | 4 | 是 |
 
@@ -112,7 +112,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/dashboard/BotDetailDrawer.tsx](../../../frontend/src/components/dashboard/BotDetailDrawer.tsx) | 1 | 否 |
 | [components/dashboard/BotRuntimeCapabilitiesPanel.tsx](../../../frontend/src/components/dashboard/BotRuntimeCapabilitiesPanel.tsx) | 2 | 否 |
 | [components/dashboard/BotWalletTab.tsx](../../../frontend/src/components/dashboard/BotWalletTab.tsx) | 1 | 否 |
-| [components/dashboard/ChatMarkdown.tsx](../../../frontend/src/components/dashboard/ChatMarkdown.tsx) | 3 | 否 |
+| [components/dashboard/ChatMarkdown.tsx](../../../frontend/src/components/dashboard/ChatMarkdown.tsx) | 2 | 否 |
 | [components/dashboard/ChatPane.tsx](../../../frontend/src/components/dashboard/ChatPane.tsx) | 1 | 否 |
 | [components/dashboard/ComposerPopover.tsx](../../../frontend/src/components/dashboard/ComposerPopover.tsx) | 2 | 否 |
 | [components/dashboard/CompositeAvatar.tsx](../../../frontend/src/components/dashboard/CompositeAvatar.tsx) | 4 | 否 |

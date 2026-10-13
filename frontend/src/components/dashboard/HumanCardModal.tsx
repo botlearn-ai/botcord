@@ -13,7 +13,7 @@ import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
  */
 
 import { useLanguage } from "@/lib/i18n";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import { animeStagger, cleanupAnime, createTimelineIfMotion } from "@/lib/anime";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
 import type { PublicHumanProfile } from "@/lib/types";
@@ -248,10 +248,9 @@ function HumanCardModal({
 
         {loading ? (
           <div data-profile-modal-part className="space-y-3 py-2">
-            <MobileBotCordLoading
+            <BotCordLoadingBlock
               label="Loading profile..."
               className="justify-start"
-              textClassName="text-xs text-text-secondary "
             />
           </div>
         ) : error ? (

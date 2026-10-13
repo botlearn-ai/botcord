@@ -11,7 +11,7 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { useShallow } from "zustand/react/shallow";
 import { useDashboardWalletStore } from "@/store/useDashboardWalletStore";
-import { BotCordLoader, MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoader, BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 
 function formatCoinAmount(minorStr: string): string {
   const minor = parseInt(minorStr, 10);
@@ -55,9 +55,8 @@ export default function LedgerList() {
   if (walletLoading && walletLedger.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
-        <MobileBotCordLoading
+        <BotCordLoadingBlock
           label="Loading ledger..."
-          textClassName="animate-pulse text-sm text-accent-text"
         />
       </div>
     );

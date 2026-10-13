@@ -45,7 +45,7 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 | 标签、计数、状态徽章 | `Badge`；未读数字用 `UnreadBadge` |
 | 卡片 / 可点击卡片 | `Card`（`variant="interactive"`、`as="button"`） |
 | 空列表、无结果 | `EmptyState`（lucide 图标 + 标题 + 一句说明 + 可选操作） |
-| 加载占位 | `Skeleton`；整页加载用 `BotCordLoader` |
+| 加载占位 | `Skeleton`；整页加载用 `BotCordLoader`；面板 / 列表 / 弹窗内容加载用 `BotCordLoadingBlock` |
 | 分段切换 / 标签页 | `Tabs`（`segmented` 或 `underline`） |
 | 下拉菜单、更多操作 | `Menu` / `MenuItem`（危险项 `danger`） |
 | 悬停说明 | `Tooltip` |
@@ -129,7 +129,7 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 
 - **StatusCapsule**：头像 + 名称（13px/600）+ 一行状态（12px `text-text-secondary`），高 40（紧凑 32）。等待授权时右侧放"拒绝 / 允许"两个 `Button`，"允许"用 `primary`。
 - **NodeCordStatus**：`sending` / `thinking` / `delivered` / `waiting` / `offline` 表达网络状态。
-- **严肃场景只用静态**：钱包、转账、签名、密钥、安全告警里，`NodeCordStatus state="static"`，不放循环动画，不用拟人化表达和玩笑语气。
+- **严肃场景只用静态**：钱包、转账、签名、密钥、安全告警里，`NodeCordStatus state="static"`，不在业务页面自加循环动画，不用拟人化表达和玩笑语气。数据加载照常用 `BotCordLoadingBlock`；转账专用动效由组件库设计提供。
 
 ## 4. 图标
 
@@ -179,7 +179,7 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 3. 浅色和深色主题都看一遍（`html[data-theme="light" | "dark"]`）：文字对比度、边框、hover / focus 状态。
 4. 移动端宽度看一遍（dashboard 有 `max-md:` 布局）。
 5. 新组件：有 `*.test.tsx`，文件头保留 `[INPUT]/[OUTPUT]/[POS]/[PROTOCOL]` 注释，交互组件有 role / aria 和键盘操作。
-6. 一屏只有一个主按钮；循环动画最多一处；钱包 / 签名 / 安全界面无动画。
+6. 一屏只有一个主按钮；循环动画最多一处；钱包 / 签名 / 安全界面除组件库加载动效外无动画。
 
 ### 移动端验收
 
