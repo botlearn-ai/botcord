@@ -576,3 +576,13 @@ BOTLEARN_REQUIRE_EMAIL_VERIFIED: bool = os.getenv(
 # Public WS URL advertised to the BotLearn frontend after session exchange.
 # Falls back to ``HUB_PUBLIC_BASE_URL`` (ws/wss) when unset.
 BOTLEARN_WS_URL: str | None = os.getenv("BOTLEARN_WS_URL") or None
+
+# ---------------------------------------------------------------------------
+# Expo push notifications (mobile client)
+# ---------------------------------------------------------------------------
+# When enabled, new messages delivered to a Human's realtime topic are also
+# sent as Expo pushes to that user's registered devices (``push_tokens``).
+EXPO_PUSH_ENABLED: bool = os.getenv("EXPO_PUSH_ENABLED", "true").lower() in ("true", "1", "yes")
+# Optional Expo access token (required only when "enhanced push security" is
+# turned on for the Expo project). Sent as ``Authorization: Bearer``.
+EXPO_ACCESS_TOKEN: str | None = os.getenv("EXPO_ACCESS_TOKEN") or None

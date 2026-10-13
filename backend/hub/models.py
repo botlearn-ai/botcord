@@ -1733,6 +1733,35 @@ class UserRole(Base):
 
 
 # ---------------------------------------------------------------------------
+# Mobile push notifications
+# ---------------------------------------------------------------------------
+
+
+class PushToken(Base):
+    """Expo push token registered by a user's mobile/web client."""
+
+    __tablename__ = "push_tokens"
+    __table_args__ = (
+        CheckConstraint(
+            "platform IN ('ios', 'android', 'web')", name="ck_push_token_platform"
+        ),
+    )
+
+    id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid.uuid4)
+    user_id: Mapped[_uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("public.users.id"), nullable=False, index=True
+    )
+    token: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
+    platform: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+# ---------------------------------------------------------------------------
 # Beta invite gate
 # ---------------------------------------------------------------------------
 
