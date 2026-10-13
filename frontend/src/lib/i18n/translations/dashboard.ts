@@ -3844,6 +3844,7 @@ export const botDetailDrawer: TranslationMap<{
 export const streamProcess: TranslationMap<{
   thinking: string
   thinkingNow: string
+  thought: string
   replying: string
   runningTool: (name: string) => string
   running: string
@@ -3860,6 +3861,7 @@ export const streamProcess: TranslationMap<{
   en: {
     thinking: 'Thinking',
     thinkingNow: 'Thinking',
+    thought: 'Thought',
     replying: 'Replying',
     runningTool: (name) => `Running ${name}`,
     running: 'Running',
@@ -3876,6 +3878,7 @@ export const streamProcess: TranslationMap<{
   zh: {
     thinking: '思考',
     thinkingNow: '正在思考',
+    thought: '已思考',
     replying: '正在回复',
     runningTool: (name) => `正在运行 ${name}`,
     running: '运行中',
