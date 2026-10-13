@@ -2507,6 +2507,7 @@ async def get_room_messages(
         msg = {
             "hub_msg_id": rec.hub_msg_id,
             "msg_id": rec.msg_id,
+            "room_id": rec.room_id,
             "sender_id": rec.sender_id,
             "sender_name": sender_names.get(rec.sender_id),
             "text": display_text,

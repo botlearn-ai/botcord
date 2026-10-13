@@ -116,6 +116,29 @@ describe("useOwnerChatStore room summaries", () => {
     });
   });
 
+  it("keeps the newest history page when the API omits per-message room_id", async () => {
+    const newestFirst = Array.from({ length: 50 }, (_, i) => {
+      const n = 60 - i;
+      const message = makeDashboardMessage({
+        hub_msg_id: `msg_${n}`,
+        msg_id: `msg_${n}`,
+        text: `message ${n}`,
+        created_at: new Date(Date.UTC(2026, 9, 13, 0, n)).toISOString(),
+      });
+      delete (message as Partial<DashboardMessage>).room_id;
+      return message;
+    });
+    mocks.getRoomMessages.mockResolvedValue({ messages: newestFirst, has_more: true });
+    useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
+
+    await useOwnerChatStore.getState().loadInitial("rm_oc_real");
+
+    const messages = useOwnerChatStore.getState().messages;
+    expect(messages).toHaveLength(50);
+    expect(messages.at(-1)?.text).toBe("message 60");
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(1);
+  });
+
   it("patches the owner-chat room summary for optimistic sends", () => {
     useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
 
