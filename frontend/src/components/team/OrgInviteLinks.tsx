@@ -216,12 +216,13 @@ export default function OrgInviteLinks({
               "Who is it for? (optional), e.g. Alice",
             )}
             aria-label={t("对方称呼", "Invitee name")}
+            className="min-w-0 sm:flex-1"
             onChange={(e) => setLabel(e.target.value)}
           />
           <Button
             variant="primary"
             type="button"
-            className="w-full shrink-0"
+            className="shrink-0 max-sm:w-full"
             disabled={busy}
             onClick={() =>
               void run(async () => {
