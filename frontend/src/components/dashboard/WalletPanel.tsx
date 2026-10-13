@@ -21,7 +21,7 @@ import { api, ApiError, type ActiveIdentity } from "@/lib/api";
 import type { WithdrawalResponse } from "@/lib/types";
 import { useShallow } from "zustand/react/shallow";
 import { ChevronRight, Eye, EyeOff, Loader2 } from "lucide-react";
-import { BotCordLoader, MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoader, BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import {
   useDashboardWalletStore,
@@ -214,7 +214,7 @@ function WalletPanel() {
           )}
           {!walletsLoaded ? (
             <Card padding="md" className="flex min-h-[22rem] items-center justify-center">
-              <MobileBotCordLoading label={tc.loading} />
+              <BotCordLoadingBlock label={tc.loading} />
             </Card>
           ) : (
             <Card padding="md" className="">
@@ -491,7 +491,7 @@ function MergedLedgerSection({
       </div>
 
       {entries.length === 0 && loading ? (
-        <MobileBotCordLoading label={loadingMoreLabel} />
+        <BotCordLoadingBlock label={loadingMoreLabel} />
       ) : entries.length === 0 ? (
         <EmptyState compact bordered title={<>{emptyLabel}</>} />
       ) : (
@@ -616,10 +616,9 @@ function RecentWithdrawals({
       </div>
 
       {loading && items.length === 0 ? (
-        <MobileBotCordLoading
+        <BotCordLoadingBlock
           label={t.loadingWithdrawals}
           className="justify-start"
-          textClassName="text-sm text-text-secondary"
         />
       ) : error && items.length === 0 ? (
         <Alert tone="danger" className="">

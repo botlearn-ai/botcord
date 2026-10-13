@@ -10,7 +10,7 @@ import Card from "@/components/ui/Card";
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import LinkButton from "@/components/ui/LinkButton";
 import { userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
@@ -240,10 +240,9 @@ function OrgInviteLandingContent({ code }: { code: string }) {
   if (!preview) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <MobileBotCordLoading
+        <BotCordLoadingBlock
           label={t("正在加载邀请…", "Loading invite…")}
           size="md"
-          textClassName="animate-pulse text-lg text-neon-cyan"
         />
       </div>
     );

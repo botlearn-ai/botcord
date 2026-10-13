@@ -18,7 +18,7 @@ import { getPaidRoomPreviewStore } from "./paid-room-preview-cache";
 import type { PublicRoomMessagePreview } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
 import { chatPane } from "@/lib/i18n/translations/dashboard";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import SubscriptionBadge from "./SubscriptionBadge";
 
 
@@ -84,10 +84,9 @@ export default function PaidRoomPreview({
 
           {loading ? (
             <Card padding="md" className="flex flex-col items-center justify-center">
-              <MobileBotCordLoading
+              <BotCordLoadingBlock
                 label={t.loadingPreviewMessages}
                 size="sm"
-                textClassName="text-xs text-text-secondary"
               />
             </Card>
           ) : error && messages === null ? (

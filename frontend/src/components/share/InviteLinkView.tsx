@@ -18,7 +18,7 @@ import type { InvitePreviewResponse } from "@/lib/types";
 import { loadInviteLanding, type InviteAuthMode } from "./landing-requests";
 import { useLanguage } from "@/lib/i18n";
 import { inviteLanding } from "@/lib/i18n/translations/dashboard";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 
 export default function InviteLinkView({ inviteCode }: { inviteCode: string }) {
   return <InviteLinkContent key={inviteCode} inviteCode={inviteCode} />;
@@ -79,10 +79,9 @@ function InviteLinkContent({ inviteCode }: { inviteCode: string }) {
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <MobileBotCordLoading
+        <BotCordLoadingBlock
           label={t.loading}
           size="md"
-          textClassName="animate-pulse text-lg text-neon-cyan"
         />
       </div>
     );

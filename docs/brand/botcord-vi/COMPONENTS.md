@@ -58,7 +58,7 @@ type AgentSignal = "idle" | "online" | "thinking" | "replying" | "waiting" | "do
 ```ts
 <NodeCordStatus state: "static" | "sending" | "thinking" | "delivered" | "waiting" | "offline" size?: number className? />
 ```
-Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 一致），SVG 动画，墨色跟随 `currentColor`，信号节点用品牌色。`static` 用于钱包、签名等严肃场景。
+Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 一致），SVG 动画，墨色跟随 `currentColor`，信号节点用品牌色。`static` 用于钱包、签名等严肃场景的状态展示；这些场景的数据加载仍用 `BotCordLoadingBlock`。
 
 ### `Badge`
 ```ts
@@ -134,6 +134,7 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 
 ## 加载预览与浏览器图标
 
+- 区块级加载（面板、列表、弹窗内容）用 `BotCordLoadingBlock`，所有屏宽都显示品牌动效，钱包、转账页面同样适用（转账专用动效如有需要，在组件库中设计）；按钮内的提交 / 刷新状态仍用 `Button loading` 或行内 spinner。
 - `/design#loading` 展示 `BotCordLoader` 的 xs / sm / md 尺寸；“预览全页面加载”复用根路由等待态的 `BotCordLoadingScreen`，使用原生 dialog，支持 Esc、关闭按钮和焦点返回。
 - favicon 使用固定浅色底板、深色连线和品牌色节点，不随系统深色模式翻转。浏览器标签背景独立于页面主题，底板保证选中、未选中和着色标签下的可见度。SVG 源文件与 `public/favicon.svg` 同步，ICO 提供 16 / 32 / 48px 回退。
 

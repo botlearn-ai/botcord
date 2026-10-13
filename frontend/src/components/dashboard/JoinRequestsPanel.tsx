@@ -14,7 +14,7 @@ import { useLanguage } from "@/lib/i18n";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import type { JoinRequestItem } from "@/lib/types";
 import CopyableId from "@/components/ui/CopyableId";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import { Loader2 } from "lucide-react";
 
 interface JoinRequestsPanelProps {
@@ -75,10 +75,9 @@ export default function JoinRequestsPanel({ roomId }: JoinRequestsPanelProps) {
 
   if (loading) {
     return (
-      <MobileBotCordLoading
+      <BotCordLoadingBlock
         label={`${t.joinRequests}...`}
         className="px-2 py-1 justify-start"
-        textClassName="text-xs text-text-secondary animate-pulse"
       />
     );
   }

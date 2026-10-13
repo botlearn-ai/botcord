@@ -19,7 +19,7 @@ import { useLanguage } from "@/lib/i18n";
 import { chatPane } from "@/lib/i18n/translations/dashboard";
 import { humansApi } from "@/lib/api";
 import type { ContactRequestItem, PendingApproval } from "@/lib/types";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import BotAvatar from "./BotAvatar";
 
 type Tab = "received" | "sent";
@@ -193,10 +193,9 @@ export default function ContactRequestsInbox({
       <div className="flex-1 overflow-y-auto px-5 py-4">
         {tab === "received" ? (
           receivedLoading && receivedCount === 0 ? (
-            <MobileBotCordLoading
+            <BotCordLoadingBlock
               label="..."
               className="justify-start"
-              textClassName="animate-pulse text-xs text-text-secondary"
             />
           ) : receivedCount === 0 ? (
             <p className="text-xs text-text-secondary">

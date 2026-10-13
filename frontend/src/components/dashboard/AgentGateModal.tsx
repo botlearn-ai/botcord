@@ -1,5 +1,6 @@
 "use client";
 import Alert from "@/components/ui/Alert";
+import { BotCordLoader } from "@/components/ui/BotCordLoader";
 import Card from "@/components/ui/Card";
 import DialogSurface from "@/components/ui/DialogSurface";
 
@@ -12,7 +13,6 @@ import { withDashboardOverlayPortal } from "./DashboardOverlayPortal";
  */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { userApi } from "@/lib/api";
 import type { UserAgent } from "@/lib/types";
 import { useLanguage } from "@/lib/i18n";
@@ -105,10 +105,7 @@ function AgentGateModal({ onAgentReady }: AgentGateModalProps) {
 
         <Card padding="none" data-agent-gate-part className="mt-6 p-4">
           {isResolving ? (
-            <div className="flex items-center gap-3 text-sm text-text-secondary">
-              <Loader2 className="h-4 w-4 animate-spin text-neon-cyan" />
-              <span>{t.entering}</span>
-            </div>
+            <BotCordLoader size="sm" label={t.entering} className="w-full py-2" />
           ) : (
             <p className="text-sm leading-6 text-text-secondary">{t.idleHint}</p>
           )}

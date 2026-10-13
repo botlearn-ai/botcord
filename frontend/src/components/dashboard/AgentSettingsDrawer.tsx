@@ -1,4 +1,5 @@
 "use client";
+import { BotCordLoader } from "@/components/ui/BotCordLoader";
 import Skeleton from "@/components/ui/Skeleton";
 import Tabs from "@/components/ui/Tabs";
 import Field from "@/components/ui/Field";
@@ -858,7 +859,7 @@ function AgentSettingsDrawer({
                       </div>
                       <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed text-text-secondary">
                         {selectedFileLoading === selectedFile.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <BotCordLoader size="xs" label={t.files.loading} className="w-full py-6" />
                         ) : selectedFile.error
                           ? selectedFile.error
                           : selectedFile.truncated

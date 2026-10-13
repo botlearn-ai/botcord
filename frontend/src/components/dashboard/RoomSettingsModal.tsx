@@ -17,7 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Loader2, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "nextjs-toploader/app";
 import CopyableId from "@/components/ui/CopyableId";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import { api, humansApi, userApi } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import {
@@ -806,10 +806,9 @@ function RoomSettingsModal({
 
                 <Card padding="none" className="max-h-72 overflow-y-auto">
                   {membersLoading ? (
-                    <MobileBotCordLoading
+                    <BotCordLoadingBlock
                       label={tm.loadingMembers}
                       className="px-4 py-4 justify-start"
-                      textClassName="text-xs text-text-secondary "
                     />
                   ) : membersError ? (
                     <Alert tone="danger" >{membersError}</Alert>

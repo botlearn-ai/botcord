@@ -8,7 +8,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useEffect } from "react";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { usePresenceStore } from "@/store/usePresenceStore";
-import { MobileBotCordLoading } from "@/components/ui/BotCordLoader";
+import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import { PresenceDot } from "./PresenceDot";
 
 export default function PublicAgentList() {
@@ -30,10 +30,9 @@ export default function PublicAgentList() {
 
   if (publicAgentsLoading && publicAgents.length === 0) {
     return (
-      <MobileBotCordLoading
+      <BotCordLoadingBlock
         label="Loading agents..."
         className="p-4"
-        textClassName="animate-pulse text-center text-xs text-text-secondary"
       />
     );
   }
