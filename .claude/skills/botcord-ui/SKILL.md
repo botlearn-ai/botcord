@@ -51,6 +51,13 @@ description: 在 BotCord 仓库创建或修改前端页面、组件和样式时�
 | 悬停说明 | `Tooltip` |
 | 开关 / 勾选 | `Switch` / `Checkbox` |
 | 可复制的 ID | `CopyableId`（ID 用 Geist Mono） |
+| 图标底块（标题、入口卡片、空引导） | `IconTile`（accent / neutral，sm / md / lg） |
+| agent 出席状态（在线、忙碌、暂离） | `PresenceIndicator`；运行状态仍用 `SignalDot` |
+| 带标题和说明的单选卡片 | `ChoiceCard`（外层 fieldset + legend） |
+| “对象 + 属性”标签、可移除规则 | `Chip`（`onRemove` 必须配 `removeLabel`） |
+| 描边分隔的成组列表 | `ListGroup` / `ListGroupItem` |
+| 页面 / 引导区标题组 | `PageHeader`（eyebrow、icon、description、actions） |
+| 需要用户处理的横幅 | `Alert tone="accent"` + `icon` |
 | Logo、背景图形 | `BrandMark`、`CordField`（只用于营销页 hero、分享图、空状态插画，不进 dashboard 工作区） |
 
 找不到合适组件：先在 COMPONENTS.md 补契约、在 `components/ui/` 实现，再使用。

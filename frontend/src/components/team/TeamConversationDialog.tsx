@@ -227,7 +227,7 @@ export default function TeamConversationDialog({
                       key={agent.agent_id}
                       label={
                         <>
-                          <Bot size={15} className="shrink-0 text-neon-cyan" />
+                          <Bot size={15} className="shrink-0 text-accent-text" />
                           <span className="min-w-0 flex-1">
                             <span className="block break-words text-sm">
                               {agent.display_name}

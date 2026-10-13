@@ -216,3 +216,21 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 ### CopyableId 复制反馈
 
 保留 `value` / `className`，新增可选 `copyLabel`、`copiedLabel`、`copyFailedLabel`。复制图标常驻，成功后变为 Check；结果通过 status 播报，失败不显示成功。触屏点击区域至少 44px。
+
+## Team 模式组件（2026-10-13）
+
+`components/team/` 复用已有组件；以下是从团队页面提取、按 VI 新设计后放入组件库的组件。预览见 `/design#team`。
+
+| 组件 | 契约 | 团队页面接入 |
+| --- | --- | --- |
+| `IconTile` | tone=accent/neutral，size=sm 36 / md 44 / lg 64；子元素为 lucide 图标，尺寸由组件统一；整体 aria-hidden | 组织切换、空间卡片、Agent 入口、新建 Agent、空团队引导、邀请落地页 |
+| `PresenceIndicator` | status=offline/online/busy/away/working，size=xs 6 / sm 8 / md 10 / lg 12；`label` 给出可访问名称，否则 aria-hidden；`overlay` 放在相对定位头像的右下角；静态，无循环动画；未知状态按 offline 显示 | Agent 目录头像与状态行；dashboard `PresenceDot` 也改为渲染它 |
+| `ChoiceCard` | 原生 radio 属性 + title / description；选中 accent-soft 背景，disabled 降低不透明度；调用方提供 fieldset + legend | 申请权限、批准申请时选择角色 |
+| `Chip` | 紧凑描边标签；as=span/li，align=center/start，可选 icon；传 `onRemove` 时必须给 `removeLabel`，`removing` 显示加载并禁用 | 房间 Agent 与我的能力、Agent 管理抽屉的按人回复规则 |
+| `ListGroup` / `ListGroupItem` | 描边圆角 ul，divided 默认 true；Item 统一 px-3 py-2.5，align=center/start | 待处理申请列表、房间可添加成员 / Agent |
+| `PageHeader` | title + eyebrow / description / icon / actions；align=start/center；level 1 渲染 h1（VI h2 28px），level 2 渲染 h2（VI h3 22px）；eyebrow 不转大写、不加字距 | 团队空间页标题、空团队引导、组织邀请落地页 |
+| Alert `tone="accent"` + `icon` | accent 表示“需要你处理”，文字保持主色，图标用 accent-text；`icon` 替换默认图标 | Agent 页待处理申请横幅 |
+
+同时改为复用：邀请链接状态用 `Badge variant="outline"`，用户 ID 用 `CopyableId`。团队目录中的 `neon-cyan`、`glass-*`、`deep-black` 旧类名已换成语义类（`text-accent-text`、`border-border`、`bg-surface`、`bg-bg`）。
+
+出席状态（PresenceIndicator）表示 Agent 是否在线、忙碌；运行状态（SignalDot）表示思考、回复、等待授权。两者含义不同，不能互换。

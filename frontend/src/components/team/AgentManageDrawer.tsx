@@ -4,8 +4,8 @@ import Alert from "@/components/ui/Alert";
 import { BotCordLoader } from "@/components/ui/BotCordLoader";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import Chip from "@/components/ui/Chip";
 import EmptyState from "@/components/ui/EmptyState";
-import IconButton from "@/components/ui/IconButton";
 
 import Badge from "@/components/ui/Badge";
 import DrawerShell from "@/components/ui/DrawerShell";
@@ -21,7 +21,7 @@ import {
 } from "@/lib/team-access";
 import { spaceError, teamSpacesApi, type SpaceUser } from "@/lib/team-spaces";
 import { useConfirm } from "@/store/useConfirmStore";
-import { Hash, Loader2, MessageCircle, Trash2, X } from "lucide-react";
+import { Hash, Loader2, MessageCircle, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AccessRequestsInbox from "./AccessRequestsInbox";
 import AgentAccessGrants from "./AgentAccessGrants";
@@ -432,34 +432,24 @@ function AgentRoomsReply({
                   aria-label={t("按人设置的规则", "Per-person rules")}
                 >
                   {room.sender_rules.map((rule) => (
-                    <li
+                    <Chip
+                      as="li"
                       key={rule.sender_id}
-                      className="inline-flex max-w-full items-center gap-1 rounded-lg border border-glass-border bg-glass-bg py-0.5 pl-2 pr-0.5 text-xs"
+                      removeLabel={t(
+                        `删除对 ${nameOf(rule.sender_id)} 的规则`,
+                        `Remove the rule for ${nameOf(rule.sender_id)}`,
+                      )}
+                      removing={busy === `${room.room_id}:${rule.sender_id}`}
+                      removeDisabled={busy != null}
+                      onRemove={() =>
+                        void removeRule(room.room_id, rule.sender_id)
+                      }
                     >
                       <span className="truncate">
                         {nameOf(rule.sender_id)}:{" "}
                         {replyModeLabel(rule.attention_mode, zh)}
                       </span>
-                      <IconButton
-                        danger
-                        size="sm"
-
-                        disabled={busy != null}
-                        label={t(
-                          `删除对 ${nameOf(rule.sender_id)} 的规则`,
-                          `Remove the rule for ${nameOf(rule.sender_id)}`,
-                        )}
-                        onClick={() =>
-                          void removeRule(room.room_id, rule.sender_id)
-                        }
-                      >
-                        {busy === `${room.room_id}:${rule.sender_id}` ? (
-                          <Loader2 size={11} className="animate-spin" />
-                        ) : (
-                          <X size={11} />
-                        )}
-                      </IconButton>
-                    </li>
+                    </Chip>
                   ))}
                 </ul>
               )}

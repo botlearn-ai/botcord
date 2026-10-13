@@ -102,3 +102,11 @@ it("keeps page scrolling locked until the last dialog unmounts", () => {
   expect(document.body.style.overflow).toBe("auto");
   document.body.style.overflow = "";
 });
+
+it("renders the accent alert with a custom icon as a polite status", () => {
+  const host = mount(<Alert tone="accent" icon={<svg data-testid="inbox" />} actions={<button type="button">Review</button>}>2 requests</Alert>);
+  const alert = host.querySelector("[role=status]")!;
+  expect(alert.className).toContain("bg-accent-soft");
+  expect(alert.querySelector("[data-testid=inbox]")).not.toBeNull();
+  expect(alert.textContent).toContain("2 requests");
+});

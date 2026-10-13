@@ -2,7 +2,7 @@
 
 由 `cd frontend && node scripts/audit-ui-components.mjs` 生成。扫描非测试 TS/TSX 静态 import、re-export 和 JSX，不计动态拼装的组件名。
 
-共 251 个 TSX 文件、209 个组件模块，其中 UI 组件库 47 个模块。
+共 258 个 TSX 文件、215 个组件模块，其中 UI 组件库 53 个模块。
 
 “预览可达”表示从 /design 或根布局的 ConfirmDialog / Toaster 宿主可达，不代表全部业务状态均已演示。生产引用不包含 /design；兼容导出也算引用。
 
@@ -34,14 +34,16 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/Alert.tsx](../../../frontend/src/components/ui/Alert.tsx) | 61 | 是 |
 | [components/ui/AttachmentItem.tsx](../../../frontend/src/components/ui/AttachmentItem.tsx) | 5 | 是 |
 | [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 17 | 是 |
-| [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 53 | 是 |
+| [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 54 | 是 |
 | [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 39 | 是 |
 | [components/ui/BrandMark.tsx](../../../frontend/src/components/ui/BrandMark.tsx) | 6 | 是 |
 | [components/ui/Button.tsx](../../../frontend/src/components/ui/Button.tsx) | 106 | 是 |
 | [components/ui/Card.tsx](../../../frontend/src/components/ui/Card.tsx) | 78 | 是 |
 | [components/ui/Checkbox.tsx](../../../frontend/src/components/ui/Checkbox.tsx) | 9 | 是 |
+| [components/ui/Chip.tsx](../../../frontend/src/components/ui/Chip.tsx) | 2 | 是 |
+| [components/ui/ChoiceCard.tsx](../../../frontend/src/components/ui/ChoiceCard.tsx) | 2 | 是 |
 | [components/ui/ConfirmDialog.tsx](../../../frontend/src/components/ui/ConfirmDialog.tsx) | 1 | 是 |
-| [components/ui/CopyableId.tsx](../../../frontend/src/components/ui/CopyableId.tsx) | 12 | 是 |
+| [components/ui/CopyableId.tsx](../../../frontend/src/components/ui/CopyableId.tsx) | 13 | 是 |
 | [components/ui/CordField.tsx](../../../frontend/src/components/ui/CordField.tsx) | 4 | 是 |
 | [components/ui/DialogShell.tsx](../../../frontend/src/components/ui/DialogShell.tsx) | 19 | 是 |
 | [components/ui/DialogSurface.tsx](../../../frontend/src/components/ui/DialogSurface.tsx) | 27 | 是 |
@@ -51,9 +53,11 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/EmptyState.tsx](../../../frontend/src/components/ui/EmptyState.tsx) | 28 | 是 |
 | [components/ui/Field.tsx](../../../frontend/src/components/ui/Field.tsx) | 20 | 是 |
 | [components/ui/IconButton.tsx](../../../frontend/src/components/ui/IconButton.tsx) | 51 | 是 |
+| [components/ui/IconTile.tsx](../../../frontend/src/components/ui/IconTile.tsx) | 4 | 是 |
 | [components/ui/ImagePreviewOverlay.tsx](../../../frontend/src/components/ui/ImagePreviewOverlay.tsx) | 4 | 是 |
 | [components/ui/Input.tsx](../../../frontend/src/components/ui/Input.tsx) | 37 | 是 |
 | [components/ui/LinkButton.tsx](../../../frontend/src/components/ui/LinkButton.tsx) | 10 | 是 |
+| [components/ui/ListGroup.tsx](../../../frontend/src/components/ui/ListGroup.tsx) | 2 | 是 |
 | [components/ui/MarkdownContent.tsx](../../../frontend/src/components/ui/MarkdownContent.tsx) | 7 | 是 |
 | [components/ui/MarketingButton.tsx](../../../frontend/src/components/ui/MarketingButton.tsx) | 4 | 是 |
 | [components/ui/MarketingCard.tsx](../../../frontend/src/components/ui/MarketingCard.tsx) | 3 | 是 |
@@ -61,7 +65,9 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/MetricCard.tsx](../../../frontend/src/components/ui/MetricCard.tsx) | 2 | 是 |
 | [components/ui/MultiSelect.tsx](../../../frontend/src/components/ui/MultiSelect.tsx) | 1 | 是 |
 | [components/ui/NodeCordStatus.tsx](../../../frontend/src/components/ui/NodeCordStatus.tsx) | 0 | 是 |
-| [components/ui/Radio.tsx](../../../frontend/src/components/ui/Radio.tsx) | 9 | 是 |
+| [components/ui/PageHeader.tsx](../../../frontend/src/components/ui/PageHeader.tsx) | 2 | 是 |
+| [components/ui/PresenceIndicator.tsx](../../../frontend/src/components/ui/PresenceIndicator.tsx) | 2 | 是 |
+| [components/ui/Radio.tsx](../../../frontend/src/components/ui/Radio.tsx) | 8 | 是 |
 | [components/ui/SearchInput.tsx](../../../frontend/src/components/ui/SearchInput.tsx) | 2 | 是 |
 | [components/ui/SectionHeading.tsx](../../../frontend/src/components/ui/SectionHeading.tsx) | 5 | 是 |
 | [components/ui/Select.tsx](../../../frontend/src/components/ui/Select.tsx) | 7 | 是 |

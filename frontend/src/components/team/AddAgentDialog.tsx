@@ -1,5 +1,6 @@
 "use client";
 import DashboardOverlayPortal from "@/components/dashboard/DashboardOverlayPortal";
+import IconTile from "@/components/ui/IconTile";
 import Button from "@/components/ui/Button";
 import DialogShell from "@/components/ui/DialogShell";
 import EmptyState from "@/components/ui/EmptyState";
@@ -153,7 +154,7 @@ export default function AddAgentDialog({
                               : t("离线", "Offline")}
                           </span>
                         </span>
-                        <span className="inline-flex shrink-0 items-center gap-1 text-xs text-neon-cyan">
+                        <span className="inline-flex shrink-0 items-center gap-1 text-xs text-accent-text">
                           {busy === agent.agent_id ? (
                             <Loader2 size={14} className="animate-spin" />
                           ) : direct ? (
@@ -177,9 +178,9 @@ export default function AddAgentDialog({
             onClick={onCreateNew}
           >
             <span className="flex w-full items-center gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-neon-cyan/10 text-neon-cyan">
-                <Plus size={18} />
-              </span>
+              <IconTile size="sm">
+                <Plus />
+              </IconTile>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium">
                   {t("新建 Agent", "Create a new Agent")}

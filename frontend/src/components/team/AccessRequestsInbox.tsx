@@ -7,7 +7,8 @@ import Field from "@/components/ui/Field";
 import { Input, Textarea } from "@/components/ui/Input";
 
 import Alert from "@/components/ui/Alert";
-import Radio from "@/components/ui/Radio";
+import ChoiceCard from "@/components/ui/ChoiceCard";
+import ListGroup, { ListGroupItem } from "@/components/ui/ListGroup";
 import Select from "@/components/ui/Select";
 import {
   GRANT_DURATIONS,
@@ -120,11 +121,12 @@ export default function AccessRequestsInbox({
           {t("没有待处理的申请。", "No pending requests.")}
         </p>
       ) : (
-        <ul className="divide-y divide-glass-border rounded-xl border border-glass-border">
+        <ListGroup>
           {requests.map((request) => (
-            <li
+            <ListGroupItem
               key={request.id}
-              className="flex flex-wrap items-start justify-between gap-3 p-3"
+              align="start"
+              className="flex-wrap justify-between"
             >
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-center gap-2 text-sm">
@@ -149,7 +151,7 @@ export default function AccessRequestsInbox({
                   )}
                 </p>
                 {request.message && (
-                  <p className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-glass-bg px-3 py-2 text-xs leading-5">
+                  <p className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-surface-sunken px-3 py-2 text-xs leading-5">
                     {request.message}
                   </p>
                 )}
@@ -180,9 +182,9 @@ export default function AccessRequestsInbox({
                   {t("批准", "Approve")}
                 </Button>
               </div>
-            </li>
+            </ListGroupItem>
           ))}
-        </ul>
+        </ListGroup>
       )}
       {approving && (
         <ApproveRequestDialog
@@ -289,30 +291,15 @@ export function ApproveRequestDialog({
               (value) => {
                 const info = roleBadge(value, zh);
                 return (
-                  <label
+                  <ChoiceCard
                     key={value}
-                    className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 ${
-                      role === value
-                        ? "border-neon-cyan/40 bg-neon-cyan/5"
-                        : "border-glass-border"
-                    }`}
-                  >
-                    <Radio
-                      name="approve-role"
-                      value={value}
-                      checked={role === value}
-                      onChange={() => setRole(value)}
-                      className="mt-1 accent-neon-cyan"
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium">
-                        {info.label}
-                      </span>
-                      <span className="block text-xs leading-5 text-text-secondary">
-                        {info.explanation}
-                      </span>
-                    </span>
-                  </label>
+                    name="approve-role"
+                    value={value}
+                    checked={role === value}
+                    onChange={() => setRole(value)}
+                    title={info.label}
+                    description={info.explanation}
+                  />
                 );
               },
             )}

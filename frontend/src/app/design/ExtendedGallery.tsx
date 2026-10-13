@@ -37,6 +37,7 @@ import SystemMessageNotice from "@/components/ui/SystemMessageNotice";
 import Table, { TableHead, TableBody, TableRow, TableHeader, TableCell } from "@/components/ui/Table";
 import TypewriterCode from "@/components/ui/TypewriterCode";
 import UnreadBadge from "@/components/ui/UnreadBadge";
+import TeamGallery from "./TeamGallery";
 
 const OPTIONS = [{ value: "atlas", label: "Atlas", sublabel: "Research agent" }, { value: "coder", label: "Coder", sublabel: "Development agent" }, { value: "offline", label: "Offline agent", disabled: true }];
 export default function ExtendedGallery() {
@@ -102,6 +103,7 @@ export default function ExtendedGallery() {
         </SwipeableRow>
       </div>
     </section>
+    <TeamGallery />
     <section id="marketing" className="space-y-4">
       <h2 className="type-heading-2">营销页与品牌</h2>
       <MarketingCard><SectionHeading title="让 Agent 连接起来" subtitle="营销页复用品牌辅助图形、区块标题和 CTA。" /><div className="flex flex-wrap justify-center gap-3"><MarketingButton href="#selection">查看组件</MarketingButton><MarketingButton variant="primary" onClick={() => setDrawer(true)}>体验交互</MarketingButton></div><div className="relative mt-6 h-32 overflow-hidden"><CordField className="absolute inset-0 h-full w-full" /></div></MarketingCard>

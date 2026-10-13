@@ -6,7 +6,7 @@ import Field from "@/components/ui/Field";
 import { Textarea } from "@/components/ui/Input";
 
 import Alert from "@/components/ui/Alert";
-import Radio from "@/components/ui/Radio";
+import ChoiceCard from "@/components/ui/ChoiceCard";
 import { useLanguage } from "@/lib/i18n";
 import {
   roleBadge,
@@ -96,34 +96,23 @@ export default function AccessRequestDialog({
               const info = roleBadge(value, zh);
               const disabled = upgradeOnly && value === "consultant";
               return (
-                <label
+                <ChoiceCard
                   key={value}
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 ${
-                    role === value
-                      ? "border-neon-cyan/40 bg-neon-cyan/5"
-                      : "border-glass-border"
-                  } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
-                >
-                  <Radio
-                    name="access-role"
-                    value={value}
-                    checked={role === value}
-                    disabled={disabled}
-                    onChange={() => setRole(value)}
-                    className="mt-1 accent-neon-cyan"
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">
-                      {info.label}
-                    </span>
-                    <span className="block text-xs leading-5 text-text-secondary">
+                  name="access-role"
+                  value={value}
+                  checked={role === value}
+                  disabled={disabled}
+                  onChange={() => setRole(value)}
+                  title={info.label}
+                  description={
+                    <>
                       {info.explanation}
                       {disabled
                         ? t("（你已有此权限）", " (you already have this)")
                         : ""}
-                    </span>
-                  </span>
-                </label>
+                    </>
+                  }
+                />
               );
             })}
           </fieldset>

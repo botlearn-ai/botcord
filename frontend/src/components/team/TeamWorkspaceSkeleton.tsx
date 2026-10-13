@@ -15,7 +15,7 @@ export default function TeamWorkspaceSkeleton() {
     >
       <div
         aria-hidden="true"
-        className="hidden w-52 shrink-0 space-y-5 border-r border-glass-border bg-glass-bg p-4 md:block xl:w-56"
+        className="hidden w-52 shrink-0 space-y-5 border-r border-border bg-surface p-4 md:block xl:w-56"
       >
         <Skeleton className="mb-10 h-11 w-full rounded-xl" />
         {[0, 1, 2, 3].map((id) => (
@@ -24,7 +24,7 @@ export default function TeamWorkspaceSkeleton() {
       </div>
       <div
         aria-hidden="true"
-        className="w-full shrink-0 space-y-5 border-r border-glass-border p-4 md:w-72 xl:w-80"
+        className="w-full shrink-0 space-y-5 border-r border-border p-4 md:w-72 xl:w-80"
       >
         <Skeleton className="my-3 h-6 w-20" />
         <Skeleton className="h-10 w-full rounded-xl" />

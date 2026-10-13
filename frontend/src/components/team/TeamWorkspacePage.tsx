@@ -1,4 +1,5 @@
 "use client";
+import IconTile from "@/components/ui/IconTile";
 import Alert from "@/components/ui/Alert";
 import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
@@ -527,12 +528,12 @@ export function TeamWorkspace({
       data-team-workspace="true"
     >
       <aside
-        className={`flex shrink-0 flex-col border-b border-glass-border bg-glass-bg md:w-52 md:border-b-0 md:border-r xl:w-56 ${mobileThreadOpen ? "max-md:hidden" : ""}`}
+        className={`flex shrink-0 flex-col border-b border-border bg-surface md:w-52 md:border-b-0 md:border-r xl:w-56 ${mobileThreadOpen ? "max-md:hidden" : ""}`}
       >
-        <div className="flex h-[76px] shrink-0 items-center gap-3 border-b border-glass-border px-4">
-          <div className="rounded-xl bg-neon-cyan/10 p-2.5 text-neon-cyan">
-            <Building2 size={22} />
-          </div>
+        <div className="flex h-[76px] shrink-0 items-center gap-3 border-b border-border px-4">
+          <IconTile>
+            <Building2 />
+          </IconTile>
           <Field label={<>{t("当前组织", "Organization")}</>}>
             <Select
               aria-label={t("切换组织", "Switch organization")}
@@ -543,7 +544,7 @@ export function TeamWorkspace({
               {snapshot.spaces
                 .filter((s) => s.kind === "organization")
                 .map((s) => (
-                  <option key={s.id} value={s.id} className="bg-deep-black">
+                  <option key={s.id} value={s.id} className="bg-bg">
                     {s.name}
                     {s.membership.status === "invited"
                       ? t(" · 待接受", " · Invited")
@@ -617,7 +618,7 @@ export function TeamWorkspace({
             <Plus size={14} />
             {t("创建或管理组织", "Manage organizations")}
           </LinkButton>
-          <div className="flex items-center gap-2 border-t border-glass-border pt-4">
+          <div className="flex items-center gap-2 border-t border-border pt-4">
             <Avatar
               kind="human"
               id={user.id}
@@ -642,7 +643,7 @@ export function TeamWorkspace({
       {inbox ? (
         <>
           <section
-            className={`min-h-0 w-full shrink-0 flex-col border-r border-glass-border md:flex md:w-72 xl:w-80 ${
+            className={`min-h-0 w-full shrink-0 flex-col border-r border-border md:flex md:w-72 xl:w-80 ${
               selectedId ? "hidden" : "flex flex-1 md:flex-none"
             }`}
             aria-label={t("会话列表", "Conversations")}
@@ -776,7 +777,7 @@ export function TeamWorkspace({
               />
             ) : current && !current.joined && !error ? (
               <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-                <Hash size={36} className="mb-4 text-neon-cyan" />
+                <Hash size={36} className="mb-4 text-accent-text" />
                 <h2 className="max-w-lg break-words text-xl font-semibold">
                   {title(current)}
                 </h2>
@@ -896,7 +897,7 @@ export function TeamWorkspace({
         </main>
       ) : (
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-          <header className="flex h-[76px] items-center justify-between border-b border-glass-border px-6">
+          <header className="flex h-[76px] items-center justify-between border-b border-border px-6">
             <h1 className="font-semibold">
               {view === "members"
                 ? t("组织成员", "Organization members")
@@ -957,7 +958,7 @@ export function TeamWorkspace({
       )}
       {!mobileThreadOpen && (
         <nav
-          className="liquid-rail mt-auto flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 items-stretch justify-around border-t border-glass-border px-1 pt-1 pb-[env(safe-area-inset-bottom)] md:hidden"
+          className="liquid-rail mt-auto flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 items-stretch justify-around border-t border-border px-1 pt-1 pb-[env(safe-area-inset-bottom)] md:hidden"
           aria-label={t("团队导航", "Team navigation")}
         >
           {navigation.map(
