@@ -371,7 +371,9 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
     const applyHistory = (messages: DashboardMessage[], hasMore: boolean, fromCache = false) => {
       if (!isCurrent()) return;
       const apiMsgs = messages
-        .filter((message) => message.room_id === roomId)
+        // The room messages API omits per-message room_id; only drop rows that
+        // explicitly belong to another room.
+        .filter((message) => (message.room_id ?? roomId) === roomId)
         .map((message) => dashboardMsgToOwnerChat(message, get().agentName))
         .filter(hasVisibleOwnerChatContent);
       set((state) => {

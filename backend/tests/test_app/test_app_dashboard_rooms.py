@@ -282,6 +282,7 @@ async def test_room_messages_as_member(client: AsyncClient, seed: dict):
     assert len(data["messages"]) == 3
     # Members see mentioned field
     assert "mentioned" in data["messages"][0]
+    assert all(m["room_id"] == "rm_pubopen01" for m in data["messages"])
 
 
 @pytest.mark.asyncio
