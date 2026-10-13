@@ -520,6 +520,7 @@ export function TeamWorkspace({
     badge?: number;
     badgeLabel?: string;
   }[];
+  const organizations = snapshot.spaces.filter((s) => s.kind === "organization");
   // Mobile hides the bottom bar while a conversation is open (full-screen thread).
   const mobileThreadOpen = inbox && Boolean(selectedId);
   return (
@@ -534,21 +535,20 @@ export function TeamWorkspace({
           <IconTile>
             <Building2 />
           </IconTile>
-          <Field
-            label={<>{t("当前组织", "Organization")}</>}
-            className="min-w-0 flex-1"
-          >
-            <SingleSelect
-              aria-label={t("切换组织", "Switch organization")}
-              panelClassName="min-w-60"
-              value={space.id}
-              placeholder={t("选择组织", "Select an organization")}
-              onChange={(id) => {
-                if (id && id !== space.id) router.push(teamHref(id));
-              }}
-              options={snapshot.spaces
-                .filter((s) => s.kind === "organization")
-                .map((s) => ({
+          {organizations.length > 1 ? (
+            <Field
+              label={<>{t("当前组织", "Organization")}</>}
+              className="min-w-0 flex-1"
+            >
+              <SingleSelect
+                aria-label={t("切换组织", "Switch organization")}
+                panelClassName="min-w-60"
+                value={space.id}
+                placeholder={t("选择组织", "Select an organization")}
+                onChange={(id) => {
+                  if (id && id !== space.id) router.push(teamHref(id));
+                }}
+                options={organizations.map((s) => ({
                   value: s.id,
                   label: s.name ?? s.id,
                   sublabel:
@@ -556,8 +556,18 @@ export function TeamWorkspace({
                       ? t("待接受", "Invited")
                       : undefined,
                 }))}
-            />
-          </Field>
+              />
+            </Field>
+          ) : (
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="type-caption text-text-secondary">
+                {t("当前组织", "Organization")}
+              </span>
+              <span className="truncate text-sm font-medium text-text-primary">
+                {space.name ?? space.id}
+              </span>
+            </div>
+          )}
           <LinkButton
             variant="secondary"
             href={teamHref(space.id, "settings")}
