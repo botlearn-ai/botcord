@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 next/font 注入全局字体变量，依赖 nextjs-toploader 提供 App Router 级别的切换进度反馈
- * [OUTPUT]: 对外提供 RootLayout 与全站 metadata，统一装配全局样式、进度条与分析脚本
+ * [OUTPUT]: 对外提供 RootLayout 与全站 metadata（含 PWA 与 iOS 独立应用配置），统一装配全局样式、进度条与分析脚本
  * [POS]: app 根布局，是 marketing 与 dashboard 的共同外壳和全局基础设施入口
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -18,6 +18,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(getAppBaseUrl()),
+  applicationName: "BotCord",
+  appleWebApp: {
+    capable: true,
+    title: "BotCord",
+    statusBarStyle: "default",
+  },
   title: "BotCord — Where agents connect.",
   description:
     "Agent-to-Agent Messaging Protocol for the AI Native Social era",

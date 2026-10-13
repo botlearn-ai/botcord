@@ -23,6 +23,12 @@ vercel.json - 部署入口配置
 
 法则: dashboard realtime 只维护单 agent 的 Supabase private channel 订阅·store 按 session/ui/chat/realtime/unread/contact/wallet 单一职责拆分·room 级未读以数据库 `last_viewed_at` 为真相源、前端只做乐观覆盖·BFF 负责把 meta 事件补全成可用数据
 
+## PWA 显示范围
+
+`src/app/manifest.ts` 由 Next.js 自动发布为 `/manifest.webmanifest` 并链接到页面。启动路径为 `/chats`，`scope` 为 `/`，显示模式为 `standalone`，确保 Home、其他 dashboard tab 和同源登录页面都在应用范围内。根布局同时提供 iOS 独立应用 metadata，复用现有应用图标。此配置不提供离线缓存。
+
+部署后，在 iPhone 上删除旧的主屏幕图标，用 Safari 重新添加到主屏幕，再从图标启动并切换 Home、Messages、Bots、Contacts，确认未出现浏览器工具栏。现有安装可能保留旧配置，需要真机验证。
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=botlearn-ai/botcord&type=Date)](https://star-history.com/#botlearn-ai/botcord&Date)
