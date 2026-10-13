@@ -1,4 +1,4 @@
-import { responseInputIds, responseInstructions, parseResponseDecision } from "./response-protocol.js";
+import { responseInputIds, responseInstructions, parseResponseDecision, isTeamConversation } from "./response-protocol.js";
 import { randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
@@ -1880,6 +1880,7 @@ export class Dispatcher {
     // Every non-default profile is a non-owner turn: public trust, separate
     // session, daemon-delivered reply.
     const restricted = execution.profile !== "default";
+    const teamDelivery = isBotCordChannel(channel) && isTeamConversation(msg) && !isContactRequest(msg);
     const grant = execution.profile === "default" ? undefined : execution.grant;
     let turnCwd = route.cwd;
     let guestWorkspace: GuestWorkspace | null = null;
@@ -2337,7 +2338,7 @@ export class Dispatcher {
         if (responseIds.length) {
           await reportResponse("register", responseIds);
           responseRegistered = true;
-          runtimeText = responseInstructions(turnId, msg.conversation.id, responseIds, restricted) + runtimeText;
+          runtimeText = responseInstructions(turnId, msg.conversation.id, responseIds, restricted || teamDelivery) + runtimeText;
           heartbeatTimer = setInterval(() => {
             if (heartbeatPending) return;
             heartbeatPending = reportResponse("heartbeat").catch((error) => {
@@ -2592,7 +2593,7 @@ export class Dispatcher {
       const restrictedDelivery =
         restricted && isBotCordChannel(channel) && !isContactRequest(msg);
       let canDeliverRuntimeText =
-        isOwnerChat || !isBotCordChannel(channel) || restrictedDelivery;
+        isOwnerChat || !isBotCordChannel(channel) || restrictedDelivery || teamDelivery;
       const canDeliverRuntimeDiagnostics =
         canDeliverRuntimeText || isBotCordChannel(channel);
 
@@ -2944,7 +2945,7 @@ export class Dispatcher {
         return;
       }
 
-      if (restrictedDelivery && !isOwnerChat && replyText === "NO_REPLY") {
+      if ((restrictedDelivery || teamDelivery) && !isOwnerChat && replyText === "NO_REPLY") {
         this.emitOutbound({
           turnId,
           msg,
@@ -3642,7 +3643,10 @@ function userTurnContext(
       collaborator: { allowedCommands: execution.grant.allowedCommands },
     };
   }
-  return { restricted: execution.profile !== "default" };
+  return {
+    restricted: execution.profile !== "default",
+    automaticReply: isBotCordChannel(channel) && isTeamConversation(msg) && !isContactRequest(msg),
+  };
 }
 
 const REFUSAL_TEXT: Record<RefusalReason, string> = {

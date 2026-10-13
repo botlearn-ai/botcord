@@ -21,6 +21,7 @@ const guestWorkspaceMock = vi.hoisted(() => ({
 }));
 vi.mock("../guest-workspace.js", () => guestWorkspaceMock);
 import { applyLocalMention } from "../../mention-scan.js";
+import { composeBotCordUserTurn } from "../../turn-text.js";
 import type {
   ChannelAdapter,
   ChannelMessageStatusContext,
@@ -453,6 +454,66 @@ describe("Dispatcher", () => {
     await dispatcher.handle(makeEnvelope({ raw: { envelope: { type: "message", msg_id: "m1" } } }));
     expect(channel.sends[0].message.response).toMatchObject({ run_id: updates[0].run_id, kind: "final" });
     expect(updates.at(-1).action).toBe("finish");
+  });
+
+  it("delivers one associated final answer for an owner in a Team room", async () => {
+    const channel = new FakeChannel();
+    const updates: any[] = [];
+    channel.responseRun = async (body) => { updates.push(body); };
+    const runtime = new FakeRuntime({
+      reply: "TEAM_OWNER_OK 17",
+      blocks: [
+        { kind: "assistant_text", seq: 1, raw: { text: "TEAM_OWNER_OK" } },
+        { kind: "assistant_text", seq: 2, raw: { text: "TEAM_OWNER_OK 17" } },
+      ],
+    });
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime, composeUserTurn: composeBotCordUserTurn });
+    await dispatcher.handle(makeEnvelope({
+      conversation: { id: "rm_team", kind: "group" },
+      raw: {
+        source_type: "dashboard_human_room", sender_same_owner: true,
+        space_context: { space_id: "sp1", restricted: false },
+        hub_decision: { wake: true, profile: "full", basis: "owner" },
+        envelope: { type: "message", msg_id: "team-owner-input" },
+      },
+    }));
+    expect(runtime.calls[0].trustLevel).toBe("trusted");
+    expect(runtime.calls[0].text).toContain("daemon will deliver");
+    expect(runtime.calls[0].text).not.toContain("Before working, declare targets");
+    expect(runtime.calls[0].text).not.toContain("Plain text output WILL NOT be sent");
+    expect(channel.sends).toHaveLength(1);
+    expect(channel.sends[0].message).toMatchObject({
+      text: "TEAM_OWNER_OK 17", replyTo: "team-owner-input",
+      response: { run_id: updates[0].run_id, responds_to: ["team-owner-input"], kind: "final" },
+    });
+  });
+
+  it.each(["answer", "NO_REPLY"])("settles a room-only consultation after grant revocation: %s", async (reply) => {
+    const channel = new FakeChannel();
+    const updates: any[] = [];
+    channel.responseRun = async (body) => { updates.push(body); };
+    const runtime = new FakeRuntime({ reply, newSessionId: "room-only-session" });
+    const { dispatcher, store } = await scaffold({ channel, runtimeFactory: () => runtime, composeUserTurn: composeBotCordUserTurn });
+    await dispatcher.handle(makeEnvelope({
+      conversation: { id: "rm_team", kind: "group" },
+      raw: {
+        source_type: "dashboard_human_room",
+        space_context: { space_id: "sp1", restricted: true },
+        hub_decision: { wake: true, profile: "consult", basis: "room" },
+        access_context: { grant_id: "revoked", space_id: "sp1", requester_id: "hu_member", role: "collaborator", active: false },
+        envelope: { type: "message", msg_id: "room-only-input" },
+      },
+    }));
+    expect(runtime.calls[0].executionProfile).toBe("restricted");
+    expect(runtime.calls[0].trustLevel).toBe("public");
+    expect(store.all()[0].key).toMatch(/#restricted$/);
+    if (reply === "NO_REPLY") {
+      expect(channel.sends).toHaveLength(0);
+      expect(updates.find((u) => u.action === "no_reply").message_ids).toEqual(["room-only-input"]);
+    } else {
+      expect(channel.sends).toHaveLength(1);
+      expect(channel.sends[0].message.response).toMatchObject({ responds_to: ["room-only-input"], kind: "final" });
+    }
   });
 
   it("resolves bare NO_REPLY only for a single input", async () => {

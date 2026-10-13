@@ -251,7 +251,12 @@ function fromHubDecisions(
   opts: { botcordChannel: boolean },
 ): TurnExecution {
   const weakest = decisions.reduce((a, b) => (HUB_PROFILE_RANK[b.profile]! < HUB_PROFILE_RANK[a.profile]! ? b : a));
-  const contexts = inboundEntries(msg).map(readAccessContext);
+  // A room/connection decision does not inherit an old grant's session or
+  // workspace. In particular, revoked collaborator state must not be resumed
+  // when the Hub authorizes only room consultation.
+  const contexts = inboundEntries(msg).map((entry, index) =>
+    decisions[index]?.basis === "grant" ? readAccessContext(entry) : null,
+  );
   const latest = [...contexts].reverse().find((c) => c !== null) ?? null;
   const grant = latest?.grant;
   const restricted = (): TurnExecution =>
