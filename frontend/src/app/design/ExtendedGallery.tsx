@@ -16,6 +16,8 @@ import CordField from "@/components/ui/CordField";
 import Disclosure from "@/components/ui/Disclosure";
 import DialogSurface from "@/components/ui/DialogSurface";
 import DismissLayer from "@/components/ui/DismissLayer";
+import SwipeableRow from "@/components/ui/SwipeableRow";
+import { toast } from "@/components/ui/Toast";
 import LinkButton from "@/components/ui/LinkButton";
 import DrawerShell from "@/components/ui/DrawerShell";
 import Field from "@/components/ui/Field";
@@ -45,6 +47,7 @@ export default function ExtendedGallery() {
   const [imageOpen, setImageOpen] = useState(false);
   const [surfaceOpen, setSurfaceOpen] = useState(false);
   const [dismissVisible, setDismissVisible] = useState(false);
+  const [swipeOpen, setSwipeOpen] = useState(false);
   const confirm = useConfirm();
   return <div className="space-y-10 border-t border-border py-10">
     <section id="selection" className="space-y-5">
@@ -89,6 +92,14 @@ export default function ExtendedGallery() {
       <div className="relative flex h-28 items-center justify-center rounded-xl border border-border">
         <span className="text-sm text-text-secondary">局部导航示例</span>
         {dismissVisible && <DismissLayer label="关闭局部遮罩" className="absolute inset-0 rounded-xl" onClick={() => setDismissVisible(false)} />}
+      </div>
+      <div className="max-w-sm rounded-xl border border-border bg-surface py-1">
+        <SwipeableRow open={swipeOpen} onOpenChange={setSwipeOpen} label="会话操作：AI 每日情报" actions={[
+          { label: "置顶", className: "bg-surface-sunken text-text-primary", onClick: () => toast({ title: "已置顶" }) },
+          { label: "标为已读", className: "bg-accent text-on-accent", onClick: () => toast({ title: "已标为已读" }) },
+        ]}>
+          <div className="rounded-xl px-3 py-3 pr-12"><span className="block text-sm font-medium">AI 每日情报</span><span className="type-body-sm text-text-secondary">触屏左滑露出操作；桌面点右下角“更多”。</span></div>
+        </SwipeableRow>
       </div>
     </section>
     <section id="marketing" className="space-y-4">
