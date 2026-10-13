@@ -1,3 +1,10 @@
+/**
+ * [INPUT]: 依赖 lucide MoreHorizontal 图标、VI 颜色语义类与指针事件；操作项（label / onClick / className 色块）由调用方传入
+ * [OUTPUT]: 对外提供 SwipeableRow：触屏横向左滑露出整高操作色块，纵向手势保持原生滚动；附"更多"按钮与 Esc 作为非触屏替代
+ * [POS]: ui 手势原语；会话列表等行内快捷操作统一从这里出（自 dashboard/SwipeableConversationRow 迁入）
+ * [PROTOCOL]: 变更时更新此头部，然后检查 docs/brand/botcord-vi/COMPONENTS.md
+ */
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -14,7 +21,7 @@ interface Props {
 }
 
 /** Horizontal touch drag reveals actions; vertical gestures remain native scrolling. */
-export default function SwipeableConversationRow({ children, open, onOpenChange, actions, label }: Props) {
+export default function SwipeableRow({ children, open, onOpenChange, actions, label }: Props) {
   const width = actions.length * 72;
   const [drag, setDrag] = useState<number | null>(null);
   const gesture = useRef<{ x: number; y: number; offset: number; claimed: boolean } | null>(null);

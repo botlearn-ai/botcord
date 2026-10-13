@@ -2,16 +2,16 @@
 import React, { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import SwipeableConversationRow from "./SwipeableConversationRow";
+import SwipeableRow from "./SwipeableRow";
 let root: Root;
 let host: HTMLDivElement;
 const select = vi.fn();
 const pin = vi.fn();
 function Fixture() {
   const [open, setOpen] = useState(false);
-  return <SwipeableConversationRow open={open} onOpenChange={setOpen} label="Actions" actions={[
+  return <SwipeableRow open={open} onOpenChange={setOpen} label="Actions" actions={[
     { label: "Pin", className: "", onClick: pin },
-  ]}><div data-content onClick={select}>Room</div></SwipeableConversationRow>;
+  ]}><div data-content onClick={select}>Room</div></SwipeableRow>;
 }
 async function pointer(type: string, x: number, y: number) {
   await act(() => {

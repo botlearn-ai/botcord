@@ -2,7 +2,7 @@
 
 由 `cd frontend && node scripts/audit-ui-components.mjs` 生成。扫描非测试 TS/TSX 静态 import、re-export 和 JSX，不计动态拼装的组件名。
 
-共 247 个 TSX 文件、205 个组件模块，其中 UI 组件库 46 个模块。
+共 251 个 TSX 文件、209 个组件模块，其中 UI 组件库 47 个模块。
 
 “预览可达”表示从 /design 或根布局的 ConfirmDialog / Toaster 宿主可达，不代表全部业务状态均已演示。生产引用不包含 /design；兼容导出也算引用。
 
@@ -12,7 +12,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 
 | 元素 | 出现次数 | 文件数 |
 |---|---:|---:|
-| button | 22 | 14 |
+| button | 24 | 15 |
 | details | 1 | 1 |
 | input | 5 | 5 |
 | select | 1 | 1 |
@@ -33,16 +33,16 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 |---|---:|---|
 | [components/ui/Alert.tsx](../../../frontend/src/components/ui/Alert.tsx) | 61 | 是 |
 | [components/ui/AttachmentItem.tsx](../../../frontend/src/components/ui/AttachmentItem.tsx) | 5 | 是 |
-| [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 14 | 是 |
-| [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 55 | 是 |
+| [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 16 | 是 |
+| [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 53 | 是 |
 | [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 34 | 是 |
 | [components/ui/BrandMark.tsx](../../../frontend/src/components/ui/BrandMark.tsx) | 6 | 是 |
 | [components/ui/Button.tsx](../../../frontend/src/components/ui/Button.tsx) | 106 | 是 |
-| [components/ui/Card.tsx](../../../frontend/src/components/ui/Card.tsx) | 83 | 是 |
+| [components/ui/Card.tsx](../../../frontend/src/components/ui/Card.tsx) | 78 | 是 |
 | [components/ui/Checkbox.tsx](../../../frontend/src/components/ui/Checkbox.tsx) | 9 | 是 |
 | [components/ui/ConfirmDialog.tsx](../../../frontend/src/components/ui/ConfirmDialog.tsx) | 1 | 是 |
 | [components/ui/CopyableId.tsx](../../../frontend/src/components/ui/CopyableId.tsx) | 11 | 是 |
-| [components/ui/CordField.tsx](../../../frontend/src/components/ui/CordField.tsx) | 2 | 是 |
+| [components/ui/CordField.tsx](../../../frontend/src/components/ui/CordField.tsx) | 4 | 是 |
 | [components/ui/DialogShell.tsx](../../../frontend/src/components/ui/DialogShell.tsx) | 19 | 是 |
 | [components/ui/DialogSurface.tsx](../../../frontend/src/components/ui/DialogSurface.tsx) | 27 | 是 |
 | [components/ui/Disclosure.tsx](../../../frontend/src/components/ui/Disclosure.tsx) | 4 | 是 |
@@ -53,7 +53,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/IconButton.tsx](../../../frontend/src/components/ui/IconButton.tsx) | 51 | 是 |
 | [components/ui/ImagePreviewOverlay.tsx](../../../frontend/src/components/ui/ImagePreviewOverlay.tsx) | 4 | 是 |
 | [components/ui/Input.tsx](../../../frontend/src/components/ui/Input.tsx) | 37 | 是 |
-| [components/ui/LinkButton.tsx](../../../frontend/src/components/ui/LinkButton.tsx) | 9 | 是 |
+| [components/ui/LinkButton.tsx](../../../frontend/src/components/ui/LinkButton.tsx) | 10 | 是 |
 | [components/ui/MarkdownContent.tsx](../../../frontend/src/components/ui/MarkdownContent.tsx) | 8 | 是 |
 | [components/ui/MarketingButton.tsx](../../../frontend/src/components/ui/MarketingButton.tsx) | 4 | 是 |
 | [components/ui/MarketingCard.tsx](../../../frontend/src/components/ui/MarketingCard.tsx) | 3 | 是 |
@@ -63,17 +63,18 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/NodeCordStatus.tsx](../../../frontend/src/components/ui/NodeCordStatus.tsx) | 0 | 是 |
 | [components/ui/Radio.tsx](../../../frontend/src/components/ui/Radio.tsx) | 9 | 是 |
 | [components/ui/SearchInput.tsx](../../../frontend/src/components/ui/SearchInput.tsx) | 2 | 是 |
-| [components/ui/SectionHeading.tsx](../../../frontend/src/components/ui/SectionHeading.tsx) | 7 | 是 |
+| [components/ui/SectionHeading.tsx](../../../frontend/src/components/ui/SectionHeading.tsx) | 5 | 是 |
 | [components/ui/Select.tsx](../../../frontend/src/components/ui/Select.tsx) | 8 | 是 |
-| [components/ui/SignalDot.tsx](../../../frontend/src/components/ui/SignalDot.tsx) | 1 | 是 |
+| [components/ui/SignalDot.tsx](../../../frontend/src/components/ui/SignalDot.tsx) | 2 | 是 |
 | [components/ui/SingleSelect.tsx](../../../frontend/src/components/ui/SingleSelect.tsx) | 2 | 是 |
 | [components/ui/Skeleton.tsx](../../../frontend/src/components/ui/Skeleton.tsx) | 9 | 是 |
-| [components/ui/StatusCapsule.tsx](../../../frontend/src/components/ui/StatusCapsule.tsx) | 0 | 是 |
+| [components/ui/StatusCapsule.tsx](../../../frontend/src/components/ui/StatusCapsule.tsx) | 2 | 是 |
+| [components/ui/SwipeableRow.tsx](../../../frontend/src/components/ui/SwipeableRow.tsx) | 1 | 是 |
 | [components/ui/Switch.tsx](../../../frontend/src/components/ui/Switch.tsx) | 2 | 是 |
 | [components/ui/SystemMessageNotice.tsx](../../../frontend/src/components/ui/SystemMessageNotice.tsx) | 2 | 是 |
 | [components/ui/Table.tsx](../../../frontend/src/components/ui/Table.tsx) | 4 | 是 |
 | [components/ui/Tabs.tsx](../../../frontend/src/components/ui/Tabs.tsx) | 14 | 是 |
-| [components/ui/Toast.tsx](../../../frontend/src/components/ui/Toast.tsx) | 1 | 是 |
+| [components/ui/Toast.tsx](../../../frontend/src/components/ui/Toast.tsx) | 2 | 是 |
 | [components/ui/Tooltip.tsx](../../../frontend/src/components/ui/Tooltip.tsx) | 1 | 是 |
 | [components/ui/TypewriterCode.tsx](../../../frontend/src/components/ui/TypewriterCode.tsx) | 1 | 是 |
 | [components/ui/UnreadBadge.tsx](../../../frontend/src/components/ui/UnreadBadge.tsx) | 4 | 是 |
@@ -200,11 +201,14 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/home/CTASection.tsx](../../../frontend/src/components/home/CTASection.tsx) | 1 | 否 |
 | [components/home/ConversationDemo.tsx](../../../frontend/src/components/home/ConversationDemo.tsx) | 0 | 否 |
 | [components/home/CoreFeatures.tsx](../../../frontend/src/components/home/CoreFeatures.tsx) | 1 | 否 |
+| [components/home/HeroRoomPreview.tsx](../../../frontend/src/components/home/HeroRoomPreview.tsx) | 1 | 否 |
 | [components/home/HeroSection.tsx](../../../frontend/src/components/home/HeroSection.tsx) | 1 | 否 |
+| [components/home/HomeSectionHeader.tsx](../../../frontend/src/components/home/HomeSectionHeader.tsx) | 4 | 否 |
 | [components/home/HowItWorksSection.tsx](../../../frontend/src/components/home/HowItWorksSection.tsx) | 1 | 否 |
 | [components/home/PlatformStats.tsx](../../../frontend/src/components/home/PlatformStats.tsx) | 1 | 否 |
 | [components/home/ProtocolPreview.tsx](../../../frontend/src/components/home/ProtocolPreview.tsx) | 1 | 否 |
 | [components/home/PublicRoomsSection.tsx](../../../frontend/src/components/home/PublicRoomsSection.tsx) | 1 | 否 |
+| [components/home/TrustSection.tsx](../../../frontend/src/components/home/TrustSection.tsx) | 1 | 否 |
 | [components/invite/InvitePage.tsx](../../../frontend/src/components/invite/InvitePage.tsx) | 0 | 否 |
 | [components/layout/Footer.tsx](../../../frontend/src/components/layout/Footer.tsx) | 1 | 否 |
 | [components/layout/Navbar.tsx](../../../frontend/src/components/layout/Navbar.tsx) | 1 | 否 |

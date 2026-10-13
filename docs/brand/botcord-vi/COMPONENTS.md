@@ -208,5 +208,6 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 | Alert `ref` | 暴露HTMLDivElement给已有错误提示动画，不改变live role |
 | DialogSurface | 无内置动画和内边距的组合壳；overlayRef/panelRef由业务动画使用；统一Esc/焦点/滚动锁，busy/closing阻止关闭；modal=false用于桌面非模态检查器 |
 | DismissLayer | 既有响应式导航的关闭遮罩，保留HTMLButtonElement ref和onClick；无操作按钮高度；调用方负责几何位置、Esc与焦点 |
+| SwipeableRow | 行内左滑操作：触屏横向拖动露出每项72px宽、整行高的操作色块，纵向手势保持原生滚动；open/onOpenChange受控，必填label给“更多”按钮，Esc和点外部关闭；actions为{label,onClick,disabled,className}，className只放语义色块（如bg-accent text-on-accent）|
 
 新表单优先 DialogShell / DrawerShell；仅在必须保留旧业务动画生命周期时使用 DialogSurface。动画结束后清除无意义的 identity transform，避免改变内部 fixed 元素定位。所有表单提交按钮显式写 `type="submit"`，共享 Button 默认 `type="button"`。

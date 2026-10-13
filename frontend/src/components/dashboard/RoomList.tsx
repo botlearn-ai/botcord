@@ -24,7 +24,7 @@ import { api } from "@/lib/api";
 import { Pin } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { EMPTY_CONVERSATION_PREFERENCES, useConversationPreferencesStore } from "@/store/useConversationPreferencesStore";
-import SwipeableConversationRow from "./SwipeableConversationRow";
+import SwipeableRow from "@/components/ui/SwipeableRow";
 import { excludeSpaceRooms, getIsoTimestampValue, humanRoomToDashboardRoom, isOwnerChatRoom } from "@/store/dashboard-shared";
 import { canPrefetchMessagePage } from "@/lib/message-prefetch";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -413,7 +413,7 @@ export default function RoomList({
           : null;
 
         return (
-          <SwipeableConversationRow key={room.room_id}
+          <SwipeableRow key={room.room_id}
             open={openActions === room.room_id}
             onOpenChange={(open) => setOpenActions(open ? room.room_id : null)}
             label={`${locale === "zh" ? "会话操作" : "Conversation actions"}: ${displayName}`}
@@ -517,7 +517,7 @@ export default function RoomList({
               </div>
             </div>
           </Card>
-          </SwipeableConversationRow>
+          </SwipeableRow>
         );
       })}
     </div>
