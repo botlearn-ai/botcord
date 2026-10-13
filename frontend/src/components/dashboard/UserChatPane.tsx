@@ -46,7 +46,7 @@ import AttachmentItem, {
   resolveAttachmentUrl,
 } from "@/components/ui/AttachmentItem";
 import ImagePreviewOverlay from "@/components/ui/ImagePreviewOverlay";
-import StreamBlocksView from "./StreamBlocksView";
+import StreamBlocksView, { buildComposingText } from "./StreamBlocksView";
 import DocumentPreviewPane from "./DocumentPreviewPane";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
 import CopyableId from "@/components/ui/CopyableId";
@@ -687,6 +687,18 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     }
   }, []);
 
+  const renderAgentHeaderContent = (senderName?: string) => (
+    <>
+      <ParticipantAvatar id={chatAgentId || "bot"} avatarUrl={ownedAgent?.avatar_url} isHuman={false} name={senderName || "Bot"} />
+      <span className="text-xs font-medium text-text-primary">
+        {senderName}
+      </span>
+      {chatAgentId && (
+        <CopyableId value={chatAgentId} className="text-text-secondary hover:text-text-secondary" />
+      )}
+    </>
+  );
+
   const renderMessageActions = (msg: OwnerChatMessage) => {
     if (!canShowOwnerChatMessageActions(msg)) return null;
     const menuOpen = actionMenuOpenId === msg.clientId;
@@ -936,21 +948,31 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
           }
 
           // --- Streaming agent message ---
+          // Same DOM shape as the delivered agent bubble below, so the bubble,
+          // its process line and the streamed text stay in place on delivery.
           if (msg.status === "streaming") {
+            const composingText = buildComposingText(msg.streamBlocks);
             return (
               <div
                 key={msg.clientId}
                 data-owner-msg-key={msg.clientId}
                 className="space-y-1.5"
               >
-                <StreamBlocksView
-                  mentionCandidates={messageMentionCandidates}
-                  key={`${msg.clientId}-streaming`}
-                  blocks={msg.streamBlocks}
-                  defaultExpanded
-                  showComposing
-                  onScrollRequest={scrollToBottomIfFollowing}
-                />
+                <div className="flex items-start gap-2 justify-start">
+                  <div className="liquid-message liquid-message-peer max-w-[75%] max-md:max-w-[calc(100%-3.25rem)] rounded-2xl border px-3 py-2 text-sm text-text-primary">
+                    <div className="mb-1 flex items-center gap-1.5">
+                      {renderAgentHeaderContent(msg.senderName)}
+                    </div>
+                    <StreamBlocksView
+                      blocks={msg.streamBlocks}
+                      live
+                      onScrollRequest={scrollToBottomIfFollowing}
+                    />
+                    {composingText && (
+                      <ChatMarkdown content={composingText} mentionCandidates={messageMentionCandidates} />
+                    )}
+                  </div>
+                </div>
               </div>
             );
           }
@@ -1009,7 +1031,8 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
           // --- Confirmed / Delivered messages ---
           const hasText = msg.text.trim().length > 0;
           const hasAttachments = (msg.attachments?.length ?? 0) > 0;
-          const hasVisibleBubble = hasText || hasAttachments || isUser;
+          const hasProcess = !isUser && msg.streamBlocks.length > 0;
+          const hasVisibleBubble = hasText || hasAttachments || isUser || hasProcess;
           if (!hasVisibleBubble && msg.streamBlocks.length === 0) {
             return null;
           }
@@ -1020,16 +1043,6 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
               data-owner-msg-key={msg.clientId}
               className="space-y-1.5"
             >
-              {/* Finalized execution blocks above agent message */}
-              {!isUser && msg.streamBlocks.length > 0 && (
-                <StreamBlocksView
-                  mentionCandidates={messageMentionCandidates}
-                  key={`${msg.clientId}-delivered`}
-                  blocks={msg.streamBlocks}
-                  showComposing
-                  onScrollRequest={scrollToBottomIfFollowing}
-                />
-              )}
               {hasVisibleBubble && (
                 <div
                   className={`flex items-start gap-2 ${isUser ? "justify-end" : "justify-start"}`}
@@ -1053,17 +1066,15 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                           <ParticipantAvatar id={ownerHumanId || "human"} avatarUrl={humanAvatarUrl} isHuman name={msg.senderName || "User"} />
                         </>
                       ) : (
-                        <>
-                          <ParticipantAvatar id={chatAgentId || "bot"} avatarUrl={ownedAgent?.avatar_url} isHuman={false} name={msg.senderName || "Bot"} />
-                          <span className="text-xs font-medium text-text-primary">
-                            {msg.senderName}
-                          </span>
-                          {chatAgentId && (
-                            <CopyableId value={chatAgentId} className="text-text-secondary hover:text-text-secondary" />
-                          )}
-                        </>
+                        renderAgentHeaderContent(msg.senderName)
                       )}
                     </div>
+                    {hasProcess && (
+                      <StreamBlocksView
+                        blocks={msg.streamBlocks}
+                        onScrollRequest={scrollToBottomIfFollowing}
+                      />
+                    )}
                     {msg.replyPreview && (
                       <ReplyQuoteBlock preview={msg.replyPreview} />
                     )}

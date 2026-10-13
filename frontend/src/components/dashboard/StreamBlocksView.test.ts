@@ -1,8 +1,10 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import StreamBlocksView from "./StreamBlocksView";
+import { describe, expect, it, vi } from "vitest";
+import StreamBlocksView, { buildComposingText } from "./StreamBlocksView";
 import type { StreamBlockEntry } from "@/lib/types";
+
+vi.mock("next/navigation", () => ({ usePathname: () => "/en/chats" }));
 
 function mixedToolUseBlock(): StreamBlockEntry {
   return {
@@ -28,11 +30,13 @@ function toolCallBlock({
   seq,
   createdAt,
   name,
+  id,
 }: {
   traceId?: string;
   seq: number;
   createdAt: string;
   name: string;
+  id?: string;
 }): StreamBlockEntry {
   return {
     trace_id: traceId,
@@ -40,189 +44,220 @@ function toolCallBlock({
     created_at: createdAt,
     block: {
       kind: "tool_call",
-      payload: { name, params: { cmd: name } },
+      payload: { name, id, params: { cmd: name } },
     },
   };
 }
 
+function toolResultBlock({ seq, createdAt, id, result }: { seq: number; createdAt: string; id: string; result: string }): StreamBlockEntry {
+  return {
+    trace_id: "tr_many",
+    seq,
+    created_at: createdAt,
+    block: { kind: "tool_result", payload: { tool_use_id: id, result } },
+  };
+}
+
+function render(props: React.ComponentProps<typeof StreamBlocksView>): string {
+  return renderToStaticMarkup(React.createElement(StreamBlocksView, props));
+}
+
 describe("StreamBlocksView", () => {
-  it("hides composing text when the tool card is collapsed (default)", () => {
-    const html = renderToStaticMarkup(
-      React.createElement(StreamBlocksView, {
-        blocks: [mixedToolUseBlock()],
-        showComposing: true,
-      }),
-    );
+  it("collapses to a one-line summary with duration by default", () => {
+    const html = render({
+      blocks: [
+        toolCallBlock({ seq: 1, createdAt: "2026-05-25T00:00:00.000Z", name: "exec_shell", id: "t1" }),
+        toolResultBlock({ seq: 2, createdAt: "2026-05-25T00:00:18.000Z", id: "t1", result: "ok" }),
+      ],
+    });
 
-    expect(html).not.toContain("Composing");
-    expect(html).not.toContain("draft answer");
+    expect(html).toContain("Used 1 tool");
+    expect(html).toContain("18s");
+    expect(html).not.toContain("exec_shell");
   });
 
-  it("renders composing text inside the expanded tool card", () => {
-    const html = renderToStaticMarkup(
-      React.createElement(StreamBlocksView, {
-        blocks: [mixedToolUseBlock()],
-        showComposing: true,
-        defaultExpanded: true,
-      }),
-    );
+  it("pairs a tool call with its result into one step", () => {
+    const html = render({
+      defaultExpanded: true,
+      blocks: [
+        toolCallBlock({ seq: 1, createdAt: "2026-05-25T00:00:00.000Z", name: "exec_shell", id: "t1" }),
+        toolResultBlock({ seq: 2, createdAt: "2026-05-25T00:00:01.000Z", id: "t1", result: "ok" }),
+      ],
+    });
 
-    expect(html).toContain("Composing");
-    expect(html).toContain("draft answer");
+    expect(html.match(/<li>/g)).toHaveLength(1);
+    expect(html).toContain('aria-label="Done"');
   });
 
-  it("does not render composing text when showComposing is off, even if expanded", () => {
-    const html = renderToStaticMarkup(
-      React.createElement(StreamBlocksView, {
-        blocks: [mixedToolUseBlock()],
-        defaultExpanded: true,
-      }),
-    );
+  it("shows the running tool while live", () => {
+    const html = render({
+      live: true,
+      blocks: [toolCallBlock({ seq: 1, createdAt: "2026-05-25T00:00:00.000Z", name: "search_web", id: "t1" })],
+    });
 
-    expect(html).not.toContain("Composing");
-    expect(html).not.toContain("draft answer");
+    expect(html).toContain("Running search_web");
+    expect(html).toContain('data-status="thinking"');
+  });
+
+  it("shows replying while live with only assistant text", () => {
+    const html = render({
+      live: true,
+      blocks: [{
+        trace_id: "tr_a",
+        seq: 1,
+        created_at: "2026-05-25T00:00:00.000Z",
+        block: { kind: "assistant", payload: { text: "hi" } },
+      }],
+    });
+
+    expect(html).toContain("Replying");
+  });
+
+  it("renders nothing once delivered without process steps", () => {
+    const html = render({
+      blocks: [{
+        trace_id: "tr_a",
+        seq: 1,
+        created_at: "2026-05-25T00:00:00.000Z",
+        block: { kind: "assistant", payload: { text: "hi" } },
+      }],
+    });
+
+    expect(html).toBe("");
+  });
+
+  it("extracts composing text from mixed tool_use blocks", () => {
+    expect(buildComposingText([mixedToolUseBlock()])).toBe("draft answer");
   });
 
   it("falls back to raw tool input when normalized payload is empty", () => {
-    const html = renderToStaticMarkup(
-      React.createElement(StreamBlocksView, {
-        defaultExpanded: true,
-        blocks: [{
-          trace_id: "tr_2",
-          seq: 1,
-          created_at: "2026-05-25T00:00:00.000Z",
-          block: {
-            kind: "tool_call",
-            payload: {},
-            raw: {
-              event: "item.started",
-              payload: {
-                item: {
-                  id: "item_exec",
-                  kind: "tool_call",
-                  summary: "exec_shell started",
-                  detail: "{\"cmd\":\"botcord-daemon status\"}",
-                },
+    const html = render({
+      defaultExpanded: true,
+      blocks: [{
+        trace_id: "tr_2",
+        seq: 1,
+        created_at: "2026-05-25T00:00:00.000Z",
+        block: {
+          kind: "tool_call",
+          payload: {},
+          raw: {
+            event: "item.started",
+            payload: {
+              item: {
+                id: "item_exec",
+                kind: "tool_call",
+                summary: "exec_shell started",
+                detail: "{\"cmd\":\"botcord-daemon status\"}",
               },
             },
           },
-        }],
-      }),
-    );
+        },
+      }],
+    });
 
     expect(html).toContain("exec_shell");
     expect(html).toContain("botcord-daemon status");
   });
 
   it("prefers wrapped DeepSeek raw tool input over generic payload details", () => {
-    const html = renderToStaticMarkup(
-      React.createElement(StreamBlocksView, {
-        defaultExpanded: true,
-        blocks: [{
-          trace_id: "tr_2b",
-          seq: 1,
-          created_at: "2026-05-25T00:00:00.000Z",
-          block: {
-            kind: "tool_call",
-            payload: { details: "exec_shell" },
-            raw: {
+    const html = render({
+      defaultExpanded: true,
+      blocks: [{
+        trace_id: "tr_2b",
+        seq: 1,
+        created_at: "2026-05-25T00:00:00.000Z",
+        block: {
+          kind: "tool_call",
+          payload: { details: "exec_shell" },
+          raw: {
+            event: "item.started",
+            payload: {
+              seq: 922,
               event: "item.started",
               payload: {
-                seq: 922,
-                event: "item.started",
-                payload: {
-                  item: {
-                    id: "item_exec",
-                    kind: "tool_call",
-                    status: "in_progress",
-                    summary: "exec_shell started",
-                    detail: "{\"cmd\":\"botcord-daemon status\"}",
-                  },
+                item: {
+                  id: "item_exec",
+                  kind: "tool_call",
+                  status: "in_progress",
+                  summary: "exec_shell started",
+                  detail: "{\"cmd\":\"botcord-daemon status\"}",
                 },
               },
             },
           },
-        }],
-      }),
-    );
+        },
+      }],
+    });
 
     expect(html).toContain("exec_shell");
     expect(html).toContain("botcord-daemon status");
   });
 
-  it("falls back to raw tool output when normalized result is empty", () => {
-    const html = renderToStaticMarkup(
-      React.createElement(StreamBlocksView, {
-        defaultExpanded: true,
-        blocks: [{
+  it("pairs raw item.started and item.completed by item id", () => {
+    const html = render({
+      defaultExpanded: true,
+      blocks: [
+        {
           trace_id: "tr_3",
           seq: 1,
           created_at: "2026-05-25T00:00:00.000Z",
+          block: {
+            kind: "tool_call",
+            payload: {},
+            raw: {
+              event: "item.started",
+              payload: { item: { id: "item_exec", kind: "tool_call", summary: "exec_shell started", detail: "{\"cmd\":\"pwd\"}" } },
+            },
+          },
+        },
+        {
+          trace_id: "tr_3",
+          seq: 2,
+          created_at: "2026-05-25T00:00:01.000Z",
           block: {
             kind: "tool_result",
             payload: {},
             raw: {
               event: "item.completed",
-              payload: {
-                item: {
-                  id: "item_exec",
-                  kind: "tool_call",
-                  summary: "exec_shell: daemon: pid 49616",
-                  detail: "daemon: pid 49616 (alive)",
-                },
-              },
+              payload: { item: { id: "item_exec", kind: "tool_call", summary: "exec_shell: daemon: pid 49616", detail: "daemon: pid 49616 (alive)" } },
             },
           },
-        }],
-      }),
-    );
+        },
+      ],
+    });
 
+    expect(html.match(/<li>/g)).toHaveLength(1);
     expect(html).toContain("exec_shell");
-    expect(html).toContain("daemon: pid 49616");
+    expect(html).toContain('aria-label="Done"');
   });
 
   it("hides system stream blocks", () => {
-    const html = renderToStaticMarkup(
-      React.createElement(StreamBlocksView, {
-        defaultExpanded: true,
-        blocks: [
-          {
-            trace_id: "tr_4",
-            seq: 1,
-            created_at: "2026-05-25T00:00:00.000Z",
-            block: {
-              kind: "system",
-              payload: { details: "{\"event\":\"turn.started\"}" },
-              raw: { event: "turn.started" },
-            },
+    const html = render({
+      defaultExpanded: true,
+      blocks: [
+        {
+          trace_id: "tr_4",
+          seq: 1,
+          created_at: "2026-05-25T00:00:00.000Z",
+          block: {
+            kind: "system",
+            payload: { details: "{\"event\":\"turn.started\"}" },
+            raw: { event: "turn.started" },
           },
-          {
-            trace_id: "tr_4",
-            seq: 2,
-            created_at: "2026-05-25T00:00:01.000Z",
-            block: {
-              kind: "tool_call",
-              payload: { name: "exec_shell", params: { cmd: "pwd" } },
-            },
-          },
-        ],
-      }),
-    );
+        },
+        toolCallBlock({ traceId: "tr_4", seq: 2, createdAt: "2026-05-25T00:00:01.000Z", name: "exec_shell" }),
+      ],
+    });
 
     expect(html).not.toContain("turn.started");
     expect(html).toContain("exec_shell");
-    expect(html).toContain("pwd");
   });
 
-  it("collapses the oldest trace rows by timestamp when rows exceed the visible max", () => {
+  it("folds the oldest steps by timestamp behind an earlier-steps link", () => {
     const blocks: StreamBlockEntry[] = [
-      toolCallBlock({
-        seq: 999,
-        createdAt: "2026-05-25T00:00:00.000Z",
-        name: "oldest_by_time",
-      }),
+      toolCallBlock({ seq: 999, createdAt: "2026-05-25T00:00:00.000Z", name: "oldest_by_time" }),
     ];
-    for (let i = 1; i <= 20; i += 1) {
+    for (let i = 1; i <= 8; i += 1) {
       blocks.push(toolCallBlock({
         seq: i,
         createdAt: `2026-05-25T00:00:${String(i).padStart(2, "0")}.000Z`,
@@ -230,18 +265,12 @@ describe("StreamBlocksView", () => {
       }));
     }
 
-    const html = renderToStaticMarkup(
-      React.createElement(StreamBlocksView, {
-        defaultExpanded: true,
-        blocks,
-      }),
-    );
+    const html = render({ defaultExpanded: true, blocks });
 
-    expect(html).toContain("Max");
-    expect(html).toContain("1 older step");
-    expect(html).toContain("20 newest shown");
+    expect(html).not.toContain("Max");
+    expect(html).toContain("Show 1 earlier step");
     expect(html).not.toContain("oldest_by_time");
     expect(html).toContain("newer_tool_1");
-    expect(html).toContain("newer_tool_20");
+    expect(html).toContain("newer_tool_8");
   });
 });

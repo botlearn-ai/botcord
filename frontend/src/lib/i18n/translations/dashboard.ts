@@ -3840,3 +3840,53 @@ export const botDetailDrawer: TranslationMap<{
     },
   },
 }
+
+export const streamProcess: TranslationMap<{
+  thinking: string
+  thinkingNow: string
+  replying: string
+  runningTool: (name: string) => string
+  running: string
+  done: string
+  error: string
+  todo: string
+  items: (count: number) => string
+  thoughtSteps: (count: number) => string
+  toolCalls: (count: number) => string
+  steps: (count: number) => string
+  showOlder: (count: number) => string
+  hideOlder: string
+}> = {
+  en: {
+    thinking: 'Thinking',
+    thinkingNow: 'Thinking',
+    replying: 'Replying',
+    runningTool: (name) => `Running ${name}`,
+    running: 'Running',
+    done: 'Done',
+    error: 'Error',
+    todo: 'Task list',
+    items: (count) => `${count} item${count === 1 ? '' : 's'}`,
+    thoughtSteps: (count) => `Thought ${count} step${count === 1 ? '' : 's'}`,
+    toolCalls: (count) => `Used ${count} tool${count === 1 ? '' : 's'}`,
+    steps: (count) => `${count} step${count === 1 ? '' : 's'}`,
+    showOlder: (count) => `Show ${count} earlier step${count === 1 ? '' : 's'}`,
+    hideOlder: 'Hide earlier steps',
+  },
+  zh: {
+    thinking: '思考',
+    thinkingNow: '正在思考',
+    replying: '正在回复',
+    runningTool: (name) => `正在运行 ${name}`,
+    running: '运行中',
+    done: '已完成',
+    error: '出错',
+    todo: '任务清单',
+    items: (count) => `${count} 项`,
+    thoughtSteps: (count) => `思考 ${count} 步`,
+    toolCalls: (count) => `调用 ${count} 个工具`,
+    steps: (count) => `${count} 个步骤`,
+    showOlder: (count) => `展开更早的 ${count} 步`,
+    hideOlder: '收起更早的步骤',
+  },
+}

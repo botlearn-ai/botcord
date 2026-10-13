@@ -1,31 +1,28 @@
 "use client";
 
 import Button from "@/components/ui/Button";
-import Select from "@/components/ui/Select";
-import { useState, useEffect, useRef } from "react";
-import { Search, FileText, CheckCircle2, Code2, Brain, HelpCircle, Wrench, ChevronDown, ChevronRight, Bot, AlertTriangle, ListTodo, Info } from "lucide-react";
+import SignalDot from "@/components/ui/SignalDot";
+import { useState, useEffect } from "react";
+import type { ReactNode } from "react";
+import { Search, FileText, CheckCircle2, Circle, Code2, Brain, HelpCircle, ChevronRight, AlertTriangle, ListTodo } from "lucide-react";
 import type { StreamBlockEntry } from "@/lib/types";
-import { animateFadeUp, animateIfMotion, animeStagger, cleanupAnime, createTimelineIfMotion } from "@/lib/anime";
-import type { MentionTextCandidate } from "@/components/ui/MarkdownContent";
-import ChatMarkdown from "./ChatMarkdown";
+import { useLanguage } from "@/lib/i18n";
+import { streamProcess } from "@/lib/i18n/translations/dashboard";
 import ToolResultContent from "./ToolResultContent";
 
-type MotionAnimation = ReturnType<typeof animateIfMotion>;
-type MotionTimeline = ReturnType<typeof createTimelineIfMotion>;
-
-const DEFAULT_VISIBLE_BLOCK_MAX = 20;
-const VISIBLE_BLOCK_MAX_OPTIONS = [5, 10, 20, 50, 100];
+/** Timeline shows the newest steps; older ones fold behind one link. */
+const VISIBLE_STEP_MAX = 8;
 
 /** Icon for a tool_call based on tool name heuristics. */
 function ToolCallIcon({ name }: { name: string }) {
   const n = name.toLowerCase();
   if (n.includes("search") || n.includes("find") || n.includes("query")) {
-    return <Search className="w-3 h-3 text-accent-text shrink-0" />;
+    return <Search aria-hidden strokeWidth={1.75} className="size-4" />;
   }
   if (n.includes("read") || n.includes("get") || n.includes("fetch") || n.includes("list")) {
-    return <FileText className="w-3 h-3 text-accent-text shrink-0" />;
+    return <FileText aria-hidden strokeWidth={1.75} className="size-4" />;
   }
-  return <Code2 className="w-3 h-3 text-accent-text shrink-0" />;
+  return <Code2 aria-hidden strokeWidth={1.75} className="size-4" />;
 }
 
 const PARAM_HINT_KEYS = [
@@ -112,19 +109,6 @@ function formatToolParams(params: unknown): string | null {
   }
 }
 
-function summarizeResult(result: string): string {
-  if (result.startsWith("{") || result.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(result);
-      if (parsed?.content?.[0]?.text) {
-        const text = parsed.content[0].text as string;
-        return text.length > 120 ? text.slice(0, 120) + "..." : text;
-      }
-    } catch { /* not valid JSON, use raw */ }
-  }
-  return result.length > 120 ? result.slice(0, 120) + "..." : result;
-}
-
 function streamBlockKey(block: StreamBlockEntry): string {
   return `${block.trace_id}-${block.seq}`;
 }
@@ -142,27 +126,6 @@ function compareStreamBlockTimeAsc(a: StreamBlockEntry, b: StreamBlockEntry): nu
   return a.trace_id.localeCompare(b.trace_id);
 }
 
-function partitionBlocksByVisibleMax(
-  blocks: StreamBlockEntry[],
-  maxVisible: number,
-): { olderBlocks: StreamBlockEntry[]; visibleBlocks: StreamBlockEntry[] } {
-  if (blocks.length <= maxVisible) {
-    return { olderBlocks: [], visibleBlocks: blocks };
-  }
-
-  const visibleKeys = new Set(
-    [...blocks]
-      .sort(compareStreamBlockTimeAsc)
-      .slice(-maxVisible)
-      .map(streamBlockKey),
-  );
-
-  return {
-    olderBlocks: blocks.filter((block) => !visibleKeys.has(streamBlockKey(block))),
-    visibleBlocks: blocks.filter((block) => visibleKeys.has(streamBlockKey(block))),
-  };
-}
-
 /** Normalize a stream block into a displayable view-model, handling both the
  *  legacy payload shape and the daemon-gateway shape (`raw`). */
 interface BlockView {
@@ -176,6 +139,8 @@ interface BlockView {
   systemDetails?: string;
   errorText?: string;
   todoItems?: Array<{ text: string; status?: string }>;
+  /** Runtime tool id; pairs a tool_call with its tool_result. */
+  toolId?: string;
   rawKind: string;
 }
 
@@ -525,6 +490,7 @@ function normalizeBlock(
       toolName: (payload?.name as string) || rawCall?.name || "tool",
       paramHint: summarizeParams(params),
       paramDetails: formatToolParams(params),
+      toolId: stringField(payload, "id") ?? rawCall?.id,
       rawKind: kind,
     };
   }
@@ -535,6 +501,7 @@ function normalizeBlock(
       kind: "tool_result",
       toolName: (payload.name as string) || rawResult?.name || (id && ctx?.toolNameById?.[id]) || "tool",
       resultStr: String(payload.result ?? rawResult?.result ?? ""),
+      toolId: id ?? rawResult?.id,
       rawKind: kind,
     };
   }
@@ -564,6 +531,7 @@ function normalizeBlock(
         toolName: call.name,
         paramHint: summarizeParams(call.params),
         paramDetails: formatToolParams(call.params),
+        toolId: call.id,
         rawKind: kind,
       };
     }
@@ -578,6 +546,7 @@ function normalizeBlock(
           toolName: (tu.name as string) || "tool",
           paramHint: summarizeParams(tu.input || tu.arguments),
           paramDetails: formatToolParams(tu.input || tu.arguments),
+          toolId: stringField(tu, "id"),
           rawKind: kind,
         };
       }
@@ -596,6 +565,7 @@ function normalizeBlock(
         toolName: name,
         paramHint: typeof hint === "string" && hint.length > 60 ? hint.slice(0, 60) + "..." : hint ?? null,
         paramDetails: formatToolParams(item),
+        toolId: stringField(item, "id"),
         rawKind: kind,
       };
     }
@@ -609,6 +579,7 @@ function normalizeBlock(
         kind: "tool_result",
         toolName: directResult.name || "tool",
         resultStr: directResult.result,
+        toolId: directResult.id,
         rawKind: kind,
       };
     }
@@ -631,6 +602,7 @@ function normalizeBlock(
           kind: "tool_result",
           toolName: name,
           resultStr,
+          toolId: id,
           rawKind: kind,
         };
       }
@@ -706,535 +678,400 @@ function normalizeBlock(
   return { kind: "unknown", rawKind: kind };
 }
 
-function StreamBlockItem({
-  block,
-  toolNameById,
+/** Process step shown in the timeline. A tool_call and its tool_result are
+ *  folded into one tool step so the user reads one row per action. */
+type ProcessStep =
+  | { kind: "tool"; key: string; call?: BlockView; result?: BlockView }
+  | { kind: "reasoning" | "error" | "todo" | "unknown"; key: string; view: BlockView };
+
+type ToolStep = Extract<ProcessStep, { kind: "tool" }>;
+
+function buildProcessSteps(blocks: StreamBlockEntry[], toolNameById: Record<string, string>): ProcessStep[] {
+  const steps: ProcessStep[] = [];
+  const toolById = new Map<string, ToolStep>();
+
+  for (const block of blocks) {
+    const key = streamBlockKey(block);
+    const view = normalizeBlock(block.block, { toolNameById });
+
+    if (view.kind === "tool_call") {
+      const existing = view.toolId ? toolById.get(view.toolId) : undefined;
+      if (existing && !existing.result) {
+        existing.call = view;
+        continue;
+      }
+      const step: ToolStep = { kind: "tool", key, call: view };
+      steps.push(step);
+      if (view.toolId) toolById.set(view.toolId, step);
+      continue;
+    }
+
+    if (view.kind === "tool_result") {
+      let match = view.toolId ? toolById.get(view.toolId) : undefined;
+      if (!match && !view.toolId) {
+        // No id to pair on: attach to the latest open call with the same name.
+        for (let i = steps.length - 1; i >= 0; i -= 1) {
+          const step = steps[i];
+          if (step.kind === "tool" && !step.result && step.call?.toolName === view.toolName) {
+            match = step;
+            break;
+          }
+        }
+      }
+      if (match && !match.result) {
+        match.result = view;
+      } else {
+        steps.push({ kind: "tool", key, result: view });
+      }
+      continue;
+    }
+
+    if (view.kind === "system") continue;
+    steps.push({ kind: view.kind, key, view });
+  }
+
+  return steps;
+}
+
+function toolStepName(step: ToolStep): string {
+  const callName = step.call?.toolName;
+  if (callName && callName !== "tool") return callName;
+  return step.result?.toolName || callName || "tool";
+}
+
+function formatDuration(ms: number): string | null {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 1) return null;
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+const ICON = "size-4 shrink-0";
+
+/** Compose the streamed prose by walking every block — covers mixed
+ *  Claude-code blocks where the daemon labelled the block as `tool_use`
+ *  because content[] held both `text` and `tool_use` items. */
+export function buildComposingText(blocks: StreamBlockEntry[]): string {
+  const parts: string[] = [];
+  for (const b of blocks) {
+    const k = b.block.kind;
+    if (k === "assistant") {
+      parts.push((b.block.payload?.text as string) || "");
+      continue;
+    }
+    if (k === "assistant_text" || k === "tool_use") {
+      const raw = b.block.raw as any;
+      if (k === "assistant_text" && typeof raw?.item?.text === "string") {
+        parts.push(raw.item.text);
+        continue;
+      }
+      if (
+        k === "assistant_text" &&
+        raw?.event === "item.delta" &&
+        (raw?.payload?.kind === "agent_message" || raw?.payload?.payload?.kind === "agent_message")
+      ) {
+        parts.push(
+          typeof raw?.payload?.delta === "string"
+            ? raw.payload.delta
+            : typeof raw?.payload?.payload?.delta === "string"
+              ? raw.payload.payload.delta
+              : "",
+        );
+        continue;
+      }
+      const contents = raw?.message?.content;
+      if (Array.isArray(contents)) {
+        for (const c of contents) {
+          if (c?.type === "text" && typeof c.text === "string") parts.push(c.text);
+        }
+      }
+    }
+  }
+  return parts.join("");
+}
+
+function StepRow({
+  icon,
+  expandable,
+  expanded,
+  onToggle,
+  children,
 }: {
-  block: StreamBlockEntry;
-  toolNameById?: Record<string, string>;
+  icon: ReactNode;
+  expandable: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
 }) {
-  const view = normalizeBlock(block.block, { toolNameById });
-  const [resultExpanded, setResultExpanded] = useState(false);
-
-  if (view.kind === "tool_call") {
-    const name = view.toolName || "tool";
-    const details = view.paramDetails || "";
-    return (
-      <div className="py-1">
-        <Button variant="row"
-          onClick={() => details && setResultExpanded(!resultExpanded)}
-          className="flex min-w-0 items-center gap-2"
-        >
-          <ToolCallIcon name={name} />
-          <span className="text-xs font-mono text-accent-text">{name}</span>
-          {details && (
-            resultExpanded
-              ? <ChevronDown className="ml-1 inline h-2.5 w-2.5 text-text-secondary" />
-              : <ChevronRight className="ml-1 inline h-2.5 w-2.5 text-text-secondary" />
-          )}
-        </Button>
-        {view.paramHint && !resultExpanded && (
-          <p className="mt-0.5 ml-5 max-w-[400px] truncate text-xs text-text-secondary">
-            {view.paramHint}
-          </p>
-        )}
-        {details && resultExpanded && (
-          <ToolResultContent result={details} toolName={`${name} input`} unwrapContentArray={false} />
-        )}
-      </div>
-    );
-  }
-
-  if (view.kind === "tool_result") {
-    const name = view.toolName || "tool";
-    const resultStr = view.resultStr || "";
-    return (
-      <div className="py-1">
-        <Button variant="inline"
-          onClick={() => resultStr && setResultExpanded(!resultExpanded)}
-          className="flex items-center gap-2"
-        >
-          <CheckCircle2 className="w-3 h-3 text-success shrink-0" />
-          <span className="text-xs font-mono text-success">{name}</span>
-          <span className="text-xs text-text-secondary">returned</span>
-          {resultStr && (
-            resultExpanded
-              ? <ChevronDown className="h-2.5 w-2.5 text-text-secondary" />
-              : <ChevronRight className="h-2.5 w-2.5 text-text-secondary" />
-          )}
-        </Button>
-        {resultStr && !resultExpanded && (
-          <p className="mt-0.5 ml-5 max-w-[400px] truncate text-xs text-text-secondary">
-            {summarizeResult(resultStr)}
-          </p>
-        )}
-        {resultStr && resultExpanded && (
-          <ToolResultContent result={resultStr} toolName={name} />
-        )}
-      </div>
-    );
-  }
-
-  if (view.kind === "reasoning") {
-    const text = view.reasoningText || "";
-    return (
-      <div className="py-1">
-        <Button variant="inline"
-          onClick={() => text && setResultExpanded(!resultExpanded)}
-          className="flex items-center gap-2"
-        >
-          <Brain className="w-3 h-3 text-purple-400 shrink-0" />
-          <span className="text-xs font-mono text-purple-300/80">{view.rawKind || "thinking"}</span>
-          {text && (
-            resultExpanded
-              ? <ChevronDown className="h-2.5 w-2.5 text-text-secondary" />
-              : <ChevronRight className="h-2.5 w-2.5 text-text-secondary" />
-          )}
-        </Button>
-        {text && !resultExpanded && (
-          <p className="mt-0.5 ml-5 text-xs text-purple-300/60 italic leading-relaxed line-clamp-2">
-            {summarizeResult(text)}
-          </p>
-        )}
-        {text && resultExpanded && (
-          <ToolResultContent result={text} toolName={view.rawKind || "thinking"} />
-        )}
-      </div>
-    );
-  }
-
-  if (view.kind === "error") {
-    return (
-      <div className="flex items-start gap-2 py-1">
-        <AlertTriangle className="w-3 h-3 text-danger shrink-0 mt-0.5" />
-        <p className="text-xs text-danger leading-relaxed line-clamp-3">
-          {view.errorText || "error"}
-        </p>
-      </div>
-    );
-  }
-
-  if (view.kind === "todo") {
-    const items = view.todoItems ?? [];
-    return (
-      <div className="py-1">
-        <div className="flex items-center gap-2">
-          <ListTodo className="w-3 h-3 text-warning shrink-0" />
-          <span className="text-xs font-mono text-warning">todo_list</span>
-          {items.length > 0 && (
-            <span className="text-xs text-text-secondary">{items.length} item{items.length !== 1 ? "s" : ""}</span>
-          )}
-        </div>
-        {items.length > 0 && (
-          <ul className="mt-0.5 ml-5 space-y-0.5">
-            {items.slice(0, 6).map((it, idx) => (
-              <li key={idx} className="truncate text-xs text-text-primary/80">
-                <span className="mr-1 text-text-secondary">
-                  {it.status === "completed" ? "✓" : it.status === "in_progress" ? "→" : "○"}
-                </span>
-                {it.text}
-              </li>
-            ))}
-            {items.length > 6 && (
-              <li className="text-xs text-text-secondary">… {items.length - 6} more</li>
-            )}
-          </ul>
-        )}
-      </div>
-    );
-  }
-
-  if (view.kind === "system") {
-    const details = view.systemDetails || "";
-    return (
-      <div className="py-1">
-        <Button variant="inline"
-          onClick={() => details && setResultExpanded(!resultExpanded)}
-          className="flex items-center gap-2"
-        >
-          <Info className="h-3 w-3 shrink-0 text-text-secondary" />
-          <span className="font-mono text-xs text-text-secondary">{view.systemLabel || view.rawKind}</span>
-          {details && (
-            resultExpanded
-              ? <ChevronDown className="h-2.5 w-2.5 text-text-secondary" />
-              : <ChevronRight className="h-2.5 w-2.5 text-text-secondary" />
-          )}
-        </Button>
-        {details && !resultExpanded && (
-          <p className="mt-0.5 ml-5 max-w-[400px] truncate text-xs text-text-secondary">
-            {summarizeResult(details)}
-          </p>
-        )}
-        {details && resultExpanded && (
-          <ToolResultContent result={details} toolName={view.systemLabel || view.rawKind} />
-        )}
-      </div>
-    );
-  }
-
+  const body = (
+    <>
+      <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
+      {expandable && (
+        <ChevronRight
+          aria-hidden
+          strokeWidth={1.75}
+          className={`${ICON} text-text-secondary transition-transform duration-[var(--bc-duration-fast)] ease-[var(--bc-ease-standard)] ${expanded ? "rotate-90" : ""}`}
+        />
+      )}
+    </>
+  );
   return (
-    <div className="flex items-center gap-2 py-1">
-      <HelpCircle className="h-3 w-3 shrink-0 text-text-secondary" />
-      <span className="font-mono text-xs text-text-secondary">{view.rawKind}</span>
+    <div className="relative pl-8">
+      <span className="absolute left-0 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-surface text-text-secondary">
+        {icon}
+      </span>
+      {expandable ? (
+        <Button
+          variant="row"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-h-7 items-center gap-2 px-1.5 py-1.5"
+        >
+          {body}
+        </Button>
+      ) : (
+        <div className="flex min-h-7 items-center gap-2 px-1.5 py-1 text-sm">{body}</div>
+      )}
     </div>
   );
 }
 
+function ProcessStepItem({
+  step,
+  live,
+  labels,
+}: {
+  step: ProcessStep;
+  live: boolean;
+  labels: (typeof streamProcess)["en"];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const toggle = () => setExpanded((value) => !value);
+
+  if (step.kind === "tool") {
+    const name = toolStepName(step);
+    const params = step.call?.paramDetails || "";
+    const result = step.result?.resultStr || "";
+    const running = live && !step.result;
+    return (
+      <li>
+        <StepRow
+          icon={<ToolCallIcon name={name} />}
+          expandable={Boolean(params || result)}
+          expanded={expanded}
+          onToggle={toggle}
+        >
+          <span className="shrink-0 font-mono text-[13px] text-text-primary">{name}</span>
+          {step.call?.paramHint && (
+            <span className="min-w-0 truncate font-mono text-[13px] text-text-secondary">{step.call.paramHint}</span>
+          )}
+          <span className="ml-auto shrink-0 pl-2">
+            {step.result ? (
+              <CheckCircle2 aria-label={labels.done} strokeWidth={1.75} className={`${ICON} text-success`} />
+            ) : running ? (
+              <span className="type-caption text-accent-text">{labels.running}</span>
+            ) : null}
+          </span>
+        </StepRow>
+        {expanded && (
+          <div className="mt-1 space-y-2 pb-1 pl-8">
+            {params && <ToolResultContent result={params} toolName={`${name} input`} unwrapContentArray={false} />}
+            {result && <ToolResultContent result={result} toolName={name} />}
+          </div>
+        )}
+      </li>
+    );
+  }
+
+  const { view } = step;
+
+  if (step.kind === "reasoning") {
+    const text = view.reasoningText || "";
+    return (
+      <li>
+        <StepRow
+          icon={<Brain aria-hidden strokeWidth={1.75} className="size-4" />}
+          expandable={Boolean(text)}
+          expanded={expanded}
+          onToggle={toggle}
+        >
+          <span className="shrink-0 text-sm text-text-primary">{labels.thinking}</span>
+          {text && !expanded && <span className="min-w-0 truncate type-body-sm text-text-secondary">{text}</span>}
+        </StepRow>
+        {text && expanded && (
+          <p className="pb-1 pl-9.5 type-body-sm whitespace-pre-wrap break-words text-text-secondary">{text}</p>
+        )}
+      </li>
+    );
+  }
+
+  if (step.kind === "error") {
+    return (
+      <li>
+        <StepRow
+          icon={<AlertTriangle aria-hidden strokeWidth={1.75} className="size-4 text-danger" />}
+          expandable={false}
+          expanded={false}
+          onToggle={toggle}
+        >
+          <span className="min-w-0 break-words text-sm text-danger">{view.errorText || labels.error}</span>
+        </StepRow>
+      </li>
+    );
+  }
+
+  if (step.kind === "todo") {
+    const items = view.todoItems ?? [];
+    return (
+      <li>
+        <StepRow
+          icon={<ListTodo aria-hidden strokeWidth={1.75} className="size-4" />}
+          expandable={false}
+          expanded={false}
+          onToggle={toggle}
+        >
+          <span className="shrink-0 text-sm text-text-primary">{labels.todo}</span>
+          {items.length > 0 && <span className="type-caption text-text-secondary">{labels.items(items.length)}</span>}
+        </StepRow>
+        {items.length > 0 && (
+          <ul className="space-y-0.5 pb-1 pl-9.5">
+            {items.map((item, idx) => (
+              <li key={idx} className="flex min-w-0 items-center gap-1.5 type-body-sm text-text-secondary">
+                {item.status === "completed" ? (
+                  <CheckCircle2 aria-hidden strokeWidth={1.75} className={`${ICON} text-success`} />
+                ) : (
+                  <Circle aria-hidden strokeWidth={1.75} className={`${ICON} ${item.status === "in_progress" ? "text-accent-text" : ""}`} />
+                )}
+                <span className={`truncate ${item.status === "completed" ? "line-through" : ""}`}>{item.text}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <StepRow
+        icon={<HelpCircle aria-hidden strokeWidth={1.75} className="size-4" />}
+        expandable={false}
+        expanded={false}
+        onToggle={toggle}
+      >
+        <span className="truncate font-mono text-[13px] text-text-secondary">{view.rawKind}</span>
+      </StepRow>
+    </li>
+  );
+}
+
+/**
+ * Agent work process, rendered inside the agent message bubble above the reply.
+ * Collapsed it is one line of secondary text; expanded it is a Node·Cord
+ * timeline (steps connected by a rail). While `live`, the line shows what the
+ * agent is doing right now with a breathing signal dot.
+ */
 export default function StreamBlocksView({
   blocks,
-  defaultExpanded,
-  defaultVisibleBlockMax = DEFAULT_VISIBLE_BLOCK_MAX,
-  showComposing = false,
-  mentionCandidates,
+  live = false,
+  defaultExpanded = false,
   onScrollRequest,
 }: {
   blocks: StreamBlockEntry[];
+  live?: boolean;
   defaultExpanded?: boolean;
-  defaultVisibleBlockMax?: number;
-  showComposing?: boolean;
-  mentionCandidates?: MentionTextCandidate[];
   onScrollRequest?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(defaultExpanded ?? false);
-  const [renderExpandedContent, setRenderExpandedContent] = useState(defaultExpanded ?? false);
-  const [visibleBlockMax, setVisibleBlockMax] = useState(defaultVisibleBlockMax);
-  const [olderBlocksExpanded, setOlderBlocksExpanded] = useState(false);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const rowAnimationRef = useRef<MotionAnimation>(null);
-  const panelAnimationRef = useRef<MotionTimeline>(null);
-  const composingAnimationRef = useRef<MotionAnimation>(null);
-  const previousRowKeysRef = useRef<Set<string>>(new Set());
-  const previousComposingTextRef = useRef("");
+  const locale = useLanguage();
+  const labels = streamProcess[locale];
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [olderExpanded, setOlderExpanded] = useState(false);
+  // Set after mount only, so SSR and hydration render the same text.
+  const [now, setNow] = useState<number | null>(null);
 
-  const isAssistant = (k: string) => k === "assistant" || k === "assistant_text";
-  const executionBlocks = blocks.filter((b) => !isAssistant(b.block.kind));
-
-  // Build tool_use_id → name map so tool_result rows can show the real tool name.
+  const sortedBlocks = [...blocks].sort(compareStreamBlockTimeAsc);
   const toolNameById = buildToolNameById(blocks);
-  const displayBlocks = executionBlocks.filter(
-    (b) => normalizeBlock(b.block, { toolNameById }).kind !== "system",
-  ).sort(compareStreamBlockTimeAsc);
-
-  const normalized = displayBlocks.map((b) => normalizeBlock(b.block, { toolNameById }).kind);
-  const toolCallCount = normalized.filter((k) => k === "tool_call").length;
-  const reasoningCount = normalized.filter((k) => k === "reasoning").length;
-  const { olderBlocks, visibleBlocks } = partitionBlocksByVisibleMax(displayBlocks, visibleBlockMax);
-  const renderedBlocks = olderBlocksExpanded ? displayBlocks : visibleBlocks;
-  const displayBlockKeys = renderedBlocks.map(streamBlockKey);
-  const displayBlockKeySignature = displayBlockKeys.join("|");
-
-  /** Compose the streamed prose by walking every block — covers mixed
-   *  Claude-code blocks where the daemon labelled the block as `tool_use`
-   *  because content[] held both `text` and `tool_use` items. */
-  function buildComposingText(): string {
-    const parts: string[] = [];
-    for (const b of blocks) {
-      const k = b.block.kind;
-      if (k === "assistant") {
-        parts.push((b.block.payload?.text as string) || "");
-        continue;
-      }
-      if (k === "assistant_text" || k === "tool_use") {
-        const raw = b.block.raw as any;
-        if (k === "assistant_text" && typeof raw?.item?.text === "string") {
-          parts.push(raw.item.text);
-          continue;
-        }
-        if (
-          k === "assistant_text" &&
-          raw?.event === "item.delta" &&
-          (raw?.payload?.kind === "agent_message" || raw?.payload?.payload?.kind === "agent_message")
-        ) {
-          parts.push(
-            typeof raw?.payload?.delta === "string"
-              ? raw.payload.delta
-              : typeof raw?.payload?.payload?.delta === "string"
-                ? raw.payload.payload.delta
-                : "",
-          );
-          continue;
-        }
-        const contents = raw?.message?.content;
-        if (Array.isArray(contents)) {
-          for (const c of contents) {
-            if (c?.type === "text" && typeof c.text === "string") parts.push(c.text);
-          }
-        }
-      }
-    }
-    return parts.join("");
-  }
-  const composingText = showComposing ? buildComposingText() : "";
+  const steps = buildProcessSteps(
+    sortedBlocks.filter((b) => b.block.kind !== "assistant" && b.block.kind !== "assistant_text"),
+    toolNameById,
+  );
+  const olderCount = Math.max(0, steps.length - VISIBLE_STEP_MAX);
+  const shownSteps = olderExpanded ? steps : steps.slice(olderCount);
 
   useEffect(() => {
     onScrollRequest?.();
-  }, [blocks.length, onScrollRequest]);
-
-  useEffect(() => () => {
-    cleanupAnime(rowAnimationRef.current);
-    cleanupAnime(panelAnimationRef.current);
-    cleanupAnime(composingAnimationRef.current);
-  }, []);
+  }, [blocks.length, expanded, onScrollRequest]);
 
   useEffect(() => {
-    if (expanded) {
-      cleanupAnime(panelAnimationRef.current);
-      panelAnimationRef.current = null;
-      setRenderExpandedContent(true);
-      return;
-    }
+    if (!live) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [live]);
 
-    const content = contentRef.current;
-    cleanupAnime(panelAnimationRef.current);
+  if (steps.length === 0 && !live) return null;
 
-    if (!content) {
-      setRenderExpandedContent(false);
-      return;
-    }
+  const startedAt = sortedBlocks.length > 0 ? streamBlockTime(sortedBlocks[0]) : 0;
+  const endedAt = live ? now : sortedBlocks.length > 0 ? streamBlockTime(sortedBlocks[sortedBlocks.length - 1]) : 0;
+  const duration = startedAt > 0 && endedAt ? formatDuration(Math.max(0, endedAt - startedAt)) : null;
 
-    const animation = createTimelineIfMotion({
-      onComplete: () => {
-        panelAnimationRef.current = null;
-        setRenderExpandedContent(false);
-      },
-    });
-    panelAnimationRef.current = animation;
-
-    if (!animation) {
-      setRenderExpandedContent(false);
-      return;
-    }
-
-    animation.add(content, {
-      opacity: 0,
-      translateY: -4,
-      duration: 120,
-      ease: "in(2)",
-    }, 0);
-  }, [expanded]);
-
-  useEffect(() => {
-    if (!renderExpandedContent) return;
-
-    const frameId = window.requestAnimationFrame(() => {
-      const content = contentRef.current;
-      if (!content) return;
-
-      cleanupAnime(panelAnimationRef.current);
-      panelAnimationRef.current = createTimelineIfMotion();
-      if (panelAnimationRef.current) {
-        panelAnimationRef.current.add(content, {
-          opacity: [0, 1],
-          translateY: [6, 0],
-          duration: 180,
-          ease: "out(3)",
-        }, 0);
-      } else {
-        content.style.opacity = "1";
-        content.style.transform = "translateY(0)";
-      }
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [renderExpandedContent]);
-
-  useEffect(() => {
-    if (!renderExpandedContent) {
-      previousRowKeysRef.current = new Set(displayBlockKeys);
-      previousComposingTextRef.current = composingText;
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      const content = contentRef.current;
-      if (!content) return;
-
-      const previousKeys = previousRowKeysRef.current;
-      const rows = Array.from(content.querySelectorAll<HTMLElement>("[data-stream-block-row]"));
-      const enteringRows = rows.filter((row) => {
-        const rowKey = row.dataset.streamBlockKey;
-        return !!rowKey && !previousKeys.has(rowKey);
-      });
-
-      // Stop the previous batch's animation WITHOUT reverting it. revert()
-      // restores those rows to their opacity:0 baseline (set imperatively
-      // below) — and since they are no longer "entering", they'd never be
-      // animated back to 1, leaving them invisible but still occupying height.
-      // During fast multi-block streaming this strands every row but the last
-      // at opacity:0, producing a large blank gap above the visible content.
-      rowAnimationRef.current?.pause();
-      rowAnimationRef.current = null;
-
-      // Force every already-settled row fully visible, clearing any
-      // opacity/transform left behind by an interrupted enter animation.
-      rows.forEach((row) => {
-        if (enteringRows.includes(row)) return;
-        row.style.opacity = "1";
-        row.style.transform = "translateY(0)";
-      });
-
-      if (enteringRows.length > 0) {
-        enteringRows.forEach((row) => {
-          row.style.opacity = "0";
-          row.style.transform = "translateY(6px)";
-        });
-        const rowAnimation = animateIfMotion(enteringRows, {
-          opacity: [0, 1],
-          translateY: [6, 0],
-          duration: 210,
-          delay: animeStagger(24),
-          ease: "out(3)",
-        });
-        rowAnimationRef.current = rowAnimation;
-        if (!rowAnimation) {
-          enteringRows.forEach((row) => {
-            row.style.opacity = "1";
-            row.style.transform = "translateY(0)";
-          });
-        }
-      }
-
-      previousRowKeysRef.current = new Set(displayBlockKeys);
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [renderExpandedContent, displayBlockKeySignature]);
-
-  useEffect(() => {
-    const hadComposingText = previousComposingTextRef.current.length > 0;
-    if (!renderExpandedContent || !composingText || hadComposingText) {
-      previousComposingTextRef.current = composingText;
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      const composing = contentRef.current?.querySelector<HTMLElement>("[data-stream-composing]");
-      if (!composing) return;
-
-      cleanupAnime(composingAnimationRef.current);
-      composingAnimationRef.current = animateFadeUp(composing, 20);
-      if (!composingAnimationRef.current) {
-        composing.style.opacity = "1";
-        composing.style.transform = "translateY(0)";
-      }
-      previousComposingTextRef.current = composingText;
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [renderExpandedContent, composingText]);
-
-  if (blocks.length === 0 || displayBlocks.length === 0) return null;
-
-  const summaryParts: string[] = [];
-  if (toolCallCount > 0) summaryParts.push(`${toolCallCount} tool call${toolCallCount !== 1 ? "s" : ""}`);
-  if (reasoningCount > 0) summaryParts.push(`${reasoningCount} reasoning`);
-  if (summaryParts.length === 0) summaryParts.push(`${displayBlocks.length} step${displayBlocks.length !== 1 ? "s" : ""}`);
+  let headline: string;
+  if (live) {
+    const lastStep = steps[steps.length - 1];
+    const lastKind = sortedBlocks[sortedBlocks.length - 1]?.block.kind;
+    if (lastStep?.kind === "tool" && !lastStep.result) headline = labels.runningTool(toolStepName(lastStep));
+    else if (lastKind === "assistant" || lastKind === "assistant_text") headline = labels.replying;
+    else headline = labels.thinkingNow;
+  } else {
+    const reasoningCount = steps.filter((s) => s.kind === "reasoning").length;
+    const toolCount = steps.filter((s) => s.kind === "tool").length;
+    const parts: string[] = [];
+    if (reasoningCount > 0) parts.push(labels.thoughtSteps(reasoningCount));
+    if (toolCount > 0) parts.push(labels.toolCalls(toolCount));
+    if (parts.length === 0) parts.push(labels.steps(steps.length));
+    headline = parts.join(" · ");
+  }
 
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[85%] space-y-2">
-        {displayBlocks.length > 0 && (
-          <div className="liquid-tool-surface overflow-hidden rounded-lg border">
-            <div className="liquid-toolbar flex items-center gap-2 px-3 py-1.5">
-              <Button variant="row"
-                onClick={() => setExpanded(!expanded)}
-                className="flex min-w-0 flex-1 items-center gap-1.5"
-              >
-                <ChevronRight className={`w-3 h-3 shrink-0 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`} />
-                <Wrench className="w-3 h-3 shrink-0" />
-                <span className="truncate">{summaryParts.join(", ")}</span>
-              </Button>
-              <label className="flex shrink-0 items-center gap-1.5 text-xs text-text-secondary">
-                <span>Max</span>
-                <Select
-                  value={visibleBlockMax}
-                  onChange={(event) => {
-                    setVisibleBlockMax(Number(event.target.value));
-                    setOlderBlocksExpanded(false);
-                  }}
-
-                  aria-label="Maximum visible reasoning steps"
-                >
-                  {VISIBLE_BLOCK_MAX_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-            </div>
-            {renderExpandedContent && (
-              <div
-                ref={contentRef}
-                className="divide-y divide-glass-border/60 border-t border-glass-border px-3 py-1 will-change-transform"
-              >
-                {olderBlocks.length > 0 && (
-                  <div className="py-1" data-stream-older-group>
-                    <Button variant="row"
-                      onClick={() => setOlderBlocksExpanded(!olderBlocksExpanded)}
-                      className="flex items-center gap-2"
-                      aria-expanded={olderBlocksExpanded}
-                    >
-                      {olderBlocksExpanded
-                        ? <ChevronDown className="h-2.5 w-2.5 text-text-secondary" />
-                        : <ChevronRight className="h-2.5 w-2.5 text-text-secondary" />}
-                      <span className="text-xs font-medium text-text-secondary">
-                        {olderBlocks.length} older step{olderBlocks.length !== 1 ? "s" : ""}
-                      </span>
-                      <span className="text-xs text-text-secondary">
-                        {visibleBlockMax} newest shown
-                      </span>
-                    </Button>
-                    {olderBlocksExpanded && (
-                      <div className="mt-1 divide-y divide-glass-border/60 border-t border-glass-border">
-                        {olderBlocks.map((block) => {
-                          const blockKey = streamBlockKey(block);
-                          return (
-                            <div
-                              key={blockKey}
-                              data-stream-block-row
-                              data-stream-block-key={blockKey}
-                            >
-                              <StreamBlockItem
-                                block={block}
-                                toolNameById={toolNameById}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {visibleBlocks.map((block) => {
-                  const blockKey = streamBlockKey(block);
-                  return (
-                    <div
-                      key={blockKey}
-                      data-stream-block-row
-                      data-stream-block-key={blockKey}
-                    >
-                      <StreamBlockItem
-                        block={block}
-                        toolNameById={toolNameById}
-                      />
-                    </div>
-                  );
-                })}
-                {composingText && (
-                  <div data-stream-composing className="py-2 will-change-transform">
-                    <div className="mb-1 flex items-center gap-1.5">
-                      <Bot className="h-3 w-3 text-text-primary/80" />
-                      <span className="text-xs text-text-primary/80">Composing...</span>
-                    </div>
-                    <ChatMarkdown content={composingText} mentionCandidates={mentionCandidates} />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+    <div className="mb-1.5" data-stream-process>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        disabled={steps.length === 0}
+        className="-mx-2 h-7 max-w-[calc(100%+1rem)] gap-1.5 px-2 font-normal disabled:cursor-default disabled:opacity-100"
+      >
+        {live && <SignalDot status="thinking" size="xs" className="mr-0.5" />}
+        <span className="truncate type-caption text-text-secondary">{headline}</span>
+        {duration && <span className="shrink-0 type-caption text-text-secondary">· {duration}</span>}
+        {steps.length > 0 && (
+          <ChevronRight
+            aria-hidden
+            strokeWidth={1.75}
+            className={`${ICON} text-text-secondary transition-transform duration-[var(--bc-duration-fast)] ease-[var(--bc-ease-standard)] ${expanded ? "rotate-90" : ""}`}
+          />
         )}
-      </div>
+      </Button>
+      {expanded && steps.length > 0 && (
+        <div className="mt-1 animate-[bc-fade-in_var(--bc-duration-base)_var(--bc-ease-enter)] border-b border-border pb-2">
+          {olderCount > 0 && (
+            <Button
+              variant="inline"
+              onClick={() => setOlderExpanded(!olderExpanded)}
+              aria-expanded={olderExpanded}
+              className="mb-1 ml-9.5 type-caption"
+            >
+              {olderExpanded ? labels.hideOlder : labels.showOlder(olderCount)}
+            </Button>
+          )}
+          <ol className="relative space-y-0.5 before:absolute before:bottom-3 before:left-3 before:top-3 before:w-px before:bg-border">
+            {shownSteps.map((step) => (
+              <ProcessStepItem key={step.key} step={step} live={live} labels={labels} />
+            ))}
+          </ol>
+        </div>
+      )}
     </div>
   );
 }
