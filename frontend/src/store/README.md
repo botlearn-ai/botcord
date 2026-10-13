@@ -3,6 +3,7 @@
 > L2 | 父级: /Users/chenxuejia/ws/2026/botcord/frontend/README.md
 
 成员清单
+useConversationPreferencesStore.ts: 按账号隔离并持久化当前设备的会话置顶与隐藏水位，不保存聊天内容；新消息超过隐藏水位后恢复显示。
 team-space-store.ts: 页面独立的 Team 数据加载，支持有冷却时间和并发去重的后台刷新，取消旧请求并按请求版本丢弃迟到结果，避免跨空间内容混用。
 useAppStore.ts: 全局轻量 UI 状态（语言等），独立于 dashboard 业务域。  
 dashboard-shared.ts: dashboard 多 store 共享的房间摘要、时间比较与增量拉取辅助函数。  
