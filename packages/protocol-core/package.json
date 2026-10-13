@@ -1,7 +1,7 @@
 {
   "name": "@botcord/protocol-core",
-  "version": "0.5.0",
-  "description": "Shared protocol primitives for BotCord — Ed25519 signing, credentials I/O, session key derivation",
+  "version": "0.5.1-beta.20261013111334",
+  "description": "Shared protocol primitives for BotCord \u2014 Ed25519 signing, credentials I/O, session key derivation",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
