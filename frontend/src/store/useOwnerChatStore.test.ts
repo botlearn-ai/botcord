@@ -226,21 +226,35 @@ describe("useOwnerChatStore history loading", () => {
     useOwnerChatStore.getState().setRoom("rm_oc_real", "Owned bot");
   });
 
-  it("advances history even when a page contains no visible messages", async () => {
+  it("fills initial history across hidden pages even when visible messages are old", async () => {
     const hidden = makeDashboardMessage({ hub_msg_id: "hidden-new", text: "", payload: { text: "" } });
-    mocks.getRoomMessages.mockResolvedValueOnce({ messages: [hidden], has_more: true });
+    mocks.getRoomMessages
+      .mockResolvedValueOnce({ messages: [hidden], has_more: true })
+      .mockResolvedValueOnce({ messages: [{ ...hidden, hub_msg_id: "hidden-old" }], has_more: true })
+      .mockResolvedValueOnce({ messages: [makeDashboardMessage({ hub_msg_id: "visible-old", created_at: "2020-01-01T00:00:00Z" })], has_more: false });
     await useOwnerChatStore.getState().loadInitial("rm_oc_real");
-    expect(useOwnerChatStore.getState().messages).toEqual([]);
-    mocks.getRoomMessages.mockResolvedValueOnce({ messages: [{ ...hidden, hub_msg_id: "hidden-old" }], has_more: true });
-    await useOwnerChatStore.getState().loadMore();
-    expect(mocks.getRoomMessages).toHaveBeenLastCalledWith("rm_oc_real", { before: "hidden-new", limit: 50 });
-    mocks.getRoomMessages.mockResolvedValueOnce({ messages: [makeDashboardMessage({ hub_msg_id: "visible-old" })], has_more: false });
-    await useOwnerChatStore.getState().loadMore();
-    expect(mocks.getRoomMessages).toHaveBeenLastCalledWith("rm_oc_real", { before: "hidden-old", limit: 50 });
+    expect(mocks.getRoomMessages).toHaveBeenNthCalledWith(2, "rm_oc_real", { before: "hidden-new", limit: 50 });
+    expect(mocks.getRoomMessages).toHaveBeenNthCalledWith(3, "rm_oc_real", { before: "hidden-old", limit: 50 });
     expect(useOwnerChatStore.getState().messages).toHaveLength(1);
     expect(useOwnerChatStore.getState().hasMore).toBe(false);
     useOwnerChatStore.getState().setRoom("rm_oc_other", "Other");
     expect(useOwnerChatStore.getState().oldestHistoryCursor).toBeNull();
+  });
+
+  it("stops initial filling after at least 30 visible messages", async () => {
+    const messages = Array.from({ length: 30 }, (_, i) => makeDashboardMessage({ hub_msg_id: `hub_${i}`, msg_id: `msg_${i}` }));
+    mocks.getRoomMessages.mockResolvedValueOnce({ messages, has_more: true });
+    await useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    expect(useOwnerChatStore.getState().messages).toHaveLength(30);
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops filling if an older page does not advance the cursor", async () => {
+    mocks.getRoomMessages
+      .mockResolvedValueOnce({ messages: [makeDashboardMessage()], has_more: true })
+      .mockResolvedValueOnce({ messages: [], has_more: true });
+    await useOwnerChatStore.getState().loadInitial("rm_oc_real");
+    expect(mocks.getRoomMessages).toHaveBeenCalledTimes(2);
   });
 
   it("drops an older-page response after the owner-chat room changes", async () => {

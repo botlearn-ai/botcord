@@ -346,6 +346,14 @@ export const useOwnerChatStore = create<OwnerChatState>()((set, get) => ({
         const error = refreshed.messagesErrors[roomId];
         if (error) throw new Error(error);
         applyHistory(refreshed.messages[roomId] ?? [], refreshed.messagesHasMore[roomId] ?? false);
+        // Count visible messages, regardless of their age. Transport-only pages
+        // must not leave a conversation blank when older content is available.
+        while (isCurrent() && get().messages.length < 30 && get().hasMore) {
+          const cursor = get().oldestHistoryCursor;
+          await get().loadMore();
+          if (!isCurrent()) return;
+          if (get().moreError || get().oldestHistoryCursor === cursor) break;
+        }
         syncOwnerChatRoomSummary(roomId, get().messages);
       } catch (err: any) {
         if (isCurrent()) {
