@@ -87,6 +87,11 @@ const THIRD_PARTY_REPLY_HINT =
   "[This is a third-party gateway chat. Reply normally in your final assistant " +
   "message; BotCord daemon will deliver that text through the same channel. " +
   "No extra send tool is required for this chat.]";
+const TEAM_REPLY_HINT =
+  "[BotCord daemon will deliver your final assistant message to this Team room " +
+  "and associate it with the incoming message. Do not also send this reply with " +
+  "a tool or CLI. Your execution permissions are unchanged. " +
+  'If no reply is needed, reply exactly "NO_REPLY".]';
 
 /**
  * Read the BotCord envelope type from a raw inbound message. Returns
@@ -128,6 +133,7 @@ function collaboratorReplyHint(allowedCommands: string[]): string {
 function replyDeliveryHint(msg: GatewayInboundMessage, ctx?: UserTurnContext): string {
   if (isThirdPartyConversation(msg.conversation.id)) return THIRD_PARTY_REPLY_HINT;
   if (ctx?.collaborator) return collaboratorReplyHint(ctx.collaborator.allowedCommands);
+  if (ctx?.automaticReply && !ctx.restricted) return TEAM_REPLY_HINT;
   return ctx?.restricted ? RESTRICTED_REPLY_HINT : NON_OWNER_REPLY_HINT;
 }
 
@@ -353,9 +359,10 @@ export function composeBotCordUserTurn(
     const batch = readBatch(msg.raw);
     if (batch) return batch.map((entry) =>
       `[message_id: ${String(entry.envelope?.msg_id ?? "unknown")}]\n${formatReplyQuoteLine(entry) ?? ""}\n${entryText(entry)}`
-    ).join("\n\n");
+    ).join("\n\n") + (ctx?.automaticReply ? `\n\n${replyDeliveryHint(msg, ctx)}` : "");
     const quoteLine = formatReplyQuoteLine(msg.raw);
-    return quoteLine ? `${quoteLine}\n${trimmed}` : trimmed;
+    const ownerText = quoteLine ? `${quoteLine}\n${trimmed}` : trimmed;
+    return ownerText + (ctx?.automaticReply ? `\n\n${replyDeliveryHint(msg, ctx)}` : "");
   }
 
   const batch = readBatch(msg.raw);

@@ -1,5 +1,15 @@
 import type { GatewayInboundMessage } from "./types.js";
 
+/** Team conversations use daemon delivery for owners as well as grantees. */
+export function isTeamConversation(msg: GatewayInboundMessage): boolean {
+  const raw = msg.raw as { batch?: unknown[]; space_context?: { space_id?: unknown } } | undefined;
+  const entries = Array.isArray(raw?.batch) ? raw.batch : [raw];
+  return entries.length > 0 && entries.every((entry) => {
+    const spaceId = (entry as typeof raw)?.space_context?.space_id;
+    return typeof spaceId === "string" && spaceId.length > 0;
+  });
+}
+
 /** Only actual delivered inputs belong to a run; history/quotes do not. */
 export function responseInputIds(msg: GatewayInboundMessage): string[] {
   const raw = msg.raw as { batch?: unknown[]; envelope?: { msg_id?: unknown; type?: unknown } } | undefined;
@@ -10,10 +20,10 @@ export function responseInputIds(msg: GatewayInboundMessage): string[] {
   }))];
 }
 
-export function responseInstructions(runId: string, roomId: string, ids: string[], restricted: boolean): string {
+export function responseInstructions(runId: string, roomId: string, ids: string[], automaticDelivery: boolean): string {
   const context = `[BotCord response execution: ${runId}; room: ${roomId}; input message IDs: ${ids.join(",")}. Historical messages and quotes are context, not additional inputs.\n`;
   const structured = ids.length === 1 ? "For automatic final-text delivery, reply with ordinary final text, or exactly NO_REPLY when no response is needed.\n" : 'For automatic final-text delivery, you may return exactly <botcord-response>{"responds_to":["message-id"],"no_reply":["other-id"],"text":"your final reply"}</botcord-response>. Only include IDs from this execution. A bare NO_REPLY resolves only a single-input execution; for a batch name each no_reply target.\n';
-  if (restricted) return context + structured + "A plain final reply is associated automatically only when there is one input.]\n\n";
+  if (automaticDelivery) return context + structured + "The daemon will deliver your final reply to this room; do not also send it with a tool or CLI. A plain final reply is associated automatically only when there is one input.]\n\n";
   return context +
     `Before working, declare targets: botcord response start --run-id ${runId} --room ${roomId} --messages <id,id>. ` +
     `For messages needing no response: botcord response no-reply --run-id ${runId} --room ${roomId} --messages <id,id>. ` +

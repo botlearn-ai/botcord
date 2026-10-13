@@ -156,6 +156,8 @@ export type InboundObserver = (
  */
 /** Per-turn facts the dispatcher resolves before composing the user turn. */
 export interface UserTurnContext {
+  /** The daemon, rather than a runtime send tool, delivers this room's reply. */
+  automaticReply?: boolean;
   /** Turn runs with the restricted execution profile (see execution-policy.ts). */
   restricted?: boolean;
   /** Agent-sharing collaborator turn: may edit its workspace and run these commands. */

@@ -23,6 +23,16 @@ function makeMessage(
 }
 
 describe("composeBotCordUserTurn", () => {
+  it("keeps final-text delivery explicit even when an owner turn bypasses wrapping", () => {
+    const out = composeBotCordUserTurn(makeMessage({
+      conversation: { id: "rm_oc_owner", kind: "direct" },
+      raw: { source_type: "dashboard_user_chat" },
+      text: "Answer this question",
+    }), { automaticReply: true });
+    expect(out).toContain("Answer this question");
+    expect(out).toContain("daemon will deliver");
+    expect(out).not.toContain("Plain text output WILL NOT be sent");
+  });
   it("tells restricted turns that the daemon delivers the final reply", () => {
     const restricted = composeBotCordUserTurn(makeMessage(), { restricted: true });
     expect(restricted).toContain("restricted mode");
