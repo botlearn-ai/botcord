@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 @radix-ui/react-dropdown-menu、VI 颜色语义类（bg-surface-raised、text-danger…）、styles/ui-motion-interactive.css 的 .bc-popover 与 clsx
- * [OUTPUT]: 对外提供 Menu（默认导出，Radix Root）与 MenuTrigger / MenuContent / MenuItem / MenuLabel / MenuSeparator
+ * [OUTPUT]: 对外提供 Menu（默认导出，Radix Root）与 MenuTrigger / MenuContent / MenuItem / MenuLabel / MenuSeparator；无 icon 时保留单个子元素以支持 asChild 链接
  * [POS]: ui 交互原语（批次 2）；dashboard 下拉菜单统一从这里出，不再手写 DropdownMenu.Content 样式
  * [PROTOCOL]: 变更时更新此头部，然后检查 docs/brand/botcord-vi/COMPONENTS.md；样式规则以 VI.md §3、§8、§9 为准
  */
@@ -61,11 +61,13 @@ export const MenuItem = forwardRef<ComponentRef<typeof DropdownMenu.Item>, MenuI
       {...rest}
     >
       {icon ? (
-        <span aria-hidden className={clsx("inline-flex h-4 w-4 shrink-0 items-center justify-center", !danger && "text-text-secondary")}>
-          {icon}
-        </span>
-      ) : null}
-      {children}
+        <>
+          <span aria-hidden className={clsx("inline-flex h-4 w-4 shrink-0 items-center justify-center", !danger && "text-text-secondary")}>
+            {icon}
+          </span>
+          {children}
+        </>
+      ) : children}
     </DropdownMenu.Item>
   );
 });

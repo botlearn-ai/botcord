@@ -51,3 +51,38 @@ it("renders label, items, separator and danger styling when open", () => {
   expect(onDelete).toHaveBeenCalledOnce();
   act(() => root.unmount());
 });
+
+it("opens linked items without crashing and keeps link semantics", () => {
+  const onSelect = vi.fn();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    act(() => root.render(
+      <Menu modal={false}>
+        <MenuTrigger asChild><button type="button">More</button></MenuTrigger>
+        <MenuContent>
+          <MenuItem asChild onSelect={onSelect}>
+            <a href="/chats/explore">
+              <svg aria-hidden="true" />Discover
+            </a>
+          </MenuItem>
+        </MenuContent>
+      </Menu>,
+    ));
+    act(() => host.querySelector("button")!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    ));
+    const link = document.querySelector<HTMLAnchorElement>('a[role="menuitem"]')!;
+    expect(link).not.toBeNull();
+    expect(link.getAttribute("href")).toBe("/chats/explore");
+    expect(link.textContent).toBe("Discover");
+    expect(link.querySelector("svg")).not.toBeNull();
+    // Cancel jsdom navigation after Radix has handled the click on the link.
+    document.addEventListener("click", (event) => event.preventDefault(), { once: true });
+    act(() => link.click());
+    expect(onSelect).toHaveBeenCalledOnce();
+  } finally {
+    act(() => root.unmount());
+  }
+});
