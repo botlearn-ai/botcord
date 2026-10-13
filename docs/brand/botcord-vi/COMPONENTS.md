@@ -98,6 +98,7 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 </Menu>
 ```
 样式：`bg-surface-raised`、`border-border`、`rounded-xl`、`shadow`；danger 项用 `text-danger`。
+`MenuItem asChild` 接收一个链接元素，保留 href、ref 和菜单事件；图标放在链接内部，不同时传入 `icon`。没有 `icon` 时直接透传 children，避免 Radix Slot 收到多个子节点而崩溃。
 
 ### `Tooltip`（重做现有 `ui/Tooltip.tsx`，基于 `@radix-ui/react-tooltip`）
 ```ts
