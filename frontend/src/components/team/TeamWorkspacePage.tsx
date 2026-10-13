@@ -12,7 +12,7 @@ import SearchInput from "@/components/ui/SearchInput";
 import Tabs from "@/components/ui/Tabs";
 
 import LinkButton from "@/components/ui/LinkButton";
-import Select from "@/components/ui/Select";
+import SingleSelect from "@/components/ui/SingleSelect";
 import UnreadBadge from "@/components/ui/UnreadBadge";
 import { useLanguage } from "@/lib/i18n";
 import {
@@ -534,24 +534,29 @@ export function TeamWorkspace({
           <IconTile>
             <Building2 />
           </IconTile>
-          <Field label={<>{t("当前组织", "Organization")}</>}>
-            <Select
+          <Field
+            label={<>{t("当前组织", "Organization")}</>}
+            className="min-w-0 flex-1"
+          >
+            <SingleSelect
               aria-label={t("切换组织", "Switch organization")}
+              panelClassName="min-w-60"
               value={space.id}
-
-              onChange={(e) => router.push(teamHref(e.target.value))}
-            >
-              {snapshot.spaces
+              placeholder={t("选择组织", "Select an organization")}
+              onChange={(id) => {
+                if (id && id !== space.id) router.push(teamHref(id));
+              }}
+              options={snapshot.spaces
                 .filter((s) => s.kind === "organization")
-                .map((s) => (
-                  <option key={s.id} value={s.id} className="bg-bg">
-                    {s.name}
-                    {s.membership.status === "invited"
-                      ? t(" · 待接受", " · Invited")
-                      : ""}
-                  </option>
-                ))}
-            </Select>
+                .map((s) => ({
+                  value: s.id,
+                  label: s.name ?? s.id,
+                  sublabel:
+                    s.membership.status === "invited"
+                      ? t("待接受", "Invited")
+                      : undefined,
+                }))}
+            />
           </Field>
           <LinkButton
             variant="secondary"
