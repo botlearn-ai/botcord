@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/raineorshine/npm-check-updates/main/src/types/RunOptions.json",
+  "reject": [
+    "expo",
+    "expo-*",
+    "@expo/*",
+    "react",
+    "react-dom",
+    "react-native",
+    "react-native-*"
+  ]
+}
