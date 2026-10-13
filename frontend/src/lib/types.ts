@@ -154,6 +154,7 @@ export interface ReplyPreview {
 }
 
 export interface RoomReplyActivity {
+  basis?: "run" | "legacy";
   agent_id: string;
   agent_name: string;
   avatar_url?: string | null;
@@ -166,6 +167,7 @@ export interface RoomReplyActivity {
 export interface DashboardMessage {
   reply_activity?: RoomReplyActivity[];
   send_status?: "sending" | "sent" | "failed";
+  send_request_id?: string;
   send_error?: string;
   retry_reply_to?: string | null;
   hub_msg_id: string;

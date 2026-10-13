@@ -17,9 +17,10 @@ it("preserves attachments, mentions and quote when retrying the same bubble", as
   mocks.send.mockRejectedValueOnce(new Error("offline"));
   await expect(sendDashboardRoomMessage(message)).rejects.toThrow("offline");
   expect(mocks.state.messages.rm_1[0].send_status).toBe("failed");
+  expect(mocks.state.messages.rm_1[0].send_request_id).toBe("tmp_1");
   mocks.send.mockResolvedValueOnce({ hub_msg_id: "h_1", msg_id: "m_1" });
   await sendDashboardRoomMessage(mocks.state.messages.rm_1[0]);
-  expect(mocks.send).toHaveBeenLastCalledWith("rm_1", "hello", ["ag_1"], "tp_1", message.payload.attachments, "quoted");
+  expect(mocks.send).toHaveBeenLastCalledWith("rm_1", "hello", ["ag_1"], "tp_1", message.payload.attachments, "quoted", "tmp_1");
   expect(mocks.state.messages.rm_1).toHaveLength(1);
   expect(mocks.state.messages.rm_1[0]).toMatchObject({ hub_msg_id: "h_1", send_status: "sent", send_error: undefined });
 });

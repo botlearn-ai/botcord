@@ -109,3 +109,22 @@ async def test_team_agent_dm_tracks_unmentioned_agent(db_session, seed):
     await db_session.commit()
     activity = await load_room_message_activity(db_session, room_id, ["m_team_dm"])
     assert activity["m_team_dm"][0]["status"] == "waiting"
+
+
+@pytest.mark.asyncio
+async def test_activity_exposes_explicit_versus_legacy_basis(db_session, seed):
+    from hub.services.room_message_activity import load_room_message_activity
+    for i, status in enumerate([None, "unconfirmed", "completed", "no_reply"]):
+        db_session.add(MessageRecord(
+            hub_msg_id=f"h_basis_{i}", msg_id=f"m_basis_{i}", sender_id="hu_test",
+            receiver_id=seed["agent1"], room_id="rm_pubopen01", envelope_json="{}",
+            state=MessageState.delivered, ttl_sec=3600, mentioned=True,
+            source_type="dashboard_human_room", response_status=status,
+            response_run_id="run" if status else None,
+        ))
+    await db_session.commit()
+    activity = await load_room_message_activity(db_session, "rm_pubopen01", [f"m_basis_{i}" for i in range(4)])
+    assert activity["m_basis_0"][0]["basis"] == "legacy"
+    assert activity["m_basis_0"][0]["status"] == "unconfirmed"
+    for i in range(1, 4):
+        assert activity[f"m_basis_{i}"][0]["basis"] == "run"

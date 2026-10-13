@@ -2956,6 +2956,7 @@ async def open_dm_room(
 class HumanRoomSendBody(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
+    client_request_id: str | None = Field(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     text: str = Field(default="", max_length=8000)
     mentions: list[str] | None = None
     topic: str | None = None
@@ -3068,6 +3069,17 @@ async def human_room_send(
     # _can_send (step 6)
     if not _room_can_send(room, effective_member):
         raise HTTPException(status_code=403, detail="Sender cannot send in this room")
+
+    send_request = None
+    if body.client_request_id:
+        from hub.services.dashboard_send_requests import reserve_room_send
+        send_request, replay = await reserve_room_send(
+            db, user_id=str(ctx.user_id), sender_id=sender_id, room_id=room_id,
+            key=body.client_request_id,
+            payload=body.model_dump(mode="json", exclude={"client_request_id"}),
+        )
+        if replay is not None:
+            return replay
 
     topic_id: str | None = None
     topic_title: str | None = None
@@ -3272,6 +3284,15 @@ async def human_room_send(
             message_type="message",
         )
 
+    response = {
+        "hub_msg_id": first_hub_msg_id,
+        "msg_id": msg_id,
+        "room_id": room_id,
+        "status": "queued",
+        "topic_id": topic_id,
+    }
+    if send_request is not None:
+        send_request.response_json = response
     await db.commit()
 
     # Fetch user display name for realtime event
@@ -3315,13 +3336,7 @@ async def human_room_send(
                 receiver_id, room_id, exc, exc_info=True,
             )
 
-    return {
-        "hub_msg_id": first_hub_msg_id,
-        "msg_id": msg_id,
-        "room_id": room_id,
-        "status": "queued",
-        "topic_id": topic_id,
-    }
+    return response
 
 
 # ---------------------------------------------------------------------------

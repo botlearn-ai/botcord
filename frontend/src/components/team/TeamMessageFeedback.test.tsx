@@ -11,7 +11,7 @@ describe("team message feedback", () => {
   it("distinguishes transport from AI progress and does not fake work", () => {
     expect(render({ send_status: "sending" })).toContain("正在发送");
     const html = render({ send_status: "sent", reply_activity: [{ agent_id: "a", agent_name: "助手 A", status: "waiting" }] });
-    expect(html).toContain("已发送");
+    expect(html).not.toContain("已发送");
     expect(html).toContain("等待处理");
     expect(html).not.toContain("正在处理");
     expect(html).toContain("你可以继续发送消息");
@@ -25,8 +25,8 @@ describe("team message feedback", () => {
     ] });
     expect(html).toContain("助手 A");
     expect(html).toContain("正在处理");
-    expect(html).toContain("助手 B");
-    expect(html).toContain("已回复");
+    expect(html).not.toContain("助手 B");
+    expect(html).not.toContain("已回复");
     expect(html).toContain("助手 C");
     expect(html).toContain("重试");
   });
@@ -51,4 +51,32 @@ it("explains revoked access without offering an ineffective retry", () => {
   expect(html).not.toContain("agent_access_revoked");
   expect(html).not.toContain("<button");
   expect(render({ send_status: "failed", send_error: "Network unavailable" })).toContain("重试");
+});
+
+it("hides success and untracked history, but distinguishes an explicit unresolved run", () => {
+  expect(render({ send_status: "sent", reply_activity: [] })).toBe("");
+  expect(render({ reply_activity: undefined })).toBe("");
+  expect(render({ reply_activity: [{ agent_id: "a", agent_name: "A", status: "unconfirmed", basis: "legacy" }] })).toBe("");
+  for (const metadata of [{ basis: "run" as const }, { run_id: "run" }]) {
+    const html = render({ reply_activity: [{ agent_id: "a", agent_name: "A", status: "unconfirmed", ...metadata }] });
+    expect(html).toContain("已结束，未关联回复");
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("还在等待回复");
+  }
+});
+
+it("shows other members only active work and keeps legacy failures actionable", () => {
+  const activity = [
+    { agent_id: "a", agent_name: "等待者", status: "waiting" as const, basis: "legacy" as const },
+    { agent_id: "b", agent_name: "失败者", status: "failed" as const, error: "delivery_expired", basis: "legacy" as const },
+    { agent_id: "c", agent_name: "静默者", status: "no_reply" as const, basis: "run" as const },
+  ];
+  const other = render({ is_mine: false, reply_activity: activity });
+  expect(other).toContain("等待者");
+  expect(other).not.toContain("失败者");
+  expect(other).not.toContain("静默者");
+  expect(other).not.toContain("还在等待回复");
+  const own = render({ reply_activity: activity });
+  expect(own).toContain("投递超时");
+  expect(own).toContain("重试可能重复");
 });

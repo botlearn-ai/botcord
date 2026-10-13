@@ -906,8 +906,10 @@ export const api = {
     topicId?: string | null,
     attachments?: Attachment[],
     replyTo?: string | null,
+    clientRequestId?: string,
   ) {
     const body: Record<string, unknown> = { text };
+    if (clientRequestId) body.client_request_id = clientRequestId;
     if (mentions && mentions.length > 0) body.mentions = mentions;
     if (topicId) body.topic_id = topicId;
     if (attachments && attachments.length > 0) body.attachments = attachments;

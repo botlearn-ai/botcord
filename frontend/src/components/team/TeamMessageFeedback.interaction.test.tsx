@@ -43,12 +43,8 @@ it("retries only failed agents while retaining the message payload and quote", a
   expect(container.textContent).toContain("已重新发送");
 });
 
-it("navigates from a completed request to its final reply", () => {
-  const listener = vi.fn();
-  window.addEventListener("botcord:jump-to-message", listener);
+it("hides completed feedback because the reply itself is the result", () => {
   message.reply_activity = [{ agent_id: "ag_1", agent_name: "A", status: "completed", reply_msg_id: "answer" }];
   act(() => root.render(<MessageFeedback message={message} />));
-  act(() => container.querySelector("button")!.click());
-  expect(listener.mock.calls[0][0].detail).toEqual({ msgId: "answer", roomId: "rm_1" });
-  window.removeEventListener("botcord:jump-to-message", listener);
+  expect(container.innerHTML).toBe("");
 });

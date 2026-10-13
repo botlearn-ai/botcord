@@ -9,13 +9,16 @@ export async function sendDashboardRoomMessage(message: DashboardMessage): Promi
   const roomId = message.room_id;
   if (!roomId || sending.has(message.hub_msg_id)) return;
   sending.add(message.hub_msg_id);
+  // Stable across an ambiguous network failure; a deliberate execution retry
+  // creates a new optimistic bubble and a new request ID.
+  const requestId = message.send_request_id ?? message.hub_msg_id;
   const patch = (values: Partial<DashboardMessage>) => useDashboardChatStore.setState((state) => ({
     messages: { ...state.messages, [roomId]: (state.messages[roomId] || []).map((m) =>
       m.hub_msg_id === message.hub_msg_id ? { ...m, ...values } : m
     ) },
   }));
   useDashboardChatStore.getState().insertMessage(roomId, message);
-  patch({ send_status: "sending", send_error: undefined, state: "queued" });
+  patch({ send_request_id: requestId, send_status: "sending", send_error: undefined, state: "queued" });
   try {
     const result = await api.sendRoomHumanMessage(
       roomId,
@@ -24,6 +27,7 @@ export async function sendDashboardRoomMessage(message: DashboardMessage): Promi
       message.topic_id,
       message.payload.attachments as Attachment[] | undefined,
       message.retry_reply_to ?? message.reply_preview?.msg_id,
+      requestId,
     );
     patch({
       hub_msg_id: result.hub_msg_id,
