@@ -1,0 +1,45 @@
+{
+  "name": "botcord-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start",
+    "dev:web": "expo start --web",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
+    "build:web": "expo export --platform web --output-dir dist",
+    "native:prebuild": "expo prebuild",
+    "doctor": "expo install --check",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@supabase/supabase-js": "^2.117.2",
+    "expo": "~57.0.25",
+    "expo-constants": "~57.0.19",
+    "expo-device": "~57.0.2",
+    "expo-image": "~57.0.5",
+    "expo-image-picker": "~57.0.20",
+    "expo-linking": "~57.0.11",
+    "expo-notifications": "~57.0.21",
+    "expo-router": "~57.0.23",
+    "expo-splash-screen": "~57.0.9",
+    "expo-status-bar": "57.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-reanimated": "4.5.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-url-polyfill": "^4.0.0",
+    "react-native-web": "0.21.2",
+    "react-native-worklets": "0.10.1"
+  },
+  "devDependencies": {
+    "@expo/metro-runtime": "~57.0.16",
+    "@types/react": "19.2.14",
+    "typescript": "~6.0.3"
+  }
+}

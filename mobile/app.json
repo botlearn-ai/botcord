@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "BotCord",
+    "slug": "botcord-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "botcord",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.ouraca.botcord"
+    },
+    "android": {
+      "package": "ai.ouraca.botcord",
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-image",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "BotCord uses your photos to send images in chats.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-notifications"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -210,3 +210,11 @@ def _clear_rate_windows():
     hub_mod._pair_rate_windows.clear()
     hub_mod._typing_rate_windows.clear()
     hub_mod._typing_dedup.clear()
+
+
+@pytest.fixture(autouse=True)
+def disable_expo_push(monkeypatch):
+    """Never send Expo pushes from tests; push tests re-enable explicitly."""
+    import hub.config
+
+    monkeypatch.setattr(hub.config, "EXPO_PUSH_ENABLED", False)

@@ -45,6 +45,7 @@ from hub.dashboard_message_shaping import load_user_display_names
 from hub.database import async_session, get_db
 from hub.dm_room_names import build_dm_room_name
 from hub.services import presence as presence_service
+from hub.services.expo_push import schedule_message_push
 from hub.services.cloud_agent_activity import (
     bump_if_cloud_agent,
     maybe_bump_for_inbound,
@@ -591,6 +592,7 @@ async def notify_inbox(
         if db is not None and realtime_event is not None:
             with send_diagnostics.stage("notify.realtime"):
                 await _publish_agent_realtime_event(db, realtime_event)
+            schedule_message_push(realtime_event)
 
         return notified
 
@@ -1667,8 +1669,9 @@ async def _send_room_message(
                 if not is_owner_chat:
                     await _publish_agent_realtime_event(db, rt_event)
             elif is_owner_chat and receiver_id in owner_chat_human_receivers:
-                # Dedicated owner-chat WS handles immediate dashboard delivery.
-                pass
+                # Dedicated owner-chat WS handles immediate dashboard delivery;
+                # the owner's mobile devices still need a push.
+                schedule_message_push(rt_event)
             else:
                 await notify_inbox(
                     receiver_id,

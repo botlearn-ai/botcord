@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖用户鉴权上下文、Hub token 校验、数据库会话与 Agent 模型完成 dashboard 身份流转
-[OUTPUT]: 对外提供 /api/users 用户资料、Agent 认领、短码绑定与默认身份切换接口
+[OUTPUT]: 对外提供 /api/users 用户资料、Agent 认领、短码绑定、默认身份切换与 Expo 推送 token 注册接口
 [POS]: app BFF 用户入口，把浏览器态与 Agent 身份绑定协议收敛成单一边界
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
@@ -14,10 +14,11 @@ import hmac
 import json
 import logging
 import os
+from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, case, func as sa_func, select, update
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.exc import IntegrityError
@@ -51,6 +52,7 @@ from hub.models import (
     DaemonAgentCleanup,
     DaemonInstance,
     OpenclawHostInstance,
+    PushToken,
     Role,
     ShortCode,
     SigningKey,
@@ -2746,3 +2748,70 @@ async def openclaw_provision(
         config_patched=bool(config_patched_raw) if config_patched_raw is not None else True,
         config_skip_reason=config_skip_reason if isinstance(config_skip_reason, str) else None,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST/DELETE /api/users/me/push-tokens — Expo push token registry
+# ---------------------------------------------------------------------------
+
+_EXPO_PUSH_TOKEN_PREFIXES = ("ExponentPushToken[", "ExpoPushToken[")
+
+
+class PushTokenRegisterBody(BaseModel):
+    token: str = Field(..., min_length=1, max_length=256)
+    platform: Literal["ios", "android", "web"]
+
+    @field_validator("token")
+    @classmethod
+    def _check_expo_token(cls, v: str) -> str:
+        v = v.strip()
+        if not v.startswith(_EXPO_PUSH_TOKEN_PREFIXES) or not v.endswith("]"):
+            raise ValueError("invalid Expo push token")
+        return v
+
+
+@router.post("/me/push-tokens")
+async def register_push_token(
+    body: PushTokenRegisterBody,
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upsert an Expo push token for the current user.
+
+    A token already bound to another user (device changed hands / re-login)
+    is reassigned to the caller.
+    """
+    existing = await db.scalar(select(PushToken).where(PushToken.token == body.token))
+    if existing is None:
+        db.add(PushToken(user_id=ctx.user_id, token=body.token, platform=body.platform))
+        try:
+            await db.commit()
+            return {"ok": True}
+        except IntegrityError:
+            # Concurrent registration of the same token — fall through to update.
+            await db.rollback()
+            existing = await db.scalar(select(PushToken).where(PushToken.token == body.token))
+            if existing is None:
+                raise
+    existing.user_id = ctx.user_id
+    existing.platform = body.platform
+    existing.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/me/push-tokens")
+async def unregister_push_token(
+    token: str = Query(..., min_length=1, max_length=256),
+    ctx: RequestContext = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove an Expo push token if it belongs to the current user."""
+    await db.execute(
+        delete(PushToken).where(
+            PushToken.token == token.strip(),
+            PushToken.user_id == ctx.user_id,
+        )
+    )
+    await db.commit()
+    return {"ok": True}
