@@ -29,11 +29,12 @@ it("keeps the anchored desktop picker layout", () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
   expect(mount().style.position).toBe("");
 });
-it("opens below the anchor when there is room and docks to the bottom otherwise", () => {
+it("opens below the anchor, then above it, and docks to the bottom when neither fits", () => {
   vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
   const viewport = Object.assign(new EventTarget(), { height: 800, offsetTop: 0 });
   vi.stubGlobal("visualViewport", viewport); vi.stubGlobal("innerHeight", 800);
-  const anchor = { current: { getBoundingClientRect: () => ({ bottom: 100 }) } as HTMLElement };
+  const rect = { top: 56, bottom: 100 };
+  const anchor = { current: { getBoundingClientRect: () => rect } as HTMLElement };
   function Anchored() { return <div data-picker style={useMobilePickerStyle(true, anchor)} />; }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   act(() => root.render(<Anchored />));
@@ -41,7 +42,11 @@ it("opens below the anchor when there is room and docks to the bottom otherwise"
   expect(picker.style.top).toBe("108px");
   expect(picker.style.bottom).toBe("auto");
   expect(picker.style.maxHeight).toBe("360px");
-  act(() => { viewport.height = 250; viewport.dispatchEvent(new Event("resize")); });
+  act(() => { rect.top = 600; rect.bottom = 644; viewport.dispatchEvent(new Event("resize")); });
+  expect(picker.style.top).toBe("auto");
+  expect(picker.style.bottom).toBe("208px");
+  expect(picker.style.maxHeight).toBe("360px");
+  act(() => { rect.top = 56; rect.bottom = 100; viewport.height = 250; viewport.dispatchEvent(new Event("resize")); });
   expect(picker.style.top).toBe("auto");
   expect(picker.style.bottom).toContain("562px");
 });

@@ -7,7 +7,7 @@ const MIN_ANCHORED_HEIGHT = 160;
 
 /**
  * Keep touch pickers inside the visible viewport, including when the keyboard opens.
- * With an anchor, the picker opens right below it when there is room; otherwise it docks to the bottom.
+ * With an anchor, the picker opens below it when there is room, then above it; otherwise it docks to the bottom.
  */
 export function useMobilePickerStyle(open: boolean, anchorRef?: RefObject<HTMLElement | null>): CSSProperties | undefined {
   const [style, setStyle] = useState<CSSProperties>();
@@ -24,6 +24,13 @@ export function useMobilePickerStyle(open: boolean, anchorRef?: RefObject<HTMLEl
       if (anchor && spaceBelow >= MIN_ANCHORED_HEIGHT) {
         setStyle({ position: "fixed", left: 12, right: 12, top: anchor.bottom + 8, bottom: "auto", marginTop: 0,
           maxHeight: Math.min(360, spaceBelow), overflowY: "auto", zIndex: 120 });
+        return;
+      }
+      const spaceAbove = anchor ? anchor.top - offsetTop - 8 - 12 : 0;
+      if (anchor && spaceAbove >= MIN_ANCHORED_HEIGHT) {
+        setStyle({ position: "fixed", left: 12, right: 12, top: "auto", marginTop: 0,
+          bottom: window.innerHeight - anchor.top + 8,
+          maxHeight: Math.min(360, spaceAbove), overflowY: "auto", zIndex: 120 });
         return;
       }
       const bottom = Math.max(0, window.innerHeight - height - offsetTop);
