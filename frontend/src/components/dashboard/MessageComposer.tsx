@@ -605,7 +605,7 @@ export default function MessageComposer({
               <IconButton size="sm" label={actionLabels?.add ?? "Open actions"}
                 type="button"
                 onClick={() => setActionMenuOpen((open) => !open)}
-                className="flex shrink-0 items-center justify-center"
+                className="flex shrink-0 items-center justify-center md:mb-1.5"
                 title={actionLabels?.add ?? "Add"}
                 aria-label={actionLabels?.add ?? "Open actions"}
                 aria-expanded={actionMenuOpen}
@@ -618,7 +618,7 @@ export default function MessageComposer({
         <div className="relative min-w-0 flex-1 max-md:order-first max-md:basis-full">
           {pickedMentions.length > 0 && (
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
-              <div className="whitespace-pre-wrap break-words px-3 py-2 text-sm leading-relaxed [@media(pointer:coarse)]:text-base text-text-primary" style={{ transform: `translateY(-${inputScrollTop}px)`, overflowWrap: "break-word" }}>
+              <div className="whitespace-pre-wrap break-words px-3 py-2.5 text-sm leading-relaxed [@media(pointer:coarse)]:text-base text-text-primary" style={{ transform: `translateY(-${inputScrollTop}px)`, overflowWrap: "break-word" }}>
                 {pickedMentions.map((mention, index) => (
                   <span key={`${mention.start}:${mention.agent_id}`}>
                     {text.slice(index === 0 ? 0 : pickedMentions[index - 1].end, mention.start)}
@@ -753,7 +753,7 @@ export default function MessageComposer({
           onMouseDown={(event) => event.preventDefault()}
           onClick={handleSendClick}
           disabled={!canSend}
-          className="max-md:ml-auto flex shrink-0 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50"
+          className="max-md:ml-auto md:mb-1.5 flex shrink-0 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="Send message"
         >
           <Send ref={sendIconRef} className="w-4 h-4" />

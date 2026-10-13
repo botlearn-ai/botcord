@@ -12,7 +12,7 @@ import { clsx } from "clsx";
 const FIELD =
   "liquid-input w-full rounded-lg px-3 text-sm text-text-primary outline-none transition-colors placeholder:text-text-tertiary disabled:cursor-not-allowed disabled:opacity-60";
 
-const MESSAGE = "w-full min-h-11 border-0 bg-transparent px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-tertiary disabled:cursor-not-allowed disabled:opacity-60";
+const MESSAGE = "w-full min-h-11 border-0 bg-transparent px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-tertiary disabled:cursor-not-allowed disabled:opacity-60";
 const COMPOSER = "w-full border-0 bg-transparent p-0 text-sm text-text-primary outline-none placeholder:text-text-tertiary disabled:cursor-not-allowed disabled:opacity-60";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
