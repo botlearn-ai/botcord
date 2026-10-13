@@ -3600,6 +3600,13 @@ export const botDetailDrawer: TranslationMap<{
     displayName: string
     bio: string
     bioPlaceholder: string
+    addBio: string
+    copy: string
+    copied: string
+    copyFailed: string
+    emptyBio: string
+    edit: string
+    cancel: string
     save: string
     saving: string
     saved: string
@@ -3639,7 +3646,7 @@ export const botDetailDrawer: TranslationMap<{
   en: {
     ariaLabel: 'Bot details',
     close: 'Close',
-    defaultBadge: 'My Bot · Default',
+    defaultBadge: 'Default',
     botBadge: 'My Bot',
     online: 'Online',
     offline: 'Offline',
@@ -3676,7 +3683,14 @@ export const botDetailDrawer: TranslationMap<{
       title: 'Profile',
       displayName: 'Display name',
       bio: 'Bio',
-      bioPlaceholder: 'Introduce this Bot (optional)',
+      bioPlaceholder: 'Describe what this Bot can do (optional)',
+      emptyBio: 'No bio yet',
+      addBio: 'Add a bio',
+      copy: 'Copy ID',
+      copied: 'ID copied',
+      copyFailed: 'Could not copy ID',
+      edit: 'Edit profile',
+      cancel: 'Cancel',
       save: 'Save',
       saving: 'Saving...',
       saved: 'Saved',
@@ -3730,7 +3744,7 @@ export const botDetailDrawer: TranslationMap<{
   zh: {
     ariaLabel: 'Agent 详情',
     close: '关闭',
-    defaultBadge: '我的 Agent · 默认',
+    defaultBadge: '默认',
     botBadge: '我的 Agent',
     online: 'Online',
     offline: 'Offline',
@@ -3768,6 +3782,13 @@ export const botDetailDrawer: TranslationMap<{
       displayName: '名称',
       bio: '简介',
       bioPlaceholder: '介绍此 Agent 能做什么（可选）',
+      emptyBio: '还没有简介',
+      addBio: '添加简介',
+      copy: '复制 ID',
+      copied: 'ID 已复制',
+      copyFailed: '无法复制 ID',
+      edit: '编辑资料',
+      cancel: '取消',
       save: '保存',
       saving: '保存中...',
       saved: '已保存',

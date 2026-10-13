@@ -211,3 +211,7 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 | SwipeableRow | 行内左滑操作：触屏横向拖动露出每项72px宽、整行高的操作色块，纵向手势保持原生滚动；open/onOpenChange受控，必填label给“更多”按钮，Esc和点外部关闭；actions为{label,onClick,disabled,className}，className只放语义色块（如bg-accent text-on-accent）|
 
 新表单优先 DialogShell / DrawerShell；仅在必须保留旧业务动画生命周期时使用 DialogSurface。动画结束后清除无意义的 identity transform，避免改变内部 fixed 元素定位。所有表单提交按钮显式写 `type="submit"`，共享 Button 默认 `type="button"`。
+
+### CopyableId 复制反馈
+
+保留 `value` / `className`，新增可选 `copyLabel`、`copiedLabel`、`copyFailedLabel`。复制图标常驻，成功后变为 Check；结果通过 status 播报，失败不显示成功。触屏点击区域至少 44px。
