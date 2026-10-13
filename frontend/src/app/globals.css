@@ -881,11 +881,9 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   .liquid-message-action { opacity: 1; pointer-events: auto; background: transparent; border-color: transparent; box-shadow: none; }
 }
 
-/* History pagination is explicit on phones and touch devices. */
-.message-history-load { display: inline-flex; }
+/* Keep the clickable action on every device; desktop adds a scroll hint. */
 .message-history-scroll { display: none; }
 @media (min-width: 768px) and (hover: hover) and (pointer: fine) {
-  .message-history-load { display: none; }
   .message-history-scroll { display: block; }
 }
 
@@ -918,4 +916,19 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   .bc-touch-target, label:has(> .bc-radio) { min-width: 44px; min-height: 44px; }
   .liquid-input { min-height: 44px; }
   [role="listbox"] [role="option"] { min-height: 44px; }
+}
+
+/* Three chevrons brighten from bottom to top to indicate earlier history. */
+@keyframes message-history-chevron {
+  0%, 60%, 100% { opacity: 0.25; }
+  25% { opacity: 1; }
+}
+.message-history-chevron {
+  animation: message-history-chevron 1.8s ease-in-out infinite;
+}
+.message-history-chevron:nth-child(1) { top: -2px; animation-delay: 0.36s; }
+.message-history-chevron:nth-child(2) { top: 3px; animation-delay: 0.18s; }
+.message-history-chevron:nth-child(3) { top: 8px; animation-delay: 0s; }
+@media (prefers-reduced-motion: reduce) {
+  .message-history-chevron { animation: none; opacity: 1; }
 }

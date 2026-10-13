@@ -3,7 +3,8 @@
 import Badge from "@/components/ui/Badge";
 import IconButton from "@/components/ui/IconButton";
 import Button from "@/components/ui/Button";
-import MessageHistoryControl, { canAutoLoadHistory } from "./MessageHistoryControl";
+import MessageHistoryControl from "./MessageHistoryControl";
+import { useMessageHistoryScroll } from "./useMessageHistoryScroll";
 
 /**
  * Owner-chat pane — renders a 1:1 conversation between the user and a managed Bot.
@@ -545,6 +546,8 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
     });
   }, [roomId, messages, hasMore, loadingMore]);
 
+  useMessageHistoryScroll(scrollContainerRef, requestMoreMessages);
+
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -557,10 +560,7 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       showScrollToBottomButtonRef.current = shouldShow;
       setShowScrollToBottomButton(shouldShow);
     }
-    if (el.scrollTop < 100 && canAutoLoadHistory()) {
-      requestMoreMessages();
-    }
-  }, [requestMoreMessages]);
+  }, []);
 
   // ------ Typing auto-dismiss ------
   useEffect(() => {

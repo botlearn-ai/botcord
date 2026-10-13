@@ -6,7 +6,8 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import IconButton from "@/components/ui/IconButton";
 import { observeChatViewportResize } from "./mobileChat";
-import MessageHistoryControl, { canAutoLoadHistory } from "./MessageHistoryControl";
+import MessageHistoryControl from "./MessageHistoryControl";
+import { useMessageHistoryScroll } from "./useMessageHistoryScroll";
 
 /**
  * [INPUT]: 依赖 chat/ui/session/unread store 的消息状态与增量加载动作，依赖共享时间工具更新已读水位，依赖 MessageBubble 渲染单条消息，依赖滚动位置判定已读水位
@@ -716,6 +717,8 @@ export default function MessageList({
   }, [roomId, messages, hasMore, isRoomMessagesLoadingMore, loadMoreMessages]);
 
   // Track scroll position & handle infinite scroll up
+  useMessageHistoryScroll(containerRef, requestMoreMessages);
+
   const handleScroll = useCallback(() => {
     if (!containerRef.current || !roomId) return;
 
@@ -730,15 +733,10 @@ export default function MessageList({
       setShowScrollToBottomButton(shouldShow);
     }
 
-    // Infinite scroll up
-    if (containerRef.current.scrollTop < 100 && canAutoLoadHistory()) {
-      requestMoreMessages();
-    }
-
     if (wasNearBottomRef.current) {
       commitRoomSeen(roomId);
     }
-  }, [roomId, requestMoreMessages, commitRoomSeen]);
+  }, [roomId, commitRoomSeen]);
 
   // Reset follow control on room change
   useEffect(() => {
