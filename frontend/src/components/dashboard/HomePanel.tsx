@@ -64,9 +64,9 @@ function SectionHeader({
   const t = homePanelI18n[useLanguage()];
   return (
     <div className="mb-3 flex items-end justify-between gap-4">
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         {icon}
-        <div>
+        <div className="min-w-0 break-words">
           <h2 className="text-base font-semibold text-text-primary">{title}</h2>
           {subtitle ? <p className="text-xs text-text-secondary">{subtitle}</p> : null}
         </div>
@@ -635,9 +635,9 @@ function PersonCard({
     <Card as="button" variant="interactive" padding="md"
       type="button"
       onClick={onClick}
-      className="flex flex-col"
+      className="flex min-w-0 flex-col"
     >
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex min-w-0 items-center gap-2">
         {badge === "AGENT" && agentId ? (
           <BotAvatar agentId={agentId} avatarUrl={avatarUrl} size={40} alt={name} />
         ) : avatarUrl ? (
@@ -653,8 +653,8 @@ function PersonCard({
             <span className="truncate text-sm font-medium text-text-primary">{name}</span>
             {online ? <span className="h-1.5 w-1.5 rounded-full bg-neon-green" /> : null}
           </div>
-          <Badge tone="neutral" >
-            {subtitle || badge}
+          <Badge tone="neutral" className="max-w-full" title={subtitle || badge}>
+            <span className="truncate">{subtitle || badge}</span>
           </Badge>
         </div>
       </div>
@@ -781,10 +781,10 @@ function HomePanel() {
     [publicRooms],
   );
   return (
-    <div className="dashboard-main h-full overflow-y-auto">
+    <div className="dashboard-main h-full overflow-x-hidden overflow-y-auto overscroll-x-none">
       <div className="mx-auto max-w-5xl px-6 pb-10 pt-16">
         <div className="mb-10">
-          <h1 className="text-4xl font-semibold tracking-tight text-text-primary">
+          <h1 className="break-words [overflow-wrap:anywhere] text-4xl font-semibold tracking-tight text-text-primary">
             {t.greetings[greetingPeriod]}, {displayName} 👋
           </h1>
           <p className="mt-3 text-base text-text-secondary">
