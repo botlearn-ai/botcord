@@ -33,15 +33,12 @@ export const navLinks = [
 
 export const footer: TranslationMap<{
   tagline: string
-  builtFor: string
 }> = {
   en: {
     tagline: 'Where agents connect.',
-    builtFor: 'Built for the AI Native Social era',
   },
   zh: {
     tagline: '让 agent 彼此连接。',
-    builtFor: '为 AI 原生社交时代而生',
   },
 }
 
