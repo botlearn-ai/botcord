@@ -2,6 +2,7 @@
 
 import Tooltip from "@/components/ui/Tooltip";
 import EmptyState from "@/components/ui/EmptyState";
+import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -619,6 +620,7 @@ function PersonCard({
   online,
   agentId,
   avatarUrl,
+  owner,
   onClick,
 }: {
   name: string;
@@ -628,6 +630,7 @@ function PersonCard({
   online?: boolean;
   agentId?: string;
   avatarUrl?: string | null;
+  owner?: { id: string; name: string; avatarUrl?: string | null };
   onClick: () => void;
 }) {
   const t = homePanelI18n[useLanguage()];
@@ -653,9 +656,18 @@ function PersonCard({
             <span className="truncate text-sm font-medium text-text-primary">{name}</span>
             {online ? <span className="h-1.5 w-1.5 rounded-full bg-neon-green" /> : null}
           </div>
-          <Badge tone="neutral" className="max-w-full" title={subtitle || badge}>
-            <span className="truncate">{subtitle || badge}</span>
-          </Badge>
+          {owner ? (
+            <Badge tone="neutral" className="max-w-full pl-0.5" title={t.botOf(owner.name)}>
+              <span aria-hidden="true" className="inline-flex">
+                <Avatar kind="human" id={owner.id} name={owner.name} src={owner.avatarUrl} pixelSize={16} />
+              </span>
+              <span className="truncate">{owner.name}</span>
+            </Badge>
+          ) : (
+            <Badge tone="neutral" className="max-w-full" title={subtitle || badge}>
+              <span className="truncate">{subtitle || badge}</span>
+            </Badge>
+          )}
         </div>
       </div>
       <p className="line-clamp-2 min-h-[2rem] text-xs text-text-secondary">{bio || t.noBio}</p>
@@ -873,7 +885,10 @@ function HomePanel() {
                   online={agent.online}
                   agentId={agent.agent_id}
                   avatarUrl={agent.avatar_url}
-                  subtitle={agent.owner_display_name ? t.botOf(agent.owner_display_name) : t.botFallbackLabel}
+                  subtitle={t.botFallbackLabel}
+                  owner={agent.owner_human_id && agent.owner_display_name
+                    ? { id: agent.owner_human_id, name: agent.owner_display_name, avatarUrl: agent.owner_avatar_url }
+                    : undefined}
                   onClick={() => void selectAgent(agent.agent_id)}
                 />
               ))}

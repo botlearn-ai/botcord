@@ -632,6 +632,7 @@ class DashboardAgentProfile(BaseModel):
     created_at: datetime.datetime
     owner_human_id: str | None = None
     owner_display_name: str | None = None
+    owner_avatar_url: str | None = None
     online: bool = False
 
 

@@ -72,7 +72,10 @@ async def seed(db_session: AsyncSession):
     """Seed with agents, public room, private room, and messages."""
     uid = uuid.uuid4()
     supa = uuid.uuid4()
-    user = User(id=uid, display_name="User", email="u@x.com", status="active", supabase_user_id=supa)
+    user = User(
+        id=uid, display_name="User", email="u@x.com", status="active", supabase_user_id=supa,
+        avatar_url="https://example.com/owner.png",
+    )
     db_session.add(user)
 
     role = Role(id=uuid.uuid4(), name="member", display_name="Member", is_system=True, priority=0)
@@ -262,6 +265,20 @@ async def test_public_agents_list(client: AsyncClient, seed: dict):
     assert "agents" in data
     assert "total" in data
     assert len(data["agents"]) >= 2
+
+
+@pytest.mark.asyncio
+async def test_public_agents_include_owner_avatar(client: AsyncClient, seed: dict):
+    resp = await client.get("/api/public/agents")
+    assert resp.status_code == 200
+    agents = {agent["agent_id"]: agent for agent in resp.json()["agents"]}
+    assert agents["ag_pub_agent1"]["owner_display_name"] == "User"
+    assert agents["ag_pub_agent1"]["owner_avatar_url"] == "https://example.com/owner.png"
+    assert agents["ag_pub_agent2"]["owner_avatar_url"] is None
+
+    detail = await client.get("/api/public/agents/ag_pub_agent1")
+    assert detail.status_code == 200
+    assert detail.json()["owner_avatar_url"] == "https://example.com/owner.png"
 
 
 @pytest.mark.asyncio

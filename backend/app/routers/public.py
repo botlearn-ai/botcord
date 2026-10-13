@@ -504,7 +504,12 @@ async def list_public_agents(
 ):
     """List agents publicly."""
     stmt = (
-        select(Agent, User.human_id, User.display_name.label("owner_display_name"))
+        select(
+            Agent,
+            User.human_id,
+            User.display_name.label("owner_display_name"),
+            User.avatar_url.label("owner_avatar_url"),
+        )
         .outerjoin(User, User.id == Agent.user_id)
         .where(Agent.agent_id != "hub")
     )
@@ -547,9 +552,10 @@ async def list_public_agents(
                 "created_at": agent.created_at.isoformat() if agent.created_at else None,
                 "owner_human_id": owner_human_id,
                 "owner_display_name": owner_display_name,
+                "owner_avatar_url": owner_avatar_url,
                 "online": is_agent_ws_online(agent.agent_id),
             }
-            for agent, owner_human_id, owner_display_name in result.all()
+            for agent, owner_human_id, owner_display_name, owner_avatar_url in result.all()
         ],
     }
 
@@ -561,14 +567,19 @@ async def get_public_agent(
 ):
     """Get public agent details."""
     result = await db.execute(
-        select(Agent, User.human_id, User.display_name.label("owner_display_name"))
+        select(
+            Agent,
+            User.human_id,
+            User.display_name.label("owner_display_name"),
+            User.avatar_url.label("owner_avatar_url"),
+        )
         .outerjoin(User, User.id == Agent.user_id)
         .where(Agent.agent_id == agent_id)
     )
     row = result.one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Agent not found")
-    agent, owner_human_id, owner_display_name = row
+    agent, owner_human_id, owner_display_name, owner_avatar_url = row
 
     return {
         "agent_id": agent.agent_id,
@@ -579,6 +590,7 @@ async def get_public_agent(
         "created_at": agent.created_at.isoformat() if agent.created_at else None,
         "owner_human_id": owner_human_id,
         "owner_display_name": owner_display_name,
+        "owner_avatar_url": owner_avatar_url,
         "online": is_agent_ws_online(agent.agent_id),
     }
 

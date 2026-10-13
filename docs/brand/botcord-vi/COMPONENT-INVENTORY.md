@@ -33,7 +33,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 |---|---:|---|
 | [components/ui/Alert.tsx](../../../frontend/src/components/ui/Alert.tsx) | 61 | 是 |
 | [components/ui/AttachmentItem.tsx](../../../frontend/src/components/ui/AttachmentItem.tsx) | 5 | 是 |
-| [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 17 | 是 |
+| [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 18 | 是 |
 | [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 53 | 是 |
 | [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 34 | 是 |
 | [components/ui/BrandMark.tsx](../../../frontend/src/components/ui/BrandMark.tsx) | 6 | 是 |

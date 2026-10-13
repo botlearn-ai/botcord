@@ -14,6 +14,7 @@ export interface AgentProfile {
   created_at: string;
   owner_human_id?: string | null;
   owner_display_name?: string | null;
+  owner_avatar_url?: string | null;
   online?: boolean;
 }
 
