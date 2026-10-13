@@ -61,7 +61,7 @@ describe("refresh shell mode layout", () => {
     expect(html).toContain("正在加载团队空间");
     expect(html).not.toContain("My Bots");
     expect(html).not.toContain("Messages");
-    expect(html).toContain("h-14 shrink-0");
+    expect(html).toContain("dashboard-workspace-switch");
   });
 
   it("reserves the same mode header above the personal message skeleton", () => {
