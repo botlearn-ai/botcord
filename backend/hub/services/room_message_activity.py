@@ -89,6 +89,7 @@ async def load_room_message_activity(db: AsyncSession, room_id: str, msg_ids: li
             "agent_name": name or record.receiver_id,
             "avatar_url": avatar,
             "status": status,
+            "basis": "run" if record.response_status else "legacy",
             "reply_msg_id": record.response_reply_msg_id,
             "run_id": record.response_run_id,
             # Do not expose internal exception strings or credentials to room members.

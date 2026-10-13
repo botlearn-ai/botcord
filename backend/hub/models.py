@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 SQLAlchemy Base、枚举与关系定义，承载 Hub 与 dashboard 的持久化真相源
-[OUTPUT]: 对外提供 Agent、Invite、ShortCode、Space/Organization 身份、团队会话及消息响应执行与关联模型
+[OUTPUT]: 对外提供 Agent、Invite、ShortCode、Space/Organization 身份、团队会话及消息响应执行、关联与发送幂等模型
 [POS]: backend 数据模型中枢，负责把身份、社交、支付、绑定等状态收敛到统一 schema
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
@@ -1037,6 +1037,17 @@ class MessageRecord(Base):
     response_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
     response_reply_msg_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+
+
+class DashboardSendRequest(Base):
+    """One atomic room send per authenticated scope + client request key."""
+    __tablename__ = "dashboard_send_requests"
+    request_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class MessageResponseRun(Base):
