@@ -149,7 +149,7 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 | 搜索框 | `SearchInput`：原生 input props + 必填 label，受控 value/onChange | `SearchBar` 复用视觉，保留 300ms 防抖与卸载清理 |
 | 单选按钮 | `Radio`：原生 input props，不含 type；调用者提供 label 和共享 name | 权限、回复策略等现有 radio 入口复用 |
 | 行内反馈 | `Alert`：tone=neutral/success/warning/danger，title/children/actions；danger 用 alert，其他 status | 团队申请、添加 Agent、房间成员等错误提示 |
-| 纯图标动作 | `IconButton`：必填 label，size=sm/md，danger，原生 button props | DialogShell 关闭按钮 |
+| 纯图标动作 | `IconButton`：必填 label，size=sm/md，danger，原生 button props；切换类动作传 aria-pressed 显示选中态 | DialogShell 关闭按钮 |
 | 抽屉外壳 | `DrawerShell`：与 DialogShell 相同，右侧全高布局；共用关闭、busy、键盘焦点与底栏 | 已有预览；复杂业务抽屉保留，避免改变嵌套确认与生命周期 |
 | 数据表格 | `Table` / `TableHead` / `TableBody` / `TableRow` / `TableHeader` / `TableCell`；保留原生表格属性，Header 默认 scope=col | AdminCodesPage / AdminWaitlistPage；横向滚动由容器负责 |
 | 指标卡 | `MetricCard`：value/label/detail/accent；原生 dl/dt/dd | 团队 Agent 管理抽屉的数量汇总 |

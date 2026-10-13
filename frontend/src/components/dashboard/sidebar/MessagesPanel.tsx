@@ -4,6 +4,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Badge from "@/components/ui/Badge";
 import Card from "@/components/ui/Card";
 import IconButton from "@/components/ui/IconButton";
+import Tooltip from "@/components/ui/Tooltip";
 import DismissLayer from "@/components/ui/DismissLayer";
 import Button from "@/components/ui/Button";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
@@ -476,21 +477,10 @@ function TooltipIconButton({
   children: React.ReactNode;
 }) {
   return (
-    <div className="group relative">
-      <Button variant="secondary" size="sm" aria-pressed={active}
-        type="button"
-        onClick={onClick}
-        aria-label={label}
-        className={`flex w-8 items-center justify-center `}
-      >
+    <Tooltip content={label} side="bottom">
+      <IconButton size="sm" label={label} title="" aria-pressed={active} onClick={onClick}>
         {children}
-      </Button>
-      <span
-        role="tooltip"
-        className="liquid-menu pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-glass-border px-2 py-0.5 text-xs text-text-primary opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-      >
-        {label}
-      </span>
-    </div>
+      </IconButton>
+    </Tooltip>
   );
 }
