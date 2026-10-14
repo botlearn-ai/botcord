@@ -180,3 +180,13 @@ def generate_daemon_user_code() -> str:
     """Generate human-friendly user code: ``XXXX-XXXX`` from a no-confusing alphabet."""
     raw = "".join(secrets.choice(_USER_CODE_ALPHABET) for _ in range(8))
     return f"{raw[:4]}-{raw[4:]}"
+
+
+def generate_kb_node_id() -> str:
+    """Generate a knowledge-base node id: 'kb_' + 12 random hex chars."""
+    return "kb_" + secrets.token_hex(6)
+
+
+def generate_kb_revision_id() -> str:
+    """Generate a knowledge-base revision id: 'kbr_' + 12 random hex chars."""
+    return "kbr_" + secrets.token_hex(6)

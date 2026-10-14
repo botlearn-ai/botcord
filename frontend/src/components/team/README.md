@@ -20,6 +20,8 @@ Agent 页：`TeamAgentsPage.tsx`（导航唯一的「Agent」入口，自带标�
 
 `OrgInviteLanding.tsx` 承接 `/join/[code]`：公开预览与登录态独立加载；未登录跳 `/login?next=/join/<code>`（登录页含注册并回跳），已登录接受后进入 `/chats/team?space=`；过期/用尽/撤销/组织不可用只显示原因。
 
+`TeamKnowledgePage.tsx` 是 `view=knowledge` 的组织知识库（设计见 `docs/space-knowledge-base-design.md`，接口 `lib/team-kb.ts`）：左侧目录树/搜索，右侧阅读或编辑；「待审核」列出草稿并对照当前版本发布/拒绝（仅 owner/admin）。普通成员保存即提交草稿。编辑时描述与摘要默认折叠、留空由 agent 补写，只提交改动过的元数据，以免把 agent 写的内容标成人写的。
+
 `TeamWorkspaceSkeleton.tsx` 与消息工作区三栏形态保持一致，供首次加载、鉴权等待使用。
 
 视觉组件：本目录只组合 `components/ui` 组件，不手写按钮、卡片、徽章样式。团队专用的 IconTile、PresenceIndicator、ChoiceCard、Chip、ListGroup、PageHeader 与 Alert `accent` 已放入组件库，契约见 `docs/brand/botcord-vi/COMPONENTS.md`「Team 模式组件」，预览见 `/design#team`。

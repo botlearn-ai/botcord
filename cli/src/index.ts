@@ -25,6 +25,7 @@ import { uploadCommand } from "./commands/upload.js";
 import { tokenCommand } from "./commands/token.js";
 import { envCommand } from "./commands/env.js";
 import { memoryCommand } from "./commands/memory.js";
+import { kbCommand } from "./commands/kb.js";
 import { scheduleCommand } from "./commands/schedule.js";
 import { gatewayCommand } from "./commands/gateway.js";
 import { botCommand } from "./commands/bot.js";
@@ -61,6 +62,7 @@ Commands:
   token             Fetch current JWT token
   env               View or switch hub environment
   memory            Manage working memory
+  kb                Space knowledge base (tree/cat/grep/search/write)
   schedule          Manage proactive schedules
   gateway           Send through third-party gateways
   bot               Create BotCord bots
@@ -167,6 +169,9 @@ async function main(): Promise<void> {
         break;
       case "memory":
         await memoryCommand(args, globalHub, globalAgent);
+        break;
+      case "kb":
+        await kbCommand(args, globalHub, globalAgent);
         break;
       case "schedule":
         await scheduleCommand(args, globalHub, globalAgent);

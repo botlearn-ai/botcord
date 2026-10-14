@@ -35,6 +35,7 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useTeamAccessStore, useToDecide } from "@/store/useTeamAccessStore";
 import {
+  BookOpen,
   Bot,
   Building2,
   Hash,
@@ -52,6 +53,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import TeamAgentsPage from "./TeamAgentsPage";
 import TeamConversationDialog from "./TeamConversationDialog";
+import TeamKnowledgePage from "./TeamKnowledgePage";
 import TeamRoomMembersDialog from "./TeamRoomMembersDialog";
 import TeamRoomPane from "./TeamRoomPane";
 import TeamSpacesPage from "./TeamSpacesPage";
@@ -215,13 +217,20 @@ export function TeamRoomRow({
   );
 }
 
-export type TeamView = "messages" | "rooms" | "members" | "agents" | "settings";
+export type TeamView =
+  | "messages"
+  | "rooms"
+  | "members"
+  | "agents"
+  | "knowledge"
+  | "settings";
 export function teamView(value: string | null): TeamView {
   // "shared" was the former Agent directory; it now lives on the Agent page.
   if (value === "shared") return "agents";
   return value === "rooms" ||
     value === "members" ||
     value === "agents" ||
+    value === "knowledge" ||
     value === "settings"
     ? value
     : "messages";
@@ -511,6 +520,14 @@ export function TeamWorkspace({
         `${accessRequests} access requests need your action`,
       ),
     },
+    {
+      id: "knowledge" as const,
+      label: t("知识库", "Knowledge"),
+      Icon: BookOpen,
+      count: null,
+      // Five bottom-bar items truncate on phones; the header icon links it instead.
+      mobile: false,
+    },
   ] as {
     id: TeamView;
     label: string;
@@ -519,6 +536,7 @@ export function TeamWorkspace({
     unread?: boolean;
     badge?: number;
     badgeLabel?: string;
+    mobile?: boolean;
   }[];
   const organizations = snapshot.spaces.filter((s) => s.kind === "organization");
   // Mobile hides the bottom bar while a conversation is open (full-screen thread).
@@ -568,6 +586,15 @@ export function TeamWorkspace({
               </span>
             </div>
           )}
+          <LinkButton
+            variant="secondary"
+            href={teamHref(space.id, "knowledge")}
+            aria-label={t("知识库", "Knowledge")}
+            aria-current={view === "knowledge" ? "page" : undefined}
+            className="md:hidden"
+          >
+            <BookOpen size={18} />
+          </LinkButton>
           <LinkButton
             variant="secondary"
             href={teamHref(space.id, "settings")}
@@ -902,6 +929,17 @@ export function TeamWorkspace({
             )}
           </main>
         </>
+      ) : view === "knowledge" ? (
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+          <TeamKnowledgePage
+            key={space.id}
+            spaceId={space.id}
+            names={Object.fromEntries([
+              ...members.users.map((u) => [u.human_id, u.display_name]),
+              ...members.agents.map((a) => [a.agent_id, a.display_name]),
+            ])}
+          />
+        </main>
       ) : view === "agents" ? (
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           <TeamAgentsPage
@@ -976,7 +1014,7 @@ export function TeamWorkspace({
           className="liquid-rail mt-auto flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 items-stretch justify-around border-t border-border px-1 pt-1 pb-[env(safe-area-inset-bottom)] md:hidden"
           aria-label={t("团队导航", "Team navigation")}
         >
-          {navigation.map(
+          {navigation.filter((item) => item.mobile !== false).map(
             ({
               id,
               label,

@@ -30,6 +30,9 @@ import type {
   AgentScheduleRun,
   AgentScheduleSpec,
   AgentSchedulePayload,
+  KbContext,
+  KbPageWrite,
+  KbSpace,
 } from "./types.js";
 import type { ResponseRunUpdate } from "./response-state.js";
 import type { AttentionPolicy } from "./should-wake.js";
@@ -1141,6 +1144,84 @@ export class BotCordClient {
     if (opts?.senderId) params.set("sender_id", opts.senderId);
     if (opts?.before) params.set("before", opts.before);
     const resp = await this.hubFetch(`/hub/search?${params.toString()}`);
+    return await resp.json();
+  }
+
+  // ── Space knowledge base ──────────────────────────────────────
+
+  async kbSpaces(): Promise<{ spaces: KbSpace[] }> {
+    const resp = await this.hubFetch("/hub/kb/spaces");
+    return await resp.json();
+  }
+
+  async kbContext(spaceId: string): Promise<KbContext> {
+    const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/context`);
+    return await resp.json();
+  }
+
+  async kbTree(spaceId: string, opts?: { path?: string; depth?: number; summary?: boolean }): Promise<any> {
+    const params = new URLSearchParams();
+    if (opts?.path) params.set("path", opts.path);
+    if (opts?.depth) params.set("depth", String(opts.depth));
+    if (opts?.summary) params.set("summary", "true");
+    const q = params.toString();
+    const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/tree${q ? `?${q}` : ""}`);
+    return await resp.json();
+  }
+
+  async kbPage(spaceId: string, path: string): Promise<any> {
+    const params = new URLSearchParams({ path });
+    const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/page?${params.toString()}`);
+    return await resp.json();
+  }
+
+  async kbGrep(spaceId: string, pattern: string, opts?: { path?: string; limit?: number }): Promise<any> {
+    const params = new URLSearchParams({ pattern });
+    if (opts?.path) params.set("path", opts.path);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/grep?${params.toString()}`);
+    return await resp.json();
+  }
+
+  async kbSearch(spaceId: string, query: string, opts?: { path?: string; limit?: number }): Promise<any> {
+    const params = new URLSearchParams({ q: query });
+    if (opts?.path) params.set("path", opts.path);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/search?${params.toString()}`);
+    return await resp.json();
+  }
+
+  async kbWrite(spaceId: string, body: KbPageWrite): Promise<any> {
+    const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/page`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    return await resp.json();
+  }
+
+  async kbSetMeta(
+    spaceId: string,
+    body: { path: string; description?: string; summary?: string; content_hash?: string },
+  ): Promise<any> {
+    const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/meta`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    return await resp.json();
+  }
+
+  async kbDrafts(spaceId: string, opts?: { status?: string; limit?: number }): Promise<any> {
+    const params = new URLSearchParams();
+    if (opts?.status) params.set("status", opts.status);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const q = params.toString();
+    const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/drafts${q ? `?${q}` : ""}`);
+    return await resp.json();
+  }
+
+  async kbMetaQueue(spaceId: string, limit?: number): Promise<any> {
+    const q = limit ? `?limit=${limit}` : "";
+    const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/meta-queue${q}`);
     return await resp.json();
   }
 

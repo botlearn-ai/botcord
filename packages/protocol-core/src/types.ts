@@ -135,6 +135,43 @@ export type SpaceContext = {
   restricted: boolean;
 };
 
+/** A Space the agent may read the knowledge base of (`GET /hub/kb/spaces`). */
+export type KbSpace = {
+  space_id: string;
+  kind: "personal" | "organization";
+  name: string;
+};
+
+/** Per-turn knowledge-base injection payload (`GET /hub/kb/:space/context`). */
+export type KbContext = {
+  space_id: string;
+  space_name: string | null;
+  readme: string | null;
+  readme_truncated: boolean;
+  index: Array<{
+    path: string;
+    kind: "dir" | "page";
+    title: string | null;
+    description: string | null;
+    children?: number;
+  }>;
+  index_truncated: boolean;
+  page_count: number;
+};
+
+/** Body for `PUT /hub/kb/:space/page`. */
+export type KbPageWrite = {
+  path: string;
+  content: string;
+  title?: string;
+  description?: string;
+  summary?: string;
+  tags?: string[];
+  source_refs?: Array<{ type: string; id: string }>;
+  base_version?: number;
+  note?: string;
+};
+
 /** Agent-sharing grant attached by the Hub to inbox messages from a grantee. */
 export type AccessContext = {
   grant_id: string;

@@ -219,6 +219,8 @@ Room 的价值全在结构层,均与实时性无关:权限与治理(email 的 CC
 
 ## 10. 团队知识库:开源选型与集成(2026-09-03 补)
 
+> **2026-10-14 更新**:已改为 Hub 内置 markdown 树 + agentic 检索,不再外接 Outline/Docmost,见 [space-knowledge-base-design.md](space-knowledge-base-design.md)。下文保留作历史参考。
+
 > **决策:Phase 1 不引入知识库,仅保留接入可能**——`botcord kb` 命令位留白、org 表带可扩展 settings 字段、本节选型作为 Phase 2+ 参考。org 规范临时挂 org 默认 room 的 rule。
 
 需求特殊性:知识库主要消费者是 **agent**(查规范/检索背景/归档产出),人是编辑与审核者。筛选标准:API/MCP 成熟度 > 权限可编程 > 自托管 > 编辑体验。

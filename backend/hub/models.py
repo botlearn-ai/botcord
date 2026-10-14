@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 SQLAlchemy Base、枚举与关系定义，承载 Hub 与 dashboard 的持久化真相源
-[OUTPUT]: 对外提供 Agent、Invite、ShortCode、Space/Organization 身份、团队会话及消息响应执行、关联与发送幂等模型
+[OUTPUT]: 对外提供 Agent、Invite、ShortCode、Space/Organization 身份、Space 知识库、团队会话及消息响应执行、关联与发送幂等模型
 [POS]: backend 数据模型中枢，负责把身份、社交、支付、绑定等状态收敛到统一 schema
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
@@ -31,7 +31,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from hub.id_generators import generate_botlearn_installation_id, generate_human_id, generate_org_principal_id
+from hub.id_generators import (
+    generate_botlearn_installation_id,
+    generate_human_id,
+    generate_kb_node_id,
+    generate_kb_revision_id,
+    generate_org_principal_id,
+)
 from hub.enums import (  # noqa: F401 — re-exported for backward compatibility
     ApprovalKind,
     ApprovalState,
@@ -212,6 +218,88 @@ class SpaceInviteLink(Base):
     # Most recent member who joined through the link (the only one for single-use links).
     redeemed_by_user_id: Mapped[_uuid.UUID | None] = mapped_column(ForeignKey("public.users.id"))
     redeemed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class KbNode(Base):
+    """One node of a Space knowledge-base tree (docs/space-knowledge-base-design.md).
+
+    The tree is expressed by ``path`` alone; parents are derived from the path
+    prefix. The row holds the *published* state; drafts live in ``KbRevision``.
+    ``version == 0`` means the page exists only as a pending draft.
+    """
+    __tablename__ = "kb_nodes"
+    __table_args__ = (
+        CheckConstraint("kind IN ('dir', 'page')", name="ck_kb_node_kind"),
+        CheckConstraint("version >= 0", name="ck_kb_node_version"),
+        CheckConstraint(
+            "description_source IS NULL OR description_source IN ('human', 'agent')",
+            name="ck_kb_node_description_source",
+        ),
+        CheckConstraint(
+            "summary_source IS NULL OR summary_source IN ('human', 'agent')",
+            name="ck_kb_node_summary_source",
+        ),
+        Index(
+            "uq_kb_nodes_space_path_live", "space_id", "path", unique=True,
+            postgresql_where=sa_text("deleted_at IS NULL"), sqlite_where=sa_text("deleted_at IS NULL"),
+        ),
+    )
+    node_id: Mapped[str] = mapped_column(String(32), primary_key=True, default=generate_kb_node_id)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"), index=True)
+    path: Mapped[str] = mapped_column(String(512))
+    kind: Mapped[str] = mapped_column(String(8))
+    title: Mapped[str | None] = mapped_column(String(256))
+    description: Mapped[str | None] = mapped_column(Text)
+    description_source: Mapped[str | None] = mapped_column(String(8))
+    summary: Mapped[str | None] = mapped_column(Text)
+    summary_source: Mapped[str | None] = mapped_column(String(8))
+    # content_hash of the body the summary was written against; mismatch = stale.
+    summary_source_hash: Mapped[str | None] = mapped_column(String(64))
+    tags: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    content: Mapped[str | None] = mapped_column(Text)
+    # Pages: sha256 of content. Dirs: sha256 over direct children, so a child
+    # change makes every ancestor's summary stale.
+    content_hash: Mapped[str | None] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    published_revision_id: Mapped[str | None] = mapped_column(String(32))
+    pending_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    source_refs: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    created_by: Mapped[str] = mapped_column(String(32))
+    updated_by: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Set explicitly by hub.services.kb on every change (no onupdate: avoids expiring after flush).
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class KbRevision(Base):
+    """Every write to a knowledge-base page, including drafts awaiting review."""
+    __tablename__ = "kb_revisions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('proposed', 'published', 'rejected', 'superseded')", name="ck_kb_revision_status"
+        ),
+        Index("ix_kb_revisions_space_status", "space_id", "status"),
+    )
+    revision_id: Mapped[str] = mapped_column(String(32), primary_key=True, default=generate_kb_revision_id)
+    node_id: Mapped[str] = mapped_column(ForeignKey("kb_nodes.node_id"), index=True)
+    space_id: Mapped[_uuid.UUID] = mapped_column(ForeignKey("spaces.id"))
+    base_version: Mapped[int] = mapped_column(Integer)
+    # 'content' rewrites the page; 'meta' only touches description/summary.
+    kind: Mapped[str] = mapped_column(String(8), default="content", server_default="content")
+    title: Mapped[str | None] = mapped_column(String(256))
+    description: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[list | None] = mapped_column(JSON)
+    content: Mapped[str | None] = mapped_column(Text)
+    source_refs: Mapped[list | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(16))
+    author: Mapped[str] = mapped_column(String(32))
+    reviewer: Mapped[str | None] = mapped_column(String(32))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reviewed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AgentAccessGrant(Base):
