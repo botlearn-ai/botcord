@@ -8,13 +8,14 @@ import TeamMessageFeedback, { TeamMessageFeedbackContext } from "./TeamMessageFe
 const base = { hub_msg_id: "h_1", msg_id: "m_1", sender_kind: "human", is_mine: true, created_at: new Date(Date.now() - 16000).toISOString() } as DashboardMessage;
 const render = (patch: Partial<DashboardMessage>) => renderToStaticMarkup(<TeamMessageFeedbackContext.Provider value><TeamMessageFeedback message={{ ...base, ...patch }} /></TeamMessageFeedbackContext.Provider>);
 describe("team message feedback", () => {
-  it("distinguishes transport from AI progress and does not fake work", () => {
+  it("keeps sending separate from compact thinking feedback", () => {
     expect(render({ send_status: "sending" })).toContain("正在发送");
     const html = render({ send_status: "sent", reply_activity: [{ agent_id: "a", agent_name: "助手 A", status: "waiting" }] });
     expect(html).not.toContain("已发送");
-    expect(html).toContain("等待处理");
+    expect(html).toContain('data-status="thinking"');
+    expect(html).not.toContain("等待处理");
     expect(html).not.toContain("正在处理");
-    expect(html).toContain("你可以继续发送消息");
+    expect(html).not.toContain("你可以继续发送消息");
     expect(html).not.toContain("处理失败");
   });
   it("shows per-agent terminal status without a spinner", () => {
@@ -24,7 +25,7 @@ describe("team message feedback", () => {
       { agent_id: "c", agent_name: "助手 C", status: "failed" },
     ] });
     expect(html).toContain("助手 A");
-    expect(html).toContain("正在处理");
+    expect(html).toContain('data-status="thinking"');
     expect(html).not.toContain("助手 B");
     expect(html).not.toContain("已回复");
     expect(html).toContain("助手 C");

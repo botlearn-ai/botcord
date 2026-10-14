@@ -9,7 +9,7 @@ import { useLanguage } from "@/lib/i18n";
 import { sendDashboardRoomMessage } from "@/lib/room-message-send";
 import type { DashboardMessage } from "@/lib/types";
 import { Loader2, RotateCcw } from "lucide-react";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useRef, useState } from "react";
 
 export const TeamMessageFeedbackContext = createContext(false);
 
@@ -26,7 +26,6 @@ export default function TeamMessageFeedback({
 
 export function MessageFeedback({ message }: { message: DashboardMessage }) {
   const zh = useLanguage() === "zh";
-  const [now, setNow] = useState(Date.now);
   const [retrying, setRetrying] = useState(false);
   const retryInFlight = useRef(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -36,9 +35,6 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
   const errorText = (error: string) => error === "agent_access_revoked"
     ? chatPane[zh ? "zh" : "en"].agentAccessRevoked
     : error;
-  const pending = activity.some(
-    (a) => a.status === "waiting" || a.status === "processing",
-  );
   const sending =
     message.send_status === "sending" ||
     (message.hub_msg_id.startsWith("tmp_") && message.state !== "failed");
@@ -53,15 +49,6 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
     }
     return true;
   });
-  const longWait = now - Date.parse(message.created_at) >= 15000;
-  useEffect(() => {
-    if (!pending || longWait) return;
-    const timer = window.setTimeout(
-      () => setNow(Date.now()),
-      Math.max(0, 15000 - (Date.now() - Date.parse(message.created_at))),
-    );
-    return () => window.clearTimeout(timer);
-  }, [pending, longWait, message.created_at]);
 
   const retry = async () => {
     if (retryInFlight.current || accessRevoked || !message.is_mine) return;
@@ -133,68 +120,42 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
                 : "Sent"}
         </div>
       )}
-      {visibleActivity.map((agent) => (
-        <div key={agent.agent_id} className="flex items-center gap-1.5">
-          <Avatar
-            kind="agent"
-            id={agent.agent_id}
-            name={agent.agent_name}
-            src={agent.avatar_url}
-            size="xs"
-          />
-          <span className="max-w-32 truncate" title={agent.agent_name}>
-            {agent.agent_name}
-          </span>
-          <span className={agent.status === "failed" ? "text-danger" : agent.status === "interrupted" ? "text-warning" : ""}>
-            {agent.status === "failed"
-              ? agent.error === "delivery_expired"
-                ? zh
-                  ? "投递超时"
-                  : "Delivery timed out"
-                : zh
-                  ? "处理失败"
-                  : "Processing failed"
-              : agent.status === "processing"
-                ? zh
-                  ? "正在处理…"
-                  : "Working…"
-                : agent.status === "completed"
-                  ? zh
-                    ? "已回复"
-                    : "Replied"
+      {visibleActivity.map((agent) => {
+        const thinking = agent.status === "waiting" || agent.status === "processing";
+        return (
+          <div
+            key={agent.agent_id}
+            className="flex items-center gap-1.5"
+            role={thinking ? "status" : undefined}
+            aria-label={thinking ? `${agent.agent_name} ${zh ? "思考中" : "Thinking"}` : undefined}
+          >
+            <Avatar
+              kind="agent"
+              id={agent.agent_id}
+              name={agent.agent_name}
+              src={agent.avatar_url}
+              size="xs"
+              status={thinking ? "thinking" : undefined}
+            />
+            {!thinking && (<>
+              <span className="max-w-32 truncate" title={agent.agent_name}>
+                {agent.agent_name}
+              </span>
+              <span className={agent.status === "failed" ? "text-danger" : agent.status === "interrupted" ? "text-warning" : ""}>
+                {agent.status === "failed"
+                  ? agent.error === "delivery_expired"
+                    ? zh ? "投递超时" : "Delivery timed out"
+                    : zh ? "处理失败" : "Processing failed"
                   : agent.status === "no_reply"
-                    ? zh
-                      ? "已处理 · 无需回复"
-                      : "Handled · No reply needed"
+                    ? zh ? "已处理 · 无需回复" : "Handled · No reply needed"
                     : agent.status === "interrupted"
-                      ? zh
-                        ? "处理已中断"
-                        : "Processing interrupted"
-                      : agent.status === "unconfirmed"
-                        ? zh
-                          ? "已结束，未关联回复"
-                          : "Ended without a linked reply"
-                        : zh
-                          ? "等待处理…"
-                          : "Waiting for handling…"}
-          </span>
-          {agent.status === "processing" && (
-            <span
-              aria-hidden="true"
-              className="motion-safe:animate-pulse text-accent-text"
-            >
-              •••
-            </span>
-          )}
-        </div>
-      ))}
-      {message.is_mine && pending && longWait && (
-        <div>
-          {zh
-            ? "还在等待回复，你可以继续发送消息"
-            : "Still waiting for a reply. You can send another message."}
-        </div>
-      )}
+                      ? zh ? "处理已中断" : "Processing interrupted"
+                      : zh ? "已结束，未关联回复" : "Ended without a linked reply"}
+              </span>
+            </>)}
+          </div>
+        );
+      })}
       {message.is_mine && failedSend && message.send_error && (
         <div className="text-danger">{errorText(message.send_error)}</div>
       )}
