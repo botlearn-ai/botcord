@@ -154,6 +154,12 @@ export interface ReplyPreview {
 }
 
 export interface RoomReplyActivity {
+  /** Canonical projection; status below remains compatible with older views. */
+  response_state?: "queued" | "waiting" | "processing" | "ignored" | "no_reply" | "replying" | "completed" | "failed" | "interrupted" | "unconfirmed" | "unknown";
+  reason?: string | null;
+  derived?: boolean;
+  /** Time of the last reported fact, not the time of projection. */
+  updated_at?: string | null;
   basis?: "run" | "legacy";
   agent_id: string;
   agent_name: string;

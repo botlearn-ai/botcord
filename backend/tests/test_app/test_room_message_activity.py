@@ -51,7 +51,7 @@ async def test_room_activity_refresh_without_new_messages(client, db_session, se
 
 
 @pytest.mark.asyncio
-async def test_activity_excludes_unmentioned_agents_and_tracks_fanout(db_session, seed):
+async def test_activity_tracks_all_agent_deliveries_but_not_human_receivers(db_session, seed):
     from hub.services.room_message_activity import load_room_message_activity
     for i, (receiver, mentioned, state) in enumerate([
         (seed["agent1"], True, MessageState.processing),
@@ -65,7 +65,9 @@ async def test_activity_excludes_unmentioned_agents_and_tracks_fanout(db_session
         ))
     await db_session.commit()
     activity = await load_room_message_activity(db_session, "rm_pubopen01", ["m_fanout"])
-    assert [a["agent_id"] for a in activity["m_fanout"]] == [seed["agent1"]]
+    assert [a["agent_id"] for a in activity["m_fanout"]] == [seed["agent1"], seed["agent2"]]
+    assert activity["m_fanout"][1]["response_state"] == "unknown"
+    assert activity["m_fanout"][1]["status"] == "unconfirmed"
 
 
 @pytest.mark.asyncio

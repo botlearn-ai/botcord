@@ -108,3 +108,32 @@ RESPONSE_STATE_TEST_DATABASE_URL=postgresql+asyncpg://... \
 
 PostgreSQL 测试使用独立随机 schema，验证 015 迁移重复执行、旧数据保持不变、
 并发首次登记及状态上报幂等。运行结束删除该测试 schema。
+
+## 消息状态投影
+
+消息查询的 `reply_activity` 和增量轮询的 `activity_updates` 使用同一只读投影。
+每个实际投递到的 Agent 返回一条记录，覆盖未 @ 的群消息及 Agent 发出的消息；
+不为没有收到消息的房间成员补造状态。撤回消息、自投递（owner chat 除外）和人类接收者不返回记录。
+现有房间成员权限检查保持不变，公开访客不能读取投影。
+
+新增字段：
+
+- `response_state`：供新版 reaction 使用的精确状态，包含 015 的十种状态及 `unknown`。
+- `reason`：允许列表内的上报原因，或投影原因 `lease_expired`、`run_missing`、`inconsistent_run`、`missing_decision`。不透传异常文本。
+- `derived`：是否根据租约或旧回复证据推导，而非直接使用状态事实。
+- `updated_at`：最后一次明确状态上报时间（UTC）；不是轮询时间，也不伪造超时事件时间。
+
+读取当前 `response_run_id` 对应的执行，历史尝试和迟到回复不覆盖当前快照。
+活动状态 queued/waiting/processing/replying 在有效执行中保持原值；执行租约过期投影为
+interrupted/lease_expired。缺少执行、执行归属不符、输入不在批次、执行已结束却没有终态，
+或排队/执行阶段不一致时投影为 unconfirmed。明确终态不受租约影响。
+查询不会更新快照、续约或追加事件；执行事件历史保留用于审计，不在每次消息查询时重放。
+
+历史没有明确响应事实时返回 unknown；旧 no_reply 无法区别策略忽略和执行后的决定，
+也返回 unknown。旧版带 trace/reply_to 的实际回复仍可作为完成证据，trace 优先；
+显式 response 元数据的引用不参与旧版猜测。投递 ACK、done、processing 均不证明思考或回复。
+
+`status` 继续为旧界面保留兼容词汇：queued → waiting，ignored → no_reply，
+replying → processing。旧数据保留旧界面既有行为；新 UI 必须优先读 `response_state`，
+不要从兼容 `status` 推断忽略/无需回复，也不要用在线状态替代消息处理状态。
+本阶段只同步前端类型，reaction 的生产组件等待静态方案选定后实现。
