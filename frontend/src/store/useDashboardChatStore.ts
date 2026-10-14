@@ -1051,8 +1051,8 @@ export const useDashboardChatStore = create<DashboardChatState>()(
               return;
             }
             const activityFor = existing.filter((m) =>
-              m.sender_kind === "human" && !m.hub_msg_id.startsWith("tmp_")
-              && (!m.reply_activity || m.reply_activity.some((a) => a.status !== "completed" && a.status !== "no_reply"))
+              !m.is_recalled && !m.hub_msg_id.startsWith("tmp_")
+              && (!m.reply_activity || m.reply_activity.some((a) => !(["completed", "no_reply", "ignored"].includes(a.response_state ?? a.status))))
             ).slice(-100).map((m) => m.msg_id);
             const result = await api.getRoomMessages(roomId, { after: newestPersisted.hub_msg_id, limit: 50, activityFor });
             if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessagePollRequestByRoom)) return;

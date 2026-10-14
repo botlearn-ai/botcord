@@ -6,6 +6,7 @@
  * [PROTOCOL]: Add new team primitives here and update COMPONENTS.md
  */
 import { useState } from "react";
+import AgentReactionPreview from "./AgentReactionPreview";
 import { Bot, Building2, Inbox, Plus, UserRound } from "lucide-react";
 import Alert from "@/components/ui/Alert";
 import Avatar from "@/components/ui/Avatar";
@@ -31,6 +32,7 @@ export default function TeamGallery() {
   const [role, setRole] = useState("consultant");
   const [rules, setRules] = useState(["Alice: 总是回复", "Bob: 仅被 @ 时回复"]);
   return <section id="team" className="space-y-6">
+    <AgentReactionPreview />
     <h2 className="type-heading-2">Team 模式</h2>
     <p className="text-sm text-text-secondary">团队空间、Agent 目录、权限申请和房间成员使用的组件。示例数据均为本地 fixture。</p>
     <Card>

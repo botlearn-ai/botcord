@@ -234,3 +234,12 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 同时改为复用：邀请链接状态用 `Badge variant="outline"`，用户 ID 用 `CopyableId`。团队目录中的 `neon-cyan`、`glass-*`、`deep-black` 旧类名已换成语义类（`text-accent-text`、`border-border`、`bg-surface`、`bg-bg`）。
 
 出席状态（PresenceIndicator）表示 Agent 是否在线、忙碌；运行状态（SignalDot）表示思考、回复、等待授权。两者含义不同，不能互换。
+
+### Message reaction primitives (scheme A)
+
+- `AgentResponseAvatar { id, name, src?, state, animate? }`：28px agent 头像，右下角显示消息处理状态。`processing` 复用 Avatar thinking 呼吸点，`replying` 复用外圈动画；`ignored` 为灰色虚线圈，`no_reply` 为减号，`completed` 为对勾，`unknown` 不加标记。其余终态/排队状态使用 lucide 16px 角标。这里不表示在线状态。
+- `AgentReactionStrip { items, label, moreLabel, onSelect }`：传入按优先级排序的头像条目（含 label/state/animate）。最多显示 8 个；多余用 +N 折叠，窄消息按可用宽度进一步收起。桌面方向键/Home/End 切换、Enter 打开；手机整行至少 44px，打开全部列表。折叠项中有失败或中断时 +N 带警示点。
+- `ReactionPanel { anchor, title, closeLabel, onClose, children }`：组合 DialogSurface，桌面相对触发元素定位，手机底部面板。负责边界定位、Escape、焦点返回和滚动锁；dashboard 调用方用 withDashboardOverlayPortal 包装。
+- `Avatar` / `SignalDot` 新增 `animate?: boolean`，默认 true。false 保留状态形状和语义但关闭动效。消息列表只为最新活动消息的一个 Agent 开启动画，其他头像静态。系统 reduced-motion 仍关闭全部循环。
+
+真实组件示例：`/design#agent-reactions`。消息轮询与重试仍由业务层负责；前端优先使用 response_state，历史 no_reply 不推断为 ignored 或执行后静默。

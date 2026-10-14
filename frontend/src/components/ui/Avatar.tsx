@@ -2,7 +2,7 @@
  * [INPUT]: 依赖 lib/bot-avatars 的 getBotAvatarUrl、SignalDot、VI 颜色语义类、styles/ui-motion.css 的 bc-avatar-orbit 与 clsx
  * [OUTPUT]: 对外提供 Avatar：agent / human / room 三种身份头像，xs–xl 五种尺寸（20 / 28 / 36 / 48 / 64px），agent 可带状态信号点
  * [POS]: ui 身份原语；BotAvatar / ParticipantAvatar 迁移后的统一头像实现，新代码直接用它
- * [PROTOCOL]: 变更时更新此头部，然后检查 README.md；形状与状态以 docs/brand/botcord-vi/VI.md §6.1、§6.3 为准
+ * [PROTOCOL]: animate=false 保留状态并停用动效； 变更时更新此头部，然后检查 README.md；形状与状态以 docs/brand/botcord-vi/VI.md §6.1、§6.3 为准
  */
 
 "use client";
@@ -41,6 +41,8 @@ export interface AvatarProps {
   size?: AvatarSize;
   /** Only rendered for agents. */
   status?: AgentSignal;
+  /** Keep status visible without starting another loop in a dense message list. */
+  animate?: boolean;
   /**
    * Legacy escape hatch for call sites that size avatars in raw pixels
    * (BotAvatar / ParticipantAvatar). New code should use `size`.
@@ -53,7 +55,7 @@ function initialOf(name: string): string {
   return Array.from(name.trim())[0]?.toLocaleUpperCase() || "?";
 }
 
-export default function Avatar({ kind, id, name, src, size = "md", status, pixelSize, className }: AvatarProps) {
+export default function Avatar({ kind, id, name, src, size = "md", status, animate = true, pixelSize, className }: AvatarProps) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const sizing = SIZE[size];
   const shape = SHAPE[kind];
@@ -71,7 +73,7 @@ export default function Avatar({ kind, id, name, src, size = "md", status, pixel
     >
       {showStatus && status === "replying" ? (
         // VI §6.3: a cord arc turns around the avatar while the agent replies.
-        <svg aria-hidden="true" viewBox="0 0 50 50" fill="none" className="bc-avatar-orbit pointer-events-none absolute -inset-1">
+        <svg aria-hidden="true" viewBox="0 0 50 50" fill="none" className="bc-avatar-orbit pointer-events-none absolute -inset-1" style={animate ? undefined : { animation: "none" }}>
           <circle cx={25} cy={25} r={23} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="28 117" className="stroke-brand" />
         </svg>
       ) : null}
@@ -100,7 +102,7 @@ export default function Avatar({ kind, id, name, src, size = "md", status, pixel
       {showStatus ? (
         // Wrapper owns the positioning so it does not fight SignalDot's own `relative`.
         <span className="absolute -right-px -top-px inline-flex">
-          <SignalDot status={status} size={sizing.dot} className="ring-2 ring-surface" />
+          <SignalDot status={status} size={sizing.dot} animate={animate} className="ring-2 ring-surface" />
         </span>
       ) : null}
     </span>

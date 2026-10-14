@@ -1,7 +1,8 @@
 "use client";
 import { chatPane } from "@/lib/i18n/translations/dashboard";
 import Alert from "@/components/ui/Alert";
-import Avatar from "@/components/ui/Avatar";
+import AgentMessageReactions from "./AgentMessageReactions";
+import { needsResponseRetry } from "@/lib/message-response-activity";
 import Button from "@/components/ui/Button";
 
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -19,7 +20,7 @@ export default function TeamMessageFeedback({
   message: DashboardMessage;
 }) {
   const enabled = useContext(TeamMessageFeedbackContext);
-  if (!enabled || message.is_recalled || message.sender_kind !== "human")
+  if (!enabled || message.is_recalled)
     return null;
   return <MessageFeedback message={message} />;
 }
@@ -41,14 +42,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
   const failedSend =
     message.send_status === "failed" ||
     (message.hub_msg_id.startsWith("tmp_") && message.state === "failed");
-  const visibleActivity = activity.filter((a) => {
-    if (a.status === "waiting" || a.status === "processing") return true;
-    if (!message.is_mine || a.status === "completed") return false;
-    if (a.status === "unconfirmed") {
-      return a.basis === "run" || (a.basis === undefined && !!a.run_id);
-    }
-    return true;
-  });
+  const visibleActivity = activity;
 
   const retry = async () => {
     if (retryInFlight.current || accessRevoked || !message.is_mine) return;
@@ -58,7 +52,7 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
     const retrySend = latest.send_status === "failed" ||
       (latest.hub_msg_id.startsWith("tmp_") && latest.state === "failed");
     const targets = (latest.reply_activity ?? [])
-      .filter((a) => a.status === "failed" || a.status === "interrupted").map((a) => a.agent_id);
+      .filter(needsResponseRetry).map((a) => a.agent_id);
     if (!retrySend && targets.length === 0) return;
     retryInFlight.current = true;
     setRetrying(true);
@@ -89,9 +83,25 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
   const canRetry =
     message.is_mine && !accessRevoked &&
     (failedSend ||
-      activity.some((a) =>
-        ["failed", "interrupted"].includes(a.status),
-      ));
+      activity.some(needsResponseRetry));
+  const retryControls = <>
+      {canRetry && !retried && (<>
+        <div>{zh ? "上次可能已送达或已执行，重试可能重复。" : "The previous attempt may have arrived or run. Retrying may repeat it."}</div>
+        <Button
+          variant="inline"
+          size="sm"
+          data-response-retry
+          type="button"
+          disabled={retrying || sending}
+          onClick={() => void retry()}
+        >
+          <RotateCcw aria-hidden="true" className="size-4" />
+          {retrying ? (zh ? "正在重试…" : "Retrying…") : zh ? "重试" : "Retry"}
+        </Button>
+      </>)}
+      {retried && !failedSend && <div>{zh ? "已重新发送" : "Sent again"}</div>}
+      {retryError && <Alert tone="danger">{retryError}</Alert>}
+  </>;
   if (!visibleActivity.length && !(message.is_mine && (sending || failedSend)) && !retryError) return null;
   return (
     <div
@@ -120,60 +130,11 @@ export function MessageFeedback({ message }: { message: DashboardMessage }) {
                 : "Sent"}
         </div>
       )}
-      {visibleActivity.map((agent) => {
-        const thinking = agent.status === "waiting" || agent.status === "processing";
-        return (
-          <div
-            key={agent.agent_id}
-            className="flex items-center gap-1.5"
-            role={thinking ? "status" : undefined}
-            aria-label={thinking ? `${agent.agent_name} ${zh ? "思考中" : "Thinking"}` : undefined}
-          >
-            <Avatar
-              kind="agent"
-              id={agent.agent_id}
-              name={agent.agent_name}
-              src={agent.avatar_url}
-              size="xs"
-              status={thinking ? "thinking" : undefined}
-            />
-            {!thinking && (<>
-              <span className="max-w-32 truncate" title={agent.agent_name}>
-                {agent.agent_name}
-              </span>
-              <span className={agent.status === "failed" ? "text-danger" : agent.status === "interrupted" ? "text-warning" : ""}>
-                {agent.status === "failed"
-                  ? agent.error === "delivery_expired"
-                    ? zh ? "投递超时" : "Delivery timed out"
-                    : zh ? "处理失败" : "Processing failed"
-                  : agent.status === "no_reply"
-                    ? zh ? "已处理 · 无需回复" : "Handled · No reply needed"
-                    : agent.status === "interrupted"
-                      ? zh ? "处理已中断" : "Processing interrupted"
-                      : zh ? "已结束，未关联回复" : "Ended without a linked reply"}
-              </span>
-            </>)}
-          </div>
-        );
-      })}
+      <AgentMessageReactions activity={visibleActivity} messageId={message.msg_id} align={message.is_mine ? "end" : "start"} actions={!failedSend && (canRetry || retried || retryError) ? retryControls : undefined} />
       {message.is_mine && failedSend && message.send_error && (
         <div className="text-danger">{errorText(message.send_error)}</div>
       )}
-      {canRetry && !retried && (<>
-        <div>{zh ? "上次可能已送达或已执行，重试可能重复。" : "The previous attempt may have arrived or run. Retrying may repeat it."}</div>
-        <Button
-          variant="inline"
-          size="sm"
-          type="button"
-          disabled={retrying || sending}
-          onClick={() => void retry()}
-        >
-          <RotateCcw aria-hidden="true" className="size-4" />
-          {retrying ? (zh ? "正在重试…" : "Retrying…") : zh ? "重试" : "Retry"}
-        </Button>
-      </>)}
-      {retried && !failedSend && <div>{zh ? "已重新发送" : "Sent again"}</div>}
-      {retryError && <Alert tone="danger">{retryError}</Alert>}
+      {failedSend && retryControls}
     </div>
   );
 }

@@ -21,36 +21,37 @@ afterEach(() => { if (root) act(() => root.unmount()); document.body.innerHTML =
 function mount(message = base) {
   const host = document.createElement("div"); document.body.append(host);
   root = createRoot(host); act(() => root.render(<MessageFeedback message={message} />));
-  return host;
+  if (message.reply_activity?.length) act(() => host.querySelector<HTMLButtonElement>('[role="toolbar"] button')!.click());
+  return document.body;
 }
 it("uses a new request key only for a deliberate execution retry and targets failed agents", async () => {
   const host = mount();
-  await act(async () => { host.querySelector("button")!.click(); });
+  await act(async () => { host.querySelector<HTMLButtonElement>("[data-response-retry]")!.click(); });
   expect(mock.send).toHaveBeenCalledTimes(1);
   const sent = mock.send.mock.calls[0][0];
   expect(sent.mentions).toEqual(["a"]);
   expect(sent.send_request_id).not.toBe("old-accepted-key");
   expect(sent.send_request_id).toBe(sent.hub_msg_id);
-  expect(host.querySelector("button")).toBeNull();
+  expect(host.querySelector<HTMLButtonElement>("[data-response-retry]")).toBeNull();
 });
 it("rechecks current store state instead of retrying an already completed agent", async () => {
   const host = mount();
   mock.messages.r = [{ ...base, reply_activity: base.reply_activity!.map((a) => ({ ...a, status: "completed" })) }];
-  await act(async () => { host.querySelector("button")!.click(); });
+  await act(async () => { host.querySelector<HTMLButtonElement>("[data-response-retry]")!.click(); });
   expect(mock.send).not.toHaveBeenCalled();
 });
 it("preserves the request key after ambiguous send failure and blocks synchronous double clicks", async () => {
   const failed = { ...base, hub_msg_id: "tmp_key", msg_id: "tmp_key", send_request_id: "same-key", send_status: "failed", state: "failed", reply_activity: undefined } as DashboardMessage;
   mock.messages.r = [failed];
   const host = mount(failed);
-  await act(async () => { const button = host.querySelector("button")!; button.click(); button.click(); });
+  await act(async () => { const button = host.querySelector<HTMLButtonElement>("[data-response-retry]")!; button.click(); button.click(); });
   expect(mock.send).toHaveBeenCalledTimes(1);
   expect(mock.send.mock.calls[0][0].send_request_id).toBe("same-key");
 });
 it("leaves a failed execution-resend to its new bubble instead of minting more request keys", async () => {
   mock.send.mockRejectedValue(new Error("response lost"));
   const host = mount();
-  await act(async () => { host.querySelector("button")!.click(); });
+  await act(async () => { host.querySelector<HTMLButtonElement>("[data-response-retry]")!.click(); });
   expect(host.textContent).toContain("response lost");
-  expect(host.querySelector("button")).toBeNull();
+  expect(host.querySelector<HTMLButtonElement>("[data-response-retry]")).toBeNull();
 });

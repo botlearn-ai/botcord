@@ -496,6 +496,10 @@ function MessageBubble({
   const [, forceStatusReactionRender] = useState(0);
   const nowMs = Date.now();
   const activeStatusReactions = (message.status_reactions ?? []).filter((reaction) => {
+    // The durable projection owns this actor's reply indicator in Team rooms.
+    if (teamFeedback && reaction.kind === "replying" && message.reply_activity?.some(
+      (a) => a.agent_id === reaction.actor_id && a.response_state !== undefined,
+    )) return false;
     if (reaction.state && reaction.state !== "active") return false;
     if (!reaction.expires_at) return true;
     const expiresAt = Date.parse(reaction.expires_at);
@@ -971,7 +975,7 @@ function MessageBubble({
                 <span className="max-w-[96px] truncate">{reaction.actor_name || reaction.actor_id}</span>
               </Badge>
             ))}
-            {showMessageStatus && !(teamFeedback && message.sender_kind === "human") && (
+            {showMessageStatus && !teamFeedback && (
               <>
                 {message.state_counts && Object.keys(message.state_counts).length > 0 ? (
                   <StateCountsBadges counts={message.state_counts} />
@@ -986,8 +990,8 @@ function MessageBubble({
               </>
             )}
           </div>
-          <TeamMessageFeedback message={message} />
         </div>
+        <TeamMessageFeedback message={message} />
       </div>
       {isOwn && sideAvatar}
       {/* For others' messages: button right of bubble */}

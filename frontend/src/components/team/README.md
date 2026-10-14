@@ -6,7 +6,7 @@
 
 `TeamRoomPane.tsx` 组合个人聊天的 `RoomHeader` + `MessageList` + `RoomHumanComposer`：挂载时占用 UI store 的 `openedRoomId`/`focusedRoomId`、卸载时释放，并自行每 5 秒 `pollNewMessages`（Team 模式关闭了个人轮询）。列表把已加入的组织房间写入 chat store 的 `spaceRooms`，作为 `getRoomSummary` 的兜底来源；个人列表（`mergeDashboardRoomsWithHumanRooms`/`buildVisibleMessageRooms`/`RoomList`）过滤掉带 `space_id` 的房间及其 humanRooms 副本。`RoomHeader` 在 Team 下传入 `onBack`/`title`/`onOpenMembers`，隐藏加入、分享、通用加成员与设置入口。
 
-`TeamMessageFeedback.tsx` 在 Team 消息下方显示发送中、已发送、等待响应、正在处理及失败重试。`GET /rooms/{room_id}/messages` 的 `activity_for` 参数让增量轮询同时刷新原消息的 `reply_activity`，无新消息时也能看到 Agent 接单；状态按原消息和接收 Agent 隔离，仅成员可见。私聊/Owner Chat 的 Agent 与群聊被提及的 Agent 才进入等待状态。15 秒后补充等待提示，不自行判定失败。收到对应回复或完成回执后移除处理提示。发送失败重试复用原气泡及附件、提及、引用；处理失败重新发送，群聊只提及失败 Agent。后端需与前端一起发布。截图 `frontend/docs/screenshots/team-feedback-*.png` 使用真实反馈组件和构建 CSS 的隔离状态样例，并非线上会话截图。
+`TeamMessageFeedback.tsx` 组合消息发送反馈与方案 A 的头像角标。`AgentMessageReactions` 优先读取 `response_state`，显示已回复、忽略、处理后无需回复等状态；超过 8 个 Agent 用 +N，窄消息按宽度进一步折叠。桌面点击头像查看详情，手机点击整行打开列表；详情使用轮询后的最新记录，原始异常不会直接显示。只有发送者可以重试失败或中断的 Agent。`TeamRoomPane` 统一决定最新活动消息的单个动画拥有者，避免多个头像同时循环。所有未解决消息（包括 Agent 发出的消息）经 `activity_for` 增量刷新，已撤回消息不显示。真实组件预览位于 `/design#agent-reactions`。
 
 `TeamRoomMembersDialog.tsx`（成员与 Agent）列出房间里的人和 Agent，可从组织成员/组织 active Agent 中添加；无权限添加的 Agent 显示原因而非隐藏（Agent 所有者或组织管理员才可添加），私聊不能加 Agent；移除遵循 Hub 规则（房间所有者不可移除）。
 
@@ -29,3 +29,5 @@ Agent 页：`TeamAgentsPage.tsx`（导航唯一的「Agent」入口，自带标�
 测试包括页面结构、旧 Hub 降级、路由、API 用户身份及异步历史合并/取消/撤权。本地隔离测试数据的桌面、移动端与建房截图在 `frontend/docs/screenshots/team-workspace-*.png`；后端真实鉴权与数据库测试另见共享文档 [Team 工作区](../../../../docs/team-workspace-messaging.md)。
 
 消息响应协议见 `docs/message-response-protocol.md`。`reply_activity` 优先读取持久化执行状态，投递 ACK 不再表示正在回复。`no_reply`、`interrupted`、`unconfirmed` 都停止等待提示；`completed` 显示已回复并支持跳到当前已加载列表中的最终回复。旧消息缺少可靠关联时显示回复状态未确认。
+
+方案 A 的验证截图位于 `frontend/docs/screenshots/agent-reactions-*.png`，使用 `/design#agent-reactions` 中的生产组件与本地状态样例，非线上会话。已检查 Chrome 320/375/430/1440px、浅深色、11 种状态、详情关闭后的焦点返回和 reduced-motion；未验证真实软键盘与设备安全区。处理失败的重试说明放在详情内，消息发送失败仍保留直接重试入口。

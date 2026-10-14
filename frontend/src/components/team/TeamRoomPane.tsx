@@ -15,6 +15,8 @@ import { useLanguage } from "@/lib/i18n";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useEffect } from "react";
+import { ReactionMotionContext } from "./AgentMessageReactions";
+import { responseAnimation } from "@/lib/message-response-activity";
 import { TeamMessageFeedbackContext } from "./TeamMessageFeedback";
 import {
   RoomAgentChips,
@@ -41,6 +43,7 @@ export default function TeamRoomPane({
   onBack: () => void;
   onOpenMembers: () => void;
 }) {
+  const animation = useDashboardChatStore((s) => responseAnimation(s.messages[roomId] ?? []));
   const zh = useLanguage() === "zh";
   const opened = useDashboardUIStore((s) => s.openedRoomId === roomId);
   const agentAccess = useRoomAgentAccess(spaceId, roomId);
@@ -71,6 +74,7 @@ export default function TeamRoomPane({
 
   return (
     <TeamMessageFeedbackContext.Provider value={true}>
+      <ReactionMotionContext.Provider value={animation}>
       <div
         className="dashboard-main flex h-full min-h-0 flex-col overflow-hidden bg-bg"
         data-team-room={roomId}
@@ -107,6 +111,7 @@ export default function TeamRoomPane({
           )}
         </div>
       </div>
+    </ReactionMotionContext.Provider>
     </TeamMessageFeedbackContext.Provider>
   );
 }
