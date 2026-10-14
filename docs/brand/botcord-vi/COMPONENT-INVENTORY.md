@@ -2,7 +2,7 @@
 
 由 `cd frontend && node scripts/audit-ui-components.mjs` 生成。扫描非测试 TS/TSX 静态 import、re-export 和 JSX，不计动态拼装的组件名。
 
-共 263 个 TSX 文件、219 个组件模块，其中 UI 组件库 56 个模块。
+共 264 个 TSX 文件、220 个组件模块，其中 UI 组件库 57 个模块。
 
 “预览可达”表示从 /design 或根布局的 ConfirmDialog / Toaster 宿主可达，不代表全部业务状态均已演示。生产引用不包含 /design；兼容导出也算引用。
 
@@ -12,7 +12,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 
 | 元素 | 出现次数 | 文件数 |
 |---|---:|---:|
-| button | 27 | 16 |
+| button | 28 | 17 |
 | details | 1 | 1 |
 | input | 5 | 5 |
 | select | 1 | 1 |
@@ -35,7 +35,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/AgentResponseAvatar.tsx](../../../frontend/src/components/ui/AgentResponseAvatar.tsx) | 2 | 是 |
 | [components/ui/Alert.tsx](../../../frontend/src/components/ui/Alert.tsx) | 61 | 是 |
 | [components/ui/AttachmentItem.tsx](../../../frontend/src/components/ui/AttachmentItem.tsx) | 5 | 是 |
-| [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 17 | 是 |
+| [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 18 | 是 |
 | [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 54 | 是 |
 | [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 39 | 是 |
 | [components/ui/BrandMark.tsx](../../../frontend/src/components/ui/BrandMark.tsx) | 6 | 是 |
@@ -64,6 +64,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/MarketingButton.tsx](../../../frontend/src/components/ui/MarketingButton.tsx) | 4 | 是 |
 | [components/ui/MarketingCard.tsx](../../../frontend/src/components/ui/MarketingCard.tsx) | 3 | 是 |
 | [components/ui/Menu.tsx](../../../frontend/src/components/ui/Menu.tsx) | 3 | 是 |
+| [components/ui/MessageActionPopover.tsx](../../../frontend/src/components/ui/MessageActionPopover.tsx) | 1 | 是 |
 | [components/ui/MetricCard.tsx](../../../frontend/src/components/ui/MetricCard.tsx) | 2 | 是 |
 | [components/ui/MultiSelect.tsx](../../../frontend/src/components/ui/MultiSelect.tsx) | 1 | 是 |
 | [components/ui/NodeCordStatus.tsx](../../../frontend/src/components/ui/NodeCordStatus.tsx) | 0 | 是 |
@@ -117,7 +118,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/dashboard/AgentSchedulesTab.tsx](../../../frontend/src/components/dashboard/AgentSchedulesTab.tsx) | 2 | 否 |
 | [components/dashboard/AgentSettingsDrawer.tsx](../../../frontend/src/components/dashboard/AgentSettingsDrawer.tsx) | 1 | 否 |
 | [components/dashboard/AgentSkillsTab.tsx](../../../frontend/src/components/dashboard/AgentSkillsTab.tsx) | 2 | 否 |
-| [components/dashboard/BotAvatar.tsx](../../../frontend/src/components/dashboard/BotAvatar.tsx) | 15 | 否 |
+| [components/dashboard/BotAvatar.tsx](../../../frontend/src/components/dashboard/BotAvatar.tsx) | 14 | 否 |
 | [components/dashboard/BotDetailDrawer.tsx](../../../frontend/src/components/dashboard/BotDetailDrawer.tsx) | 1 | 否 |
 | [components/dashboard/BotRuntimeCapabilitiesPanel.tsx](../../../frontend/src/components/dashboard/BotRuntimeCapabilitiesPanel.tsx) | 2 | 否 |
 | [components/dashboard/BotWalletTab.tsx](../../../frontend/src/components/dashboard/BotWalletTab.tsx) | 1 | 否 |

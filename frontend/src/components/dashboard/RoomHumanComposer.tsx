@@ -421,6 +421,7 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
         />
       )}
       <MessageComposer
+        roomId={roomId}
         key={`${roomId}:${prefillNonce}`}
         onSend={handleSend}
         onTransfer={() => setTransferOpen(true)}

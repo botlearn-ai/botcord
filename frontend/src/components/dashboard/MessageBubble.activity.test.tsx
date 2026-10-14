@@ -104,3 +104,43 @@ it("uses Team response components without leaving a duplicate legacy reply avata
     await act(() => root.unmount());
   }
 });
+
+it("opens actions on a stationary touch, cancels scrolling, and mentions an avatar without opening its profile", async () => {
+  vi.useFakeTimers();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  const mention = vi.fn();
+  window.addEventListener("botcord:composer-mention", mention);
+  const pointer = (target: Element, type: string, x = 0, y = 0) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.assign(event, { pointerType: "touch", pointerId: 1, isPrimary: true, clientX: x, clientY: y });
+    target.dispatchEvent(event);
+  };
+  const message = { hub_msg_id: "m1", msg_id: "m1", sender_id: "hu_peer", sender_name: "Alice", sender_kind: "human", type: "message", text: "Hello", payload: {}, room_id: "rm_group", state: "sent", created_at: new Date().toISOString() } as DashboardMessage;
+  try {
+    await act(() => root.render(<MessageBubble message={message} isOwn={false} />));
+    const bubble = host.querySelector(".liquid-message")!;
+    await act(() => { pointer(bubble, "pointerdown"); pointer(bubble, "pointermove", 0, 20); vi.advanceTimersByTime(600); });
+    expect(document.querySelector("[data-message-action-item]")).toBeNull();
+    await act(() => { pointer(bubble, "pointerdown"); pointer(bubble, "pointercancel"); vi.advanceTimersByTime(600); });
+    expect(document.querySelector("[data-message-action-item]")).toBeNull();
+    await act(() => { pointer(bubble, "pointerdown"); vi.advanceTimersByTime(500); });
+    expect(document.querySelector("[data-message-action-item]")).not.toBeNull();
+    await act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    const avatar = host.querySelector("[data-sender-avatar]")!;
+    await act(() => { pointer(avatar, "pointerdown"); vi.advanceTimersByTime(500); pointer(avatar, "pointerup"); });
+    expect(mention).toHaveBeenCalledTimes(1);
+    expect((mention.mock.calls[0][0] as CustomEvent).detail).toEqual({ roomId: "rm_group", participantId: "hu_peer" });
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    await act(() => avatar.dispatchEvent(click));
+    expect(click.defaultPrevented).toBe(true);
+    expect(document.querySelector("[data-message-action-item]")).toBeNull();
+  } finally {
+    vi.unstubAllGlobals();
+    window.removeEventListener("botcord:composer-mention", mention);
+    await act(() => root.unmount());
+    host.remove();
+  }
+});
