@@ -67,3 +67,17 @@ it("puts avatars beside bubbles and only labels other group senders above the bu
     host.remove();
   }
 });
+
+it("uses the durable Team projection instead of a duplicate ephemeral reply indicator", async () => {
+  const { TeamMessageFeedbackContext } = await import("@/components/team/TeamMessageFeedback");
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const message = { hub_msg_id: "durable", msg_id: "durable", sender_id: "hu_test", sender_name: "Me", sender_kind: "human", type: "message", text: "Hello", payload: {}, room_id: "rm_group", state: "delivered", created_at: new Date().toISOString(),
+    reply_activity: [{ agent_id: "ag_a", agent_name: "A", status: "completed", response_state: "completed" }],
+    status_reactions: [{ room_id: "rm_group", msg_id: "durable", actor_id: "ag_a", actor_name: "A", kind: "replying", emoji: "⏳", state: "active" }],
+  } as unknown as DashboardMessage;
+  try {
+    await act(() => root.render(<TeamMessageFeedbackContext.Provider value><MessageBubble message={message} isOwn /></TeamMessageFeedbackContext.Provider>));
+    expect(host.querySelector(".replying-avatar")).toBeNull();
+    expect(host.querySelector('[data-response-state="completed"]')).not.toBeNull();
+  } finally { await act(() => root.unmount()); host.remove(); }
+});

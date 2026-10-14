@@ -2,7 +2,7 @@
  * [INPUT]: 依赖 VI 颜色语义类（bg-brand、bg-warning、bg-success、text-tertiary…）、styles/ui-motion.css 的 bc-signal-* 动画与 clsx
  * [OUTPUT]: 对外提供 SignalDot 与 AgentSignal 类型：agent 运行状态信号点，xs / sm / md 三种尺寸（8 / 10 / 12px）
  * [POS]: ui 身份与状态原语；Avatar 右上角状态点、成员列表、状态胶囊统一从这里出
- * [PROTOCOL]: 变更时更新此头部，然后检查 README.md；状态与动画以 docs/brand/botcord-vi/VI.md §6.3、§8 为准
+ * [PROTOCOL]: animate=false 保留状态并停用动效； 变更时更新此头部，然后检查 README.md；状态与动画以 docs/brand/botcord-vi/VI.md §6.3、§8 为准
  */
 
 import { clsx } from "clsx";
@@ -31,20 +31,22 @@ export interface SignalDotProps {
   status: AgentSignal;
   size?: SignalDotSize;
   className?: string;
+  animate?: boolean;
 }
 
-export default function SignalDot({ status, size = "sm", className }: SignalDotProps) {
+export default function SignalDot({ status, size = "sm", animate = true, className }: SignalDotProps) {
   return (
     <span
       role="img"
       aria-label={status}
       data-status={status}
+      style={animate ? undefined : { animation: "none" }}
       className={clsx("relative inline-block shrink-0 rounded-full", SIZE[size], TONE[status], className)}
     >
-      {status === "waiting" ? (
+      {status === "waiting" && animate ? (
         <span aria-hidden="true" className="bc-signal-blink pointer-events-none absolute -inset-1 rounded-full border-2 border-warning" />
       ) : null}
-      {status === "done" ? (
+      {status === "done" && animate ? (
         <span aria-hidden="true" className="bc-signal-ripple pointer-events-none absolute inset-0 rounded-full bg-success" />
       ) : null}
     </span>

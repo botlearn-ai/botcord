@@ -106,6 +106,20 @@ function makeMessage(overrides: Partial<DashboardMessage> = {}): DashboardMessag
 }
 
 describe("useDashboardChatStore message polling", () => {
+  it("polls agent-authored active messages while excluding recalled and resolved projections", async () => {
+    const activity = (response_state: "replying" | "ignored") => [{ agent_id: "ag_1", agent_name: "Assistant", status: "processing" as const, response_state }];
+    useDashboardChatStore.setState({ messages: { rm_empty: [
+      makeMessage({ msg_id: "active", sender_kind: "agent", reply_activity: activity("replying") }),
+      makeMessage({ msg_id: "ignored", reply_activity: activity("ignored") }),
+      makeMessage({ msg_id: "recalled", is_recalled: true, reply_activity: activity("replying") }),
+    ] } });
+    mocks.getRoomMessages.mockResolvedValue({ messages: [], has_more: false, activity_updates: {
+      active: [{ ...activity("replying")[0], response_state: "completed", status: "completed" }],
+    } });
+    await useDashboardChatStore.getState().pollNewMessages("rm_empty");
+    expect(mocks.getRoomMessages).toHaveBeenCalledWith("rm_empty", expect.objectContaining({ activityFor: ["active"] }));
+    expect(useDashboardChatStore.getState().messages.rm_empty[0].reply_activity?.[0].response_state).toBe("completed");
+  });
   it("refreshes agent activity even when no new messages arrive", async () => {
     const waiting = [{ agent_id: "ag_1", agent_name: "Assistant", status: "waiting" as const }];
     useDashboardChatStore.setState({ messages: { rm_empty: [makeMessage({ sender_kind: "human", reply_activity: waiting })] } });
