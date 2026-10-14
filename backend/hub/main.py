@@ -45,6 +45,7 @@ from hub.routers.public import router as public_router
 from hub.routers.room import internal_router as room_internal_router
 from hub.routers.room import router as room_router
 from hub.routers.room_context import router as room_context_router
+from hub.routers.kb import router as kb_router
 from hub.routers.subscriptions import internal_router as subscriptions_internal_router
 from hub.routers.subscriptions import router as subscriptions_router
 from hub.routers.agent_schedules import router as agent_schedules_router
@@ -85,6 +86,7 @@ from app.routers.telegram import router as app_telegram_router
 from app.routers.team_orchestration import router as app_team_orchestration_router
 from app.routers.spaces import router as app_spaces_router
 from app.routers.agent_access import router as app_agent_access_router
+from app.routers.kb import router as app_kb_router
 from app.routers.agent_relations import router as app_agent_relations_router
 from app.routers.team_access import router as app_team_access_router
 from app.routers.org_invites import public_router as app_org_invites_public_router
@@ -325,6 +327,7 @@ app.include_router(contact_requests_router)
 app.include_router(hub_router)
 app.include_router(hub_invites_router)
 app.include_router(room_context_router)
+app.include_router(kb_router)
 app.include_router(room_router)
 app.include_router(room_internal_router)
 app.include_router(topics_router)
@@ -373,6 +376,7 @@ app.include_router(app_schedules_router, dependencies=_beta_gate)
 app.include_router(app_team_orchestration_router, dependencies=_beta_gate)
 app.include_router(app_spaces_router, dependencies=_beta_gate)
 app.include_router(app_agent_access_router, dependencies=_beta_gate)
+app.include_router(app_kb_router, dependencies=_beta_gate)
 app.include_router(app_agent_relations_router, dependencies=_beta_gate)
 app.include_router(app_team_access_router, dependencies=_beta_gate)
 app.include_router(app_org_invites_router, dependencies=_beta_gate)
