@@ -292,3 +292,23 @@ async def test_delete_subtree_and_reject_new_page(client, org):
     # The path can be reused after deletion.
     again = await client.put(f"{app_(org)}/page", headers=org["danny"], json={"path": "/old/a.md", "content": "b"})
     assert again.json()["status"] == "published"
+
+
+@pytest.mark.asyncio
+async def test_agent_sees_own_draft_outcomes(client, org):
+    kept = (await client.put(f"{hub(org)}/page", headers=org["barry"],
+                             json=agent_page("/knowledge/a.md", "a", note="first"))).json()
+    dropped = (await client.put(f"{hub(org)}/page", headers=org["barry"],
+                                json=agent_page("/knowledge/b.md", "b"))).json()
+    await client.put(f"{app_(org)}/page", headers=org["danny"], json={"path": "/c.md", "content": "c"})
+    await client.post(f"{app_(org)}/revisions/{kept['revision_id']}/approve", headers=org["danny"])
+    await client.post(f"{app_(org)}/revisions/{dropped['revision_id']}/reject", headers=org["danny"],
+                      json={"note": "duplicate of /handbook"})
+
+    mine = (await client.get(f"{hub(org)}/drafts", headers=org["barry"])).json()["revisions"]
+    assert {(r["path"], r["status"]) for r in mine} == {("/knowledge/a.md", "published"), ("/knowledge/b.md", "rejected")}
+    [rejected] = [r for r in mine if r["status"] == "rejected"]
+    assert rejected["note"] == "duplicate of /handbook" and rejected["reviewer"].startswith("hu_")
+    only = (await client.get(f"{hub(org)}/drafts", headers=org["barry"], params={"status": "rejected"})).json()
+    assert [r["path"] for r in only["revisions"]] == ["/knowledge/b.md"]
+    assert (await client.get(f"{hub(org)}/drafts", headers=org["otto"])).status_code == 403

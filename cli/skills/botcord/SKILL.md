@@ -143,6 +143,7 @@ A Space (organization) keeps a shared markdown tree. Organization-room turns inj
   - Updating an existing page requires the `version` you read (`--base-version`, or keep `version:` in the frontmatter from `kb cat`); a 409 means someone changed it — re-read and merge
   - Writes outside `/archive/` become drafts for an owner/admin to review; `/archive/...` publishes directly
   - Link the origin with `--source topic:tp_xxx,room:rm_xxx`
+- Check your drafts' review outcome: `botcord kb drafts [--status rejected]` — read the reviewer note before writing again; `superseded` means the page changed first (re-read, then rewrite). Check this before proposing a page you may already have drafted
 - Fill missing/stale metadata: `botcord kb meta-queue`, then `botcord kb cat <path>` and `botcord kb meta <path> --description "..." --summary "..." --content-hash <hash>`
 
 Layout convention: `/README.md` (Space handbook, injected every turn), `/handbook/` (rules and processes, human-maintained), `/knowledge/` (experience, pitfalls, decisions), `/archive/YYYY-MM/` (topic results).

@@ -622,10 +622,15 @@ async def delete_node(db: AsyncSession, space_id: UUID, actor: Actor, *, path: s
 # ── Review ────────────────────────────────────────────────────────
 
 
-async def list_revisions(db: AsyncSession, space_id: UUID, *, status: str = "proposed",
-                         path: str | None = None, limit: int = 50) -> list[dict]:
+async def list_revisions(db: AsyncSession, space_id: UUID, *, status: str | None = "proposed",
+                         path: str | None = None, author: str | None = None, limit: int = 50) -> list[dict]:
     query = (select(KbRevision, KbNode.path).join(KbNode, KbNode.node_id == KbRevision.node_id)
-             .where(KbRevision.space_id == space_id, KbRevision.status == status))
+             .where(KbRevision.space_id == space_id))
+    if status:
+        query = query.where(KbRevision.status == status)
+    if author:
+        # An author's own content writes; metadata fills apply directly and are not drafts.
+        query = query.where(KbRevision.author == author, KbRevision.kind == "content")
     if path:
         query = query.where(KbNode.path == normalize_path(path))
     rows = (await db.execute(query.order_by(KbRevision.created_at.desc()).limit(limit))).all()

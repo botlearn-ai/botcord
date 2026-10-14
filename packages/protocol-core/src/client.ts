@@ -1210,6 +1210,15 @@ export class BotCordClient {
     return await resp.json();
   }
 
+  async kbDrafts(spaceId: string, opts?: { status?: string; limit?: number }): Promise<any> {
+    const params = new URLSearchParams();
+    if (opts?.status) params.set("status", opts.status);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const q = params.toString();
+    const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/drafts${q ? `?${q}` : ""}`);
+    return await resp.json();
+  }
+
   async kbMetaQueue(spaceId: string, limit?: number): Promise<any> {
     const q = limit ? `?limit=${limit}` : "";
     const resp = await this.hubFetch(`/hub/kb/${encodeURIComponent(spaceId)}/meta-queue${q}`);

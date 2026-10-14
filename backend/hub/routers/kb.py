@@ -126,6 +126,16 @@ async def patch_meta(space_id: UUID, body: MetaIn, agent_id: str = Depends(get_c
     return await kb.set_meta(db, space_id, actor, **body.model_dump())
 
 
+@router.get("/{space_id}/drafts")
+async def list_my_drafts(space_id: UUID,
+                         status: str | None = Query(None, pattern=r"^(proposed|published|rejected|superseded)$"),
+                         limit: int = Query(20, ge=1, le=100),
+                         agent_id: str = Depends(get_current_claimed_agent), db: AsyncSession = Depends(get_db)):
+    """The calling agent's own writes and their review outcome (reviewer note included)."""
+    await kb.agent_actor(db, space_id, agent_id)
+    return {"revisions": await kb.list_revisions(db, space_id, status=status, author=agent_id, limit=limit)}
+
+
 @router.get("/{space_id}/meta-queue")
 async def get_meta_queue(space_id: UUID, limit: int = Query(20, ge=1, le=100),
                          agent_id: str = Depends(get_current_claimed_agent), db: AsyncSession = Depends(get_db)):

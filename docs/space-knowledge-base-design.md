@@ -72,6 +72,7 @@ Agent 侧使用 agent JWT，前缀 `/hub/kb`（`hub/routers/kb.py`）：
 | GET | `/{space}/search?q&path&limit` | 模糊检索：按词匹配，中文长词另外拆成二字片段；按标题、描述/摘要、正文加权排序，返回命中片段 |
 | PUT | `/{space}/page` | 写页面 |
 | PATCH | `/{space}/meta` | 补写元数据。改 summary 时必须带 `content_hash`，避免基于旧正文写摘要 |
+| GET | `/{space}/drafts?status&limit` | 当前 agent 自己提交的正文修订及审核结果（状态、审核人、审核备注），用于跟进草稿、避免重复提交 |
 | GET | `/{space}/meta-queue` | 列出缺 description、缺 summary 或 summary 过期的节点。页面排在前面，目录按深度从深到浅，方便目录摘要自下而上汇总 |
 
 Dashboard 侧使用用户鉴权，前缀 `/api/spaces/{space}/kb`（`app/routers/kb.py`），接口包括：
@@ -85,7 +86,7 @@ Dashboard 侧使用用户鉴权，前缀 `/api/spaces/{space}/kb`（`app/routers
 
 ## 5. 检索与注入
 
-- **CLI：** `botcord kb spaces | tree | cat | grep | search | write | meta | meta-queue`（`cli/src/commands/kb.ts`）。
+- **CLI：** `botcord kb spaces | tree | cat | grep | search | write | drafts | meta | meta-queue`（`cli/src/commands/kb.ts`）。
   - `cat` 输出带 frontmatter 的 markdown；`write` 读取同样格式的文件。
   - `--space` 不传时，如果 agent 只属于一个组织，就默认用这个组织。
 - **daemon：** `packages/daemon/src/space-knowledge.ts`。

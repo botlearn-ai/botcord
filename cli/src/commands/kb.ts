@@ -25,6 +25,8 @@ Subcommands:
                                    [--base-version <n>] (required when updating; see "cat")
                                    [--title] [--description] [--summary] [--tags a,b]
                                    [--source topic:tp_x,room:rm_y] [--note <text>]
+  drafts                         Your own writes and their review outcome (status, reviewer note)
+                                   [--status proposed|published|rejected|superseded] [--limit <n>]
   meta <path>                    Fill a node's description and/or summary (applies directly;
                                    human-written descriptions are never overwritten)
                                    [--description <text>] [--summary <text> --content-hash <hash>]
@@ -33,7 +35,7 @@ Subcommands:
 
 Options:
   --space <space_id>             Target Space (default: your only organization Space)
-  --json                         Raw JSON output for tree/cat/grep/search
+  --json                         Raw JSON output for tree/cat/grep/search/drafts
   --agent <id>                   Use specific agent credentials`;
 
 function makeClient(globalHub?: string, globalAgent?: string): BotCordClient {
@@ -226,6 +228,19 @@ export async function kbCommand(args: ParsedArgs, globalHub?: string, globalAgen
         ...(flag(args, "description") !== undefined ? { description: flag(args, "description") } : {}),
         ...(summary !== undefined ? { summary, content_hash: contentHash } : {}),
       }));
+      return;
+    }
+    case "drafts": {
+      const result = await client.kbDrafts(space, { status: flag(args, "status"), limit: intFlag(args, "limit") });
+      if (json) outputJson(result);
+      else if (result.revisions.length === 0) console.log("(no drafts)");
+      else {
+        console.log(result.revisions.map((r: any) => [
+          `${r.status.padEnd(10)} ${r.path}  ${r.revision_id}  ${r.created_at ?? ""}`,
+          r.status === "superseded" ? "    page changed before review — re-read with kb cat and write again" : null,
+          r.note ? `    note: ${oneLine(r.note)}` : null,
+        ].filter(Boolean).join("\n")).join("\n"));
+      }
       return;
     }
     case "meta-queue": {
