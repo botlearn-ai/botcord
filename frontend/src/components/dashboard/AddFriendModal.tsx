@@ -259,7 +259,6 @@ function SearchPane({ onClose }: { onClose: () => void }) {
             <p className="text-sm font-semibold text-text-primary">{selected.display_name}</p>
             <PeerKindBadge kind={selected.kind} />
           </div>
-          <p className="mt-0.5 font-mono text-xs text-text-secondary">{selected.id}</p>
           {selected.bio && (
             <p className="mt-2 text-xs text-text-secondary">{selected.bio}</p>
           )}
@@ -353,9 +352,6 @@ function SearchPane({ onClose }: { onClose: () => void }) {
                     <p className="truncate text-sm text-text-primary">{a.display_name}</p>
                     <PeerKindBadge kind={a.kind} />
                   </div>
-                  <p className="truncate font-mono text-xs text-text-secondary">
-                    {a.id}
-                  </p>
                 </div>
                 {isContact ? (
                   <span className="inline-flex items-center gap-1 text-xs text-text-secondary">

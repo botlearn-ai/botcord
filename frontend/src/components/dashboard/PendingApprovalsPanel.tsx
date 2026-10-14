@@ -14,10 +14,11 @@
 import Badge from "@/components/ui/Badge";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 import { humansApi } from "@/lib/api";
+import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useLanguage } from "@/lib/i18n";
 import { pendingApprovalsPanel } from "@/lib/i18n/translations/dashboard";
 import type { PendingApproval } from "@/lib/types";
@@ -32,6 +33,11 @@ export default function PendingApprovalsPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState<ActionState>(null);
+  const ownedAgents = useDashboardSessionStore((s) => s.ownedAgents);
+  const agentNames = useMemo(
+    () => new Map((ownedAgents ?? []).map((a) => [a.agent_id, a.display_name])),
+    [ownedAgents],
+  );
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -125,10 +131,7 @@ export default function PendingApprovalsPanel() {
             from_participant_id?: string;
             message?: string;
           };
-          const fromLabel =
-            payload.from_display_name ||
-            payload.from_participant_id ||
-            "unknown";
+          const fromLabel = payload.from_display_name || "unknown";
           return (
             <Card as="li" padding="sm"
               key={entry.id}
@@ -139,18 +142,13 @@ export default function PendingApprovalsPanel() {
                     <Badge tone="accent" >
                       {entry.kind.replace(/_/g, " ")}
                     </Badge>
-                    <span className="truncate font-mono text-xs">
-                      {t.forAgent} {entry.agent_id}
+                    <span className="truncate text-xs">
+                      {t.forAgent} {agentNames.get(entry.agent_id) ?? t.unknownAgent}
                     </span>
                   </p>
                   <p className="mt-1 truncate text-sm font-semibold text-text-primary">
                     {fromLabel}
                   </p>
-                  {payload.from_participant_id ? (
-                    <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">
-                      {payload.from_participant_id}
-                    </p>
-                  ) : null}
                   {payload.message ? (
                     <p className="mt-2 line-clamp-3 text-xs text-text-secondary">
                       {payload.message}

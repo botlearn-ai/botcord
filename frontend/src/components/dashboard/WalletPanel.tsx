@@ -428,7 +428,6 @@ function BotBalancesSection({
                 <BotAvatar agentId={agent.agent_id} alt={agent.display_name} avatarUrl={agent.avatar_url} size={36} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-text-primary">{agent.display_name}</div>
-                  <div className="truncate font-mono text-xs text-text-secondary">{agent.agent_id}</div>
                 </div>
                 <div className="text-right">
                   <div className="font-mono text-base font-semibold text-text-primary">

@@ -426,7 +426,6 @@ function OverviewTab({
                   {device.status === "online" ? t.online : t.offline}
                 </span>
               </div>
-              <p className="mt-0.5 font-mono text-xs text-text-secondary">{device.id}</p>
             </div>
             <span className="shrink-0 text-xs text-text-secondary">{t.overview.view} -&gt;</span>
           </Button>

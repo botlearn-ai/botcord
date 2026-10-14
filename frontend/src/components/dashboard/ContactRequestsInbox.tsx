@@ -253,9 +253,6 @@ export default function ContactRequestsInbox({
                               <p className="truncate text-sm font-semibold text-text-primary">
                                 {group.displayName}
                               </p>
-                              <p className="truncate font-mono text-xs text-text-secondary">
-                                {group.agentId}
-                              </p>
                             </div>
                             <Badge tone="neutral" >
                               {group.approvals.length}
@@ -387,9 +384,6 @@ function ReceivedRequestCard({
             </p>
             <TypeBadge isHuman={isHuman} locale={locale} />
           </div>
-          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">
-            {req.from_agent_id}
-          </p>
         </div>
       </div>
       <p className="mt-3 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
@@ -456,9 +450,6 @@ function BotApprovalCard({
             <p className="truncate text-sm font-semibold text-text-primary">{fromName}</p>
             <TypeBadge isHuman={isHuman} locale={locale} />
           </div>
-          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">
-            {fromId}
-          </p>
         </div>
       </div>
       <p className="mt-3 line-clamp-3 min-h-[48px] text-xs text-text-secondary">
@@ -530,9 +521,6 @@ function SentRequestCard({
             </p>
             <TypeBadge isHuman={toIsHuman} locale={locale} />
           </div>
-          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">
-            {req.to_agent_id}
-          </p>
         </div>
         <Badge tone="neutral" >
           {stateLabel}

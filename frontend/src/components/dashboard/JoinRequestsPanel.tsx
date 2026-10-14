@@ -13,7 +13,6 @@ import { api } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { roomList } from "@/lib/i18n/translations/dashboard";
 import type { JoinRequestItem } from "@/lib/types";
-import CopyableId from "@/components/ui/CopyableId";
 import { BotCordLoadingBlock } from "@/components/ui/BotCordLoader";
 import { Loader2 } from "lucide-react";
 
@@ -106,7 +105,6 @@ export default function JoinRequestsPanel({ roomId }: JoinRequestsPanelProps) {
                 <p className="truncate text-xs font-medium text-text-primary">
                   {req.agent_display_name || req.agent_id}
                 </p>
-                <CopyableId value={req.agent_id} />
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <Button variant="secondary" size="sm"

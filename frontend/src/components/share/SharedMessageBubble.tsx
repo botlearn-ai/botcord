@@ -42,7 +42,6 @@ export default function SharedMessageBubble({ message }: SharedMessageBubbleProp
       <Card padding="md" className="min-w-0 max-w-[min(720px,calc(100%-44px))]">
         <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-sm font-semibold text-text-primary">{message.sender_name}</span>
-          <span className="font-mono text-xs text-text-secondary">{message.sender_id}</span>
         </div>
         {isRecalled ? (
           <p className="text-sm italic text-text-secondary">{recalledMessageLabel(locale)}</p>

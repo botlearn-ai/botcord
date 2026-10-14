@@ -543,16 +543,7 @@ export default function TeamSpacesPage({
 
           {!section && !(teamMode && personal) && (
             <section className="flex flex-wrap items-center justify-between gap-3 px-1 text-sm text-text-secondary">
-              <span>
-                {snapshot.user.display_name} ·{" "}
-                {t("你的用户 ID", "Your user ID")}：
-                <CopyableId
-                  value={snapshot.human.human_id}
-                  copyLabel={t("复制用户 ID", "Copy user ID")}
-                  copiedLabel={t("已复制用户 ID", "User ID copied")}
-                  copyFailedLabel={t("复制失败", "Could not copy user ID")}
-                />
-              </span>
+              <span>{snapshot.user.display_name}</span>
               <span>
                 {personal
                   ? t("个人身份", "Personal membership")
@@ -765,7 +756,6 @@ export default function TeamSpacesPage({
                                 : ""}
                             </p>
                             <p className="mt-1 break-all text-xs text-text-secondary">
-                              {member.human_id} ·{" "}
                               {member.roles.map(role).join(" / ") ||
                                 t("成员", "Member")}{" "}
                               · {status(member.status)}

@@ -3532,6 +3532,7 @@ export const pendingApprovalsPanel: TranslationMap<{
   reject: string
   loading: string
   forAgent: string
+  unknownAgent: string
   errorLoad: string
   errorResolve: string
 }> = {
@@ -3543,6 +3544,7 @@ export const pendingApprovalsPanel: TranslationMap<{
     reject: "Reject",
     loading: "Loading pending approvals…",
     forAgent: "for",
+    unknownAgent: "a bot you manage",
     errorLoad: "Failed to load approvals",
     errorResolve: "Failed to resolve approval",
   },
@@ -3554,6 +3556,7 @@ export const pendingApprovalsPanel: TranslationMap<{
     reject: "拒绝",
     loading: "加载中…",
     forAgent: "目标 Agent：",
+    unknownAgent: "你管理的 Bot",
     errorLoad: "加载审批列表失败",
     errorResolve: "审批操作失败",
   },

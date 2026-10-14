@@ -169,9 +169,6 @@ function BotsView({
                     <p className="mt-1 line-clamp-2 text-xs text-text-secondary">
                       {agent.bio || t.noBio}
                     </p>
-                    <div className="mt-2 font-mono text-xs text-text-secondary">
-                      {agent.agent_id}
-                    </div>
                   </div>
                 </div>
 

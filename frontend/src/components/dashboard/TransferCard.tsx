@@ -108,12 +108,7 @@ const statusStyles: Record<string, string> = {
 
 function TransferParty({ id, label }: { id: string; label?: string }) {
   if (label && label !== id) {
-    return (
-      <span className="min-w-0 text-right">
-        <span className="block truncate text-text-primary/85">{label}</span>
-        <CopyableId value={id} />
-      </span>
-    );
+    return <span className="min-w-0 truncate text-right text-text-primary/85">{label}</span>;
   }
   return <CopyableId value={id} />;
 }

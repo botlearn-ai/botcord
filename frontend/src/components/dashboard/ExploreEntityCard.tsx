@@ -10,7 +10,6 @@ import Badge from "@/components/ui/Badge";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { AgentProfile, PublicHumanProfile, PublicRoom } from "@/lib/types";
-import CopyableId from "@/components/ui/CopyableId";
 import { useLanguage } from "@/lib/i18n";
 import { exploreUi } from "@/lib/i18n/translations/dashboard";
 import SubscriptionBadge from "./SubscriptionBadge";
@@ -138,7 +137,6 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
               <SubscriptionBadge productId={room.required_subscription_product_id} roomId={room.room_id} />
             )}
           </div>
-          <p className="mt-0.5 truncate font-mono text-xs text-text-secondary">{room.room_id}</p>
           <p className="mt-1 line-clamp-2 text-xs leading-4 text-text-secondary">
             {room.description || t.noDescriptionYet}
           </p>
@@ -215,9 +213,6 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
             </Button>
           </div>
         ) : null}
-        <div className="mt-2">
-          <CopyableId value={agent.agent_id} />
-        </div>
       </Card>
     );
   }
@@ -251,9 +246,6 @@ export default function ExploreEntityCard(props: ExploreEntityCardProps) {
           <p className="truncate text-sm font-semibold text-text-primary">{human.display_name}</p>
           <p className="mt-0.5 text-xs text-success">{t.personaHuman}</p>
         </div>
-      </div>
-      <div className="mt-2">
-        <CopyableId value={human.human_id} />
       </div>
     </Card>
   );

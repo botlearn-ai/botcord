@@ -73,7 +73,7 @@ function RoomTransferContent({ roomId, members, senderIdentity, onSuccess, setBu
         const type = member.participant_type === "human" ? "Human" : "Bot";
         return {
           id: member.agent_id,
-          label: `${member.display_name || member.agent_id} · ${type} · ${member.agent_id}`,
+          label: `${member.display_name || member.agent_id} · ${type}`,
         };
       });
   }, [members, senderId]);
