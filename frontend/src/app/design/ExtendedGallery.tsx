@@ -5,9 +5,10 @@
  * [POS]: /design coverage extension; uses fixtures without backend access
  * [PROTOCOL]: Add new primitive examples here and update COMPONENTS.md
  */
-import { useState } from "react";
-import { Settings, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { Copy, Forward, CornerUpLeft, RotateCcw, Settings, Trash2 } from "lucide-react";
 import { useConfirm } from "@/store/useConfirmStore";
+import MessageActionPopover from "@/components/ui/MessageActionPopover";
 import Alert from "@/components/ui/Alert";
 import AttachmentItem from "@/components/ui/AttachmentItem";
 import Button from "@/components/ui/Button";
@@ -49,8 +50,21 @@ export default function ExtendedGallery() {
   const [surfaceOpen, setSurfaceOpen] = useState(false);
   const [dismissVisible, setDismissVisible] = useState(false);
   const [swipeOpen, setSwipeOpen] = useState(false);
+  const [messageActionsOpen, setMessageActionsOpen] = useState(false);
+  const messageAnchor = useRef<HTMLButtonElement>(null);
   const confirm = useConfirm();
   return <div className="space-y-10 border-t border-border py-10">
+    <section id="message-actions" className="space-y-4">
+      <h2 className="type-heading-2">消息长按操作</h2>
+      <p className="text-sm text-text-secondary">图标网格与消息箭头；移动端长按消息打开。点击示例预览。</p>
+      <Button ref={messageAnchor} onClick={() => setMessageActionsOpen(true)}>这是一条示例消息</Button>
+      {messageActionsOpen && <MessageActionPopover anchorRef={messageAnchor} label="消息操作" onClose={() => setMessageActionsOpen(false)} actions={[
+        { id: "copy", label: "复制", icon: <Copy strokeWidth={1.75} />, onSelect: () => toast({ title: "已复制（示例）" }) },
+        { id: "forward", label: "转发", icon: <Forward strokeWidth={1.75} />, onSelect: () => toast({ title: "转发（示例）" }) },
+        { id: "reply", label: "回复", icon: <CornerUpLeft strokeWidth={1.75} />, onSelect: () => toast({ title: "回复（示例）" }) },
+        { id: "recall", label: "撤回", icon: <RotateCcw strokeWidth={1.75} />, onSelect: () => toast({ title: "撤回（示例）" }) },
+      ]} />}
+    </section>
     <section id="selection" className="space-y-5">
       <h2 className="type-heading-2">选择与搜索</h2>
       <p className="text-sm text-text-secondary">原生单选、带说明的单选、可搜索多选和搜索框。原有 dashboard 入口已复用这里的组件。</p>

@@ -1,5 +1,8 @@
 "use client";
 
+import { useTouchLongPress } from "@/hooks/useTouchLongPress";
+import { emitComposerMention } from "./composerMentionEvent";
+import MessageActionPopover from "@/components/ui/MessageActionPopover";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import IconButton from "@/components/ui/IconButton";
@@ -380,12 +383,15 @@ function MessageBubble({
 }: MessageBubbleProps) {
   const teamFeedback = useContext(TeamMessageFeedbackContext);
   const [hovered, setHovered] = useState(false);
+  const [touchMenuOpen, setTouchMenuOpen] = useState(false);
+  const bubbleRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const [forwardQuote, setForwardQuote] = useState<string | null>(null);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [recallPending, setRecallPending] = useState(false);
+  const messageRowRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
   const actionMenuAnimationRef = useRef<MotionAnimation>(null);
@@ -748,6 +754,17 @@ function MessageBubble({
     };
   }, [isOwn, menuVisible]);
 
+  const longPress = useTouchLongPress((target) => {
+    if (target.closest("[data-sender-avatar]")) {
+      if (effectiveRoomId && !isOwn && roomSummary?.space_kind !== "dm" && !effectiveRoomId.startsWith("rm_dm_") && !effectiveRoomId.startsWith("rm_oc_")) {
+        emitComposerMention({ roomId: effectiveRoomId, participantId: message.sender_id });
+      }
+      return;
+    }
+    if (isRecalled || actionMenuItemCount === 0) return;
+    setTouchMenuOpen(true);
+  });
+
   const sideAvatar = (
     <SenderAvatar
       senderId={message.sender_id}
@@ -773,7 +790,7 @@ function MessageBubble({
           updateActionMenuPosition();
           setMenuOpen(true);
         }}
-        className={`flex items-center justify-center${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none focus:opacity-100 focus:pointer-events-auto"} `}
+        className={`max-md:hidden [@media(pointer:coarse)]:hidden flex items-center justify-center ${hovered || menuOpen ? "opacity-100" : "opacity-0 pointer-events-none focus:opacity-100 focus:pointer-events-auto"} `}
         aria-label="More actions"
         aria-expanded={menuOpen}
       >
@@ -849,8 +866,16 @@ function MessageBubble({
 
   return (
     <>
+    {touchMenuOpen && <MessageActionPopover anchorRef={bubbleRef} label={locale === "zh" ? "消息操作" : "Message actions"} onClose={() => setTouchMenuOpen(false)} actions={[
+      ...(displayText ? [{ id: "copy", label: locale === "zh" ? "复制" : "Copy", icon: <Copy strokeWidth={1.75} />, onSelect: () => { void handleCopyClick(); } },
+        { id: "forward", label: locale === "zh" ? "转发" : "Forward", icon: <Forward strokeWidth={1.75} />, onSelect: handleForwardClick }] : []),
+      ...(canQuoteReply ? [{ id: "reply", label: locale === "zh" ? "回复" : "Reply", icon: <CornerUpLeft strokeWidth={1.75} />, onSelect: handleReplyClick }] : []),
+      ...(canRecall ? [{ id: "recall", label: locale === "zh" ? "撤回" : "Recall", icon: <RotateCcw strokeWidth={1.75} />, onSelect: () => { void handleRecallClick(); }, disabled: recallPending }] : []),
+    ]} />}
     <div
-      className={`flex items-start gap-2 ${isOwn && !fullWidth ? "justify-end" : "justify-start"} mb-2`}
+      ref={messageRowRef}
+      {...longPress}
+      className={`[&_[data-sender-avatar]]:select-none [@media(pointer:coarse)]:[-webkit-touch-callout:none] flex items-start gap-2 ${isOwn && !fullWidth ? "justify-end" : "justify-start"} mb-2`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -869,6 +894,8 @@ function MessageBubble({
           </Button>
         )}
         <div
+          ref={bubbleRef}
+          tabIndex={-1}
           className={`liquid-message min-w-0 rounded-2xl border px-3 py-2 ${
             isErrorMessage
               ? "liquid-message-error"

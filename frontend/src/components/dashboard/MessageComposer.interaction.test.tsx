@@ -2,6 +2,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { emitComposerMention } from "./composerMentionEvent";
 import MessageComposer from "./MessageComposer";
 
 vi.mock("@/lib/anime", () => ({
@@ -35,7 +36,7 @@ beforeEach(async () => {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(() => root.render(<MessageComposer onSend={onSend} mentionCandidates={[
+  await act(() => root.render(<MessageComposer roomId="rm_group" onSend={onSend} mentionCandidates={[
     { agent_id: "hu_alice", display_name: "Alice", id: "hu_alice" },
     { agent_id: "ag_helper", display_name: "Helper", id: "ag_helper" },
   ]} />));
@@ -103,4 +104,36 @@ describe("composer interaction", () => {
     await key("Enter");
     expect(input().value).toBe("@Helper ");
   });
+});
+
+it("inserts avatar mentions into the current draft only in the matching room", async () => {
+  await act(() => {
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    setValue.call(input(), "Hello");
+    input().dispatchEvent(new Event("input", { bubbles: true }));
+    input().setSelectionRange(5, 5);
+  });
+  await act(() => emitComposerMention({ roomId: "rm_other", participantId: "hu_alice" }));
+  expect(input().value).toBe("Hello");
+  await act(() => emitComposerMention({ roomId: "rm_group", participantId: "hu_alice" }));
+  expect(input().value).toBe("Hello @Alice ");
+  expect(document.activeElement).toBe(input());
+  await click(host.querySelector<HTMLButtonElement>('[aria-label="Send message"]')!);
+  expect(onSend).toHaveBeenCalledWith("Hello @Alice(hu_alice) ", [], ["hu_alice"]);
+});
+
+it("refreshes suggestions when the mobile selection catches up after input", async () => {
+  await act(() => {
+    input().focus();
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    setValue.call(input(), "＠");
+    input().setSelectionRange(0, 0);
+    input().dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(options()).toHaveLength(0);
+  await act(() => {
+    input().setSelectionRange(1, 1);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  expect(options()).toHaveLength(2);
 });

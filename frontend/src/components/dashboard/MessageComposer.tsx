@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/Input";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import ComposerPopover from "./ComposerPopover";
+import { COMPOSER_MENTION_EVENT, type ComposerMentionDetail } from "./composerMentionEvent";
 import { detectMention, hydrateMentionDraft, reconcileDraftMentions, serializeDraftMentions, type DraftMention, type MentionMatch } from "./composer-mentions";
 import { shouldSendOnEnter } from "./mobileChat";
 import { AtSign, Bot, Coins, FileText, FileUp, Hash, Plus, Send, User, X } from "lucide-react";
@@ -25,6 +26,7 @@ export interface MentionCandidate {
 }
 
 interface MessageComposerProps {
+  roomId?: string;
   onSend: (text: string, files: File[], mentions?: string[]) => void | Promise<void>;
   onTransfer?: () => void;
   actionLabels?: {
@@ -96,6 +98,7 @@ export function getSendableMessageText(text: string, hasFiles: boolean): string 
 }
 
 export default function MessageComposer({
+  roomId,
   onSend,
   onTransfer,
   actionLabels,
@@ -331,9 +334,11 @@ export default function MessageComposer({
 
   const commitMention = useCallback((candidate: MentionCandidate) => {
     const el = inputRef.current;
-    if (!el || !mentionMatch) return;
+    if (!el) return;
     const cursor = el.selectionStart ?? el.value.length;
-    const before = text.slice(0, mentionMatch.start);
+    const start = mentionMatch?.start ?? el.selectionStart;
+    const prefix = text.slice(0, start);
+    const before = prefix + (!mentionMatch && prefix && !/\s$/.test(prefix) ? " " : "");
     const after = text.slice(cursor);
     const insert = `@${candidate.display_name} `;
     const next = `${before}${insert}${after}`;
@@ -353,6 +358,27 @@ export default function MessageComposer({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [mentionMatch, text, pickedMentions]);
+
+  useEffect(() => {
+    const handleMention = (event: Event) => {
+      const detail = (event as CustomEvent<ComposerMentionDetail>).detail;
+      if (!roomId || detail?.roomId !== roomId || disabled) return;
+      const candidate = mentionCandidates?.find((item) => item.agent_id === detail.participantId);
+      if (candidate) commitMention(candidate);
+    };
+    window.addEventListener(COMPOSER_MENTION_EVENT, handleMention);
+    return () => window.removeEventListener(COMPOSER_MENTION_EVENT, handleMention);
+  }, [roomId, disabled, mentionCandidates, commitMention]);
+
+  // Mobile IMEs can update input and selection without a React change event.
+  useEffect(() => {
+    const update = () => {
+      if (document.activeElement === inputRef.current) updateMentionMatch();
+    };
+    document.addEventListener("selectionchange", update);
+    update();
+    return () => document.removeEventListener("selectionchange", update);
+  }, [updateMentionMatch]);
 
   const activeMentions = useMemo(() => {
     const seen = new Set<string>();
@@ -667,12 +693,14 @@ export default function MessageComposer({
             autoResize();
             updateMentionMatch();
           }}
+          onInput={updateMentionMatch}
           onBeforeInput={handleBeforeInput}
           onPaste={handlePaste}
           onCompositionStart={() => {
             compositionActiveRef.current = true;
           }}
           onCompositionEnd={() => {
+            updateMentionMatch();
             setTimeout(() => {
               compositionActiveRef.current = false;
             }, 0);

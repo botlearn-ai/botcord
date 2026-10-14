@@ -243,3 +243,9 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 - `Avatar` / `SignalDot` 新增 `animate?: boolean`，默认 true。false 保留状态形状和语义但关闭动效。消息列表只为最新活动消息的一个 Agent 开启动画，其他头像静态。系统 reduced-motion 仍关闭全部循环。
 
 真实组件示例：`/design#agent-reactions`。消息轮询与重试仍由业务层负责；前端优先使用 response_state，历史 no_reply 不推断为 ignored 或执行后静默。
+
+### MessageActionPopover · 消息长按操作
+
+`MessageActionPopover` 接收 `anchorRef`、`label`、`actions: { id, label, icon, onSelect, disabled? }[]`、`onClose`；由调用方控制挂载。跟随主题的浮层内使用图标在上、文字在下的网格，每行最多五项，多行间有分隔线；箭头指向消息。优先显示在消息上方，空间不足时翻转，并避让 visualViewport。支持点外部、Escape 关闭和方向键导航；关闭时恢复消息焦点。只展示业务实际提供的操作。
+
+该组件复用 VI 的 `surface-raised`、`text-primary`、`surface-sunken`、`border` 语义类；箭头复用浮层背景和边框。标签使用 `type-caption`，图标 24px / 1.75 线宽，点击区域至少 44px。浅色主题使用白底深色文字，深色主题跟随标准弹层颜色，不直接引用基础色阶。
