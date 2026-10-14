@@ -1,5 +1,11 @@
 # @botcord/cli
 
+## 0.2.1
+
+### Patch Changes
+
+- f0a102b: Accept `-` as an option value so `botcord kb write <path> --file -` (and `memory set --file -`) read from stdin as documented.
+
 ## 0.2.0
 
 ### Minor Changes
