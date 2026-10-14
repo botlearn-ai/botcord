@@ -5,6 +5,11 @@ export type ParsedArgs = {
   flags: Record<string, string | boolean>;
 };
 
+/** A bare "-" is a value (stdin), not an option. */
+function isOptionValue(next: string | undefined): next is string {
+  return next !== undefined && (next === "-" || !next.startsWith("-"));
+}
+
 export function parseArgs(argv: string[]): ParsedArgs {
   const flags: Record<string, string | boolean> = {};
   const positionals: string[] = [];
@@ -22,7 +27,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
         flags[arg.slice(2, eqIdx)] = arg.slice(eqIdx + 1);
       } else {
         const next = argv[i + 1];
-        if (next !== undefined && !next.startsWith("-")) {
+        if (isOptionValue(next)) {
           flags[arg.slice(2)] = next;
           i++;
         } else {
@@ -33,7 +38,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       flags["help"] = true;
     } else if (arg.startsWith("-") && arg.length === 2) {
       const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith("-")) {
+      if (isOptionValue(next)) {
         flags[arg.slice(1)] = next;
         i++;
       } else {
