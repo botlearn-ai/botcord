@@ -655,6 +655,18 @@ describe("BotCordClient inbox leases", () => {
 });
 
 describe("explicit response decisions", () => {
+  it("forwards queue, ignore, reply intent and safe decision reasons", async () => {
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => Response.json({ run_id: "run1", status: "running" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BotCordClient({ hubUrl: "https://hub.example", agentId: "ag_test", keyId: "k_test", privateKey,
+      token: "cached-token", tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600 });
+    for (const action of ["queue", "register", "ignore", "replying"] as const) {
+      const body = { run_id: "run1", room_id: "rm_test", action, message_ids: ["m1"], ...(action === "ignore" ? { reason: "attention_policy" as const } : {}) };
+      await client.updateResponseRun(body);
+      expect(JSON.parse(fetchMock.mock.calls.at(-1)![1]!.body as string)).toEqual(body);
+    }
+  });
+
   it("signs response targets inside the payload and keeps retry message IDs", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json({ queued: true, hub_msg_id: "h_reply" }));
     vi.stubGlobal("fetch", fetchMock);

@@ -7,18 +7,22 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.models import MessageRecord, MessageResponseLink, MessageResponseRun
+from hub.models import Agent, MessageRecord, MessageResponseLink, MessageResponseRun
 
-TERMINAL = {"completed", "no_reply", "failed", "interrupted", "unconfirmed"}
+from hub.services.message_response_states import (
+    TERMINAL, RESOLVED, ResponseReason, current_state, transition,
+)
 LEASE_SECONDS = 180
 
 
 class ResponseRunUpdate(BaseModel):
     run_id: str = Field(min_length=1, max_length=64)
-    action: Literal["register", "start", "no_reply", "heartbeat", "finish"]
+    action: Literal["queue", "register", "start", "ignore", "no_reply", "replying", "heartbeat", "finish"]
     room_id: str = Field(min_length=1, max_length=64)
     message_ids: list[str] = Field(default_factory=list, max_length=100)
     outcome: Literal["unconfirmed", "failed", "interrupted"] = "unconfirmed"
+    reason: ResponseReason | None = None
+    only_if_queued: bool = False
 
 
 class ResponseMetadata(BaseModel):
@@ -38,69 +42,113 @@ def expired(run):
 async def owned_run(db, run_id, agent_id, room_id):
     run = (await db.execute(select(MessageResponseRun).where(
         MessageResponseRun.run_id == run_id,
-    ).with_for_update())).scalar_one_or_none()
+    ).with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
     if run is None or run.agent_id != agent_id or run.room_id != room_id:
         raise HTTPException(404, "Response run not found")
     return run
 
 
+async def lock_response_agent(db: AsyncSession, agent_id: str):
+    # Serialize response transactions for an agent, including the first register
+    # where no run row exists yet. This also prevents cross-run lock inversion
+    # while transferring batched inputs. SQLite tests have no row-level locks.
+    await db.execute(select(Agent.agent_id).where(Agent.agent_id == agent_id).with_for_update().execution_options(populate_existing=True))
+
+
 async def update_run(db: AsyncSession, agent_id: str, body: ResponseRunUpdate):
+    if body.only_if_queued and body.action != "finish":
+        raise HTTPException(422, "only_if_queued is valid only for finish")
+    await lock_response_agent(db, agent_id)
     ids = list(dict.fromkeys(body.message_ids))
     if body.action in {"heartbeat", "finish"} and ids:
         raise HTTPException(422, "Run lifecycle updates apply to the entire execution")
-    if body.action == "register":
+    if body.action in {"queue", "register"}:
         if not ids:
             raise HTTPException(422, "Run inputs are required")
-        # Lock deliveries before registering so concurrent retries cannot create
-        # conflicting ownership. Input IDs are canonical message IDs, not hub IDs.
+        existing = (await db.execute(select(MessageResponseRun).where(
+            MessageResponseRun.run_id == body.run_id,
+        ).with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
+        if existing and (existing.agent_id != agent_id or existing.room_id != body.room_id):
+            raise HTTPException(409, "Run ID already used")
+        promoting = existing is not None and existing.status == "queued" and body.action == "register"
+        if existing and not promoting:
+            if set(existing.message_ids) != set(ids):
+                raise HTTPException(409, "Run ID already used")
+            if existing.status not in {"queued", "running"} or expired(existing):
+                raise HTTPException(409, "Response run is no longer active")
+            return existing
+        if existing and expired(existing):
+            raise HTTPException(409, "Response run is no longer active")
+        # Include the prior queued inputs so batch trimming can be recorded.
+        locked_ids = set(ids) | (set(existing.message_ids) if existing else set())
         records = (await db.execute(select(MessageRecord).where(
             MessageRecord.receiver_id == agent_id,
             MessageRecord.room_id == body.room_id,
-            MessageRecord.msg_id.in_(ids),
-        ).order_by(MessageRecord.id).with_for_update())).scalars().all()
-        if len(records) != len(ids) or any(r.recalled_at for r in records):
+            MessageRecord.msg_id.in_(locked_ids),
+        ).order_by(MessageRecord.id).with_for_update().execution_options(populate_existing=True))).scalars().all()
+        if len(records) != len(locked_ids) or any(r.recalled_at for r in records):
             raise HTTPException(404, "Run input is not an available delivery to this agent")
-        existing = await db.get(MessageResponseRun, body.run_id)
-        if existing:
-            if existing.agent_id != agent_id or existing.room_id != body.room_id or set(existing.message_ids) != set(ids):
-                raise HTTPException(409, "Run ID already used")
-            if existing.status != "running" or expired(existing):
-                raise HTTPException(409, "Response run is no longer active")
-            return existing
-        run = MessageResponseRun(run_id=body.run_id, agent_id=agent_id, room_id=body.room_id,
-                                 message_ids=ids, status="running", expires_at=now() + dt.timedelta(seconds=LEASE_SECONDS))
+        # A queued attempt cannot preempt running inputs, but may recover
+        # inputs whose previous execution has ended or lost its lease.
+        if body.action == "queue" or promoting:
+            owners = {r.response_run_id for r in records if r.response_run_id != body.run_id
+                      and r.response_run_id and current_state(r) not in TERMINAL
+                      and current_state(r) != "queued"}
+            if owners:
+                old_runs = (await db.execute(select(MessageResponseRun).where(
+                    MessageResponseRun.run_id.in_(owners),
+                ).execution_options(populate_existing=True))).scalars().all()
+                if any(r.status == "running" and not expired(r) for r in old_runs):
+                    raise HTTPException(409, "Input already belongs to an active execution")
+        run = existing or MessageResponseRun(run_id=body.run_id, agent_id=agent_id,
+            room_id=body.room_id, message_ids=ids)
+        run.message_ids = ids
+        run.status = "queued" if body.action == "queue" else "running"
+        run.expires_at = now() + dt.timedelta(seconds=LEASE_SECONDS)
         db.add(run)
         for record in records:
-            if record.response_status in {"completed", "no_reply"}:
+            if current_state(record) in RESOLVED:
                 continue
-            record.response_run_id = body.run_id
-            record.response_status = "waiting"
+            if record.msg_id not in ids:
+                if record.response_run_id == run.run_id and current_state(record) not in TERMINAL:
+                    transition(db, record, run.run_id, "failed", "batch_trimmed")
+                continue
+            transition(db, record, run.run_id, "queued" if body.action == "queue" else "waiting")
         await db.flush()
         return run
 
     run = await owned_run(db, body.run_id, agent_id, body.room_id)
     if not set(ids).issubset(run.message_ids):
         raise HTTPException(422, "Decision targets must be run inputs")
-    if body.action == "finish" and run.status != "running":
+    if body.action == "finish" and (run.status == "finished" or (body.only_if_queued and run.status != "queued")):
         return run
-    if run.status != "running" or expired(run):
+    if run.status not in {"queued", "running"} or expired(run):
         raise HTTPException(409, "Response run is no longer active")
     if body.action == "heartbeat":
         run.expires_at = now() + dt.timedelta(seconds=LEASE_SECONDS)
         return run
-    if body.action in {"start", "no_reply"} and not ids:
+    if body.action not in {"heartbeat", "finish"} and run.status != "running":
+        raise HTTPException(409, "Queued inputs must be registered before decisions")
+    if body.action in {"start", "ignore", "no_reply", "replying"} and not ids:
         raise HTTPException(422, "Explicit decision targets are required")
     records = (await db.execute(select(MessageRecord).where(
         MessageRecord.response_run_id == run.run_id,
         MessageRecord.receiver_id == agent_id,
         MessageRecord.msg_id.in_(ids or run.message_ids),
-    ).order_by(MessageRecord.id).with_for_update())).scalars().all()
+    ).order_by(MessageRecord.id).with_for_update().execution_options(populate_existing=True))).scalars().all()
     if body.action != "finish" and len(records) != len(ids):
         raise HTTPException(409, "Targets have moved to another execution")
+    if body.action == "ignore" and any(current_state(r) in {"processing", "replying"} for r in records):
+        raise HTTPException(409, "Started inputs cannot be ignored; use no_reply")
+    if body.action == "no_reply" and any(current_state(r) == "replying" for r in records):
+        raise HTTPException(409, "Inputs with a reply in progress cannot be marked no_reply")
     for record in records:
-        if record.response_status in TERMINAL:
+        if current_state(record) in TERMINAL:
             continue
-        record.response_status = {"start": "processing", "no_reply": "no_reply", "finish": body.outcome}[body.action]
+        state = {"start": "processing", "ignore": "ignored", "no_reply": "no_reply",
+                 "replying": "replying", "finish": body.outcome}[body.action]
+        transition(db, record, run.run_id, state, body.reason)
+    await db.flush()
     if body.action == "finish":
         run.status = "finished"
     return run
@@ -126,6 +174,7 @@ async def record_response(db: AsyncSession, envelope, room_id: str):
     )
     if not visible_text and not visible_files:
         raise HTTPException(422, "A response requires visible text or an attachment")
+    await lock_response_agent(db, envelope.from_)
     run = await owned_run(db, meta.run_id, envelope.from_, room_id)
     # A successful retry must stay successful even if the run has since ended.
     links = (await db.execute(select(MessageResponseLink).where(
@@ -143,7 +192,7 @@ async def record_response(db: AsyncSession, envelope, room_id: str):
     records = (await db.execute(select(MessageRecord).where(
         MessageRecord.response_run_id == run.run_id,
         MessageRecord.receiver_id == run.agent_id,
-    ).order_by(MessageRecord.id).with_for_update())).scalars().all()
+    ).order_by(MessageRecord.id).with_for_update().execution_options(populate_existing=True))).scalars().all()
     ids = set(meta.responds_to)
     if not ids:
         # Automatic final-text delivery may use a single input or an explicit
@@ -154,12 +203,11 @@ async def record_response(db: AsyncSession, envelope, room_id: str):
     targets = [r for r in records if r.msg_id in ids]
     if not ids or len(targets) != len(ids):
         raise HTTPException(409, "Explicit current response targets are required")
-    if any(r.response_status in TERMINAL or r.recalled_at for r in targets):
+    if any(current_state(r) in TERMINAL or r.recalled_at for r in targets):
         raise HTTPException(409, "Response target is already resolved or unavailable")
     for record in targets:
         db.add(MessageResponseLink(run_id=run.run_id, agent_id=run.agent_id,
                                   reply_msg_id=envelope.msg_id, target_msg_id=record.msg_id, kind=meta.kind))
-        record.response_status = "completed" if meta.kind == "final" else "processing"
-        if meta.kind == "final":
-            record.response_reply_msg_id = envelope.msg_id
+        transition(db, record, run.run_id, "completed" if meta.kind == "final" else "replying",
+                   reply_msg_id=envelope.msg_id)
     await db.flush()

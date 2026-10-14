@@ -31,6 +31,7 @@ import type {
   AgentScheduleSpec,
   AgentSchedulePayload,
 } from "./types.js";
+import type { ResponseRunUpdate } from "./response-state.js";
 import type { AttentionPolicy } from "./should-wake.js";
 
 const MAX_RETRIES = 2;
@@ -403,13 +404,7 @@ export class BotCordClient {
 
   // ── Messaging ─────────────────────────────────────────────────
 
-  async updateResponseRun(body: {
-    run_id: string;
-    room_id: string;
-    action: "register" | "start" | "no_reply" | "heartbeat" | "finish";
-    message_ids?: string[];
-    outcome?: "unconfirmed" | "failed" | "interrupted";
-  }): Promise<{ run_id: string; status: string }> {
+  async updateResponseRun(body: ResponseRunUpdate): Promise<{ run_id: string; status: string }> {
     const resp = await this.hubFetch("/hub/response-runs", {
       method: "POST", body: JSON.stringify(body),
     });

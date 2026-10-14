@@ -447,7 +447,8 @@ describe("Dispatcher", () => {
     const updates: any[] = [];
     channel.responseRun = async (body) => { updates.push(body); };
     const runtime = new FakeRuntime({ reply: "answer", observeRun: (opts) => {
-      expect(updates[0].action).toBe("register");
+      expect(updates[0].action).toBe("queue");
+      expect(updates.some((u) => u.action === "register")).toBe(true);
       expect(opts.text).toContain("input message IDs: m1");
     } });
     const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
@@ -525,7 +526,7 @@ describe("Dispatcher", () => {
       await dispatcher.handle(makeEnvelope({ raw: { batch: ids.map((msg_id) => ({ envelope: { type: "message", msg_id } })) } }));
       expect(updates.filter((u) => u.action === "no_reply")).toHaveLength(ids.length === 1 ? 1 : 0);
       expect(channel.sends).toHaveLength(0);
-      expect(updates.at(-1).outcome).toBe("unconfirmed");
+      expect(updates.find((u) => u.action === "finish").outcome).toBe("unconfirmed");
     }
   });
 
@@ -537,7 +538,8 @@ describe("Dispatcher", () => {
       reply: '<botcord-response>{"responds_to":["m1"],"no_reply":["m2"],"text":"answer"}</botcord-response>',
     }) });
     await dispatcher.handle(makeEnvelope({ raw: { batch: ["m1", "m2"].map((msg_id) => ({ envelope: { type: "message", msg_id } })) } }));
-    expect(updates.find((u) => u.action === "no_reply").message_ids).toEqual(["m2"]);
+    expect(updates.find((u) => u.action === "no_reply")).toMatchObject({ message_ids: ["m2"], reason: "agent_decision" });
+    expect(updates.find((u) => u.action === "replying").message_ids).toEqual(["m1"]);
     expect(channel.sends[0].message.text).toBe("answer");
     expect(channel.sends[0].message.response?.responds_to).toEqual(["m1"]);
   });
@@ -556,7 +558,7 @@ describe("Dispatcher", () => {
     expect(channel.sends[0].message.text).toBe("answer");
   });
 
-  it("reports policy-skipped input as no_reply without starting the runtime", async () => {
+  it("reports policy-skipped input as ignored without starting the runtime", async () => {
     const channel = new FakeChannel();
     const updates: any[] = [];
     channel.responseRun = async (body) => { updates.push(body); };
@@ -564,7 +566,8 @@ describe("Dispatcher", () => {
     const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime, attentionGate: () => false });
     await dispatcher.handle(makeEnvelope({ raw: { envelope: { type: "message", msg_id: "m1" } } }));
     expect(runtime.calls).toHaveLength(0);
-    expect(updates.map((u) => u.action)).toEqual(["register", "no_reply", "finish"]);
+    expect(updates.map((u) => u.action)).toEqual(["register", "ignore", "finish"]);
+    expect(updates[1].reason).toBe("attention_policy");
   });
 
   it("marks send failures and execution errors without claiming completion", async () => {
@@ -573,7 +576,71 @@ describe("Dispatcher", () => {
     channel.responseRun = async (body) => { updates.push(body); };
     const { dispatcher } = await scaffold({ channel });
     await dispatcher.handle(makeEnvelope({ raw: { envelope: { type: "message", msg_id: "m1" } } }));
-    expect(updates.at(-1)).toMatchObject({ action: "finish", outcome: "failed" });
+    expect(updates.find((u) => u.action === "finish")).toMatchObject({ action: "finish", outcome: "failed", reason: "reply_send_failed" });
+  });
+
+  it("persists queued batch inputs before starting the next serial execution", async () => {
+    const channel = new FakeChannel();
+    const updates: any[] = [];
+    channel.responseRun = async (body) => { updates.push(body); };
+    const first = new FakeRuntime({ reply: "first", delayMs: 100 });
+    const second = new FakeRuntime({ reply: '<botcord-response>{"responds_to":["m2"],"no_reply":["m3"],"text":"second"}</botcord-response>' });
+    let turn = 0;
+    const { dispatcher } = await scaffold({ channel,
+      config: baseConfig({ defaultRoute: { runtime: "claude-code", cwd: "/tmp/default", queueMode: "serial" } }),
+      runtimeFactory: () => turn++ === 0 ? first : second,
+    });
+    const input = (id: string) => makeEnvelope({ id, raw: { envelope: { type: "message", msg_id: id } } });
+    const a = dispatcher.handle(input("m1"));
+    await vi.waitFor(() => expect(first.calls).toHaveLength(1), { interval: 1 });
+    const b = dispatcher.handle(input("m2"));
+    const c = dispatcher.handle(input("m3"));
+    await vi.waitFor(() => expect(updates.filter((u) => u.action === "queue")).toHaveLength(3), { interval: 1 });
+    expect(second.calls).toHaveLength(0);
+    await Promise.all([a, b, c]);
+    expect(updates.filter((u) => u.action === "register").map((u) => u.message_ids)).toEqual([["m1"], ["m2", "m3"]]);
+    expect(updates.find((u) => u.action === "no_reply")).toMatchObject({ message_ids: ["m3"], reason: "agent_decision" });
+    expect(updates.filter((u) => u.action === "replying").map((u) => u.message_ids)).toEqual([["m1"], ["m2"]]);
+    const queuedRuns = updates.filter((u) => u.action === "queue").map((u) => u.run_id);
+    for (const run of queuedRuns) expect(updates.some((u) => u.action === "finish" && u.run_id === run)).toBe(true);
+  });
+
+  it("does not run or ACK an input when queue admission cannot be persisted", async () => {
+    const channel = new FakeChannel();
+    channel.responseRun = async () => { throw new Error("Hub unavailable"); };
+    const runtime = new FakeRuntime();
+    const accept = vi.fn(async () => {});
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime });
+    await expect(dispatcher.handle(makeEnvelope({ raw: { envelope: { type: "message", msg_id: "m1" } } }, { accept }))).rejects.toThrow("Hub unavailable");
+    expect(runtime.calls).toHaveLength(0);
+    expect(accept).not.toHaveBeenCalled();
+  });
+
+  it("does not ACK a policy skip whose terminal decision was not persisted", async () => {
+    const channel = new FakeChannel();
+    channel.responseRun = async (body) => { if (body.action === "ignore") throw new Error("offline"); };
+    const runtime = new FakeRuntime();
+    const accept = vi.fn(async () => {});
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => runtime, attentionGate: () => false });
+    await expect(dispatcher.handle(makeEnvelope({ raw: { envelope: { type: "message", msg_id: "m1" } } }, { accept }))).rejects.toThrow("Policy decision could not be persisted");
+    expect(runtime.calls).toHaveLength(0);
+    expect(accept).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['<botcord-response>{"responds_to":["other"],"text":"answer"}</botcord-response>', false, "invalid_decision"],
+    ["NO_REPLY", true, "response_reporting_failed"],
+  ])("keeps invalid decisions distinct from reporting failures: %s", async (reply, rejectDecision, reason) => {
+    const channel = new FakeChannel();
+    const updates: any[] = [];
+    channel.responseRun = async (body) => {
+      updates.push(body);
+      if (rejectDecision && body.action === "no_reply") throw new Error("offline");
+    };
+    const { dispatcher } = await scaffold({ channel, runtimeFactory: () => new FakeRuntime({ reply }) });
+    await dispatcher.handle(makeEnvelope({ raw: { envelope: { type: "message", msg_id: "m1" } } }));
+    expect(updates.find((u) => u.action === "finish")).toMatchObject({ outcome: "failed", reason });
+    expect(channel.sends).toHaveLength(0);
   });
 
   it("skips empty text and still acks", async () => {

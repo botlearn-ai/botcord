@@ -6,6 +6,7 @@ import type {
   GatewayOutboundAttachment as CanonicalGatewayOutboundAttachment,
   GatewayOutboundMessage as CanonicalGatewayOutboundMessage,
   RuntimeGatewayProvider,
+  ResponseRunUpdate,
 } from "@botcord/protocol-core";
 
 // Canonical gateway message shapes live in `@botcord/protocol-core` so the
@@ -337,13 +338,7 @@ export interface ChannelMessageStatusContext {
 export interface ChannelAdapter {
   readonly id: string;
   readonly type: string;
-  responseRun?(body: {
-    run_id: string;
-    room_id: string;
-    action: "register" | "start" | "no_reply" | "heartbeat" | "finish";
-    message_ids?: string[];
-    outcome?: "unconfirmed" | "failed" | "interrupted";
-  }, log: GatewayLogger): Promise<void>;
+  responseRun?(body: ResponseRunUpdate, log: GatewayLogger): Promise<void>;
   start(ctx: ChannelStartContext): Promise<unknown>;
   stop?(ctx: ChannelStopContext): Promise<void>;
   send(ctx: ChannelSendContext): Promise<ChannelSendResult>;
