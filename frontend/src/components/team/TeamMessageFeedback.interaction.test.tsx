@@ -4,7 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { DashboardMessage } from "@/lib/types";
 const send = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/i18n", () => ({ useLanguage: () => "zh" }));
+const locale = vi.hoisted(() => ({ value: "zh" }));
+vi.mock("@/lib/i18n", () => ({ useLanguage: () => locale.value }));
 vi.mock("@/lib/room-message-send", () => ({ sendDashboardRoomMessage: send }));
 import { MessageFeedback } from "./TeamMessageFeedback";
 let container: HTMLDivElement;
@@ -12,6 +13,7 @@ let root: Root;
 let message: DashboardMessage;
 beforeEach(() => {
   vi.useFakeTimers();
+  locale.value = "zh";
   send.mockReset().mockResolvedValue(undefined);
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement("div");
@@ -24,15 +26,25 @@ afterEach(() => {
   container.remove();
   vi.useRealTimers();
 });
-it("adds the long-wait hint after 15 seconds without inventing a failure, and clears on completion", () => {
-  act(() => root.render(<MessageFeedback message={message} />));
-  expect(container.textContent).not.toContain("你可以继续发送消息");
-  act(() => vi.advanceTimersByTime(15000));
-  expect(container.textContent).toContain("你可以继续发送消息");
-  expect(container.textContent).not.toContain("失败");
+it.each(["zh", "en"])("shows only the shared avatar thinking indicator throughout waiting in %s", (language) => {
+  locale.value = language;
+  const label = language === "zh" ? "思考中" : "Thinking";
+  for (const status of ["waiting", "processing"] as const) {
+    message.reply_activity = [{ agent_id: "ag_1", agent_name: "A very long agent name", avatar_url: "/agent-avatars/jellyfish-cyan.svg", status }];
+    act(() => root.render(<MessageFeedback message={message} />));
+    expect(container.textContent).toBe("");
+    expect(container.querySelector('[data-status="thinking"]')).not.toBeNull();
+    expect(container.querySelector('[role="status"]')?.getAttribute("aria-label")).toBe(`A very long agent name ${label}`);
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+    expect(container.querySelector("img")?.alt).toBe("A very long agent name");
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("/agent-avatars/jellyfish-cyan.svg");
+    act(() => vi.advanceTimersByTime(60000));
+    expect(container.textContent).toBe("");
+    expect(container.querySelector('[data-status="thinking"]')).not.toBeNull();
+    expect(container.querySelector('[role="status"]')?.getAttribute("aria-label")).toBe(`A very long agent name ${label}`);
+  }
   act(() => root.render(<MessageFeedback message={{ ...message, reply_activity: [{ ...message.reply_activity![0], status: "completed" }] }} />));
-  expect(container.textContent).not.toContain("正在处理");
-  expect(container.textContent).not.toContain("你可以继续发送消息");
+  expect(container.innerHTML).toBe("");
 });
 it("retries only failed agents while retaining the message payload and quote", async () => {
   message.reply_activity = [{ agent_id: "ag_1", agent_name: "A", status: "completed" }, { agent_id: "ag_2", agent_name: "B", status: "failed" }];
