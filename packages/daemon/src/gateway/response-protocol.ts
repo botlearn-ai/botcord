@@ -27,6 +27,7 @@ export function responseInstructions(runId: string, roomId: string, ids: string[
   return context +
     `Before working, declare targets: botcord response start --run-id ${runId} --room ${roomId} --messages <id,id>. ` +
     `For messages needing no response: botcord response no-reply --run-id ${runId} --room ${roomId} --messages <id,id>. ` +
+    `Before sending a selected reply, report botcord response replying --run-id ${runId} --room ${roomId} --messages <id,id>. ` +
     `To send, use botcord send --to ${roomId} --run-id ${runId} --responds-to <id,id> --response-kind progress|final --message-id <stable-uuid> --text "...". Reuse the message UUID when retrying the SAME send. Ordinary unassociated sends do not resolve inputs.\n` + structured + "]\n\n";
 }
 

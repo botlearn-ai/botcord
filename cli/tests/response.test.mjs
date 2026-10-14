@@ -23,15 +23,18 @@ test("CLI reports selected decisions and signs an explicitly associated reply", 
     token: "test-token", tokenExpiresAt: Math.floor(Date.now() / 1000) + 3600,
   });
   try {
-    for (const action of ["start", "no-reply"]) {
+    for (const action of ["start", "no-reply", "ignore", "replying"]) {
       await responseCommand(parseArgs(["response", action, "--run-id", "run1", "--room", "rm_test", "--messages", "m1,m2"]), undefined, "ag_response_test");
     }
     await sendCommand(parseArgs(["send", "--to", "rm_test", "--run-id", "run1", "--responds-to", "m1,m2", "--response-kind", "final", "--message-id", "stable-id", "--text", "answer"]), undefined, "ag_response_test");
     assert.equal(requests[0].body.action, "start");
     assert.equal(requests[1].body.action, "no_reply");
     assert.deepEqual(requests[1].body.message_ids, ["m1", "m2"]);
-    assert.equal(requests[2].body.msg_id, "stable-id");
-    assert.deepEqual(requests[2].body.payload.response, { run_id: "run1", responds_to: ["m1", "m2"], kind: "final" });
+    assert.equal(requests[1].body.reason, "agent_decision");
+    assert.equal(requests[2].body.action, "ignore");
+    assert.equal(requests[3].body.action, "replying");
+    assert.equal(requests[4].body.msg_id, "stable-id");
+    assert.deepEqual(requests[4].body.payload.response, { run_id: "run1", responds_to: ["m1", "m2"], kind: "final" });
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

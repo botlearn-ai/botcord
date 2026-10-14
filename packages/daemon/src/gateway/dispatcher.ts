@@ -1,3 +1,4 @@
+import type { ResponseReason, ResponseRunUpdate } from "@botcord/protocol-core";
 import { responseInputIds, responseInstructions, parseResponseDecision, isTeamConversation } from "./response-protocol.js";
 import { randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
@@ -1061,7 +1062,9 @@ export class Dispatcher {
           topicId: dispatchMsg.conversation.threadId ?? null,
           reason: "attention_gate_false",
         });
-        await this.settleSkippedResponse(dispatchMsg, dispatchChannel, dispatchTurnId, "no_reply");
+        if (!await this.settleSkippedResponse(dispatchMsg, dispatchChannel, dispatchTurnId, "ignored", "attention_policy")) {
+          throw new Error("Policy decision could not be persisted");
+        }
         await this.safeAck(envelope);
         return;
       }
@@ -1109,6 +1112,7 @@ export class Dispatcher {
       dispatchMsg
     );
     if (openAuthBreaker) {
+      await this.settleSkippedResponse(dispatchMsg, dispatchChannel, dispatchTurnId, "failed", "auth_unavailable");
       await this.skipRuntimeForAuthBreaker(
         openAuthBreaker,
         dispatchRoute,
@@ -1120,42 +1124,73 @@ export class Dispatcher {
       return;
     }
 
-    if (mode === "cancel-previous") {
-      await this.runCancelPrevious(
-        queueKey,
-        dispatchRoute,
-        text,
-        dispatchMsg,
-        dispatchChannel,
-        dispatchTurnId,
-        mergedFromDeferredTurnIds
-      );
-    } else {
-      await this.runSerial(
-        queueKey,
-        dispatchRoute,
-        text,
-        dispatchMsg,
-        dispatchChannel,
-        dispatchTurnId,
-        mergedFromDeferredTurnIds
-      );
+    const queuedIds = dispatchChannel.responseRun ? responseInputIds(dispatchMsg) : [];
+    const queuedRun = { run_id: dispatchTurnId, room_id: dispatchMsg.conversation.id };
+    let queueHeartbeat: ReturnType<typeof setInterval> | undefined;
+    let queueHeartbeatPending: Promise<void> | undefined;
+    if (queuedIds.length) {
+      // Record admission before buffering; never label an unstarted turn as thinking.
+      await dispatchChannel.responseRun!({ ...queuedRun, action: "queue", message_ids: queuedIds }, this.log);
+      queueHeartbeat = setInterval(() => {
+        if (queueHeartbeatPending) return;
+        queueHeartbeatPending = dispatchChannel.responseRun!({ ...queuedRun, action: "heartbeat" }, this.log)
+          .catch((error) => this.log.warn("queued response heartbeat failed", { runId: dispatchTurnId, error: String(error) }))
+          .finally(() => { queueHeartbeatPending = undefined; });
+      }, 45_000);
+      queueHeartbeat.unref?.();
+    }
+    try {
+      if (mode === "cancel-previous") {
+        await this.runCancelPrevious(
+          queueKey,
+          dispatchRoute,
+          text,
+          dispatchMsg,
+          dispatchChannel,
+          dispatchTurnId,
+          mergedFromDeferredTurnIds
+        );
+      } else {
+        await this.runSerial(
+          queueKey,
+          dispatchRoute,
+          text,
+          dispatchMsg,
+          dispatchChannel,
+          dispatchTurnId,
+          mergedFromDeferredTurnIds
+        );
+      }
+    } finally {
+      clearInterval(queueHeartbeat);
+      await queueHeartbeatPending;
+      if (queuedIds.length) {
+        try {
+          // Runtime finish is idempotent. For merged/trimmed queue entries,
+          // close only inputs still owned by the original queued attempt.
+          await dispatchChannel.responseRun!({ ...queuedRun, action: "finish", outcome: "interrupted", reason: "not_executed", only_if_queued: true }, this.log);
+        } catch (error) {
+          this.log.warn("queued response cleanup failed", { runId: dispatchTurnId, error: String(error) });
+        }
+      }
     }
     await this.safeAck(envelope);
   }
 
-  private async settleSkippedResponse(msg: GatewayInboundMessage, channel: ChannelAdapter, runId: string, outcome: "no_reply" | "failed" | "interrupted"): Promise<void> {
+  private async settleSkippedResponse(msg: GatewayInboundMessage, channel: ChannelAdapter, runId: string, outcome: "ignored" | "failed" | "interrupted", reason: ResponseReason): Promise<boolean> {
     const ids = responseInputIds(msg);
-    if (!channel.responseRun || !ids.length) return;
+    if (!channel.responseRun || !ids.length) return true;
     const base = { run_id: runId, room_id: msg.conversation.id };
     try {
       await channel.responseRun({ ...base, action: "register", message_ids: ids }, this.log);
-      if (outcome === "no_reply") {
-        await channel.responseRun({ ...base, action: "no_reply", message_ids: ids }, this.log);
+      if (outcome === "ignored") {
+        await channel.responseRun({ ...base, action: "ignore", message_ids: ids, reason }, this.log);
       }
-      await channel.responseRun({ ...base, action: "finish", outcome: outcome === "no_reply" ? "unconfirmed" : outcome }, this.log);
+      await channel.responseRun({ ...base, action: "finish", outcome: outcome === "ignored" ? "unconfirmed" : outcome, reason }, this.log);
+      return true;
     } catch (error) {
       this.log.warn("skipped response reporting failed", { runId, error: String(error) });
+      return false;
     }
   }
 
@@ -1490,7 +1525,7 @@ export class Dispatcher {
         reason: "queue_cancel_previous",
         supersededBy: null,
       });
-      await this.settleSkippedResponse(msg, channel, turnId, "interrupted");
+      await this.settleSkippedResponse(msg, channel, turnId, "interrupted", "superseded");
       return;
     }
     await this.runTurn(
@@ -1569,7 +1604,7 @@ export class Dispatcher {
         reason: "queue_overflow",
         supersededBy: null,
       });
-      await this.settleSkippedResponse(dropped.msg, dropped.channel, dropped.turnId, "failed");
+      await this.settleSkippedResponse(dropped.msg, dropped.channel, dropped.turnId, "failed", "queue_overflow");
       dropped.completion?.resolve();
     }
     if (!q.serialWorkerActive) {
@@ -2328,16 +2363,20 @@ export class Dispatcher {
     let responseRegistered = false;
     let responseTargets: string[] | undefined;
     let responseFailed = false;
+    let responseFailureReason: ResponseReason | undefined;
     let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
     let heartbeatPending: Promise<void> | undefined;
-    const reportResponse = async (action: "register" | "start" | "no_reply" | "heartbeat" | "finish", ids?: string[], outcome?: "unconfirmed" | "failed" | "interrupted") => {
-      await channel.responseRun?.({ run_id: turnId, room_id: msg.conversation.id, action, message_ids: ids, outcome }, this.log);
+    const reportResponse = async (action: ResponseRunUpdate["action"], ids?: string[], outcome?: ResponseRunUpdate["outcome"], reason?: ResponseReason) => {
+      await channel.responseRun?.({ run_id: turnId, room_id: msg.conversation.id, action, message_ids: ids, outcome, reason }, this.log);
     };
     try {
       try {
         if (responseIds.length) {
           await reportResponse("register", responseIds);
           responseRegistered = true;
+          if (responseIds.length === 1 && (restricted || teamDelivery || isOwnerChatRoom(msg))) {
+            await reportResponse("start", responseIds);
+          }
           runtimeText = responseInstructions(turnId, msg.conversation.id, responseIds, restricted || teamDelivery) + runtimeText;
           heartbeatTimer = setInterval(() => {
             if (heartbeatPending) return;
@@ -2700,21 +2739,32 @@ export class Dispatcher {
       const replyLooksLikeAuthFailure =
         looksLikeRuntimeAuthFailure(rawReplyText);
       let replyText = replyLooksLikeAuthFailure ? "" : rawReplyText;
+      if (replyLooksLikeAuthFailure) {
+        responseFailed = true;
+        responseFailureReason = "runtime_error";
+      }
       if (responseRegistered && !result.error && !replyLooksLikeAuthFailure) {
         try {
-          const decision = parseResponseDecision(replyText, responseIds);
+          let decision: ReturnType<typeof parseResponseDecision>;
+          try {
+            decision = parseResponseDecision(replyText, responseIds);
+          } catch (error) {
+            responseFailureReason = "invalid_decision";
+            throw error;
+          }
           if (decision) {
-            if (decision.noReply.length) await reportResponse("no_reply", decision.noReply);
+            if (decision.noReply.length) await reportResponse("no_reply", decision.noReply, undefined, "agent_decision");
             if (decision.respondsTo.length) await reportResponse("start", decision.respondsTo);
             responseTargets = decision.respondsTo;
             if (responseTargets.length) canDeliverRuntimeText = true;
             replyText = decision.text;
           } else if (replyText === "NO_REPLY" && responseIds.length === 1) {
-            await reportResponse("no_reply", responseIds);
+            await reportResponse("no_reply", responseIds, undefined, "agent_decision");
           }
           if (replyText === "NO_REPLY") replyText = "";
         } catch (error) {
           responseFailed = true;
+          responseFailureReason ??= "response_reporting_failed";
           this.log.warn("response decision failed", { turnId, error: String(error) });
           return;
         }
@@ -2982,6 +3032,17 @@ export class Dispatcher {
         });
       }
 
+      const knownReplyTargets = responseTargets ?? (responseIds.length === 1 ? responseIds : []);
+      if (responseRegistered && knownReplyTargets.length) {
+        try {
+          await reportResponse("replying", knownReplyTargets);
+        } catch (error) {
+          responseFailed = true;
+          responseFailureReason = "response_reporting_failed";
+          this.log.warn("reply intent reporting failed", { turnId, error: String(error) });
+          return;
+        }
+      }
       const sendResult = await this.sendReply(
         channel,
         {
@@ -2998,7 +3059,10 @@ export class Dispatcher {
         },
         turnId
       );
-      if (!sendResult.ok) responseFailed = true;
+      if (!sendResult.ok) {
+        responseFailed = true;
+        responseFailureReason = "reply_send_failed";
+      }
       this.emitOutbound({
         turnId,
         msg,
@@ -3018,7 +3082,11 @@ export class Dispatcher {
         try {
           await reportResponse("finish", undefined,
             controller.signal.aborted && !slot.timedOut ? "interrupted" :
-            threw || result?.error || slot.timedOut || slot.budgetExceeded || responseFailed ? "failed" : "unconfirmed");
+            threw || result?.error || slot.timedOut || slot.budgetExceeded || responseFailed ? "failed" : "unconfirmed",
+            controller.signal.aborted && !slot.timedOut ? (controller.signal.reason instanceof TurnSupersededError ? "superseded" : "cancelled") :
+            slot.timedOut ? "runtime_timeout" :
+            responseFailed ? responseFailureReason :
+            threw || result?.error || slot.budgetExceeded ? "runtime_error" : "missing_decision");
         } catch (error) {
           this.log.warn("response completion failed; Hub lease will expire", { turnId, error: String(error) });
         }

@@ -1035,6 +1035,10 @@ class MessageRecord(Base):
     # Response progress is independent from inbox delivery/retry state.
     response_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     response_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    # Detailed facts are additive; response_status keeps old consumers compatible.
+    response_state: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    response_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    response_updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     response_reply_msg_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
@@ -1058,6 +1062,24 @@ class MessageResponseRun(Base):
     message_ids: Mapped[list] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="running")
     expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MessageResponseEvent(Base):
+    """Append-only response transitions, scoped to one input/agent/attempt."""
+    __tablename__ = "message_response_events"
+    __table_args__ = (
+        UniqueConstraint("run_id", "target_msg_id", "agent_id", "state"),
+        Index("ix_message_response_events_target", "room_id", "target_msg_id", "agent_id", "id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    agent_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    room_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_msg_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[str] = mapped_column(String(24), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    reply_msg_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

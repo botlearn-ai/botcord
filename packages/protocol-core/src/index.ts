@@ -11,3 +11,4 @@ export * from "./should-wake.js";
 export * from "./gateway-message.js";
 export * from "./gateway-text.js";
 export * from "./gateway-sanitize.js";
+export * from "./response-state.js";
