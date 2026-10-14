@@ -849,9 +849,6 @@ function RoomSettingsModal({
                                   {member.role}
                                 </span>
                               </div>
-                              <div className="mt-1 text-xs text-text-secondary">
-                                <CopyableId value={member.agent_id} />
-                              </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               {isOwner && !isSelf && member.role !== "owner" && (

@@ -740,7 +740,6 @@ export default function MessageComposer({
                       {kindLabel}
                     </Badge>
                   )}
-                  <span className="ml-auto max-w-[35%] truncate font-mono text-xs text-text-secondary">{s.id ?? s.agent_id}</span>
                 </Button>
               );
             })}

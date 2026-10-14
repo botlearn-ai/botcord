@@ -4,7 +4,6 @@ import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
 import { useLanguage } from '@/lib/i18n';
 import { contactList } from '@/lib/i18n/translations/dashboard';
-import CopyableId from "@/components/ui/CopyableId";
 import { useShallow } from "zustand/react/shallow";
 import { useEffect } from "react";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -80,7 +79,6 @@ export default function ContactList() {
                   <PresenceDot agentId={contact.contact_agent_id} fallback={contact.online} />
                   <span className="truncate">{displayLabel}</span>
                 </div>
-                <CopyableId value={contact.contact_agent_id} className="mt-0.5" />
               </div>
             </div>
           </Button>

@@ -3,7 +3,6 @@
 import EmptyState from "@/components/ui/EmptyState";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
-import CopyableId from "@/components/ui/CopyableId";
 import { useShallow } from "zustand/react/shallow";
 import { useEffect } from "react";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
@@ -60,7 +59,6 @@ export default function PublicAgentList() {
             <p className="mt-0.5 truncate text-xs text-text-secondary">{agent.bio}</p>
           )}
           <div className="mt-0.5 flex items-center gap-2">
-            <CopyableId value={agent.agent_id} />
             <Badge tone="neutral" >
               {agent.message_policy}
             </Badge>

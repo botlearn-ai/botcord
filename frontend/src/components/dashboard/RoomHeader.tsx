@@ -1,5 +1,5 @@
 /**
- * [INPUT]: 依赖 session/ui/chat store 的当前房间选择、成员关系与公开房间缓存，依赖 SubscriptionBadge/CopyableId 展示元信息
+ * [INPUT]: 依赖 session/ui/chat store 的当前房间选择、成员关系与公开房间缓存，依赖 SubscriptionBadge 展示元信息
  * [OUTPUT]: 对外提供 RoomHeader 组件，渲染会话顶部标题、规则(Info)、分享、Owner 设置、成员入口与加入入口；移动端保持可见返回，加载态同样可退出
  * [POS]: dashboard 消息主视图的头部区域，承接当前房间的关键信息与快捷操作
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
@@ -17,7 +17,6 @@ import { roomList } from "@/lib/i18n/translations/dashboard";
 import { useRouter } from "nextjs-toploader/app";
 import { useShallow } from "zustand/react/shallow";
 import { ArrowLeft, Info, Loader2, Settings, Share2, UserPlus, Users, X } from "lucide-react";
-import CopyableId from "@/components/ui/CopyableId";
 import { api, humansApi } from "@/lib/api";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
@@ -481,8 +480,6 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
                 <span className="shrink-0 whitespace-nowrap text-text-secondary">{roleLabel}</span>
               </>
             )}
-            <span className="shrink-0 text-text-secondary">·</span>
-            <span className="shrink-0"><CopyableId value={room.room_id} /></span>
           </div>
           {roomRule && (
             <div className="mt-1 max-md:hidden">

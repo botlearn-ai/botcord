@@ -464,7 +464,6 @@ export default function DaemonsSettingsPage() {
             <TableHead>
               <TableRow>
                 <TableHeader>Label</TableHeader>
-                <TableHeader>ID</TableHeader>
                 <TableHeader>Daemon</TableHeader>
                 <TableHeader>Last seen</TableHeader>
                 <TableHeader>Status</TableHeader>
@@ -474,7 +473,7 @@ export default function DaemonsSettingsPage() {
             <TableBody>
               {!loaded && loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center">
+                  <TableCell colSpan={5} className="text-center">
                     <Loader2 className="mx-auto h-4 w-4 animate-spin" />
                   </TableCell>
                 </TableRow>
@@ -495,9 +494,6 @@ export default function DaemonsSettingsPage() {
                           }}
                           onCancel={() => setEditingId(null)}
                         />
-                      </TableCell>
-                      <TableCell className="font-mono" title={d.id}>
-                        {truncateId(d.id)}
                       </TableCell>
                       <TableCell>
                         <DaemonVersionChip version={d.daemon_version} />
@@ -542,7 +538,7 @@ export default function DaemonsSettingsPage() {
                       </TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell colSpan={6} >
+                      <TableCell colSpan={5} >
                         <RuntimesBlock
                           daemon={d}
                           refreshing={refreshingRuntimesId === d.id}

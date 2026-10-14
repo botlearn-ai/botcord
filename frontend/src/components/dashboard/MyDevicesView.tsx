@@ -89,8 +89,6 @@ export default function MyDevicesView() {
                         </Badge>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-text-secondary">
-                        <span className="font-mono">{device.id}</span>
-                        <span>·</span>
                         <span>{daemonVersionLabel(device.daemon_version)}</span>
                         <span>·</span>
                         <span>上次在线 {timeSince(device.last_seen_at)}</span>

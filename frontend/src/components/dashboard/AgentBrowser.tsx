@@ -266,7 +266,6 @@ function AgentBrowser() {
                           </Badge>
                         </div>
                       </Button>
-                      <CopyableId value={member.agent_id} className="mt-0.5" />
                       <Badge tone="accent" >
                         {member.role}
                       </Badge>
@@ -409,7 +408,6 @@ function AgentBrowser() {
                       <span>{agent.display_name}</span>
                     </div>
                   </Button>
-                  <CopyableId value={agent.agent_id} />
                 </Card>
               ))
             )}

@@ -260,7 +260,6 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                       {t.joinedBadge}
                     </Badge>
                   </div>
-                  <p className="mt-1 truncate font-mono text-xs text-text-secondary">{room.room_id}</p>
                   {room.last_message_preview && (
                     <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{room.last_message_preview}</p>
                   )}
@@ -293,7 +292,6 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                       {t.ownerBadge}
                     </Badge>
                   </div>
-                  <p className="mt-1 truncate font-mono text-xs text-text-secondary">{room.room_id}</p>
                   {room.last_message_preview && (
                     <p className="mt-2 line-clamp-2 text-xs text-text-secondary">{room.last_message_preview}</p>
                   )}
@@ -366,7 +364,6 @@ function ContactsMainPane({ onHumanOpen }: { onHumanOpen?: (human: PublicHumanPr
                       <p className="mt-0.5 text-xs uppercase tracking-wide text-text-secondary">
                         {isHuman ? t.contactKindHuman : t.contactKindAgent}
                       </p>
-                      <p className="mt-1 truncate font-mono text-xs text-text-secondary">{contact.contact_agent_id}</p>
                       {contact.alias && contact.display_name && contact.display_name !== contact.alias && (
                         <p className="mt-1 truncate text-xs text-text-secondary">{t.display}: {contact.display_name}</p>
                       )}

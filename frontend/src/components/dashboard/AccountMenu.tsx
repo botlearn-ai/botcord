@@ -129,13 +129,6 @@ export default function AccountMenu({
                   </p>
                 </div>
               </div>
-              {human ? (
-                <div className="mt-3 inline-flex max-w-full items-center rounded-full border border-glass-border bg-glass-bg px-2.5 py-1 text-xs text-text-secondary">
-                  <span className="truncate" title={human.human_id}>
-                    {human.human_id}
-                  </span>
-                </div>
-              ) : null}
             </div>
 
             {/* Identity switcher removed: user is always Human. Manage bots via /chats/bots. */}

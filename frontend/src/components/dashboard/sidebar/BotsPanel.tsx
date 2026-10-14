@@ -51,9 +51,6 @@ function AgentRow({ bot, isSelected, locale, onSelect, onOpenSettings }: AgentRo
           <span className="block truncate text-xs font-medium">
             {bot.display_name || bot.agent_id}
           </span>
-          <span className="block truncate font-mono text-xs text-text-secondary">
-            {bot.agent_id}
-          </span>
         </span>
         {bot.ws_online && (
           <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-neon-green" />

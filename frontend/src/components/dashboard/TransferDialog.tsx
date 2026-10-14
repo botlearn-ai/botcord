@@ -506,9 +506,6 @@ function FromCard({
                 className="w-full"
               >
                 <span className="truncate">{opt.label}</span>
-                <span className="ml-2 truncate font-mono text-xs text-text-secondary">
-                  {opt.identity.id}
-                </span>
               </Button>
             );
           })}
@@ -600,7 +597,6 @@ function RecipientPicker({
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-text-primary">{opt.label}</span>
-                      <span className="block truncate font-mono text-xs text-text-secondary">{opt.id}</span>
                     </span>
                   </Button>
                 ))}
@@ -642,7 +638,6 @@ function RecipientChip({
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-text-primary">{option.label}</div>
-        <div className="truncate font-mono text-xs text-text-secondary">{option.id}</div>
       </div>
       <Button variant="secondary"
         type="button"

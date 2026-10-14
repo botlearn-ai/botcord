@@ -90,8 +90,7 @@ function UnbindAgentDialog({
 
       <p className="mt-4 text-xs text-text-secondary">
         {copy.targetAgent}
-        <span className="font-mono text-text-primary">{agentName}</span>
-        <span className="ml-1 text-text-secondary">({agentId})</span>
+        <span className="text-text-primary">{agentName}</span>
       </p>
 
       {error && (

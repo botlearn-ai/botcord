@@ -49,7 +49,6 @@ import ImagePreviewOverlay from "@/components/ui/ImagePreviewOverlay";
 import StreamBlocksView, { buildComposingText } from "./StreamBlocksView";
 import DocumentPreviewPane from "./DocumentPreviewPane";
 import RuntimeErrorDetailsDialog from "./RuntimeErrorDetailsDialog";
-import CopyableId from "@/components/ui/CopyableId";
 import MessageComposer from "./MessageComposer";
 import ReplyQuoteBlock from "./ReplyQuoteBlock";
 import ForwardModal from "./ForwardModal";
@@ -693,9 +692,6 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
       <span className="text-xs font-medium text-text-primary">
         {senderName}
       </span>
-      {chatAgentId && (
-        <CopyableId value={chatAgentId} className="text-text-secondary hover:text-text-secondary" />
-      )}
     </>
   );
 
@@ -905,9 +901,6 @@ function UserChatPane({ agentId }: { agentId?: string | null }) {
                     <div className="mb-1 flex items-center gap-1.5">
                       <ParticipantAvatar id={chatAgentId || "bot"} avatarUrl={ownedAgent?.avatar_url} isHuman={false} name={msg.senderName || "Bot"} />
                       <span className="text-xs font-medium text-text-secondary">{msg.senderName}</span>
-                      {chatAgentId && (
-                        <CopyableId value={chatAgentId} className="text-text-secondary hover:text-text-secondary" />
-                      )}
                     </div>
                     <Button variant="row"
                       type="button"

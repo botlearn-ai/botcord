@@ -112,7 +112,7 @@ export default function ClaimAgentPage({ claimCode }: ClaimAgentPageProps) {
           <Alert tone="success" className="mt-4">
             <p className="font-medium">Bot connected</p>
             <div  className="mt-1">
-              {claimed.display_name} ({claimed.agent_id})
+              {claimed.display_name}
             </div>
             <Button variant="secondary"
               onClick={() => {

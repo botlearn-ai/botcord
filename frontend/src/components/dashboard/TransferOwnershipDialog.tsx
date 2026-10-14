@@ -103,7 +103,7 @@ function TransferOwnershipDialog({
               options={candidates.map((c) => ({
                 value: c.agent_id,
                 label: c.display_name,
-                sublabel: `${c.agent_id.startsWith("hu_") ? "H" : "A"} · ${c.role} · ${c.agent_id}`,
+                sublabel: `${c.agent_id.startsWith("hu_") ? "H" : "A"} · ${c.role}`,
               }))}
             />
           </label>
