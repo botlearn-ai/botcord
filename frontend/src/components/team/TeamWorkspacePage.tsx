@@ -525,6 +525,8 @@ export function TeamWorkspace({
       label: t("知识库", "Knowledge"),
       Icon: BookOpen,
       count: null,
+      // Five bottom-bar items truncate on phones; the header icon links it instead.
+      mobile: false,
     },
   ] as {
     id: TeamView;
@@ -534,6 +536,7 @@ export function TeamWorkspace({
     unread?: boolean;
     badge?: number;
     badgeLabel?: string;
+    mobile?: boolean;
   }[];
   const organizations = snapshot.spaces.filter((s) => s.kind === "organization");
   // Mobile hides the bottom bar while a conversation is open (full-screen thread).
@@ -583,6 +586,15 @@ export function TeamWorkspace({
               </span>
             </div>
           )}
+          <LinkButton
+            variant="secondary"
+            href={teamHref(space.id, "knowledge")}
+            aria-label={t("知识库", "Knowledge")}
+            aria-current={view === "knowledge" ? "page" : undefined}
+            className="md:hidden"
+          >
+            <BookOpen size={18} />
+          </LinkButton>
           <LinkButton
             variant="secondary"
             href={teamHref(space.id, "settings")}
@@ -919,7 +931,14 @@ export function TeamWorkspace({
         </>
       ) : view === "knowledge" ? (
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-          <TeamKnowledgePage key={space.id} spaceId={space.id} />
+          <TeamKnowledgePage
+            key={space.id}
+            spaceId={space.id}
+            names={Object.fromEntries([
+              ...members.users.map((u) => [u.human_id, u.display_name]),
+              ...members.agents.map((a) => [a.agent_id, a.display_name]),
+            ])}
+          />
         </main>
       ) : view === "agents" ? (
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
@@ -995,7 +1014,7 @@ export function TeamWorkspace({
           className="liquid-rail mt-auto flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 items-stretch justify-around border-t border-border px-1 pt-1 pb-[env(safe-area-inset-bottom)] md:hidden"
           aria-label={t("团队导航", "Team navigation")}
         >
-          {navigation.map(
+          {navigation.filter((item) => item.mobile !== false).map(
             ({
               id,
               label,

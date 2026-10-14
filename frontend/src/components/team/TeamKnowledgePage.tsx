@@ -30,7 +30,7 @@ import {
 } from "@/lib/team-kb";
 import { useConfirm } from "@/store/useConfirmStore";
 import { toast } from "@/store/useToastStore";
-import { BookOpen, FileText, Folder, Plus } from "lucide-react";
+import { ArrowLeft, BookOpen, FileText, Folder, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 type Tab = "pages" | "review";
@@ -44,7 +44,14 @@ interface Draft {
 
 const README_TEMPLATE = "# 团队手册\n\n- 我们是谁、在做什么\n- 协作约定\n- 常用入口\n";
 
-export default function TeamKnowledgePage({ spaceId }: { spaceId: string }) {
+export default function TeamKnowledgePage({
+  spaceId,
+  names = {},
+}: {
+  spaceId: string;
+  /** hu_/ag_ id → display name, so authors show as people rather than IDs. */
+  names?: Record<string, string>;
+}) {
   const zh = useLanguage() === "zh";
   const t = useCallback((cn: string, en: string) => (zh ? cn : en), [zh]);
   const confirm = useConfirm();
@@ -146,10 +153,10 @@ export default function TeamKnowledgePage({ spaceId }: { spaceId: string }) {
         tone: "success",
       });
       setDraft(null);
-      setSelected(result.node.path);
-      setPage(null);
       await loadTree();
-      if (result.status === "published") setPage(await teamKbApi.page(spaceId, result.node.path));
+      // Same path: refresh in place (no empty-state flash); new path: the selection effect loads it.
+      if (result.node.path === selected) setPage(await teamKbApi.page(spaceId, result.node.path));
+      else setSelected(result.node.path);
     } catch (err) {
       toast({ title: message(err), tone: "danger" });
     } finally {
@@ -201,6 +208,8 @@ export default function TeamKnowledgePage({ spaceId }: { spaceId: string }) {
     }
   };
 
+  const nameOf = (id: string) =>
+    names[id] ?? (id.startsWith("ag_") ? t("已离开的 Agent", "Former Agent") : t("已离开的成员", "Former member"));
   const sourceBadge = (source: string | null | undefined) =>
     source === "agent" ? <Badge size="sm">{t("agent 生成", "Agent-written")}</Badge> : null;
 
@@ -333,7 +342,7 @@ export default function TeamKnowledgePage({ spaceId }: { spaceId: string }) {
       <div className="flex flex-wrap gap-2">
         {page.kind === "page" &&
           (page.version > 0 ? <Badge size="sm">v{page.version}</Badge> : <Badge size="sm" tone="warning">{t("草稿", "Draft")}</Badge>)}
-        {page.updated_by && <Badge size="sm" variant="outline">{page.updated_by}</Badge>}
+        {page.updated_by && <Badge size="sm" variant="outline">{t("最后编辑", "Edited by")} {nameOf(page.updated_by)}</Badge>}
         {page.tags.map((tag) => (
           <Badge key={tag} size="sm" variant="outline">{tag}</Badge>
         ))}
@@ -375,11 +384,25 @@ export default function TeamKnowledgePage({ spaceId }: { spaceId: string }) {
     </article>
   );
 
+  // Mobile shows the list or the detail, never both (like the message workspace).
+  const pageOpen = Boolean(draft || selected);
+  const backToList = (
+    <Button variant="inline" className="mb-4 md:hidden" onClick={() => { setDraft(null); setSelected(null); setReview(null); }}>
+      <ArrowLeft size={16} aria-hidden />
+      {t("返回目录", "Back to list")}
+    </Button>
+  );
+
   const pagesView = (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <aside className="flex shrink-0 flex-col gap-3 border-b border-border p-3 md:w-72 md:border-b-0 md:border-r">
-        <SearchInput label={t("搜索知识库", "Search knowledge base")} value={query} onChange={(e) => setQuery(e.target.value)} />
-        <nav aria-label={t("知识库目录", "Knowledge base tree")} className="flex flex-col gap-0.5 overflow-y-auto max-md:max-h-64">
+      <aside className={`flex min-h-0 shrink-0 flex-col gap-3 p-3 max-md:flex-1 md:w-72 md:border-r md:border-border ${pageOpen ? "max-md:hidden" : ""}`}>
+        <SearchInput
+          label={t("搜索知识库", "Search knowledge base")}
+          placeholder={t("搜索标题、描述、正文", "Search titles, descriptions, text")}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <nav aria-label={t("知识库目录", "Knowledge base tree")} className="flex flex-col gap-0.5 overflow-y-auto">
           {list.length === 0 && (
             <p className="px-2 py-3 text-sm text-text-secondary">
               {results ? t("没有结果", "No results") : t("还没有页面", "No pages yet")}
@@ -402,7 +425,8 @@ export default function TeamKnowledgePage({ spaceId }: { spaceId: string }) {
           ))}
         </nav>
       </aside>
-      <section className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+      <section className={`min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 ${pageOpen || nodes.length === 0 ? "" : "max-md:hidden"}`}>
+        {pageOpen && backToList}
         {draft ? editor : detail ?? (
           nodes.length === 0 ? (
             <EmptyState
@@ -429,7 +453,7 @@ export default function TeamKnowledgePage({ spaceId }: { spaceId: string }) {
 
   const reviewView = (
     <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      <aside className="flex shrink-0 flex-col gap-1 border-b border-border p-3 md:w-72 md:border-b-0 md:border-r">
+      <aside className={`flex min-h-0 shrink-0 flex-col gap-1 overflow-y-auto p-3 max-md:flex-1 md:w-72 md:border-r md:border-border ${review ? "max-md:hidden" : ""}`}>
         {revisions.length === 0 && <p className="px-2 py-3 text-sm text-text-secondary">{t("没有待审核的修改", "Nothing to review")}</p>}
         {revisions.map((r) => (
           <Button
@@ -440,19 +464,20 @@ export default function TeamKnowledgePage({ spaceId }: { spaceId: string }) {
           >
             <span className="flex min-w-0 flex-col items-start">
               <span className="w-full truncate font-mono text-[13px]">{r.path}</span>
-              <span className="type-caption text-text-secondary">{r.author}</span>
+              <span className="type-caption text-text-secondary">{nameOf(r.author)}</span>
             </span>
           </Button>
         ))}
       </aside>
-      <section className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+      <section className={`min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 ${review ? "" : "max-md:hidden"}`}>
+        {review && backToList}
         {review ? (
           <article className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 space-y-1">
                 <h2 className="type-heading-3 break-words">{review.revision.title ?? review.revision.path}</h2>
                 <p className="font-mono text-[13px] text-text-secondary">
-                  {review.revision.path} · {t("提交者", "by")} {review.revision.author} · {t("基于", "based on")} v{review.revision.base_version}
+                  {review.revision.path} · {t("提交者", "by")} {nameOf(review.revision.author)} · {t("基于", "based on")} v{review.revision.base_version}
                 </p>
               </div>
               {canPublish ? (
