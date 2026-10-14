@@ -312,3 +312,14 @@ async def test_agent_sees_own_draft_outcomes(client, org):
     only = (await client.get(f"{hub(org)}/drafts", headers=org["barry"], params={"status": "rejected"})).json()
     assert [r["path"] for r in only["revisions"]] == ["/knowledge/b.md"]
     assert (await client.get(f"{hub(org)}/drafts", headers=org["otto"])).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_tree_order_pins_readme_and_ignores_collation(client, org):
+    for path in ("/archive/a.md", "/Zeta.md", "/README.md", "/handbook/README.md", "/handbook/b.md"):
+        await client.put(f"{app_(org)}/page", headers=org["danny"], json={"path": path, "content": "x"})
+    tree = (await client.get(f"{hub(org)}/tree", headers=org["barry"])).json()["nodes"]
+    assert [n["path"] for n in tree] == [
+        "/README.md", "/Zeta.md", "/archive", "/archive/a.md",
+        "/handbook", "/handbook/README.md", "/handbook/b.md",
+    ]
