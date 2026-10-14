@@ -421,6 +421,7 @@ export interface RoomMessagesViewerContext {
 }
 
 export interface DashboardMessageResponse {
+  status_reaction_updates?: Record<string, MessageStatusReaction[]>;
   activity_updates?: Record<string, RoomReplyActivity[]>;
   messages: DashboardMessage[];
   has_more: boolean;

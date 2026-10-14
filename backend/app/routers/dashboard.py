@@ -2476,16 +2476,15 @@ async def get_room_messages(
         db, {rec.reply_to_msg_id for rec in records if rec.reply_to_msg_id}
     )
     msg_ids = [rec.msg_id for rec in records]
-    status_reactions_map = await message_status_reactions.load_active_status_reactions(
-        room_id,
-        msg_ids,
-    )
-
-    from hub.services.room_message_activity import load_room_message_activity
-
     tracked_ids = list(dict.fromkeys((activity_for or "").split(","))) if activity_for else []
     if len(tracked_ids) > 100:
         raise HTTPException(status_code=422, detail="Too many activity message IDs")
+    status_reactions_map = await message_status_reactions.load_active_status_reactions(
+        room_id,
+        list(dict.fromkeys(msg_ids + tracked_ids)) if is_member else msg_ids,
+    )
+
+    from hub.services.room_message_activity import load_room_message_activity
     activity = await load_room_message_activity(
         db, room_id, list(dict.fromkeys(msg_ids + tracked_ids))
     ) if is_member else {}
@@ -2529,7 +2528,9 @@ async def get_room_messages(
             msg["reply_activity"] = activity.get(rec.msg_id, [])
         messages.append(msg)
 
-    return {"messages": messages, "has_more": has_more, "activity_updates": {
+    return {"messages": messages, "has_more": has_more, "status_reaction_updates": {
+        msg_id: status_reactions_map.get(msg_id, []) for msg_id in tracked_ids
+    } if is_member else {}, "activity_updates": {
         msg_id: activity.get(msg_id, []) for msg_id in tracked_ids
     } if is_member else {}}
 

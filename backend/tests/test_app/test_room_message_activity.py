@@ -130,3 +130,35 @@ async def test_activity_exposes_explicit_versus_legacy_basis(db_session, seed):
     assert activity["m_basis_0"][0]["status"] == "unconfirmed"
     for i in range(1, 4):
         assert activity[f"m_basis_{i}"][0]["basis"] == "run"
+
+
+@pytest.mark.asyncio
+async def test_poll_refreshes_and_clears_reactions_without_new_messages(client, db_session, seed, monkeypatch):
+    from hub.services import message_status_reactions
+    record = MessageRecord(
+        hub_msg_id="h_reaction", msg_id="m_reaction", sender_id="hu_test",
+        receiver_id=seed["agent1"], room_id="rm_pubopen01", envelope_json="{}",
+        state=MessageState.delivered, ttl_sec=3600, source_type="dashboard_human_room",
+    )
+    db_session.add(record)
+    await db_session.commit()
+    reactions = [{"actor_id": seed["agent1"], "kind": "replying", "state": "active"}]
+
+    async def load(room_id, msg_ids):
+        assert room_id == "rm_pubopen01"
+        return {"m_reaction": list(reactions)} if "m_reaction" in msg_ids else {}
+
+    monkeypatch.setattr(message_status_reactions, "load_active_status_reactions", load)
+    for active in [True, False]:
+        if not active:
+            reactions.clear()
+        response = await client.get(
+            "/api/dashboard/rooms/rm_pubopen01/messages",
+            params={"after": "h_reaction", "activity_for": "m_reaction"},
+            headers=_h(seed["token1"], seed["agent1"]),
+        )
+        assert response.status_code == 200
+        assert response.json()["messages"] == []
+        assert response.json()["status_reaction_updates"]["m_reaction"] == reactions
+    public = await client.get("/api/dashboard/rooms/rm_pubopen01/messages", params={"activity_for": "m_reaction"})
+    assert public.json()["status_reaction_updates"] == {}

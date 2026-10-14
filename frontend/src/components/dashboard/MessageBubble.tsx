@@ -31,7 +31,7 @@ import { useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 import { useConfirm } from "@/store/useConfirmStore";
-import BotAvatar from "./BotAvatar";
+import Avatar from "@/components/ui/Avatar";
 import TeamMessageFeedback, { TeamMessageFeedbackContext } from "@/components/team/TeamMessageFeedback";
 import ParticipantAvatar from "./ParticipantAvatar";
 
@@ -300,15 +300,16 @@ function ReplyingAvatarStack({ reactions }: { reactions: MessageStatusReaction[]
           return (
             <span
               key={reaction.actor_id}
-              className={`replying-avatar ${index > 0 ? "-ml-1.5" : ""}`}
+              className={`relative inline-flex ${index > 0 ? "-ml-1.5" : ""}`}
               style={{ zIndex: shown.length - index }}
             >
-              <BotAvatar
-                agentId={reaction.actor_id}
-                avatarUrl={ownedAvatar || avatarByActor[reaction.actor_id]}
-                alt={reaction.actor_name || reaction.actor_id}
-                size={18}
-                className="ring-yellow-400/40"
+              <Avatar
+                kind="agent"
+                id={reaction.actor_id}
+                src={ownedAvatar || avatarByActor[reaction.actor_id]}
+                name={reaction.actor_name || reaction.actor_id}
+                size="xs"
+                status="replying"
               />
             </span>
           );
@@ -498,7 +499,7 @@ function MessageBubble({
   const activeStatusReactions = (message.status_reactions ?? []).filter((reaction) => {
     // The durable projection owns this actor's reply indicator in Team rooms.
     if (teamFeedback && reaction.kind === "replying" && message.reply_activity?.some(
-      (a) => a.agent_id === reaction.actor_id && a.response_state !== undefined,
+      (a) => a.agent_id === reaction.actor_id,
     )) return false;
     if (reaction.state && reaction.state !== "active") return false;
     if (!reaction.expires_at) return true;

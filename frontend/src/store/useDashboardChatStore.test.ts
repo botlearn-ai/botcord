@@ -106,6 +106,22 @@ function makeMessage(overrides: Partial<DashboardMessage> = {}): DashboardMessag
 }
 
 describe("useDashboardChatStore message polling", () => {
+  it("clears legacy reply avatars on polling even after reply activity completed", async () => {
+    useDashboardChatStore.setState({ messages: { rm_empty: [makeMessage({
+      sender_kind: "human",
+      reply_activity: [{ agent_id: "ag_1", agent_name: "A", status: "completed" }],
+      status_reactions: [{ actor_id: "ag_1", kind: "replying", emoji: "⏳", state: "active" }],
+    })] } });
+    mocks.getRoomMessages.mockResolvedValue({ messages: [], has_more: false,
+      status_reaction_updates: { msg_1: [] },
+    });
+    await useDashboardChatStore.getState().pollNewMessages("rm_empty");
+    expect(mocks.getRoomMessages).toHaveBeenCalledWith("rm_empty", expect.objectContaining({ activityFor: ["msg_1"] }));
+    expect(useDashboardChatStore.getState().messages.rm_empty[0].status_reactions).toEqual([]);
+    expect(useDashboardChatStore.getState().messages.rm_empty[0].reply_activity?.[0].status).toBe("completed");
+  });
+
+
   it("polls agent-authored active messages while excluding recalled and resolved projections", async () => {
     const activity = (response_state: "replying" | "ignored") => [{ agent_id: "ag_1", agent_name: "Assistant", status: "processing" as const, response_state }];
     useDashboardChatStore.setState({ messages: { rm_empty: [
