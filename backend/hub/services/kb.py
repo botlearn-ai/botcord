@@ -224,11 +224,19 @@ async def get_node(db: AsyncSession, space_id: UUID, path: str, *, include_draft
     return node
 
 
+def _tree_order(path: str) -> tuple:
+    """Parents before children, README.md first in its folder, then code-point order.
+
+    Sorted in Python so the order does not depend on the database collation.
+    """
+    return tuple((seg != "README.md", seg) for seg in path[1:].split("/"))
+
+
 async def _subtree(db: AsyncSession, space_id: UUID, prefix: str, *, with_content: bool = False) -> list[KbNode]:
     query = select(KbNode).where(KbNode.space_id == space_id, KbNode.deleted_at.is_(None), _under(prefix))
     if not with_content:
         query = query.options(defer(KbNode.content))
-    return list((await db.scalars(query.order_by(KbNode.path))).all())
+    return sorted((await db.scalars(query)).all(), key=lambda n: _tree_order(n.path))
 
 
 def _visible(nodes: list[KbNode], *, include_drafts: bool) -> list[KbNode]:
