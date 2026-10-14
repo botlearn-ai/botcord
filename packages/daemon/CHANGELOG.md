@@ -1,5 +1,20 @@
 # @botcord/daemon
 
+## 0.8.0
+
+### Minor Changes
+
+- 2491edd: Record durable per-message response facts: queued inputs, policy ignores, processing, no-reply decisions and reply intent. Keep decision reasons and attempt history distinct, preserve legacy feedback fields, and require Hub migration 015 before upgrading clients.
+- 35466a0: Add the Space knowledge base: `botcord kb` (spaces/tree/cat/grep/search/write/meta/meta-queue), protocol-core client methods, and daemon injection of the Space README and index into organization-room turns.
+
+### Patch Changes
+
+- e84d283: Deliver Team replies through the daemon for owners and members, with final response correlation and explicit no-reply outcomes. Keep room-only consultation separate from revoked grant sessions.
+- Updated dependencies [2491edd]
+- Updated dependencies [35466a0]
+  - @botcord/protocol-core@0.6.0
+  - @botcord/cli@0.2.0
+
 ## 0.7.1
 
 ### Patch Changes
