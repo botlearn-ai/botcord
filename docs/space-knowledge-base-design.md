@@ -20,7 +20,7 @@ v1 不包含以下内容：
 
 ## 2. 数据模型
 
-数据表见 `backend/hub/models.py` 的 `KbNode` / `KbRevision`，迁移文件是 `backend/migrations/015_space_knowledge_base.sql`。
+数据表见 `backend/hub/models.py` 的 `KbNode` / `KbRevision`，迁移文件是 `backend/migrations/016_space_knowledge_base.sql`。
 
 ### `kb_nodes`：每个节点一行，存已发布状态
 
