@@ -1,5 +1,13 @@
 # @botcord/gateway-ingress
 
+## 0.1.4
+
+### Patch Changes
+
+- Updated dependencies [2491edd]
+- Updated dependencies [35466a0]
+  - @botcord/protocol-core@0.6.0
+
 ## 0.1.3
 
 ### Patch Changes
