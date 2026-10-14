@@ -31,17 +31,19 @@ export interface RoomContextFetcherOptions {
   };
 }
 
+/** Lazily builds and caches one authenticated `BotCordClient` per agent. */
+export type AgentClientResolver = (accountId: string) => BotCordClient | null;
+
 /**
- * Build a {@link RoomContextFetcher} that resolves against Hub. Returns
- * `null` on any error (missing creds, network, non-JSON, etc.) so the
- * system-context builder can skip the block without blocking the turn.
+ * Per-`accountId` `BotCordClient` cache shared by the Hub-backed context
+ * fetchers so token refreshes amortize across turns and fetchers.
  */
-export function createRoomContextFetcher(
+export function createAgentClientResolver(
   opts: RoomContextFetcherOptions,
-): RoomContextFetcher {
+): AgentClientResolver {
   const clients = new Map<string, CachedClient>();
 
-  function getClient(accountId: string): BotCordClient | null {
+  return function getClient(accountId: string): BotCordClient | null {
     const existing = clients.get(accountId);
     if (existing) return existing.client;
 
@@ -84,8 +86,18 @@ export function createRoomContextFetcher(
       });
       return null;
     }
-  }
+  };
+}
 
+/**
+ * Build a {@link RoomContextFetcher} that resolves against Hub. Returns
+ * `null` on any error (missing creds, network, non-JSON, etc.) so the
+ * system-context builder can skip the block without blocking the turn.
+ */
+export function createRoomContextFetcher(
+  opts: RoomContextFetcherOptions,
+  getClient: AgentClientResolver = createAgentClientResolver(opts),
+): RoomContextFetcher {
   return async ({ accountId, roomId }) => {
     const client = getClient(accountId);
     if (!client) return null;

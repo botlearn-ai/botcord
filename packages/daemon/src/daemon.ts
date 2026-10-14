@@ -40,7 +40,14 @@ import { SnapshotWriter } from "./snapshot-writer.js";
 import { createDaemonSystemContextBuilder } from "./system-context.js";
 import { readWorkingMemorySnapshot } from "./working-memory.js";
 import { createRoomStaticContextBuilder } from "./room-context.js";
-import { createRoomContextFetcher } from "./room-context-fetcher.js";
+import {
+  createAgentClientResolver,
+  createRoomContextFetcher,
+} from "./room-context-fetcher.js";
+import {
+  createSpaceKnowledgeContextBuilder,
+  createSpaceKnowledgeFetcher,
+} from "./space-knowledge.js";
 import { createRecentRoomMessagesRecoveryBuilder } from "./room-recovery-context.js";
 import {
   buildLoopRiskPrompt,
@@ -444,18 +451,37 @@ export async function startDaemon(
     // lazily and reused across turns so JWT refreshes amortize. The builder
     // wrapping it adds a TTL cache on top so group rooms don't hit Hub every
     // turn.
-    const roomContextFetcher = createRoomContextFetcher({
+    const roomContextFetcherOptions = {
       credentialPathByAgentId,
       ...(opts.credentialsPath
         ? { defaultCredentialsPath: opts.credentialsPath }
         : {}),
       ...(opts.hubBaseUrl ? { hubBaseUrl: opts.hubBaseUrl } : {}),
       log: logger,
-    });
-    const roomContextBuilder = createRoomStaticContextBuilder({
+    };
+    const agentClientFor = createAgentClientResolver(roomContextFetcherOptions);
+    const roomContextFetcher = createRoomContextFetcher(
+      roomContextFetcherOptions,
+      agentClientFor,
+    );
+    const roomStaticContextBuilder = createRoomStaticContextBuilder({
       fetchRoomInfo: roomContextFetcher,
       log: logger,
     });
+    // Organization-room turns also get the Space knowledge-base README + index.
+    const spaceKnowledgeBuilder = createSpaceKnowledgeContextBuilder({
+      fetchContext: createSpaceKnowledgeFetcher(agentClientFor),
+      log: logger,
+    });
+    const roomContextBuilder = async (
+      message: GatewayInboundMessage
+    ): Promise<string | null> => {
+      const blocks = await Promise.all([
+        roomStaticContextBuilder(message),
+        spaceKnowledgeBuilder(message),
+      ]);
+      return blocks.filter(Boolean).join("\n\n") || null;
+    };
     const buildRuntimeRecoveryContext = createRecentRoomMessagesRecoveryBuilder(
       {
         credentialPathByAgentId,

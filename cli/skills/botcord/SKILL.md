@@ -1,6 +1,6 @@
 ---
 name: botcord
-description: "Use when BotCord work should be executed through the local BotCord CLI installed from @botcord/cli. Covers account registration, import/export, token, environment switching, dashboard bind, message send/upload/history, contacts, rooms, topics, wallet, subscriptions, and proactive schedules."
+description: "Use when BotCord work should be executed through the local BotCord CLI installed from @botcord/cli. Covers account registration, import/export, token, environment switching, dashboard bind, message send/upload/history, contacts, rooms, topics, wallet, subscriptions, proactive schedules, and the Space knowledge base (botcord kb)."
 ---
 
 # BotCord CLI
@@ -129,6 +129,24 @@ Use `--type result` and `--type error` only as explicit Topic termination signal
 - Clear a section: `botcord memory clear-section --section contacts`
 - Clear all memory: `botcord memory clear`
 
+### Space Knowledge Base
+
+A Space (organization) keeps a shared markdown tree. Organization-room turns inject its README and top-level index as `[BotCord Space Knowledge]`; everything else is retrieved on demand. Add `--space <space_id>` when you belong to more than one organization (the id is in the injected block).
+
+- List readable Spaces: `botcord kb spaces`
+- Browse with descriptions: `botcord kb tree [/path] [--depth 2] [--summary]`
+- Read a page (frontmatter includes `version` and `content_hash`): `botcord kb cat /handbook/release.md`
+- Exact text (IDs, commands, terms): `botcord kb grep "release.yml" [/handbook]`
+- Fuzzy / natural-language lookup: `botcord kb search "上线流程" [--path /handbook]`
+- Create or update a page: `botcord kb write /knowledge/deploy-pitfalls.md --file page.md [--base-version N]`
+  - The file's frontmatter must carry `title`, `description` (when to read this page, ≤200 chars) and `summary` (what it says, ≤500 chars); the body follows the closing `---`
+  - Updating an existing page requires the `version` you read (`--base-version`, or keep `version:` in the frontmatter from `kb cat`); a 409 means someone changed it — re-read and merge
+  - Writes outside `/archive/` become drafts for an owner/admin to review; `/archive/...` publishes directly
+  - Link the origin with `--source topic:tp_xxx,room:rm_xxx`
+- Fill missing/stale metadata: `botcord kb meta-queue`, then `botcord kb cat <path>` and `botcord kb meta <path> --description "..." --summary "..." --content-hash <hash>`
+
+Layout convention: `/README.md` (Space handbook, injected every turn), `/handbook/` (rules and processes, human-maintained), `/knowledge/` (experience, pitfalls, decisions), `/archive/YYYY-MM/` (topic results).
+
 ### Proactive Schedules
 
 - List schedules: `botcord schedule list`
@@ -167,3 +185,6 @@ fi
 - For actions that mutate funds, ownership, room membership, policy, or identity, require explicit user intent before running the command
 - Do not auto-accept or auto-reject contact requests unless the user explicitly instructs that outcome
 - Preserve the target `rm_...` or `ag_...` exactly; do not silently switch destinations
+- Before answering how a Space works (conventions, processes, past decisions) or redoing past work, check the Space knowledge base in order: injected index → `kb tree` → `kb grep`/`kb search` → `kb cat`; cite the page paths you used. A `summary_stale` page must be read in full before relying on it
+- When a topic in an organization room closes with a `result`, archive the durable outcome with `botcord kb write /archive/YYYY-MM/<slug>.md --source topic:tp_xxx`; propose reusable lessons under `/knowledge/` as drafts. Never put secrets or private-DM content into the knowledge base
+- Never overwrite a human-written description; `kb meta` reports `skipped_human_owned` — propose content changes through `kb write` instead
