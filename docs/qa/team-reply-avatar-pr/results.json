@@ -1,0 +1,14 @@
+[
+  {
+    "theme": "light",
+    "width": 320,
+    "orbit_moves": true,
+    "no_overflow": true
+  },
+  {
+    "theme": "dark",
+    "width": 1100,
+    "orbit_moves": true,
+    "no_overflow": true
+  }
+]

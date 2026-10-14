@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import type { DashboardMessage, MessageStatusReaction } from "@/lib/types";
 import MessageBubble from "./MessageBubble";
+import { TeamMessageFeedbackContext } from "../team/TeamMessageFeedback";
 vi.mock("@/lib/anime", () => ({ animateIfMotion: () => null, cleanupAnime: () => {}, animeStagger: () => 0 }));
 vi.mock("@/lib/i18n", async (original) => ({ ...await original<object>(), useLanguage: () => "zh" }));
 
@@ -24,7 +25,8 @@ it("shows real agent activity independently of receipts and removes each actor o
     expect(host.querySelector('[role="status"]')).toBeNull();
     expect(host.querySelector('[data-sender-avatar] img')?.getAttribute("src")).toBe("/profile-me.png");
     await render(["Alice", "Bob", "Carol", "Dave"].map((name) => reaction(name, 10000)));
-    expect(host.querySelectorAll(".replying-avatar")).toHaveLength(3);
+    expect(host.querySelectorAll('[data-status="replying"]')).toHaveLength(3);
+    expect(host.querySelectorAll(".bc-avatar-orbit")).toHaveLength(3);
     expect(host.querySelector('[role="status"]')?.textContent).toContain("+1");
     const reactions = [reaction("Alice", 1000), reaction("Bob", 2000)];
     await render(reactions);
@@ -80,4 +82,25 @@ it("uses the durable Team projection instead of a duplicate ephemeral reply indi
     expect(host.querySelector(".replying-avatar")).toBeNull();
     expect(host.querySelector('[data-response-state="completed"]')).not.toBeNull();
   } finally { await act(() => root.unmount()); host.remove(); }
+});
+
+
+it("uses Team response components without leaving a duplicate legacy reply avatar", async () => {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const message = { hub_msg_id: "h", msg_id: "m", sender_id: "hu_me", sender_kind: "human", type: "message", text: "Help", payload: {}, room_id: "rm_oc_test", state: "delivered", created_at: new Date().toISOString(), is_mine: true,
+    status_reactions: [{ actor_id: "ag_1", actor_name: "A", kind: "replying", state: "active", emoji: "⏳" }],
+  } as DashboardMessage;
+  try {
+    for (const status of ["processing", "completed"] as const) {
+      await act(() => root.render(<TeamMessageFeedbackContext.Provider value><MessageBubble isOwn message={{ ...message, reply_activity: [{ agent_id: "ag_1", agent_name: "A", status }] }} /></TeamMessageFeedbackContext.Provider>));
+      expect(host.querySelector('[role="status"]')).toBeNull();
+      const toolbar = host.querySelector('[role="toolbar"]')!;
+      expect(toolbar.querySelectorAll(`[data-response-state="${status}"]`)).toHaveLength(1);
+      expect(host.querySelectorAll('[data-status="replying"]')).toHaveLength(0);
+      expect(toolbar.querySelectorAll('[data-status="thinking"]')).toHaveLength(status === "processing" ? 1 : 0);
+    }
+  } finally {
+    await act(() => root.unmount());
+  }
 });

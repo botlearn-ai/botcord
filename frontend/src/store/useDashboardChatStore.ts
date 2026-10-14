@@ -1052,15 +1052,21 @@ export const useDashboardChatStore = create<DashboardChatState>()(
             }
             const activityFor = existing.filter((m) =>
               !m.is_recalled && !m.hub_msg_id.startsWith("tmp_")
-              && (!m.reply_activity || m.reply_activity.some((a) => !(["completed", "no_reply", "ignored"].includes(a.response_state ?? a.status))))
+              && ((m.status_reactions?.length ?? 0) > 0 || !m.reply_activity || m.reply_activity.some((a) => !(["completed", "no_reply", "ignored"].includes(a.response_state ?? a.status))))
             ).slice(-100).map((m) => m.msg_id);
             const result = await api.getRoomMessages(roomId, { after: newestPersisted.hub_msg_id, limit: 50, activityFor });
             if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessagePollRequestByRoom)) return;
-            if (result.activity_updates && Object.keys(result.activity_updates).length) {
-              set((state) => ({ messages: { ...state.messages, [roomId]: (state.messages[roomId] || []).map((m) =>
-                Object.prototype.hasOwnProperty.call(result.activity_updates, m.msg_id)
-                  ? { ...m, reply_activity: result.activity_updates![m.msg_id] } : m
-              ) } }));
+            if (result.activity_updates || result.status_reaction_updates) {
+              set((state) => ({ messages: { ...state.messages, [roomId]: (state.messages[roomId] || []).map((m) => {
+                const hasActivity = Object.prototype.hasOwnProperty.call(result.activity_updates ?? {}, m.msg_id);
+                const hasReactions = Object.prototype.hasOwnProperty.call(result.status_reaction_updates ?? {}, m.msg_id);
+                if (!hasActivity && !hasReactions) return m;
+                return {
+                  ...m,
+                  ...(hasActivity ? { reply_activity: result.activity_updates![m.msg_id] } : {}),
+                  ...(hasReactions ? { status_reactions: result.status_reaction_updates![m.msg_id] } : {}),
+                };
+              }) } }));
             }
             if (result.messages.length > 0) {
               if (!isCurrentRoomMessageRequest(roomId, epoch, requestId, roomMessagePollRequestByRoom)) return;

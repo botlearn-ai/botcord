@@ -742,22 +742,6 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   animation: botcord-loader-signal 1.4s cubic-bezier(0.2, 0, 0, 1) infinite;
 }
 
-.replying-avatar {
-  position: relative;
-  display: inline-flex;
-  border-radius: 9999px;
-}
-
-.replying-avatar::after {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: 9999px;
-  border: 1.5px solid var(--color-neon-cyan);
-  animation: replying-avatar-pulse 1.6s ease-out infinite;
-  pointer-events: none;
-}
-
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -845,18 +829,7 @@ html[data-theme="dark"] ::-webkit-scrollbar-thumb {
   }
 }
 
-@keyframes replying-avatar-pulse {
-  0% {
-    transform: scale(0.92);
-    opacity: 0.9;
-  }
 
-  70%,
-  100% {
-    transform: scale(1.35);
-    opacity: 0;
-  }
-}
 
 /* Chat must stay within its flex slot; only the feed scrolls. */
 .dashboard-main { min-height: 0; min-width: 0; }
