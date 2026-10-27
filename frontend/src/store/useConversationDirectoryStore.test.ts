@@ -10,7 +10,7 @@ const room = (id: string, revision = "v1", time = "2026-01-01T00:00:00Z"): Dashb
   last_sender_name: "Sender", revision,
 });
 const response = (rooms: DashboardRoom[], extra: Partial<ConversationSyncResponse> = {}): ConversationSyncResponse => ({
-  account_id: "a", human_id: "hu_a", upserts: rooms, removed_ids: [], has_more: false, ...extra,
+  next_cursor: "cursor-1", reset: false, account_id: "a", human_id: "hu_a", upserts: rooms, removed_ids: [], has_more: false, ...extra,
 });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; }
 beforeEach(() => { store.getState().activate(null, true); localStorage.clear(); vi.clearAllMocks(); store.getState().activate("a"); });
@@ -28,7 +28,7 @@ it("restores the full directory synchronously without waiting for the network", 
   const pending = store.getState().sync();
   expect(store.getState().rooms).toHaveLength(2);
   request.resolve(response([])); await pending;
-  expect(mocks.sync).toHaveBeenLastCalledWith({ latest: "v1", old: "v1" });
+  expect(mocks.sync).toHaveBeenLastCalledWith("cursor-1");
 });
 
 it("merges updates and removals without dropping unchanged rooms", async () => {
@@ -46,7 +46,7 @@ it("renders the first batch while subsequent pages are pending", async () => {
   await vi.waitFor(() => expect(mocks.sync).toHaveBeenCalledTimes(2));
   expect(store.getState().rooms[0].room_id).toBe("newest");
   expect(store.getState().syncing).toBe(true);
-  expect(mocks.sync).toHaveBeenLastCalledWith({ newest: "v1" });
+  expect(mocks.sync).toHaveBeenLastCalledWith("cursor-1");
   later.resolve(response([room("older", "v1", "2025-01-01T00:00:00Z")])); await sync;
   expect(store.getState().rooms).toHaveLength(2);
 });
@@ -82,7 +82,7 @@ it("does not let an older in-flight response overwrite a realtime summary", asyn
   store.getState().patch("live", { last_message_at: "2026-03-01T00:00:00Z", last_message_preview: "new" });
   delayed.resolve(response([room("live", "v2")])); await pending;
   expect(store.getState().rooms[0].revision).toBe("v3");
-  expect(mocks.sync).toHaveBeenLastCalledWith({ live: "" });
+  expect(mocks.sync).toHaveBeenLastCalledWith("cursor-1");
 });
 
 it("ignores typing and delivery receipts, rejects stale message patches", async () => {
@@ -104,4 +104,24 @@ it("handles corrupt cache and disabled storage without breaking chat", async () 
   mocks.sync.mockResolvedValue(response([room("still-visible")])); await store.getState().sync();
   expect(store.getState().rooms[0].room_id).toBe("still-visible");
   write.mockRestore();
+});
+
+it("replaces obsolete cached rows when the server resets an expired cursor", async () => {
+  mocks.sync.mockResolvedValueOnce(response([room("removed"), room("kept")])); await store.getState().sync();
+  mocks.sync.mockResolvedValueOnce(response([room("kept", "v2")], { reset: true, next_cursor: "new-epoch" }));
+  await store.getState().sync();
+  expect(store.getState().rooms.map((r) => r.room_id)).toEqual(["kept"]);
+  store.getState().activate(null); store.getState().activate("a");
+  expect(store.getState().cursor).toBe("new-epoch");
+});
+
+it("replays a raced page instead of advancing past a skipped authoritative upsert", async () => {
+  mocks.sync.mockResolvedValueOnce(response([room("live")], { next_cursor: "before" })); await store.getState().sync();
+  const delayed = deferred<ConversationSyncResponse>();
+  mocks.sync.mockReturnValueOnce(delayed.promise).mockResolvedValueOnce(response([room("live", "v3")], { next_cursor: "after" }));
+  const pending = store.getState().sync();
+  store.getState().patch("live", { last_message_preview: "local" });
+  delayed.resolve(response([room("live", "v2")], { next_cursor: "after" })); await pending;
+  expect(mocks.sync.mock.calls.slice(-2).map((args) => args[0])).toEqual(["before", "before"]);
+  expect(store.getState().cursor).toBe("after");
 });

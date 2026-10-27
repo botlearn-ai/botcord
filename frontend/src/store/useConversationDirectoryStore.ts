@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Authenticated account id, revision-based sync API and realtime hints.
+ * [INPUT]: Authenticated account id, cursor-based sync API and realtime hints.
  * [OUTPUT]: Account-isolated, persistent conversation summaries; cache-first delta refresh.
  * [POS]: Messages directory, independent of message history and legacy overview loaders.
  * [PROTOCOL]: Never persist tokens. Fence requests on account changes and logout.
@@ -18,14 +18,14 @@ export const sortConversations = (rooms: DashboardRoom[]) => [...rooms].sort((a,
   || a.room_id.localeCompare(b.room_id),
 );
 
-interface Snapshot { version: 1; accountId: string; rooms: DashboardRoom[]; view: DirectoryView; humanId: string | null }
+interface Snapshot { cursor: string | null; version: 1; accountId: string; rooms: DashboardRoom[]; view: DirectoryView; humanId: string | null }
 function readCache(accountId: string): Snapshot | null {
   try {
     const value = JSON.parse(localStorage.getItem(cacheKey(accountId)) ?? "null");
     if (value?.version !== 1 || value.accountId !== accountId || !Array.isArray(value.rooms)
       || !value.rooms.every((r: DashboardRoom) => typeof r?.room_id === "string" && typeof r.name === "string")) return null;
     const filters = ["self-all", "self-my-bot", "self-third-bot", "self-human", "self-group", "bots-all", "bots-bot-bot", "bots-bot-human", "bots-group"];
-    return { ...value, humanId: typeof value.humanId === "string" ? value.humanId : null,
+    return { ...value, cursor: typeof value.cursor === "string" ? value.cursor : null, humanId: typeof value.humanId === "string" ? value.humanId : null,
       view: filters.includes(value.view?.filter) && typeof value.view?.botScope === "string" ? value.view : defaultView };
   } catch { return null; }
 }
@@ -33,12 +33,13 @@ function persist(state: DirectoryState) {
   if (!state.accountId || !state.ready) return;
   try {
     localStorage.setItem(cacheKey(state.accountId), JSON.stringify({
-      version: 1, accountId: state.accountId, humanId: state.humanId, rooms: state.rooms, view: state.view,
+      version: 1, accountId: state.accountId, humanId: state.humanId, rooms: state.rooms, view: state.view, cursor: state.cursor,
     }));
   } catch { /* Quota/disabled storage must not prevent in-memory chat. */ }
 }
 
 interface DirectoryState {
+  cursor: string | null;
   accountId: string | null;
   humanId: string | null;
   rooms: DashboardRoom[];
@@ -59,7 +60,7 @@ let requestedAgain = false;
 let localVersions: Record<string, number> = {};
 
 export const useConversationDirectoryStore = create<DirectoryState>()((set, get) => ({
-  accountId: null, humanId: null, rooms: [], ready: false, syncing: false, hasMore: false, error: null, view: defaultView,
+  cursor: null, accountId: null, humanId: null, rooms: [], ready: false, syncing: false, hasMore: false, error: null, view: defaultView,
   activate: (accountId, forget = false) => {
     const current = get();
     if (forget && current.accountId) {
@@ -71,7 +72,7 @@ export const useConversationDirectoryStore = create<DirectoryState>()((set, get)
     requestedAgain = false;
     localVersions = {};
     const cached = accountId ? readCache(accountId) : null;
-    set({ accountId, humanId: cached?.humanId ?? null, rooms: cached?.rooms ?? [], ready: Boolean(cached),
+    set({ accountId, cursor: cached?.cursor ?? null, humanId: cached?.humanId ?? null, rooms: cached?.rooms ?? [], ready: Boolean(cached),
       syncing: false, hasMore: false, error: null, view: cached?.view ?? defaultView });
   },
   setView: (view) => { set({ view }); persist(get()); },
@@ -89,20 +90,27 @@ export const useConversationDirectoryStore = create<DirectoryState>()((set, get)
         for (let page = 0; page < 100 && current(); page += 1) {
           requestedAgain = false;
           const versions = { ...localVersions };
-          const known = Object.fromEntries(get().rooms.map((room) => [room.room_id, room.revision ?? ""]));
-          const result = await api.syncConversations(known);
+          const cursor = get().cursor;
+          const result = await api.syncConversations(cursor);
           if (!current()) return;
           if (result.account_id !== accountId) throw new Error("Conversation account changed");
-          const rooms = new Map(get().rooms.map((room) => [room.room_id, room]));
+          const previous = new Map(get().rooms.map((room) => [room.room_id, room]));
+          const rooms = result.reset ? new Map<string, DashboardRoom>() : new Map(previous);
+          let skipped = false;
           for (const id of result.removed_ids) rooms.delete(id);
           for (const room of result.upserts) {
             if ((localVersions[room.room_id] ?? 0) !== (versions[room.room_id] ?? 0)) {
               requestedAgain = true;
+              skipped = true;
+              const local = previous.get(room.room_id);
+              if (local) rooms.set(room.room_id, local);
               continue;
             }
             rooms.set(room.room_id, room);
           }
-          set({ rooms: sortConversations([...rooms.values()]), ready: true,
+          // Replay this page if a local event raced it; advancing the cursor
+          // after skipping an upsert would permanently lose its authoritative data.
+          set({ cursor: skipped ? cursor : result.next_cursor, rooms: sortConversations([...rooms.values()]), ready: true,
             humanId: result.human_id, hasMore: result.has_more });
           persist(get());
           if (!result.has_more && !requestedAgain) {

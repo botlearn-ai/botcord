@@ -146,7 +146,10 @@ async def lifespan(app: FastAPI):
     cloud_agent_idle_task = None
     owner_chat_fanout_task = None
     access_graph_task = None
+    conversation_projection_task = None
     if not test_db_override:
+        from hub.services.conversation_projection import conversation_projection_loop
+        conversation_projection_task = asyncio.create_task(conversation_projection_loop())
         # Background message expiry loop
         expiry_task = asyncio.create_task(message_expiry_loop())
         # Background file cleanup loop
@@ -176,6 +179,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     for task in (
         access_graph_task,
+        conversation_projection_task,
         owner_chat_fanout_task,
         cloud_agent_idle_task,
         agent_schedule_task,

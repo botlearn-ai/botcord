@@ -12,8 +12,8 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/chats/messages" }));
 vi.mock("@/lib/i18n", () => ({ useLanguage: () => "en" }));
 vi.mock("@/lib/api", async (original) => {
   const actual = await original<typeof import("@/lib/api")>();
-  return { ...actual, api: { ...actual.api, syncConversations: async (known: Record<string, string>) =>
-    (await fetch(endpoint.base, { method: "POST", body: JSON.stringify({ known }) })).json() } };
+  return { ...actual, api: { ...actual.api, syncConversations: async (cursor: string | null) =>
+    (await fetch(endpoint.base, { method: "POST", body: JSON.stringify({ cursor }) })).json() } };
 });
 import MessagesPanel from "./sidebar/MessagesPanel";
 import DashboardShellSkeleton from "./DashboardShellSkeleton";
@@ -30,10 +30,10 @@ it.skipIf(process.env.BOTCORD_CACHE_BENCHMARK !== "1")("measures cached shell an
   const batches: number[] = [];
   const server = createServer(async (req, res) => {
     let body = ""; for await (const chunk of req) body += chunk;
-    const { known } = JSON.parse(body);
-    const upserts = rooms.filter((r) => known[r.room_id] !== r.revision);
+    const { cursor } = JSON.parse(body);
+    const upserts = cursor === null ? rooms : rooms.filter((r) => r.revision === "v2");
     batches.push(upserts.length);
-    setTimeout(() => { res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify({ account_id: "fixture", human_id: "hu_fixture", upserts, removed_ids: [], has_more: false })); }, 1500);
+    setTimeout(() => { res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify({ next_cursor: cursor === null ? "initial" : "updated", reset: cursor === null, account_id: "fixture", human_id: "hu_fixture", upserts, removed_ids: [], has_more: false })); }, 1500);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   endpoint.base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;

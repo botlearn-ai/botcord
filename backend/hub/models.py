@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 SQLAlchemy Base、枚举与关系定义，承载 Hub 与 dashboard 的持久化真相源
-[OUTPUT]: 对外提供 Agent、Invite、ShortCode、Space/Organization 身份、Space 知识库、团队会话及消息响应执行、关联与发送幂等模型
+[OUTPUT]: 对外提供 Agent、Invite、ShortCode、Space/Organization 身份、Space 知识库、团队会话、消息响应执行、发送幂等及持久化会话摘要/游标模型
 [POS]: backend 数据模型中枢，负责把身份、社交、支付、绑定等状态收敛到统一 schema
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
 """
@@ -2874,3 +2874,49 @@ class BotlearnInstallation(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class ConversationDirtyRoom(Base):
+    """Transactional, coalescing outbox; no sequence is used as a cursor."""
+    __tablename__ = "conversation_dirty_rooms"
+    room_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="1")
+    writer_xid: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class ConversationAccount(Base):
+    __tablename__ = "conversation_accounts"
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    epoch: Mapped[str] = mapped_column(String(32), nullable=False)
+    version: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    floor: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+
+
+class ConversationEntry(Base):
+    __tablename__ = "conversation_entries"
+    __table_args__ = (
+        Index("ix_conversation_entries_recent", "user_id", "deleted", sa_text("activity_at DESC"), "room_id"),
+        Index("ix_conversation_entries_room", "room_id"),
+        Index("ix_conversation_entries_sender", "last_sender_id"),
+    )
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    room_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=sa_text("FALSE"))
+    activity_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_sender_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class ConversationChange(Base):
+    """Commit-ordered by a locked account row, NOT a global database sequence."""
+    __tablename__ = "conversation_changes"
+    user_id: Mapped[_uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    version: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    room_id: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+# Fresh databases (including SQLite tests) get the same durable change capture
+# as migration 017. Import at the end, after all referenced tables are defined.
+from hub.services.conversation_capture import register_capture  # noqa: E402
+register_capture(Base.metadata)

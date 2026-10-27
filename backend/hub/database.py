@@ -26,3 +26,4 @@ async def get_db() -> AsyncSession:  # type: ignore[misc]
 
 # Session hooks that keep authorization edges current (registered on import).
 import hub.services.access_graph_hooks  # noqa: E402,F401
+import hub.services.conversation_hooks  # noqa: E402,F401

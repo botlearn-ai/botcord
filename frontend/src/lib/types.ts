@@ -1222,6 +1222,8 @@ export interface HumanContactRequestResolveResponse {
 }
 
 export interface ConversationSyncResponse {
+  next_cursor: string;
+  reset: boolean;
   account_id: string;
   human_id: string | null;
   upserts: DashboardRoom[];

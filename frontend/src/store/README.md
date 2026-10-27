@@ -3,7 +3,7 @@
 > L2 | 父级: /Users/chenxuejia/ws/2026/botcord/frontend/README.md
 
 成员清单
-useConversationDirectoryStore.ts: 按 Hub/账号持久化完整会话摘要和分组筛选；先缓存后增量，版本清单合并变化/撤销，隔离账号和迟到响应。
+useConversationDirectoryStore.ts: 按 Hub/账号持久化完整会话摘要和分组筛选；先缓存后游标增量，持久化同步水位并合并变化/撤销，隔离账号和迟到响应。
 useConversationPreferencesStore.ts: 按账号隔离并持久化当前设备的会话置顶与隐藏水位，不保存聊天内容；新消息超过隐藏水位后恢复显示。
 team-space-store.ts: 页面独立的 Team 数据加载，支持有冷却时间和并发去重的后台刷新，取消旧请求并按请求版本丢弃迟到结果，避免跨空间内容混用。
 useAppStore.ts: 全局轻量 UI 状态（语言等），独立于 dashboard 业务域。  
