@@ -320,6 +320,48 @@ async def test_restart_fails_closed_on_capture_drift_and_migration_repairs(datab
 
 
 
+@pytest.mark.parametrize("drift", ["update_columns", "stable", "immutable"])
+async def test_restart_rejects_capture_semantic_drift_and_repair_restores_writes(database, drift):
+    import hashlib
+    from sqlalchemy.exc import DBAPIError
+    from scripts.repair_conversation_capture import check_or_repair
+
+    engine, _, _, schema = database
+    name = "conversation_rooms_update_" + hashlib.md5(schema.encode()).hexdigest()[:8]
+    async with engine.begin() as conn:
+        if drift == "update_columns":
+            await conn.exec_driver_sql(f"DROP TRIGGER {name} ON rooms")
+            await conn.exec_driver_sql(
+                f"CREATE TRIGGER {name} AFTER UPDATE OF name ON rooms "
+                f"FOR EACH ROW EXECUTE FUNCTION {name}()"
+            )
+            await conn.exec_driver_sql("DELETE FROM conversation_dirty_rooms")
+            await conn.exec_driver_sql("UPDATE rooms SET description = 'missed' WHERE room_id = 'rm_a'")
+            assert (await conn.exec_driver_sql("SELECT count(*) FROM conversation_dirty_rooms")).scalar() == 0
+        else:
+            await conn.exec_driver_sql(f"ALTER FUNCTION {name}() {drift.upper()}")
+    if drift != "update_columns":
+        with pytest.raises(DBAPIError, match="INSERT is not allowed in a non-volatile function"):
+            async with engine.begin() as conn:
+                await conn.exec_driver_sql("UPDATE rooms SET description = 'blocked' WHERE room_id = 'rm_a'")
+
+    with pytest.raises(RuntimeError, match="repair_conversation_capture"):
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    with pytest.raises(RuntimeError, match="repair_conversation_capture"):
+        async with engine.begin() as conn:
+            await conn.run_sync(check_or_repair)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(lambda c: check_or_repair(c, apply=True))
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        # Remove repair's reconciliation rows to prove this write is captured.
+        await conn.exec_driver_sql("DELETE FROM conversation_dirty_rooms")
+        await conn.exec_driver_sql("UPDATE rooms SET description = 'repaired' WHERE room_id = 'rm_a'")
+        assert (await conn.exec_driver_sql("SELECT room_id FROM conversation_dirty_rooms")).scalars().all() == ["rm_a"]
+
+
 async def test_repair_is_atomic_and_accepts_equivalent_search_path(database):
     from scripts.repair_conversation_capture import check_or_repair
     engine, _, _, schema = database

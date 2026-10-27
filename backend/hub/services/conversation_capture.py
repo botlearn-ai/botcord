@@ -6,7 +6,7 @@ capture. PostgreSQL functions pin their search path to the installing schema.
 """
 import re
 
-from sqlalchemy import event, text, text
+from sqlalchemy import event, text
 
 
 def capture_statements(dialect: str, *, user_table: str = '"public"."users"', suffix: str = "") -> list[str]:
@@ -96,7 +96,8 @@ def _validate_postgres_capture(connection, schema, user_schema, suffix):
                p.proname, pn.nspname AS function_schema, p.prosrc,
                t.tgqual IS NULL AS unconditional, t.tgnargs, p.proconfig,
                (p.prorettype = 'trigger'::regtype AND p.pronargs = 0
-                AND NOT p.prosecdef AND p.prokind = 'f'
+                AND NOT p.prosecdef AND p.prokind = 'f' AND p.provolatile = 'v'
+                AND t.tgattr = ''::int2vector
                 AND l.lanname = 'plpgsql' AND t.tgconstraint = 0) AS implementation_matches
         FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
         JOIN pg_namespace n ON n.oid = c.relnamespace
