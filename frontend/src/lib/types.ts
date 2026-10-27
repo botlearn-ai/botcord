@@ -58,7 +58,10 @@ export interface DashboardRoom {
    * cannot send — they observe the bot. Frontend-only field, populated at
    * merge time by `mergeOwnerVisibleRooms`.
    */
-  _originAgent?: { agent_id: string; display_name: string };
+  _originAgent?: { agent_id: string; display_name: string } | null;
+  _originAgents?: { agent_id: string; display_name: string }[];
+  /** Server fingerprint for incremental conversation synchronization. */
+  revision?: string;
   /** Organization (Team) rooms carry their space; personal lists exclude them. */
   space_id?: string | null;
   space_kind?: "room" | "dm" | null;
@@ -1216,4 +1219,12 @@ export interface HumanContactRequestListResponse {
 export interface HumanContactRequestResolveResponse {
   id: string;
   state: "accepted" | "rejected";
+}
+
+export interface ConversationSyncResponse {
+  account_id: string;
+  human_id: string | null;
+  upserts: DashboardRoom[];
+  removed_ids: string[];
+  has_more: boolean;
 }

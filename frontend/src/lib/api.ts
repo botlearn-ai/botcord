@@ -1,4 +1,5 @@
 import type {
+  ConversationSyncResponse,
   Attachment,
   FileUploadResult,
   ResetTicketResponse,
@@ -393,6 +394,10 @@ async function apiDelete<T>(path: string): Promise<T> {
 
 export const api = {
   // --- Dashboard APIs ---
+
+  syncConversations(known: Record<string, string>, limit = 100) {
+    return apiPost<ConversationSyncResponse>("/api/conversations/sync", { known, limit });
+  },
 
   getOverview() {
     return apiGet<DashboardOverview>("/api/dashboard/overview");

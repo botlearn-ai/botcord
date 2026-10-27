@@ -7,6 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { useConversationDirectoryStore } from "@/store/useConversationDirectoryStore";
 import Badge from "@/components/ui/Badge";
 import Tabs from "@/components/ui/Tabs";
 import Button from "@/components/ui/Button";
@@ -663,6 +664,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
     recentVisitedRooms: state.recentVisitedRooms,
     getRoomSummary: state.getRoomSummary,
   })));
+  const directoryRooms = useConversationDirectoryStore((state) => state.rooms);
   const effectiveSidebarTab = sidebarTabOverride ?? sidebarTab;
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreviewState | null>(null);
   const visibleMessageRooms = useMemo(
@@ -714,9 +716,11 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
     );
   }
 
-  const openedRoom = openedRoomId ? getRoomSummary(openedRoomId) : null;
+  const directoryRoom = directoryRooms.find((room) => room.room_id === openedRoomId);
+  const openedRoom = directoryRoom ?? (openedRoomId ? getRoomSummary(openedRoomId) : null);
   const originAgent = openedRoom?._originAgent ?? null;
-  const joinedRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
+  const joinedRoom = (directoryRoom && !directoryRoom._originAgent ? directoryRoom : undefined)
+    ?? overview?.rooms.find((r) => r.room_id === openedRoomId);
   const joinedHumanRoom = humanRooms.find((r) => r.room_id === openedRoomId);
   const isHumanView = viewMode === "human";
   // DM rooms are auto-created server-side on first send, so treat the user
@@ -724,7 +728,7 @@ export default function ChatPane({ onHumanOpen, sidebarTabOverride }: ChatPanePr
   // two encoded parties.
   const selfId = (isHumanView || isAuthedHuman) ? humanId : activeAgentId;
   const isPendingDmForSelf = dmPeerId(openedRoomId, selfId) !== null;
-  const isJoinedRoom = ((isHumanView || isAuthedHuman) ? Boolean(joinedHumanRoom) : Boolean(joinedRoom))
+  const isJoinedRoom = ((isHumanView || isAuthedHuman) ? Boolean(joinedHumanRoom || (directoryRoom && !directoryRoom._originAgent)) : Boolean(joinedRoom))
     || isPendingDmForSelf;
   const humanSendAllowed = joinedRoom?.allow_human_send !== false;
   const isPaidRoom = Boolean(openedRoom?.required_subscription_product_id);

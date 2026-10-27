@@ -1,5 +1,6 @@
 "use client";
 
+import { useConversationDirectoryStore } from "@/store/useConversationDirectoryStore";
 import DialogShell, { useDialogClose } from "@/components/ui/DialogShell";
 import Alert from "@/components/ui/Alert";
 import Field from "@/components/ui/Field";
@@ -236,9 +237,10 @@ export default function RoomHumanComposer({ roomId, topicId = null }: RoomHumanC
   const refreshHumanRooms = useDashboardSessionStore((s) => s.refreshHumanRooms);
   const refreshWallet = useDashboardWalletStore((s) => s.loadWallet);
   const refreshWalletLedger = useDashboardWalletStore((s) => s.loadWalletLedger);
+  const hasRoomInDirectory = useConversationDirectoryStore((s) => s.rooms.some((r) => r.room_id === roomId && !r._originAgent));
   const hasRoomInHumanRooms = useDashboardSessionStore(
     (s) => s.humanRooms.some((r) => r.room_id === roomId),
-  );
+  ) || hasRoomInDirectory;
 
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<PublicRoomMember[]>([]);

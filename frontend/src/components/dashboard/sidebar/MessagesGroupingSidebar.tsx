@@ -1,5 +1,6 @@
 "use client";
 
+import { useConversationDirectoryStore } from "@/store/useConversationDirectoryStore";
 import Badge from "@/components/ui/Badge";
 import IconButton from "@/components/ui/IconButton";
 import Button from "@/components/ui/Button";
@@ -85,12 +86,13 @@ export default function MessagesGroupingSidebar({
     })),
   );
 
+  const directory = useConversationDirectoryStore();
   const counts = useMemo(() => {
     const ownRooms = buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms });
-    const merged = mergeOwnerVisibleRooms({ ownedAgentRooms, ownRooms });
+    const merged = directory.accountId ? directory.rooms : mergeOwnerVisibleRooms({ ownedAgentRooms, ownRooms });
     const ids = new Set(ownedAgents.map((agent) => agent.agent_id));
     return countMessagesByFilter(merged, ids);
-  }, [overview, recentVisitedRooms, token, humanRooms, ownedAgents, ownedAgentRooms]);
+  }, [overview, recentVisitedRooms, token, humanRooms, ownedAgents, ownedAgentRooms, directory.accountId, directory.rooms]);
 
   const [selfOpen, setSelfOpen] = useState(true);
   const [botsOpen, setBotsOpen] = useState(true);

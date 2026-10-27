@@ -5,6 +5,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { useConversationDirectoryStore } from "./useConversationDirectoryStore";
 import { create } from "zustand";
 import type { DashboardRoom, RealtimeMetaEvent } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -39,7 +40,7 @@ export const useDashboardUnreadStore = create<DashboardUnreadState>()((set, get)
 
   applyRealtimeEvent: (event) =>
     set((state) => {
-      if (!event.room_id) return state;
+      if (!event.room_id || !["message", "system"].includes(event.type)) return state;
       return {
         optimisticSeenRoomIds: state.optimisticSeenRoomIds.filter((id) => id !== event.room_id),
         optimisticUnreadRoomIds: state.optimisticUnreadRoomIds.includes(event.room_id)
@@ -99,8 +100,12 @@ export const useDashboardUnreadStore = create<DashboardUnreadState>()((set, get)
       lastMarkedSeenAtByRoom: { ...state.lastMarkedSeenAtByRoom, [roomId]: seenAt },
     }));
 
+    const accountId = useConversationDirectoryStore.getState().accountId;
     try {
       await api.markRoomRead(roomId);
+      if (useConversationDirectoryStore.getState().accountId !== accountId) return;
+      useConversationDirectoryStore.getState().patch(roomId, { has_unread: false, unread_count: 0 });
+      void useConversationDirectoryStore.getState().sync();
     } catch (error) {
       console.error("[UnreadStore] Failed to persist room read watermark:", error);
       set((state) => {

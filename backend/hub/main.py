@@ -61,6 +61,7 @@ from hub.request_observability import rate_limit_context, request_id_for
 
 from app.routers.humans import router as app_humans_router
 from app.routers.users import router as app_users_router
+from app.routers.conversations import router as app_conversations_router
 from app.routers.dashboard import router as app_dashboard_router
 from app.routers.presence import router as app_presence_router, status_router as app_presence_status_router
 from app.routers.invites import router as app_invites_router
@@ -355,6 +356,7 @@ app.include_router(app_humans_router, dependencies=_beta_gate)
 app.include_router(app_activity_router, dependencies=_beta_gate)
 app.include_router(app_agent_capability_router, dependencies=_beta_gate)
 app.include_router(app_dashboard_router, dependencies=_beta_gate)
+app.include_router(app_conversations_router, dependencies=_beta_gate)
 app.include_router(app_invites_router)
 app.include_router(app_public_router)
 app.include_router(app_share_router)

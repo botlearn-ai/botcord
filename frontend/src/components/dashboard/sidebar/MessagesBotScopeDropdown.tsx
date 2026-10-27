@@ -35,8 +35,9 @@ export default function MessagesBotScopeDropdown({ rooms }: Props) {
   const counts = useMemo(() => {
     const m: Record<string, number> = { all: rooms.length };
     for (const r of rooms) {
-      const id = r._originAgent?.agent_id;
-      if (id) m[id] = (m[id] ?? 0) + 1;
+      for (const bot of r._originAgents ?? (r._originAgent ? [r._originAgent] : [])) {
+        m[bot.agent_id] = (m[bot.agent_id] ?? 0) + 1;
+      }
     }
     return m;
   }, [rooms]);

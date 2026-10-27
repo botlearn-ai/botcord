@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useDashboardChatStore } from "@/store/useDashboardChatStore";
-import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
+import { useConversationDirectoryStore } from "@/store/useConversationDirectoryStore";
 import { useDashboardUIStore } from "@/store/useDashboardUIStore";
 
 const MESSAGES_DIRECTORY_SYNC_INTERVAL_MS = 30_000;
@@ -23,7 +23,6 @@ export function useMessagesPaneSync(enabled: boolean, sessionKey: string | null)
       syncInFlight = true;
       try {
         const { openedRoomId, messagesPane } = useDashboardUIStore.getState();
-        const session = useDashboardSessionStore.getState();
         const chat = useDashboardChatStore.getState();
         const now = Date.now();
         const shouldSyncDirectory = Boolean(opts?.forceDirectory)
@@ -31,11 +30,8 @@ export function useMessagesPaneSync(enabled: boolean, sessionKey: string | null)
         if (shouldSyncDirectory) {
           lastDirectorySyncRef.current = now;
         }
-        const directorySync = shouldSyncDirectory ? [
-          chat.refreshOverview(),
-          session.human?.human_id ? session.refreshHumanRooms() : Promise.resolve(),
-          session.activeIdentity?.type === "human" ? chat.loadOwnedAgentRooms() : Promise.resolve(),
-        ] : [];
+        const directorySync = shouldSyncDirectory
+          ? [useConversationDirectoryStore.getState().sync()] : [];
         await Promise.all([
           ...directorySync,
           openedRoomId && messagesPane === "room"

@@ -1,11 +1,13 @@
 "use client";
 
+import { useConversationDirectoryStore } from "@/store/useConversationDirectoryStore";
 import EmptyState from "@/components/ui/EmptyState";
 import Badge from "@/components/ui/Badge";
 import Card from "@/components/ui/Card";
 import IconButton from "@/components/ui/IconButton";
 import Tooltip from "@/components/ui/Tooltip";
 import DismissLayer from "@/components/ui/DismissLayer";
+import Alert from "@/components/ui/Alert";
 import Button from "@/components/ui/Button";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 // messagesFilter is in useDashboardUIStore so ChatPane can also read it.
@@ -92,10 +94,12 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
   const emptyStateRef = useRef<HTMLDivElement | null>(null);
 
   // Owner-unified Messages list: my own conversations + tagged bot conversations.
+  const directory = useConversationDirectoryStore();
   const visibleMessageRooms = useMemo<DashboardRoom[]>(() => {
+    if (directory.accountId) return directory.rooms;
     const ownRooms = buildVisibleMessageRooms({ overview, recentVisitedRooms, token, humanRooms });
     return mergeOwnerVisibleRooms({ ownedAgentRooms, ownRooms });
-  }, [overview, recentVisitedRooms, token, humanRooms, ownedAgents, ownedAgentRooms]);
+  }, [overview, recentVisitedRooms, token, humanRooms, ownedAgents, ownedAgentRooms, directory.accountId, directory.rooms]);
 
   const isBotsScope = messagesFilter.startsWith("bots-");
   // Type-filtered rooms (used both for the list and for the bot-scope dropdown
@@ -110,7 +114,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
   const categorizedRooms = useMemo(() => {
     if (!isBotsScope || messagesBotScope === "all") return typeFilteredRooms;
     return typeFilteredRooms.filter(
-      (r) => r._originAgent?.agent_id === messagesBotScope,
+      (r) => (r._originAgents ?? (r._originAgent ? [r._originAgent] : [])).some((bot) => bot.agent_id === messagesBotScope),
     );
   }, [typeFilteredRooms, isBotsScope, messagesBotScope]);
 
@@ -139,7 +143,9 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
 
   // Independent sources may resolve in any order. Never hide usable rows while
   // waiting for another source, or show onboarding before initial loads finish.
-  const awaitingInitialRooms = sessionMode !== "guest" && (
+  const awaitingInitialRooms = directory.accountId
+    ? (!directory.ready && !directory.error) || directory.hasMore
+    : sessionMode !== "guest" && (
     (!overview && !overviewErrored)
     || (activeIdentity?.type === "human" && !ownedAgentRoomsLoaded)
   );
@@ -401,9 +407,20 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
           <MessagesBotScopeDropdown rooms={typeFilteredRooms} />
         </div>
       ) : null}
-      {showRoomListSkeleton ? (
+      {directory.accountId && directory.error ? (
+        <Alert tone="warning" className="m-3" actions={
+          <Button variant="inline" onClick={() => void directory.sync()}>
+            {locale === "zh" ? "重试" : "Retry"}
+          </Button>
+        }>
+          {directory.ready
+            ? locale === "zh" ? "会话暂时无法更新，已保留本地列表。" : "Conversations could not refresh. Your saved list is still available."
+            : locale === "zh" ? "暂时无法加载会话，请重试。" : "Conversations could not load. Please retry."}
+        </Alert>
+      ) : null}
+      {directory.accountId && directory.error && !directory.ready ? null : showRoomListSkeleton ? (
         <RoomList rooms={[]} loading />
-      ) : isBotsScope && ownedAgents.length === 0 ? (
+      ) : isBotsScope && ownedAgents.length === 0 && filteredMessageRooms.length === 0 ? (
         <div ref={emptyStateRef} className="m-3"><EmptyState compact bordered title={<>还没有 Bot</>} description={<>
             创建你的第一个 Bot，然后在这里观察它在跟谁聊什么。
           </>} icon={<>
@@ -425,6 +442,7 @@ export default function MessagesPanel({ isGuest, onCreateRoom, onAddFriend }: Me
         <>
           <RoomList
             rooms={filteredMessageRooms}
+            authoritative={Boolean(directory.accountId)}
             searchQuery={messageQuery}
           />
           {!normalizedMessageQuery && filteredMessageRooms.length < 5 && (

@@ -7,6 +7,9 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { useConversationDirectoryStore } from "@/store/useConversationDirectoryStore";
+import { applyMessagesFilter } from "@/lib/messages-merge";
+import RoomList from "./RoomList";
 import Skeleton from "@/components/ui/Skeleton";
 import WorkspaceModeSwitch from "./WorkspaceModeSwitch";
 import TeamWorkspaceSkeleton from "@/components/team/TeamWorkspaceSkeleton";
@@ -119,6 +122,11 @@ function SecondaryPanelSkeleton({ variant }: { variant: ShellSkeletonVariant }) 
 }
 
 export default function DashboardShellSkeleton({ variant: variantProp }: { variant?: ShellSkeletonVariant }) {
+  const directory = useConversationDirectoryStore();
+  const ids = new Set(directory.rooms.flatMap((room) => (room._originAgents ?? []).map((bot) => bot.agent_id)));
+  const cachedRooms = applyMessagesFilter(directory.rooms, directory.view.filter, ids)
+    .filter((room) => !directory.view.filter.startsWith("bots-") || directory.view.botScope === "all"
+      || room._originAgents?.some((bot) => bot.agent_id === directory.view.botScope));
   const pathname = usePathname();
   const variant = variantProp ?? getShellSkeletonVariantFromPathname(pathname);
   const hasOpenConversation = shellSkeletonHasOpenConversation(pathname);
@@ -181,7 +189,7 @@ export default function DashboardShellSkeleton({ variant: variantProp }: { varia
                     <SkeletonLine className="h-8 w-8 rounded-lg bg-glass-border/35" />
                   </div>
                 </div>
-                <RoomRowsSkeleton />
+                {directory.accountId && directory.ready ? <div inert className="min-h-0 flex-1 overflow-y-auto"><RoomList rooms={cachedRooms} authoritative /></div> : <RoomRowsSkeleton />}
               </div>
             ) : null}
           </div>

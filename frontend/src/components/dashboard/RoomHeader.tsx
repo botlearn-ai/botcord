@@ -6,6 +6,7 @@
  */
 "use client";
 
+import { useConversationDirectoryStore } from "@/store/useConversationDirectoryStore";
 import Badge from "@/components/ui/Badge";
 import IconButton from "@/components/ui/IconButton";
 import DismissLayer from "@/components/ui/DismissLayer";
@@ -90,8 +91,10 @@ export default function RoomHeader({ onBack, title, onOpenMembers, membersLabel 
     joinRoom: state.joinRoom,
     joiningRoomId: state.joiningRoomId,
   })));
-  const authRoom = overview?.rooms.find((r) => r.room_id === openedRoomId);
-  const humanRoom = humanRooms.find((r) => r.room_id === openedRoomId);
+  const directoryRoom = useConversationDirectoryStore((state) => state.rooms.find((r) => r.room_id === openedRoomId));
+  const ownDirectoryRoom = directoryRoom && !directoryRoom._originAgent ? directoryRoom : undefined;
+  const authRoom = ownDirectoryRoom ?? overview?.rooms.find((r) => r.room_id === openedRoomId);
+  const humanRoom = ownDirectoryRoom ?? humanRooms.find((r) => r.room_id === openedRoomId);
   const room = openedRoomId ? getRoomSummary(openedRoomId) : null;
   const roomRule = room?.rule?.trim();
   const roomDescription = room?.description?.trim();

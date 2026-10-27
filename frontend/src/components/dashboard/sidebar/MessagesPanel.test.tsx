@@ -26,6 +26,12 @@ vi.mock("@/store/useDashboardUIStore", async (importOriginal) => {
   const store = actual.useDashboardUIStore;
   return { ...actual, useDashboardUIStore: Object.assign((selector: (s: ReturnType<typeof store.getState>) => unknown) => selector(store.getState()), store) };
 });
+vi.mock("@/store/useConversationDirectoryStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/store/useConversationDirectoryStore")>();
+  const store = actual.useConversationDirectoryStore;
+  return { ...actual, useConversationDirectoryStore: Object.assign((selector?: (s: ReturnType<typeof store.getState>) => unknown) => selector ? selector(store.getState()) : store.getState(), store) };
+});
+import { useConversationDirectoryStore as directory } from "@/store/useConversationDirectoryStore";
 import MessagesPanel from "./MessagesPanel";
 import { ownedAgentRoomToDashboardRoom } from "@/lib/messages-merge";
 import { useDashboardSessionStore as session } from "@/store/useDashboardSessionStore";
@@ -41,6 +47,7 @@ const room: HumanAgentRoomSummary = {
 };
 const render = () => renderToStaticMarkup(<MessagesPanel isGuest={false} onCreateRoom={() => {}} onAddFriend={() => {}} />);
 beforeEach(() => {
+  directory.setState(directory.getInitialState());
   session.setState({ ...session.getInitialState(), sessionMode: "authed-ready", token: "fixture", activeIdentity: { type: "human", id: "hu_fixture" } });
   chat.setState({ ...chat.getInitialState(), overviewRefreshing: true });
   ui.setState({ ...ui.getInitialState(), sidebarTab: "messages", messagesFilter: "self-all" });
@@ -93,5 +100,29 @@ describe("Messages initial loading", () => {
     session.setState({ activeIdentity: { type: "agent", id: "ag_fixture" } });
     chat.setState({ overview, overviewRefreshing: false });
     expect(render()).toContain("data-empty-onboarding");
+  });
+});
+
+describe("Messages cached directory", () => {
+  it("shows saved rows during background sync without legacy overview", () => {
+    directory.setState({ accountId: "account", ready: true, syncing: true, rooms: [{ ...ownedAgentRoomToDashboardRoom(room), _originAgent: null }] });
+    expect(render()).toContain("rm_fixture");
+    expect(render()).not.toContain("data-loading-rooms");
+  });
+  it("keeps saved rows visible when refresh fails", () => {
+    directory.setState({ accountId: "account", ready: true, error: "offline", rooms: [{ ...ownedAgentRoomToDashboardRoom(room), _originAgent: null }] });
+    expect(render()).toContain("rm_fixture");
+    expect(render()).toContain("Retry");
+  });
+  it("shows retry instead of onboarding when an uncached request fails", () => {
+    directory.setState({ accountId: "account", ready: false, error: "offline" });
+    expect(render()).toContain("Retry");
+    expect(render()).not.toContain("data-empty-onboarding");
+    expect(render()).not.toContain("data-loading-rooms");
+  });
+  it("includes shared rooms for every participating owned bot", () => {
+    ui.setState({ messagesFilter: "bots-all", messagesBotScope: "ag_second" });
+    directory.setState({ accountId: "account", ready: true, rooms: [{ ...ownedAgentRoomToDashboardRoom(room), _originAgents: [{ agent_id: "ag_fixture", display_name: "First" }, { agent_id: "ag_second", display_name: "Second" }] }] });
+    expect(render()).toContain("rm_fixture");
   });
 });

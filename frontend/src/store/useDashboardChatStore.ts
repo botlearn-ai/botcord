@@ -5,6 +5,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { useConversationDirectoryStore } from "./useConversationDirectoryStore";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
@@ -155,7 +156,8 @@ function applyRealtimeRoomHint<T extends {
   last_message_preview: string | null;
   last_sender_name: string | null;
 }>(room: T, event: RealtimeMetaEvent): T {
-  if (room.room_id !== event.room_id) return room;
+  if (room.room_id !== event.room_id || !["message", "system"].includes(event.type)) return room;
+  if (Date.parse(event.created_at) < Date.parse(room.last_message_at ?? "")) return room;
 
   const preview = typeof event.ext.preview === "string"
     ? event.ext.preview
@@ -669,6 +671,8 @@ export const useDashboardChatStore = create<DashboardChatState>()(
       },
 
       getRoomSummary: (roomId) => {
+        const directoryRoom = useConversationDirectoryStore.getState().rooms.find((room) => room.room_id === roomId);
+        if (directoryRoom) return directoryRoom;
         const state = get();
         const joinedRoom = state.overview?.rooms.find((room) => room.room_id === roomId);
         if (joinedRoom) return joinedRoom;
@@ -877,7 +881,8 @@ export const useDashboardChatStore = create<DashboardChatState>()(
         useDashboardUnreadStore.getState().reconcileUnreadRooms(overview.rooms);
       },
 
-      patchRoom: (roomId, patch) =>
+      patchRoom: (roomId, patch) => {
+        useConversationDirectoryStore.getState().patch(roomId, patch);
         set((state) => ({
           overview: state.overview
             ? {
@@ -887,9 +892,11 @@ export const useDashboardChatStore = create<DashboardChatState>()(
               ),
             }
             : state.overview,
-        })),
+        }));
+      },
 
-      patchOwnerChatRoomSummary: (roomId, patch) =>
+      patchOwnerChatRoomSummary: (roomId, patch) => {
+        useConversationDirectoryStore.getState().patch(roomId, patch);
         set((state) => {
           const existing = state.ownedAgentRooms.find((room) => room.room_id === roomId);
           if (!existing) return state;
@@ -918,7 +925,8 @@ export const useDashboardChatStore = create<DashboardChatState>()(
               ]),
             ),
           };
-        }),
+        });
+      },
 
       bumpRoomMembersVersion: (roomId) =>
         set((state) => ({

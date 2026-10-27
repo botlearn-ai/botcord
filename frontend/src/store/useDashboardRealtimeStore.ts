@@ -5,6 +5,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { useConversationDirectoryStore } from "./useConversationDirectoryStore";
 import { create } from "zustand";
 import type { RealtimeMetaEvent } from "@/lib/types";
 import { api } from "@/lib/api";
@@ -173,14 +174,11 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
         })();
 
         if (shouldRefreshOverview) {
-          // The Messages list merges all three directories. Overview alone
-          // cannot discover rooms that only an owned bot participates in.
-          const session = useDashboardSessionStore.getState();
-          await Promise.all([
-            chatStore.refreshOverview(),
-            session.human?.human_id ? session.refreshHumanRooms() : Promise.resolve(),
-            session.activeIdentity?.type === "human" ? chatStore.loadOwnedAgentRooms() : Promise.resolve(),
-          ]);
+          if (useConversationDirectoryStore.getState().accountId) {
+            await useConversationDirectoryStore.getState().sync();
+          } else {
+            await chatStore.refreshOverview();
+          }
         }
 
         if (!currentEvent || isContactRealtimeEvent(currentEvent.type)) {
