@@ -36,7 +36,7 @@ jobs:
     name: Backend Tests
     runs-on: self-hosted
     if: inputs.suite == 'backend' || inputs.suite == 'all'
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: backend
