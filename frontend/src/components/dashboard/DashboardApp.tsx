@@ -7,6 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { useConversationDirectoryStore } from "@/store/useConversationDirectoryStore";
 import { useMessagesPaneSync } from "./useMessagesPaneSync";
 import { openOwnerChat } from "@/lib/owner-chat-navigation";
 import { useChatViewport } from "@/hooks/useChatViewport";
@@ -318,7 +319,7 @@ export default function DashboardApp() {
     let cancelled = false;
 
     const syncSession = async (
-      session: Pick<Session, "access_token"> | null,
+      session: Pick<Session, "access_token" | "user"> | null,
       source: "getSession" | "authEvent",
       event?: string,
     ) => {
@@ -332,10 +333,20 @@ export default function DashboardApp() {
       if (accessToken) {
         if (lastAccessTokenRef.current === accessToken && useDashboardSessionStore.getState().authResolved) return;
         lastAccessTokenRef.current = accessToken;
+        const directory = useConversationDirectoryStore.getState();
+        directory.activate(session!.user.id);
+        void directory.sync();
         await sessionStore.initAuth(accessToken);
+        if (cancelled || lastAccessTokenRef.current !== accessToken) return;
+        if (!useDashboardSessionStore.getState().token) directory.activate(null, true);
+        else {
+          const view = useConversationDirectoryStore.getState().view;
+          useDashboardUIStore.setState({ messagesFilter: view.filter, messagesBotScope: view.botScope });
+        }
       } else {
         if (source === "authEvent" && !isSignOutEvent) return;
         lastAccessTokenRef.current = null;
+        useConversationDirectoryStore.getState().activate(null, isSignOutEvent);
         sessionStore.setToken(null);
       }
 
@@ -539,6 +550,7 @@ export default function DashboardApp() {
         && !chatStore.overviewRefreshing
         && !chatStore.overviewErrored
         && uiStore.sidebarTab !== "wallet"
+        && uiStore.sidebarTab !== "messages"
       ) {
         void chatStore.refreshOverview();
       }
@@ -576,6 +588,7 @@ export default function DashboardApp() {
       && !chatStore.overviewRefreshing
       && !chatStore.overviewErrored
       && uiStore.sidebarTab !== "wallet"
+      && uiStore.sidebarTab !== "messages"
     ) {
       void chatStore.refreshOverview();
     }
@@ -607,7 +620,7 @@ export default function DashboardApp() {
     ) {
       return;
     }
-    if (uiStore.sidebarTab === "wallet" || uiStore.sidebarTab === "activity") return;
+    if (["wallet", "activity", "messages"].includes(uiStore.sidebarTab)) return;
     if (chatStore.overview || chatStore.overviewRefreshing || chatStore.overviewErrored) return;
     void chatStore.refreshOverview();
   }, [
@@ -663,11 +676,10 @@ export default function DashboardApp() {
         id: sessionStore.human.human_id,
       });
     }
-    if (sessionStore.authResolved && sessionStore.activeAgentId) {
-      anchorMap.set(`agent:${sessionStore.activeAgentId}`, {
-        kind: "agent",
-        id: sessionStore.activeAgentId,
-      });
+    if (sessionStore.authResolved) {
+      for (const agent of sessionStore.ownedAgents) {
+        anchorMap.set(`agent:${agent.agent_id}`, { kind: "agent", id: agent.agent_id });
+      }
     }
     const anchors = Array.from(anchorMap.entries());
 
@@ -741,8 +753,9 @@ export default function DashboardApp() {
             }
             return;
           }
+          useConversationDirectoryStore.getState().onEvent(realtimeEvent);
           chatStore.applyRealtimeEventHint(realtimeEvent);
-          if (anchor.kind === "human" && realtimeEvent.room_id) {
+          if (anchor.kind === "human" && (realtimeEvent.type === "room_member_added" || realtimeEvent.type === "room_member_removed")) {
             void useDashboardSessionStore.getState().refreshHumanRooms();
           }
           if (!isOpenedRoomEvent) {
@@ -757,6 +770,7 @@ export default function DashboardApp() {
           });
           if (status === "SUBSCRIBED") {
             realtimeStore.setRealtimeStatus("connected");
+            void useConversationDirectoryStore.getState().sync();
             // Access-request hints may have been missed while disconnected.
             if (anchor.kind === "human") useTeamAccessStore.getState().resync();
             // Refresh presence snapshots for any agents we're already tracking,
@@ -797,6 +811,7 @@ export default function DashboardApp() {
     sessionStore.activeAgentId,
     sessionStore.activeIdentity,
     sessionStore.human?.human_id,
+    sessionStore.ownedAgents,
     chatStore.applyRealtimeEventHint,
     unreadStore.applyRealtimeEvent,
     realtimeStore.setRealtimeStatus,
@@ -824,24 +839,20 @@ export default function DashboardApp() {
     sessionStore.token,
   );
 
-  useEffect(() => {
-    if (!sessionStore.authResolved || routeSidebarTab !== "messages") return;
-
-    if (
-      sessionStore.activeIdentity?.type === "human"
-      && !chatStore.ownedAgentRoomsLoaded
-      && !chatStore.ownedAgentRoomsLoading
-    ) {
-      void chatStore.loadOwnedAgentRooms();
+  useEffect(() => useConversationDirectoryStore.subscribe((state, previous) => {
+    if (state.ready && !state.hasMore && state.rooms !== previous.rooms) {
+      useDashboardUnreadStore.getState().reconcileUnreadRooms(state.rooms);
     }
-  }, [
-    sessionStore.authResolved,
-    sessionStore.activeIdentity?.type,
-    routeSidebarTab,
-    chatStore.ownedAgentRoomsLoaded,
-    chatStore.ownedAgentRoomsLoading,
-    chatStore.loadOwnedAgentRooms,
-  ]);
+  }), []);
+
+  useEffect(() => {
+    if (!sessionStore.authResolved || !sessionStore.token) return;
+    return useDashboardUIStore.subscribe((state, previous) => {
+      if (state.messagesFilter !== previous.messagesFilter || state.messagesBotScope !== previous.messagesBotScope) {
+        useConversationDirectoryStore.getState().setView({ filter: state.messagesFilter, botScope: state.messagesBotScope });
+      }
+    });
+  }, [sessionStore.authResolved, sessionStore.token]);
 
   useEffect(() => {
     // The authenticated Human owns a wallet; selected Bot wallets are explicit

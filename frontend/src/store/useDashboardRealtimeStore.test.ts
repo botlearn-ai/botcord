@@ -1,12 +1,13 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
-  refreshOverview: vi.fn(), refreshHumanRooms: vi.fn(), loadOwnedAgentRooms: vi.fn(),
+  refreshOverview: vi.fn(), sync: vi.fn(),
   getRoomSummary: vi.fn(), bumpRoomMembersVersion: vi.fn(),
 }));
+vi.mock("./useConversationDirectoryStore", () => ({ useConversationDirectoryStore: { getState: () => ({ accountId: "account", sync: mocks.sync }) } }));
 vi.mock("@/lib/api", () => ({ api: {} }));
 vi.mock("@/store/useDashboardChatStore", () => ({ useDashboardChatStore: { getState: () => mocks } }));
 vi.mock("@/store/useDashboardSessionStore", () => ({ useDashboardSessionStore: { getState: () => ({
-  token: "token", human: { human_id: "hu_1" }, activeIdentity: { type: "human" }, refreshHumanRooms: mocks.refreshHumanRooms,
+  token: "token", human: { human_id: "hu_1" }, activeIdentity: { type: "human" },
 }) } }));
 vi.mock("@/store/useDashboardUIStore", () => ({ useDashboardUIStore: { getState: () => ({}) } }));
 vi.mock("@/store/useDashboardContactStore", () => ({ useDashboardContactStore: { getState: () => ({ loadContactRequests: vi.fn() }) } }));
@@ -18,19 +19,17 @@ beforeEach(() => { vi.clearAllMocks(); useDashboardRealtimeStore.getState().rese
 it("discovers unknown bot and human rooms immediately after a message event", async () => {
   mocks.getRoomSummary.mockReturnValue(null);
   await useDashboardRealtimeStore.getState().syncRealtimeEvent(event);
-  expect(mocks.refreshOverview).toHaveBeenCalledTimes(1);
-  expect(mocks.refreshHumanRooms).toHaveBeenCalledTimes(1);
-  expect(mocks.loadOwnedAgentRooms).toHaveBeenCalledTimes(1);
+  expect(mocks.sync).toHaveBeenCalledTimes(1);
+  expect(mocks.refreshOverview).not.toHaveBeenCalled();
 });
 it("does not refetch directories for messages in known rooms", async () => {
   mocks.getRoomSummary.mockReturnValue({ room_id: "rm_new" });
   await useDashboardRealtimeStore.getState().syncRealtimeEvent(event);
   expect(mocks.refreshOverview).not.toHaveBeenCalled();
-  expect(mocks.loadOwnedAgentRooms).not.toHaveBeenCalled();
+  expect(mocks.sync).not.toHaveBeenCalled();
 });
 it("refreshes every directory when room membership changes", async () => {
   await useDashboardRealtimeStore.getState().syncRealtimeEvent({ ...event, type: "room_member_added" });
   expect(mocks.bumpRoomMembersVersion).toHaveBeenCalledWith("rm_new");
-  expect(mocks.refreshHumanRooms).toHaveBeenCalledTimes(1);
-  expect(mocks.loadOwnedAgentRooms).toHaveBeenCalledTimes(1);
+  expect(mocks.sync).toHaveBeenCalledTimes(1);
 });

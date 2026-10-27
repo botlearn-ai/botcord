@@ -82,3 +82,10 @@ it("keeps unread state on request failure", async () => {
   await render(); await action("old", "Mark read");
   expect(useDashboardUnreadStore.getState().isRoomUnread("old", true)).toBe(true);
 });
+it("uses authoritative conversation summaries even when history contains a later cached message", async () => {
+  useDashboardChatStore.setState({ messages: { old: [message("2026-12-01T00:00:00Z")] } });
+  await act(() => root.render(<RoomList rooms={rooms} authoritative />));
+  expect(order()).toEqual(["Open room new", "Open room old", "Open room empty"]);
+  expect(rows()[1].textContent).toContain("summary old");
+  expect(rows()[1].textContent).not.toContain("cached latest");
+});

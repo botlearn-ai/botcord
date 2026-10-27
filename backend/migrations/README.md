@@ -30,3 +30,5 @@ New migrations start fresh from `001_*.sql`.
 Note: `frontend/db/functions/*.sql` (realtime auth functions/policies
 etc.) are NOT migrations — they are deployed per Supabase project via
 `pnpm db:functions` and must be run against every new environment.
+
+`017_conversation_directory.sql` 创建会话读取模型及变更捕获，并排队已有房间。应用后需用新版代码执行 `uv run python scripts/backfill_conversations.py`，再上线游标前端；部署顺序及可复现压测见 `../../docs/messages-conversation-sync.md`。

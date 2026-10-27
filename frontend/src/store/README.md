@@ -3,6 +3,7 @@
 > L2 | 父级: /Users/chenxuejia/ws/2026/botcord/frontend/README.md
 
 成员清单
+useConversationDirectoryStore.ts: 按 Hub/账号持久化完整会话摘要和分组筛选；先缓存后游标增量，持久化同步水位并合并变化/撤销，隔离账号和迟到响应。
 useConversationPreferencesStore.ts: 按账号隔离并持久化当前设备的会话置顶与隐藏水位，不保存聊天内容；新消息超过隐藏水位后恢复显示。
 team-space-store.ts: 页面独立的 Team 数据加载，支持有冷却时间和并发去重的后台刷新，取消旧请求并按请求版本丢弃迟到结果，避免跨空间内容混用。
 useAppStore.ts: 全局轻量 UI 状态（语言等），独立于 dashboard 业务域。  
@@ -12,7 +13,7 @@ useDashboardUIStore.ts: 纯界面状态 store，负责 tab、消息特殊入口�
 useDashboardChatStore.ts: Chat 数据 store，负责 overview、按稳定 msg_id 合并的消息缓存、共享首屏历史请求 Promise、房间成员刷新版本、公开目录远端搜索结果与 Agent 卡片数据。
 useOwnerChatStore.ts: Bot 与用户的私聊状态，复用 dashboard 按房间缓存的历史；独立维护 optimistic、WS 和 stream 状态，按房间请求版本隔离迟到响应。
 useDashboardActivityStore.ts: Activity 的会话内只读缓存，feed/stats 独立就绪，合并并发请求，按身份边界同步清空并丢弃旧响应。
-useDashboardRealtimeStore.ts: 未知房间及成员变更实时同步 overview、Human 房间和自有 Bot 房间；Realtime 协调 store，负责 Supabase channel 连接状态与“事件 -> 最小同步”决策。
+useDashboardRealtimeStore.ts: 未知房间及成员变更优先同步会话目录，未启用目录时回退 overview；Realtime 协调 store，负责 Supabase channel 连接状态与“事件 -> 最小同步”决策。
 useDashboardUnreadStore.ts: 阅读语义 store，负责后端 `last_viewed_at` 的本地乐观覆盖与 room 级未读协调。  
 useDashboardWalletStore.ts: Wallet 业务域 store，负责余额、流水、提现请求与钱包视图状态。  
 useDashboardContactStore.ts: Contact 业务域 store，负责联系人请求收发、处理与 pending 状态。  
@@ -36,6 +37,7 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 - 进入房间并真正看到最新位置后，必须通过 BFF 写回 `last_viewed_at`；前端本地未读数量只能做短暂覆盖，不能替代后端状态。
 
 变更日志
+- 2026-10-27: Messages 改用独立持久化目录，身份初始化不等待旧成员列表；协议和验证见 `../../../docs/messages-conversation-sync.md`。
 - 2026-09-27: Owner chat 从已知真实 owner room 直接加载，要求 owner_id 与可选 _originAgent 均匹配选中 Bot，并排除 rm_oc_pending_*。首屏历史同步复用 dashboard 的按时间升序缓存（包括空页），随后共享 loadRoomMessages 的进行中 Promise 刷新；不会变异缓存数组或清空其他房间。缓存刷新失败保留可读内容，WS/optimistic/stream 合并仍由 owner store 管理。resetChatState / 房间失效会清除共享 Promise 并推进请求版本，重置前的响应不得回写缓存；owner reset / setRoom 则推进自己的房间会话版本。chat 与 owner store 各自同步订阅同一个账号 key（token 是否存在 + human_id），退出或换账号同时清空缓存来源和渲染状态；同账号 token 轮换及选择其他 Bot 不触发该清空。
 - 2026-09-27: 公开目录记录成功查询归属，合并同查询同身份的并发请求，reset/logout 使旧响应失效；Contact 请求分来源发布并共享审批加载。Contact/Wallet/Activity 对身份边界同步清空私有状态，避免先显示旧账号数据再等待 React effect；Wallet 读取带版本保护，Policy 并发读取合并并防止旧读取覆盖保存。
 - 2026-06-01: `useDashboardChatStore.ts` 的房间消息全量重载改为按稳定 `msg_id` 合并，并在增量轮询中按 `msg_id` 去重，避免 fan-out 代表行切换导致附件预览重挂载。

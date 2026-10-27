@@ -7,6 +7,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { useConversationDirectoryStore } from "@/store/useConversationDirectoryStore";
 import EmptyState from "@/components/ui/EmptyState";
 import Badge from "@/components/ui/Badge";
 import Card from "@/components/ui/Card";
@@ -39,6 +40,7 @@ import BotAvatar from "./BotAvatar";
 import { RoomRowsSkeleton } from "./DashboardTabSkeleton";
 
 interface RoomListProps {
+  authoritative?: boolean;
   rooms?: DashboardRoom[];
   loading?: boolean;
   searchQuery?: string;
@@ -89,6 +91,7 @@ function formatLastMessageTime(isoTime: string | null): string {
 
 export default function RoomList({
   rooms: propsRooms,
+  authoritative = false,
   loading = false,
   searchQuery = "",
   includeUserChat = false,
@@ -125,7 +128,8 @@ export default function RoomList({
   const activeAgentId = useDashboardSessionStore((state) => state.activeAgentId);
   const viewMode = useDashboardSessionStore((state) => state.viewMode);
   const humanRooms = useDashboardSessionStore((state) => state.humanRooms);
-  const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null);
+  const cachedHumanId = useConversationDirectoryStore((state) => state.humanId);
+  const humanId = useDashboardSessionStore((state) => state.human?.human_id ?? null) ?? cachedHumanId;
   const ownedAgents = useDashboardSessionStore((state) => state.ownedAgents);
   const ownedAgentIds = useMemo(() => new Set(ownedAgents.map((a) => a.agent_id)), [ownedAgents]);
   const ownedAgentAvatarsById = useMemo(() => {
@@ -198,9 +202,9 @@ export default function RoomList({
   const isOwnerChatEmpty = showUserChatEntry && Boolean(ownerChatRoomId) && !ownerChatLoading && ownerChatMessages.length === 0;
   const roomEntries = useMemo(() => rooms.map((room, index) => ({
     room, index,
-    preview: resolveRoomListPreview(room, cachedLatestMessages[room.room_id] ?? null,
-      room.room_id === ownerChatRoomId ? ownerChatLatestMessage : null, locale),
-  })), [rooms, cachedLatestMessages, ownerChatRoomId, ownerChatLatestMessage, locale]);
+    preview: resolveRoomListPreview(room, authoritative ? null : cachedLatestMessages[room.room_id] ?? null,
+      !authoritative && room.room_id === ownerChatRoomId ? ownerChatLatestMessage : null, locale),
+  })), [rooms, cachedLatestMessages, ownerChatRoomId, ownerChatLatestMessage, locale, authoritative]);
   const displayEntries = useMemo(() => roomEntries
     .filter(({ room, preview }) => normalizedSearchQuery || preferences.hidden[room.room_id] === undefined
       || preview.timestamp > preferences.hidden[room.room_id])

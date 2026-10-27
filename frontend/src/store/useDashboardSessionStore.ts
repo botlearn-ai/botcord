@@ -12,6 +12,7 @@ import {
   userApi,
   setStoredActiveIdentity,
 } from "@/lib/api";
+import { useConversationDirectoryStore } from "./useConversationDirectoryStore";
 import { usePresenceStore } from "./usePresenceStore";
 
 // Sync owned agents' daemon-derived ws_online (from /api/users/me) into the
@@ -87,6 +88,7 @@ function deriveIdentityFromHuman(human: HumanInfo | null): ActiveIdentity | null
 let authInitRequestId = 0;
 let authInitInFlight: { token: string; promise: Promise<void> } | null = null;
 let humanRoomsInFlight: Promise<void> | null = null;
+let humanRoomsRequestId = -1;
 
 function resolveDefaultAgentId(user: UserProfile): string | null {
   const defaultAgent = user.agents.find((agent) => agent.is_default) || user.agents[0];
@@ -196,7 +198,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
 
     const promise = (async () => {
       try {
-        const [user, human, humanRoomsRes] = await Promise.all([
+        const [user, human] = await Promise.all([
           userApi.getMe(),
           // Idempotent — the first call mints the Human identity for brand-new
           // users; subsequent calls return the existing record. Failure here is
@@ -204,10 +206,6 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
           humansApi.createOrGet().catch((err) => {
             console.warn("[SessionStore] Failed to load Human identity:", err);
             return null;
-          }),
-          humansApi.listRooms().catch((err) => {
-            console.warn("[SessionStore] Failed to load Human rooms:", err);
-            return { rooms: [] as HumanRoomSummary[] };
           }),
         ]);
         if (requestId !== authInitRequestId) {
@@ -223,13 +221,16 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
           token,
           user,
           human,
-          humanRooms: humanRoomsRes.rooms,
+          humanRooms: current.user?.id === user.id ? current.humanRooms : [],
           ownedAgents: user.agents,
           activeAgentId: activeId,
           activeIdentity,
           viewMode: "human",
           sessionMode: resolveSessionMode(token, activeId),
         });
+        // Legacy membership consumers still need this metadata, but it must
+        // never delay auth completion or the cached Messages directory.
+        void get().refreshHumanRooms();
       } catch (err: any) {
         if (requestId !== authInitRequestId) {
           return;
@@ -265,18 +266,20 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
   },
 
   refreshHumanRooms: async () => {
-    if (humanRoomsInFlight) {
+    if (humanRoomsInFlight && humanRoomsRequestId === authInitRequestId) {
       return humanRoomsInFlight;
     }
+    const requestId = authInitRequestId;
+    humanRoomsRequestId = requestId;
     humanRoomsInFlight = (async () => {
       try {
         const res = await humansApi.listRooms();
-        set({ humanRooms: res.rooms });
+        if (requestId === authInitRequestId) set({ humanRooms: res.rooms });
       } catch (err) {
         console.warn("[SessionStore] refreshHumanRooms failed:", err);
       }
     })().finally(() => {
-      humanRoomsInFlight = null;
+      if (humanRoomsRequestId === requestId) humanRoomsInFlight = null;
     });
     return humanRoomsInFlight;
   },
@@ -319,6 +322,7 @@ export const useDashboardSessionStore = create<DashboardSessionState>()((set, ge
   },
 
   logout: () => {
+    useConversationDirectoryStore.getState().activate(null, true);
     authInitRequestId += 1;
     setStoredActiveIdentity(null);
     usePresenceStore.getState().reset();

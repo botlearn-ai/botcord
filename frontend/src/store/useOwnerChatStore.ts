@@ -24,6 +24,7 @@ import type {
   RunStreamBlocksResponse,
 } from "@/lib/types";
 import { dashboardMsgToOwnerChat } from "@/lib/types";
+import { useConversationDirectoryStore } from "./useConversationDirectoryStore";
 import { messageCacheOwnerKey, useDashboardChatStore } from "@/store/useDashboardChatStore";
 import { useDashboardSessionStore } from "@/store/useDashboardSessionStore";
 import { isOwnerChatRoom } from "@/store/dashboard-shared";
@@ -32,6 +33,7 @@ import { isOwnerChatRoom } from "@/store/dashboard-shared";
 export function findCachedOwnerChatRoom(agentId: string): DashboardRoom | null {
   const chat = useDashboardChatStore.getState();
   const ids = new Set([
+    ...useConversationDirectoryStore.getState().rooms.map((room) => room.room_id),
     ...(chat.overview?.rooms ?? []).map((room) => room.room_id),
     ...chat.ownedAgentRooms.map((room) => room.room_id),
   ]);
@@ -39,7 +41,7 @@ export function findCachedOwnerChatRoom(agentId: string): DashboardRoom | null {
     if (!isOwnerChatRoom(id) || id.startsWith("rm_oc_pending_")) continue;
     const room = chat.getRoomSummary(id);
     if (room?.owner_id !== agentId) continue;
-    if (room._originAgent && room._originAgent.agent_id !== agentId) continue;
+    if (room._originAgent && !(room._originAgents ?? [room._originAgent]).some((bot) => bot.agent_id === agentId)) continue;
     return room;
   }
   return null;

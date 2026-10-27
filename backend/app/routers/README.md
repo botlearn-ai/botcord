@@ -18,3 +18,5 @@ wallet.py: `/api/wallet` 钱包、账本来源元数据与提现 BFF。
 法则: 成员完整·一行一文件·父级链接·技术词前置
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+
+- `conversations.py`: 个人会话持久化摘要的快照/keyset 与游标增量读取，覆盖 Human 和全部自有 Bot，返回前检查成员权限；不查询消息历史。协议见 `../../../docs/messages-conversation-sync.md`。

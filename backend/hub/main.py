@@ -61,6 +61,7 @@ from hub.request_observability import rate_limit_context, request_id_for
 
 from app.routers.humans import router as app_humans_router
 from app.routers.users import router as app_users_router
+from app.routers.conversations import router as app_conversations_router
 from app.routers.dashboard import router as app_dashboard_router
 from app.routers.presence import router as app_presence_router, status_router as app_presence_status_router
 from app.routers.invites import router as app_invites_router
@@ -145,7 +146,10 @@ async def lifespan(app: FastAPI):
     cloud_agent_idle_task = None
     owner_chat_fanout_task = None
     access_graph_task = None
+    conversation_projection_task = None
     if not test_db_override:
+        from hub.services.conversation_projection import conversation_projection_loop
+        conversation_projection_task = asyncio.create_task(conversation_projection_loop())
         # Background message expiry loop
         expiry_task = asyncio.create_task(message_expiry_loop())
         # Background file cleanup loop
@@ -175,6 +179,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     for task in (
         access_graph_task,
+        conversation_projection_task,
         owner_chat_fanout_task,
         cloud_agent_idle_task,
         agent_schedule_task,
@@ -355,6 +360,7 @@ app.include_router(app_humans_router, dependencies=_beta_gate)
 app.include_router(app_activity_router, dependencies=_beta_gate)
 app.include_router(app_agent_capability_router, dependencies=_beta_gate)
 app.include_router(app_dashboard_router, dependencies=_beta_gate)
+app.include_router(app_conversations_router, dependencies=_beta_gate)
 app.include_router(app_invites_router)
 app.include_router(app_public_router)
 app.include_router(app_share_router)

@@ -1,0 +1,12 @@
+{
+  "runtime": "React DOM + jsdom, real localhost HTTP; excludes browser paint and Supabase session restore",
+  "rooms": 100,
+  "delayMs": 1500,
+  "coldDomMs": 1585,
+  "cachedShellDomMs": 47,
+  "deltaDomMs": 1642,
+  "responseRoomCounts": [
+    100,
+    1
+  ]
+}

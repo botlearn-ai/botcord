@@ -19,3 +19,5 @@ share_payloads.py: 分享与邀请的 URL/entry_type 拼装中枢，避免 app/h
 法则: 成员完整·一行一文件·父级链接·技术词前置
 
 [PROTOCOL]: 变更时更新此头部，然后检查 README.md
+
+会话列表使用事务内持久化摘要和按账号提交有序的游标，`database.py` 注册投影 hook，`main.py` 启动 outbox 恢复任务。迁移 017 和回填步骤见 `../../docs/messages-conversation-sync.md`。
