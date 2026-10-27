@@ -108,11 +108,8 @@ async def lifespan(app: FastAPI):
     test_db_override = get_db in app.dependency_overrides
 
     if not test_db_override:
-        # Create tables
-        async with engine.begin() as conn:
-            if DATABASE_SCHEMA:
-                await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{DATABASE_SCHEMA}"'))
-            await conn.run_sync(Base.metadata.create_all)
+        from hub.services.schema_startup import prepare_schema
+        await prepare_schema(engine, Base.metadata, DATABASE_SCHEMA)
 
         # Ensure the "hub" pseudo-agent exists (used as sender for system messages)
         async with async_session() as session:
