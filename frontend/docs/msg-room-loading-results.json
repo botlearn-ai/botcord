@@ -1,0 +1,110 @@
+{
+  "mockRooms": 101,
+  "delaysMs": {
+    "overview": 200,
+    "humanRooms": 400,
+    "agentRooms": 600
+  },
+  "runtime": "React DOM + jsdom, real HTTP and real timers, reduced motion",
+  "results": [
+    {
+      "version": "baseline",
+      "scenario": "initial",
+      "requestStartMs": 5023,
+      "latestRoomInDomMs": 5720,
+      "requests": [
+        {
+          "path": "/overview",
+          "startMs": 5023,
+          "durationMs": 216
+        },
+        {
+          "path": "/human-rooms",
+          "startMs": 5027,
+          "durationMs": 407
+        },
+        {
+          "path": "/agent-rooms",
+          "startMs": 5028,
+          "durationMs": 608
+        }
+      ]
+    },
+    {
+      "version": "baseline",
+      "scenario": "reentry",
+      "requestStartMs": 30034,
+      "latestRoomInDomMs": 30690,
+      "requests": [
+        {
+          "path": "/overview",
+          "startMs": 30034,
+          "durationMs": 218
+        },
+        {
+          "path": "/human-rooms",
+          "startMs": 30037,
+          "durationMs": 409
+        },
+        {
+          "path": "/agent-rooms",
+          "startMs": 30038,
+          "durationMs": 612
+        }
+      ]
+    },
+    {
+      "version": "fixed",
+      "scenario": "initial",
+      "requestStartMs": 4,
+      "latestRoomInDomMs": 673,
+      "requests": [
+        {
+          "path": "/overview",
+          "startMs": 4,
+          "durationMs": 205
+        },
+        {
+          "path": "/human-rooms",
+          "startMs": 4,
+          "durationMs": 403
+        },
+        {
+          "path": "/agent-rooms",
+          "startMs": 4,
+          "durationMs": 604
+        }
+      ]
+    },
+    {
+      "version": "fixed",
+      "scenario": "reentry",
+      "requestStartMs": 33,
+      "latestRoomInDomMs": 666,
+      "requests": [
+        {
+          "path": "/overview",
+          "startMs": 33,
+          "durationMs": 204
+        },
+        {
+          "path": "/human-rooms",
+          "startMs": 33,
+          "durationMs": 402
+        },
+        {
+          "path": "/agent-rooms",
+          "startMs": 33,
+          "durationMs": 602
+        }
+      ]
+    }
+  ],
+  "baselineCommit": "ddad78cbca35c717d4c7622ebcc548a448469749",
+  "samplesPerScenario": 1,
+  "scope": "Actual MessagesPanel, RoomList, Zustand stores and directory synchronization hook; authentication, DashboardApp bootstrap/independent initial loaders, browser layout and paint are excluded. Initial measures isolated directory synchronization mount, not full page first load. Reentry retains warmed stores and sync timestamp.",
+  "assertions": [
+    "Newest mock room appears before older rooms in the rendered DOM",
+    "Three directory endpoints issue real local HTTP requests with real timers"
+  ]
+}
