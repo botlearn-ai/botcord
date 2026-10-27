@@ -12,7 +12,7 @@ useDashboardUIStore.ts: 纯界面状态 store，负责 tab、消息特殊入口�
 useDashboardChatStore.ts: Chat 数据 store，负责 overview、按稳定 msg_id 合并的消息缓存、共享首屏历史请求 Promise、房间成员刷新版本、公开目录远端搜索结果与 Agent 卡片数据。
 useOwnerChatStore.ts: Bot 与用户的私聊状态，复用 dashboard 按房间缓存的历史；独立维护 optimistic、WS 和 stream 状态，按房间请求版本隔离迟到响应。
 useDashboardActivityStore.ts: Activity 的会话内只读缓存，feed/stats 独立就绪，合并并发请求，按身份边界同步清空并丢弃旧响应。
-useDashboardRealtimeStore.ts: Realtime 协调 store，负责 Supabase channel 连接状态与“事件 -> 最小同步”决策。  
+useDashboardRealtimeStore.ts: 未知房间及成员变更实时同步 overview、Human 房间和自有 Bot 房间；Realtime 协调 store，负责 Supabase channel 连接状态与“事件 -> 最小同步”决策。
 useDashboardUnreadStore.ts: 阅读语义 store，负责后端 `last_viewed_at` 的本地乐观覆盖与 room 级未读协调。  
 useDashboardWalletStore.ts: Wallet 业务域 store，负责余额、流水、提现请求与钱包视图状态。  
 useDashboardContactStore.ts: Contact 业务域 store，负责联系人请求收发、处理与 pending 状态。  

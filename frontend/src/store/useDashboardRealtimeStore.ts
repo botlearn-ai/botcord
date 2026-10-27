@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 zustand 保存 realtime 连接状态，依赖 chat/contact/ui/session store 与 API 完成 meta 事件驱动的数据补全
- * [OUTPUT]: 对外提供 useDashboardRealtimeStore，管理连接状态与“事件 -> 最小同步”策略
+ * [OUTPUT]: 对外提供 useDashboardRealtimeStore，管理连接状态与“事件 -> 最小同步”策略，未知房间与成员变更同步完整消息目录
  * [POS]: frontend dashboard 的 realtime 协调层，只负责连接结果与同步决策，不直接持有消息或未读数据
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -173,8 +173,14 @@ export const useDashboardRealtimeStore = create<DashboardRealtimeState>()((set) 
         })();
 
         if (shouldRefreshOverview) {
-          const overview = await api.getOverview();
-          chatStore.replaceOverview(overview);
+          // The Messages list merges all three directories. Overview alone
+          // cannot discover rooms that only an owned bot participates in.
+          const session = useDashboardSessionStore.getState();
+          await Promise.all([
+            chatStore.refreshOverview(),
+            session.human?.human_id ? session.refreshHumanRooms() : Promise.resolve(),
+            session.activeIdentity?.type === "human" ? chatStore.loadOwnedAgentRooms() : Promise.resolve(),
+          ]);
         }
 
         if (!currentEvent || isContactRealtimeEvent(currentEvent.type)) {

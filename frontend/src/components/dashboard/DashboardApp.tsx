@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 的精确 selector 聚合 dashboard 状态，依赖 pathname 同步首帧 tab，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
+ * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 的精确 selector 聚合 dashboard 状态，依赖 pathname 同步首帧 tab，依赖 useMessagesPaneSync 在进入消息页时立即同步房间目录，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
  * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期、即时 tab 内容切换、统一自有 Bot 聊天入口、缓存资料卡、顶部个人/Team 模式切换、移动会话边缘滑动返回与三栏布局编排
  * [POS]: /chats 页面的顶层容器，连接路由状态、实时事件流与拆分后的 dashboard store
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
 
+import { useMessagesPaneSync } from "./useMessagesPaneSync";
 import { openOwnerChat } from "@/lib/owner-chat-navigation";
 import { useChatViewport } from "@/hooks/useChatViewport";
 import { useConversationBackSwipe } from "@/hooks/useConversationBackSwipe";
@@ -54,7 +55,6 @@ import TeamWorkspacePage, { teamView } from "@/components/team/TeamWorkspacePage
 
 const USER_CHAT_SUBTAB = "__user-chat__";
 type DashboardSidebarTab = "home" | "messages" | "contacts" | "explore" | "wallet" | "activity" | "bots";
-const MESSAGES_DIRECTORY_SYNC_INTERVAL_MS = 30_000;
 
 type BotcordDebugRealtimeSnapshot = {
   supabaseUrl: string | undefined;
@@ -240,7 +240,6 @@ export default function DashboardApp() {
   const subscriptionBoundAgentRef = useRef<string | null>(null);
   const initResolvedRef = useRef(false);
   const lastAccessTokenRef = useRef<string | null>(null);
-  const lastMessagesDirectorySyncRef = useRef(0);
   const lastSubtabSyncedPathnameRef = useRef<string | null>(null);
   const pathnameParts = useMemo(() => pathname.split("/").filter(Boolean), [pathname]);
   const routeSidebarTab = useMemo(() => getSidebarTabFromPathParts(pathnameParts), [pathnameParts]);
@@ -820,67 +819,10 @@ export default function DashboardApp() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [sessionStore.authResolved]);
 
-  useEffect(() => {
-    if (teamMode || !sessionStore.authResolved || !sessionStore.token || uiStore.sidebarTab !== "messages") {
-      return;
-    }
-
-    let cancelled = false;
-    let syncInFlight = false;
-
-    const syncMessagesPane = async (opts?: { forceDirectory?: boolean }) => {
-      if (cancelled || syncInFlight) return;
-      syncInFlight = true;
-      try {
-        const { openedRoomId, messagesPane } = useDashboardUIStore.getState();
-        const session = useDashboardSessionStore.getState();
-        const chat = useDashboardChatStore.getState();
-        const now = Date.now();
-        const shouldSyncDirectory = Boolean(opts?.forceDirectory)
-          || now - lastMessagesDirectorySyncRef.current >= MESSAGES_DIRECTORY_SYNC_INTERVAL_MS;
-        if (shouldSyncDirectory) {
-          lastMessagesDirectorySyncRef.current = now;
-        }
-        const directorySync = shouldSyncDirectory ? [
-          chat.refreshOverview(),
-          session.human?.human_id ? session.refreshHumanRooms() : Promise.resolve(),
-          session.activeIdentity?.type === "human" ? chat.loadOwnedAgentRooms() : Promise.resolve(),
-        ] : [];
-        await Promise.all([
-          ...directorySync,
-          openedRoomId && messagesPane === "room"
-            ? chat.pollNewMessages(openedRoomId)
-            : Promise.resolve(),
-        ]);
-      } finally {
-        syncInFlight = false;
-      }
-    };
-
-    const intervalId = window.setInterval(syncMessagesPane, 5_000);
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        void syncMessagesPane({ forceDirectory: true });
-      }
-    };
-    const handleFocus = () => {
-      void syncMessagesPane({ forceDirectory: true });
-    };
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [
-    sessionStore.authResolved,
+  useMessagesPaneSync(
+    !teamMode && sessionStore.authResolved && Boolean(sessionStore.token) && uiStore.sidebarTab === "messages",
     sessionStore.token,
-    uiStore.sidebarTab,
-    teamMode,
-  ]);
+  );
 
   useEffect(() => {
     if (!sessionStore.authResolved || routeSidebarTab !== "messages") return;

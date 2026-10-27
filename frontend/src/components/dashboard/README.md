@@ -173,3 +173,5 @@ dashboard/
 - 2026-09-27：Bot 详情、Contacts 自有 Bot、头像卡的聊天按钮共用即时导航；未知房间交由消息面板解析，壳层并发解析共用请求。PaidRoomPreview 仅缓存公开截断摘要，按房间及订阅产品隔离，最多 32 项、每项 3 条，重访时 60 秒内缓存可先展示再刷新；权限或资源失效时清除摘要。
 
 - 手机及触摸设备通过“加载更早消息”按钮翻页，消息滚动容器限制纵向 overscroll；只有宽屏、支持 hover 的精细指针设备保留顶部自动加载。普通会话和自有 Bot 私聊共用 MessageHistoryControl；分页保持可见消息锚点。
+
+useMessagesPaneSync.ts: 消息页进入时立即刷新 overview、Human 房间和自有 Bot 房间；恢复焦点时同步，保留 5 秒消息 / 30 秒目录兜底轮询。
