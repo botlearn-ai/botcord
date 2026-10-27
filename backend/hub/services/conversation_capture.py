@@ -4,7 +4,9 @@ The outbox row is updated (not DO NOTHING) so concurrent projection/delete and
 write transactions cannot lose an invalidation. Projection tables never trigger
 capture. PostgreSQL functions pin their search path to the installing schema.
 """
-from sqlalchemy import event
+import re
+
+from sqlalchemy import event, text, text
 
 
 def capture_statements(dialect: str, *, user_table: str = '"public"."users"', suffix: str = "") -> list[str]:
@@ -60,9 +62,74 @@ def capture_statements(dialect: str, *, user_table: str = '"public"."users"', su
     return statements
 
 
+def _search_path_items(value):
+    # PostgreSQL identifiers: ignore whitespace outside quotes, preserve quoted
+    # case and escaped quotes. Do not erase whitespace *inside* an identifier.
+    token = r'\s*(?:"((?:[^"]|"")*)"|([^,\s"]+))\s*(?:,|$)'
+    items = []
+    offset = 0
+    while offset < len(value):
+        match = re.match(token, value[offset:])
+        if not match:
+            return None
+        quoted, unquoted = match.groups()
+        items.append(quoted.replace('""', '"') if quoted is not None else unquoted.lower())
+        offset += match.end()
+    return items
+
+
+def _matching_search_path(config, expected):
+    if not config or len(config) != 1 or not config[0].startswith("search_path="):
+        return False
+    actual = _search_path_items(config[0].partition("=")[2])
+    return actual is not None and actual == _search_path_items(expected)
+
+
+def _validate_postgres_capture(connection, schema, user_schema, suffix):
+    """Check the installed migration without acquiring business-table DDL locks."""
+    functions = {}
+    for statement in capture_statements("postgresql", suffix=suffix):
+        if statement.startswith("CREATE OR REPLACE FUNCTION "):
+            functions[statement.split()[4].removesuffix("()")] = statement.split("$capture$")[1]
+    rows = connection.execute(text("""
+        SELECT n.nspname, c.relname, t.tgname, t.tgtype, t.tgenabled::text AS tgenabled,
+               p.proname, pn.nspname AS function_schema, p.prosrc,
+               t.tgqual IS NULL AS unconditional, t.tgnargs, p.proconfig,
+               (p.prorettype = 'trigger'::regtype AND p.pronargs = 0
+                AND NOT p.prosecdef AND p.prokind = 'f'
+                AND l.lanname = 'plpgsql' AND t.tgconstraint = 0) AS implementation_matches
+        FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_proc p ON p.oid = t.tgfoid
+        JOIN pg_namespace pn ON pn.oid = p.pronamespace
+        JOIN pg_language l ON l.oid = p.prolang
+        WHERE NOT t.tgisinternal AND n.nspname IN (:schema, :user_schema)
+    """), {"schema": schema, "user_schema": user_schema}).mappings()
+    found = {(r["nspname"], r["relname"], r["tgname"]): r for r in rows}
+    search_path = connection.exec_driver_sql("SHOW search_path").scalar()
+    for table in ("rooms", "room_members", "message_records", "agents", "users"):
+        for operation, trigger_type in (("insert", 5), ("update", 17), ("delete", 9)):
+            name = f"conversation_{table}_{operation}{suffix}"
+            row = found.get((user_schema if table == "users" else schema, table, name))
+            if not row or not (
+                row["tgtype"] == trigger_type and row["tgenabled"] in ("O", "A")
+                and row["proname"] == name and row["function_schema"] == schema
+                and row["prosrc"] == functions[name] and row["unconditional"]
+                and row["tgnargs"] == 0 and row["implementation_matches"]
+                and _matching_search_path(row["proconfig"], search_path)
+            ):
+                raise RuntimeError("Conversation capture is missing or outdated; see migrations/README.md for the controlled scripts/repair_conversation_capture.py repair procedure")
+    secured = set(connection.execute(text("""
+        SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = :schema AND c.relrowsecurity
+    """), {"schema": schema}).scalars())
+    if not {"conversation_dirty_rooms", "conversation_accounts", "conversation_entries", "conversation_changes"} <= secured:
+        raise RuntimeError("Conversation row level security is missing; see migrations/README.md for the controlled scripts/repair_conversation_capture.py repair procedure")
+
+
 def register_capture(metadata):
     @event.listens_for(metadata, "after_create")
-    def install(_metadata, connection, **_kwargs):
+    def install(_metadata, connection, **kwargs):
         # A few tests create only a subset of the model tables.
         from sqlalchemy import inspect
         if not all(inspect(connection).has_table(t) for t in ("conversation_dirty_rooms", "message_records", "room_members", "rooms", "agents")):
@@ -75,6 +142,12 @@ def register_capture(metadata):
         suffix = "_" + hashlib.md5(schema.encode()).hexdigest()[:8] if schema else ""
         translated = connection.get_execution_options().get("schema_translate_map", {}).get("public", "public")
         user_table = f'"{translated}"."users"' if dialect == "postgresql" else '"users"'
-        for statement in capture_statements(dialect, user_table=user_table, suffix=suffix):
-            connection.exec_driver_sql(statement)
+        created = {table.name for table in kwargs.get("tables", ())}
+        if dialect == "postgresql" and "conversation_dirty_rooms" not in created:
+            # after_create also fires when create_all created no tables.
+            # Existing databases are upgraded by migrations, not each worker.
+            _validate_postgres_capture(connection, schema, translated, suffix)
+        else:
+            for statement in capture_statements(dialect, user_table=user_table, suffix=suffix):
+                connection.exec_driver_sql(statement)
         connection.engine._conversation_capture_installed = True
