@@ -8,5 +8,5 @@
 import { BotCordLoadingScreen } from "@/components/ui/BotCordLoader";
 
 export default function Loading() {
-  return <BotCordLoadingScreen className="min-h-screen" />;
+  return <BotCordLoadingScreen className="min-h-dvh bg-bg" />;
 }

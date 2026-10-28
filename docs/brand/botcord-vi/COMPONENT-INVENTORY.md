@@ -37,7 +37,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/ui/AttachmentItem.tsx](../../../frontend/src/components/ui/AttachmentItem.tsx) | 5 | 是 |
 | [components/ui/Avatar.tsx](../../../frontend/src/components/ui/Avatar.tsx) | 18 | 是 |
 | [components/ui/Badge.tsx](../../../frontend/src/components/ui/Badge.tsx) | 55 | 是 |
-| [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 40 | 是 |
+| [components/ui/BotCordLoader.tsx](../../../frontend/src/components/ui/BotCordLoader.tsx) | 42 | 是 |
 | [components/ui/BrandMark.tsx](../../../frontend/src/components/ui/BrandMark.tsx) | 6 | 是 |
 | [components/ui/Button.tsx](../../../frontend/src/components/ui/Button.tsx) | 108 | 是 |
 | [components/ui/Card.tsx](../../../frontend/src/components/ui/Card.tsx) | 78 | 是 |
@@ -138,7 +138,7 @@ UI 原语内部、消息编辑器和业务交互中的原生元素是合法实�
 | [components/dashboard/DashboardMultiSelect.tsx](../../../frontend/src/components/dashboard/DashboardMultiSelect.tsx) | 3 | 否 |
 | [components/dashboard/DashboardOverlayPortal.tsx](../../../frontend/src/components/dashboard/DashboardOverlayPortal.tsx) | 45 | 是 |
 | [components/dashboard/DashboardSelect.tsx](../../../frontend/src/components/dashboard/DashboardSelect.tsx) | 8 | 否 |
-| [components/dashboard/DashboardShellSkeleton.tsx](../../../frontend/src/components/dashboard/DashboardShellSkeleton.tsx) | 2 | 否 |
+| [components/dashboard/DashboardShellSkeleton.tsx](../../../frontend/src/components/dashboard/DashboardShellSkeleton.tsx) | 0 | 否 |
 | [components/dashboard/DashboardTabSkeleton.tsx](../../../frontend/src/components/dashboard/DashboardTabSkeleton.tsx) | 5 | 否 |
 | [components/dashboard/DeviceDetailDrawer.tsx](../../../frontend/src/components/dashboard/DeviceDetailDrawer.tsx) | 1 | 否 |
 | [components/dashboard/DiscoverRoomList.tsx](../../../frontend/src/components/dashboard/DiscoverRoomList.tsx) | 0 | 否 |

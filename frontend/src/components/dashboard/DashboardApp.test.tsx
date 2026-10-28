@@ -15,7 +15,6 @@ vi.mock("./BotDetailDrawer", () => ({ default: () => <div data-view="BotDetailDr
 vi.mock("./DeviceDetailDrawer", () => ({ default: () => <div data-view="DeviceDetailDrawer" /> }));
 vi.mock("./PeerBotDetailDrawer", () => ({ default: () => <div data-view="PeerBotDetailDrawer" /> }));
 vi.mock("./ContactRequestsInbox", () => ({ default: () => <div data-view="ContactRequestsInbox" /> }));
-vi.mock("./DashboardShellSkeleton", () => ({ default: () => <div data-view="DashboardShellSkeleton" /> }));
 vi.mock("./HomePanel", () => ({ default: () => <div data-view="HomePanel" /> }));
 vi.mock("./MyBotsPanel", () => ({ default: () => <div data-view="MyBotsPanel" /> }));
 vi.mock("./HumanCardModal", () => ({ default: () => <div data-view="HumanCardModal" /> }));
@@ -74,10 +73,14 @@ describe("immediate primary navigation", () => {
     expect(render()).toContain('data-dashboard-main="true"');
     expect(render()).not.toContain('max-md:hidden" data-dashboard-main');
   });
-  it("still gates authenticated content until bootstrap resolves", () => {
-    session.setState({ authResolved: false });
+  it.each([
+    { authResolved: false, authBootstrapping: false },
+    { authResolved: true, authBootstrapping: true },
+  ])("shows the logo while bootstrap is pending: %j", (state) => {
+    session.setState(state);
     ui.getState().startPrimaryNavigation("wallet", "/chats/wallet");
-    expect(render()).toContain('data-view="DashboardShellSkeleton"');
+    expect(render()).toContain('aria-label="Loading BotCord"');
+    expect(render()).toContain("botcord-loader-courier");
     expect(render()).not.toContain('data-view="WalletPanel"');
   });
 });
