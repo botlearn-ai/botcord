@@ -929,7 +929,7 @@ export default function DashboardApp() {
   useConversationBackSwipe(handleConversationSwipeBack);
 
   if (shouldShowBootstrapSkeleton) {
-    return <BotCordLoadingScreen className="min-h-dvh bg-bg" />;
+    return <BotCordLoadingScreen label="BotCord" className="min-h-dvh bg-bg" />;
   }
 
   const selectedAgentForCard = chatStore.selectedAgentProfile;

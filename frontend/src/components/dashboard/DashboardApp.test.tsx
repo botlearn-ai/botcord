@@ -79,8 +79,9 @@ describe("immediate primary navigation", () => {
   ])("shows the logo while bootstrap is pending: %j", (state) => {
     session.setState(state);
     ui.getState().startPrimaryNavigation("wallet", "/chats/wallet");
-    expect(render()).toContain('aria-label="Loading BotCord"');
+    expect(render()).toContain('aria-label="BotCord"');
     expect(render()).toContain("botcord-loader-courier");
+    expect(render()).not.toContain("Loading BotCord");
     expect(render()).not.toContain('data-view="WalletPanel"');
   });
 });
