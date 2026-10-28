@@ -14,7 +14,7 @@ const DashboardApp = dynamic(
   () => import("@/components/dashboard/DashboardApp"),
   {
     ssr: false,
-    loading: () => <BotCordLoadingScreen className="min-h-dvh bg-bg" />,
+    loading: () => <BotCordLoadingScreen label="BotCord" className="min-h-dvh bg-bg" />,
   },
 );
 
