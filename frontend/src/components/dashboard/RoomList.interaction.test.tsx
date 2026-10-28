@@ -89,3 +89,23 @@ it("uses authoritative conversation summaries even when history contains a later
   expect(rows()[1].textContent).toContain("summary old");
   expect(rows()[1].textContent).not.toContain("cached latest");
 });
+
+it("clears immediately, plays a burst, and lets another room be marked while the request is pending", async () => {
+  let finish!: (value: { room_id: string; last_viewed_at: string }) => void;
+  vi.mocked(api.markRoomRead).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  await render(); await action("old", "Mark read");
+  expect(useDashboardUnreadStore.getState().isRoomUnread("old", true)).toBe(false);
+  expect(host.querySelector("[data-unread-burst]")).not.toBeNull();
+  await action("new", "Mark read");
+  expect(api.markRoomRead).toHaveBeenCalledWith("new");
+  await act(() => finish({ room_id: "old", last_viewed_at: "2026-10-13T10:00:00Z" }));
+});
+it("restores the unread badge if an asynchronous mark-read request fails", async () => {
+  let fail!: (error: Error) => void;
+  vi.mocked(api.markRoomRead).mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  await render(); await action("old", "Mark read");
+  expect(useDashboardUnreadStore.getState().isRoomUnread("old", true)).toBe(false);
+  await act(() => fail(new Error("offline")));
+  expect(useDashboardUnreadStore.getState().isRoomUnread("old", true)).toBe(true);
+  expect(host.querySelector("[data-unread-burst]")).toBeNull();
+});

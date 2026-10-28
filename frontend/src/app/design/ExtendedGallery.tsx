@@ -42,6 +42,7 @@ import TeamGallery from "./TeamGallery";
 
 const OPTIONS = [{ value: "atlas", label: "Atlas", sublabel: "Research agent" }, { value: "coder", label: "Coder", sublabel: "Development agent" }, { value: "offline", label: "Offline agent", disabled: true }];
 export default function ExtendedGallery() {
+  const [unreadCount, setUnreadCount] = useState(12);
   const [selected, setSelected] = useState<string | null>(null);
   const [members, setMembers] = useState<string[]>([]);
   const [query, setQuery] = useState("");
@@ -54,6 +55,15 @@ export default function ExtendedGallery() {
   const messageAnchor = useRef<HTMLButtonElement>(null);
   const confirm = useConfirm();
   return <div className="space-y-10 border-t border-border py-10">
+    <section id="unread-clear" className="space-y-4">
+      <h2 className="type-heading-2">未读气泡反馈</h2>
+      <p className="text-sm text-text-secondary">标为已读时立即清除数字，气泡轻量破裂；减少动态效果模式直接隐藏。</p>
+      <div className="flex items-center gap-4">
+        <UnreadBadge count={unreadCount} burstOnClear label={`${unreadCount} 条未读消息`} />
+        <Button variant="secondary" disabled={!unreadCount} onClick={() => setUnreadCount(0)}>标为已读</Button>
+        <Button variant="ghost" onClick={() => setUnreadCount(12)}>模拟新消息</Button>
+      </div>
+    </section>
     <section id="message-actions" className="space-y-4">
       <h2 className="type-heading-2">消息长按操作</h2>
       <p className="text-sm text-text-secondary">图标网格与消息箭头；移动端长按消息打开。点击示例预览。</p>

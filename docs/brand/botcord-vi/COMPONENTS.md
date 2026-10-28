@@ -249,3 +249,7 @@ Node·Cord 图形的状态动画（与 `docs/brand/botcord-vi/index.html` §8 �
 `MessageActionPopover` 接收 `anchorRef`、`label`、`actions: { id, label, icon, onSelect, disabled? }[]`、`onClose`；由调用方控制挂载。跟随主题的浮层内使用图标在上、文字在下的网格，每行最多五项，多行间有分隔线；箭头指向消息。优先显示在消息上方，空间不足时翻转，并避让 visualViewport。支持点外部、Escape 关闭和方向键导航；关闭时恢复消息焦点。只展示业务实际提供的操作。
 
 该组件复用 VI 的 `surface-raised`、`text-primary`、`surface-sunken`、`border` 语义类；箭头复用浮层背景和边框。标签使用 `type-caption`，图标 24px / 1.75 线宽，点击区域至少 44px。浅色主题使用白底深色文字，深色主题跟随标准弹层颜色，不直接引用基础色阶。
+
+### UnreadBadge 清除反馈
+
+`burstOnClear?: boolean` 默认 false。启用时保持组件挂载并把 `count` 设为 0：立即移除未读数字，播放 220ms 的环形破裂和四个微粒后消失。纯装饰、不可交互，reduced motion 下立即隐藏。网络请求和失败恢复由业务层处理。

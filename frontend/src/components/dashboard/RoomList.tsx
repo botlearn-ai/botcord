@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 ui/chat/unread/owner-chat store 的会话状态、缓存消息与后端未读标记，依赖 nextjs-toploader/app 做带进度反馈的路由跳转
- * [OUTPUT]: 对外提供 RoomList 组件，按统一最新消息排序，支持置顶、隐藏与左滑已读操作，渲染消息会话列表项与刷新骨架，并提供受 reduced-motion 约束的未读/引导动效
+ * [OUTPUT]: 对外提供 RoomList 组件，按统一最新消息排序，支持置顶、隐藏与即时已读/气泡破裂反馈，渲染消息会话列表项与刷新骨架，并提供受 reduced-motion 约束的未读/引导动效
  * [POS]: dashboard 左侧消息导航区的会话列表渲染器，被 Sidebar 组合使用
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -21,7 +21,6 @@ import { animateIfMotion, cleanupAnime } from "@/lib/anime";
 import UnreadBadge from "@/components/ui/UnreadBadge";
 import { ContactInfo, DashboardMessage, DashboardRoom } from "@/lib/types";
 import { resolveRoomListPreview } from "@/lib/room-list-preview";
-import { api } from "@/lib/api";
 import { Pin } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { EMPTY_CONVERSATION_PREFERENCES, useConversationPreferencesStore } from "@/store/useConversationPreferencesStore";
@@ -156,15 +155,15 @@ export default function RoomList({
     }
     return m;
   }, [contacts]);
-  const { isRoomUnread } = useDashboardUnreadStore(useShallow((state) => ({
+  const { isRoomUnread, pendingReadRoomIds } = useDashboardUnreadStore(useShallow((state) => ({
     isRoomUnread: state.isRoomUnread,
     seen: state.optimisticSeenRoomIds,
     unread: state.optimisticUnreadRoomIds,
+    pendingReadRoomIds: state.pendingReadRoomIds,
   })));
   const account = humanId ? `human:${humanId}` : activeAgentId ? `agent:${activeAgentId}` : "";
   const preferences = useConversationPreferencesStore((state) => state.accounts[account] ?? EMPTY_CONVERSATION_PREFERENCES);
   const [openActions, setOpenActions] = useState<string | null>(null);
-  const [markingRead, setMarkingRead] = useState<string | null>(null);
   useEffect(() => { setOpenActions(null); }, [account]);
   const ownerChatMessages = useOwnerChatStore((state) => state.messages);
   const ownerChatLoading = useOwnerChatStore((state) => state.loading);
@@ -219,16 +218,8 @@ export default function RoomList({
     }
   }, [account, roomEntries, preferences.hidden]);
   const markRead = async (room: DashboardRoom) => {
-    setMarkingRead(room.room_id);
-    try {
-      await api.markRoomRead(room.room_id);
-      // Do not apply a delayed response to another account's unread state.
-      const session = useDashboardSessionStore.getState();
-      const currentAccount = session.human?.human_id ? `human:${session.human.human_id}` : session.activeAgentId ? `agent:${session.activeAgentId}` : "";
-      if (currentAccount === account) await useDashboardUnreadStore.getState().markRoomSeen(room.room_id, null);
-    } catch {
-      toast({ title: locale === "zh" ? "标为已读失败，请重试" : "Could not mark as read. Please retry.", tone: "danger" });
-    } finally { setMarkingRead(null); }
+    const ok = await useDashboardUnreadStore.getState().markRoomRead(room.room_id);
+    if (!ok) toast({ title: locale === "zh" ? "标为已读失败，请重试" : "Could not mark as read. Please retry.", tone: "danger" });
   };
   useEffect(() => {
     const shouldPulseOnboarding = showUserChatEntry && isOwnerChatEmpty;
@@ -425,7 +416,7 @@ export default function RoomList({
               { label: pinned ? (locale === "zh" ? "取消置顶" : "Unpin") : (locale === "zh" ? "置顶" : "Pin"),
                 className: "bg-surface-sunken text-text-primary", onClick: () => useConversationPreferencesStore.getState().togglePin(account, room.room_id) },
               { label: locale === "zh" ? "标为已读" : "Mark read", className: "bg-accent text-on-accent",
-                disabled: !isUnread || markingRead !== null, onClick: () => { void markRead(room); } },
+                disabled: !isUnread || pendingReadRoomIds.includes(room.room_id), onClick: () => { void markRead(room); } },
               { label: locale === "zh" ? "不显示" : "Hide", className: "bg-warning-soft text-warning", onClick: () => {
                 useConversationPreferencesStore.getState().hide(account, room.room_id, preview.timestamp);
                 toast({ title: locale === "zh" ? "已隐藏，有新消息时重新显示" : "Hidden until a new message arrives",
@@ -493,9 +484,7 @@ export default function RoomList({
                   </span>
                   <div className="flex shrink-0 items-center gap-2">
                     {pinned && <Pin size={12} aria-label={locale === "zh" ? "已置顶" : "Pinned"} className="text-accent-text" />}
-                    {unreadCount > 0 && (
-                      <UnreadBadge count={unreadCount} />
-                    )}
+                    <UnreadBadge count={unreadCount} burstOnClear />
                     {messageTime && (
                       <span className="text-xs text-text-secondary">
                         {messageTime}

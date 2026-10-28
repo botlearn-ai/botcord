@@ -1,0 +1,33 @@
+.burst { pointer-events: none; }
+.ring {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  animation: burst-ring var(--bc-duration-base, 220ms) var(--bc-ease-standard, ease-out) forwards;
+}
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: burst-particle var(--bc-duration-base, 220ms) ease-out forwards;
+}
+.particle:nth-child(2) { --x: -10px; --y: -8px; }
+.particle:nth-child(3) { --x: 10px; --y: -8px; }
+.particle:nth-child(4) { --x: -10px; --y: 8px; }
+.particle:nth-child(5) { --x: 10px; --y: 8px; }
+@keyframes burst-ring {
+  from { transform: scale(0.65); opacity: 0.9; }
+  to { transform: scale(1.5); opacity: 0; }
+}
+@keyframes burst-particle {
+  from { transform: translate(0, 0) scale(1); opacity: 1; }
+  to { transform: translate(var(--x), var(--y)) scale(0.25); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .burst { display: none; }
+  .ring, .particle { animation: none; }
+}
