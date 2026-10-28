@@ -64,3 +64,7 @@ useDashboardSubscriptionStore.ts: Subscription 业务域 store，负责当前 ag
 - 2026-09-27：Agent 资料卡及 `useHumanProfileCardStore.ts` 使用会话内资料缓存，命中时保留可读内容并刷新；选择序号与身份范围隔离迟到响应。关闭弹窗不会被旧请求重新打开；不可访问或已删除的资料清除缓存。
 
 - Owner chat 保存原始历史页的 oldestHistoryCursor，避免整页空文本过滤后失去游标；无可见消息时仍可点击加载下一页，换房间同步清空游标。
+
+- 2026-10-28: 显式 mark read 先更新乐观覆盖，再异步提交；每房间去重，失败恢复，实时消息/后续阅读/账号重置使旧响应失效。
+
+- 2026-10-28: 部分 overview 不再清除缺席房间的未读覆盖；自动已读的重复观察不使在途请求失效，持久化失败恢复状态并允许重试。

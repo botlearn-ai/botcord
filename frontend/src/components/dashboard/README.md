@@ -177,3 +177,5 @@ dashboard/
 useMessagesPaneSync.ts: 消息页进入时立即刷新 overview、Human 房间和自有 Bot 房间；恢复焦点时同步，保留 5 秒消息 / 30 秒目录兜底轮询。
 
 Messages 在身份恢复后先显示账号缓存，再合并服务端变化。加载壳保留不可交互的缓存行，失败保留列表并显示重试。RoomList 的 authoritative 模式使用目录摘要，不从历史缓存另取排序时间。详见 `../../../../docs/messages-conversation-sync.md`。
+
+- 2026-10-28: RoomList 标为已读立即更新徽标，UnreadBadge 播放 220ms 破裂反馈；请求按房间独立，失败恢复并提示。
