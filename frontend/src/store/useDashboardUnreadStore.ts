@@ -59,24 +59,12 @@ export const useDashboardUnreadStore = create<DashboardUnreadState>()((set, get)
 
   reconcileUnreadRooms: (rooms) =>
     set((state) => {
-      const validRoomIds = new Set(rooms.map((room) => room.room_id));
       const nextSeen = new Set(state.optimisticSeenRoomIds);
       const nextUnread = new Set(state.optimisticUnreadRoomIds);
       const nextLastMarked = { ...state.lastMarkedSeenAtByRoom };
 
-      for (const roomId of Array.from(nextSeen)) {
-        if (!validRoomIds.has(roomId)) {
-          nextSeen.delete(roomId);
-          delete nextLastMarked[roomId];
-        }
-      }
-
-      for (const roomId of Array.from(nextUnread)) {
-        if (!validRoomIds.has(roomId)) {
-          nextUnread.delete(roomId);
-        }
-      }
-
+      // Overview, personal directory and Team lists are different subsets.
+      // Absence from one response is not proof that a room was deleted.
       for (const room of rooms) {
         if (state.pendingReadRoomIds.includes(room.room_id)) continue;
         if (!room.has_unread) {
@@ -130,6 +118,9 @@ export const useDashboardUnreadStore = create<DashboardUnreadState>()((set, get)
   },
 
   markRoomSeen: async (roomId, seenAt) => {
+    const before = get();
+    // A duplicate observation must not invalidate the request it deduplicates.
+    if (seenAt && before.lastMarkedSeenAtByRoom[roomId] === seenAt) return;
     const version = bumpRoom(roomId);
     const requestGeneration = generation;
     set((state) => ({
@@ -139,7 +130,7 @@ export const useDashboardUnreadStore = create<DashboardUnreadState>()((set, get)
       optimisticUnreadRoomIds: state.optimisticUnreadRoomIds.filter((id) => id !== roomId),
     }));
 
-    if (!seenAt || get().lastMarkedSeenAtByRoom[roomId] === seenAt) {
+    if (!seenAt) {
       return;
     }
 
@@ -155,12 +146,19 @@ export const useDashboardUnreadStore = create<DashboardUnreadState>()((set, get)
       useConversationDirectoryStore.getState().patch(roomId, { has_unread: false, unread_count: 0 });
       void useConversationDirectoryStore.getState().sync();
     } catch (error) {
-      if (generation !== requestGeneration || roomVersions.get(roomId) !== version) return;
+      if (generation !== requestGeneration || useConversationDirectoryStore.getState().accountId !== accountId
+        || roomVersions.get(roomId) !== version) return;
       console.error("[UnreadStore] Failed to persist room read watermark:", error);
       set((state) => {
         const nextLastMarked = { ...state.lastMarkedSeenAtByRoom };
         delete nextLastMarked[roomId];
-        return { lastMarkedSeenAtByRoom: nextLastMarked };
+        return {
+          lastMarkedSeenAtByRoom: nextLastMarked,
+          optimisticSeenRoomIds: state.optimisticSeenRoomIds.filter((id) => id !== roomId)
+            .concat(before.optimisticSeenRoomIds.includes(roomId) ? [roomId] : []),
+          optimisticUnreadRoomIds: state.optimisticUnreadRoomIds.filter((id) => id !== roomId)
+            .concat(before.optimisticUnreadRoomIds.includes(roomId) ? [roomId] : []),
+        };
       });
     }
   },

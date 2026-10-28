@@ -48,3 +48,30 @@ it("does not undo a newer automatic read on failure", async () => {
   fail(new Error("offline")); await request;
   expect(unread.getState().isRoomUnread("r", true)).toBe(false);
 });
+
+it("does not discard pending reads or realtime unread for rooms absent from a partial overview", async () => {
+  unread.getState().applyRealtimeEvent({ ...message, room_id: "other" });
+  const request = unread.getState().markRoomRead("r");
+  unread.getState().reconcileUnreadRooms([{ room_id: "subset", has_unread: false } as DashboardRoom]);
+  expect(unread.getState().isRoomUnread("r", true)).toBe(false);
+  expect(unread.getState().isRoomUnread("other", false)).toBe(true);
+  finish({ room_id: "r", last_viewed_at: "now" }); await request;
+});
+it("duplicate automatic observations do not invalidate the in-flight read response", async () => {
+  const request = unread.getState().markRoomSeen("r", "watermark");
+  await unread.getState().markRoomSeen("r", "watermark");
+  finish({ room_id: "r", last_viewed_at: "now" }); await request;
+  expect(api.markRoomRead).toHaveBeenCalledTimes(1);
+  expect(directory.getState().patch).toHaveBeenCalledWith("r", { has_unread: false, unread_count: 0 });
+});
+it("failed automatic reads restore unread and allow the same watermark to retry", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  unread.getState().applyRealtimeEvent(message);
+  const request = unread.getState().markRoomSeen("r", "watermark");
+  await unread.getState().markRoomSeen("r", "watermark");
+  fail(new Error("offline")); await request;
+  expect(unread.getState().isRoomUnread("r", false)).toBe(true);
+  const retry = unread.getState().markRoomSeen("r", "watermark");
+  expect(api.markRoomRead).toHaveBeenCalledTimes(2);
+  finish({ room_id: "r", last_viewed_at: "now" }); await retry;
+});
