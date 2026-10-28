@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: 依赖 session/ui/chat/realtime/unread/contact/wallet 多业务 store 的精确 selector 聚合 dashboard 状态，依赖 pathname 同步首帧 tab，依赖 useMessagesPaneSync 在进入消息页时立即同步房间目录，依赖 react effect 在后台预热跨 tab 数据与 Supabase Realtime 订阅，依赖 Sidebar/ChatPane/WalletPanel/AgentCardModal 组织主界面
- * [OUTPUT]: 对外提供 DashboardApp 组件，负责鉴权初始化、请求闸门、realtime 生命周期、即时 tab 内容切换、统一自有 Bot 聊天入口、缓存资料卡、顶部个人/Team 模式切换、移动会话边缘滑动返回与三栏布局编排
+ * [OUTPUT]: 对外提供 DashboardApp 组件，负责品牌启动动效、鉴权初始化、请求闸门、realtime 生命周期、即时 tab 内容切换、统一自有 Bot 聊天入口、缓存资料卡、顶部个人/Team 模式切换、移动会话边缘滑动返回与三栏布局编排
  * [POS]: /chats 页面的顶层容器，连接路由状态、实时事件流与拆分后的 dashboard store
  * [PROTOCOL]: 变更时更新此头部，然后检查 README.md
  */
@@ -41,7 +41,7 @@ import DeviceDetailDrawer from "./DeviceDetailDrawer";
 import PeerBotDetailDrawer from "./PeerBotDetailDrawer";
 import ChatPane from "./ChatPane";
 import ContactRequestsInbox from "./ContactRequestsInbox";
-import DashboardShellSkeleton from "./DashboardShellSkeleton";
+import { BotCordLoadingScreen } from "@/components/ui/BotCordLoader";
 import HomePanel from "./HomePanel";
 import MyBotsPanel from "./MyBotsPanel";
 import HumanCardModal from "./HumanCardModal";
@@ -929,7 +929,7 @@ export default function DashboardApp() {
   useConversationBackSwipe(handleConversationSwipeBack);
 
   if (shouldShowBootstrapSkeleton) {
-    return <DashboardShellSkeleton />;
+    return <BotCordLoadingScreen className="min-h-dvh bg-bg" />;
   }
 
   const selectedAgentForCard = chatStore.selectedAgentProfile;
