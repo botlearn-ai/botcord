@@ -308,7 +308,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="w-9"
+          className="w-9 px-0!"
           title="刷新"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -358,7 +358,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                       type="button"
                       onClick={() => void patchSchedule(schedule.id, { enabled: !schedule.enabled })}
                       disabled={saving}
-                      className="w-8"
+                      className="w-8 px-0!"
                       title={schedule.enabled ? "暂停" : "恢复"}
                     >
                       {schedule.enabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
@@ -367,7 +367,7 @@ export default function AgentSchedulesTab({ agentId }: AgentSchedulesTabProps) {
                       type="button"
                       onClick={() => void runSchedule(schedule.id)}
                       disabled={saving || isRunningThisSchedule}
-                      className="w-8"
+                      className="w-8 px-0!"
                       title={isRunningThisSchedule ? "执行中" : "立即执行"}
                     >
                       {isRunningThisSchedule ? (

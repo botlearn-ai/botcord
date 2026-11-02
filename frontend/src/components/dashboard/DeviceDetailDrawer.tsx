@@ -383,7 +383,7 @@ function DeviceDetailDrawer() {
           <Button variant="secondary"
             disabled={!editingName.trim() || editingName.trim() === device.label}
             onClick={() => void handleRename()}
-            className="w-9 shrink-0"
+            className="w-9 shrink-0 px-0!"
           >
             {nameSaved ? <Check className="h-4 w-4 text-neon-green" /> : <Check className="h-4 w-4" />}
           </Button>

@@ -1049,7 +1049,7 @@ function FilesTab({ agentId, t }: { agentId: string; t: BotDetailDrawerCopy }) {
           type="button"
           onClick={() => void loadFiles()}
           disabled={loading}
-          className="w-9 shrink-0"
+          className="w-9 shrink-0 px-0!"
           title={t.files.refresh}
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}

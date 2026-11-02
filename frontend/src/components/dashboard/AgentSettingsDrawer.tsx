@@ -792,7 +792,7 @@ function AgentSettingsDrawer({
                   type="button"
                   onClick={() => void loadRuntimeFiles()}
                   disabled={filesLoading}
-                  className="w-9 shrink-0"
+                  className="w-9 shrink-0 px-0!"
                   title={t.files.refresh}
                 >
                   {filesLoading ? (

@@ -256,7 +256,7 @@ export default function AgentSkillsTab({ agentId }: { agentId: string }) {
           type="button"
           onClick={() => void refreshSkills()}
           disabled={loading || refreshing}
-          className="w-9 shrink-0"
+          className="w-9 shrink-0 px-0!"
           title={copy.refresh}
           aria-label={copy.refresh}
         >

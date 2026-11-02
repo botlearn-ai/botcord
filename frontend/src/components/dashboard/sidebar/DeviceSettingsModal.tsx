@@ -199,7 +199,7 @@ function DeviceSettingsModal({
                 type="button"
                 disabled={isRenaming || editingName.trim() === label}
                 onClick={() => void handleRename()}
-                className="w-8"
+                className="w-8 px-0!"
               >
                 {isRenaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : nameSaved ? <Check className="h-3.5 w-3.5 text-neon-green" /> : <Check aria-hidden strokeWidth={1.75} className="h-3.5 w-3.5" />}
               </Button>
