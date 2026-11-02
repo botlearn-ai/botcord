@@ -1368,3 +1368,26 @@ describe("W3: bot token redaction in lastError and logs", () => {
     expect(allLogs).not.toContain(SECRET_TOKEN);
   });
 });
+
+
+describe("iLink optional success codes", () => {
+  it.each([
+    [{ msgs: [], get_updates_buf: "cursor" }, true],
+    [{ errcode: -14, errmsg: "session timeout" }, false],
+    [{ ret: 0, errcode: -14, msgs: [], get_updates_buf: "c" }, false],
+    [{}, false],
+  ])("validates poll response %j", async (body, authorized) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "wechat-response-"));
+    try {
+      const adapter = createWechatChannel({
+        id: "gw_response", accountId: "ag_test", botToken: "tok",
+        stateFile: path.join(dir, "state.json"), stateDebounceMs: 0,
+        fetchImpl: buildFetchStub([{ match: "getupdates", respond: () => ({ body }) }], []),
+      });
+      const h = startAdapter(adapter, { stopAfterMs: 80 });
+      await h.pollDone;
+      expect(h.statusPatches.some((p) => p.authorized === true)).toBe(authorized);
+      if (!authorized) expect(h.statusPatches.some((p) => p.lastError)).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
