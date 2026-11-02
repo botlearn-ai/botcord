@@ -1,7 +1,5 @@
 name: Deploy Backend (reusable)
 
-# Reusable backend deploy — called by ci.yml (preview) and release.yml (prod).
-# Builds Docker image, pushes to ECR, restarts the appropriate runtime.
 on:
   workflow_call:
     inputs:
@@ -16,106 +14,62 @@ on:
         default: ''
     outputs:
       image_tag:
-        description: 'ECR image tag pushed'
+        description: 'Immutable ECR candidate tag'
         value: ${{ jobs.deploy.outputs.image_tag }}
+
+concurrency:
+  group: botcord-backend-${{ inputs.env_name }}
+  cancel-in-progress: false
 
 env:
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
   PROJECT: botcord-backend
 
 jobs:
-  # ── Build + push docker image ────────────────────────────────────────────────
   deploy:
-    name: Build & Push
-    # ECR credentials, preview Compose files and prod kubeconfig live on the US deploy host.
+    name: Build & Push Candidate
     runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
     timeout-minutes: 20
     outputs:
       image_tag: ${{ steps.build.outputs.image_tag }}
+      image_digest: ${{ steps.build.outputs.image_digest }}
+      source_sha: ${{ steps.build.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref || github.sha }}
-
-      - name: Build docker image
+      - name: Build immutable candidate without promoting runtime tag
         id: build
+        env:
+          TARGET_ENV: ${{ inputs.env_name }}
         run: |
-          ENV_NAME="${{ inputs.env_name }}"
-          if [ ! -f "backend/Dockerfile" ]; then
-            echo "❌ backend/Dockerfile missing" >&2
-            exit 1
-          fi
-          docker build -f backend/Dockerfile -t $PROJECT:$ENV_NAME backend/
-          echo "image_tag=$ENV_NAME" >> $GITHUB_OUTPUT
-          echo "✅ Built $PROJECT:$ENV_NAME"
+          set -euo pipefail
+          case "$TARGET_ENV" in preview|prod) ;; *) exit 1 ;; esac
+          SOURCE_SHA=$(git rev-parse HEAD)
+          IMAGE="$ECR_REGISTRY/botlearn-ai/$PROJECT:sha-$SOURCE_SHA"
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+          docker build --provenance=false --label "org.opencontainers.image.revision=$SOURCE_SHA" -f backend/Dockerfile -t "$IMAGE" backend/
+          docker push "$IMAGE"
+          DIGEST=$(aws ecr describe-images --region us-east-1 --repository-name "botlearn-ai/$PROJECT" --image-ids "imageTag=sha-$SOURCE_SHA" --query 'imageDetails[0].imageDigest' --output text)
+          echo "image_tag=sha-$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Push to ECR
-        run: |
-          ENV_NAME="${{ inputs.env_name }}"
-          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
-          docker tag $PROJECT:$ENV_NAME $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
-          docker push $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME
-          echo "✅ Pushed $ECR_REGISTRY/botlearn-ai/$PROJECT:$ENV_NAME"
-
-  # ── Restart preview (docker-compose) ─────────────────────────────────────────
-  restart-preview:
-    name: Restart Preview
+  rollout:
+    name: Verify, Migrate and Rollout
     needs: [deploy]
-    if: inputs.env_name == 'preview'
-    # ECR credentials, preview Compose files and prod kubeconfig live on the US deploy host.
     runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
-    timeout-minutes: 10
-    env:
-      PROJECT: botcord-backend
+    environment: ${{ inputs.env_name == 'prod' && 'Production' || 'Preview' }}
+    timeout-minutes: 75
     steps:
-      - name: Pull image and update preview
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.deploy.outputs.source_sha }}
+      - name: Login to the fixed US registry
+        run: aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+      - name: Deploy with conversation migration gate and recovery
         env:
           DEPLOY_ROOT: ${{ secrets.DEPLOY_ROOT }}
-        run: |
-          COMPOSE_FILE="$DEPLOY_ROOT/$PROJECT/docker-compose.yaml"
-          docker compose -f "$COMPOSE_FILE" pull
-          docker compose -f "$COMPOSE_FILE" up -d --no-build
-          for attempt in $(seq 1 30); do
-            if docker compose -f "$COMPOSE_FILE" exec -T botcord-backend python -c \
-              'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=3)' 2>/dev/null; then
-              echo "✅ Preview updated and healthy"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "❌ Preview did not become healthy" >&2
-          exit 1
-
-  # ── Rollout prod (k8s) ───────────────────────────────────────────────────────
-  restart-prod:
-    name: Rollout Production
-    needs: [deploy]
-    if: inputs.env_name == 'prod'
-    # ECR credentials, preview Compose files and prod kubeconfig live on the US deploy host.
-    runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
-    timeout-minutes: 15
-    env:
-      PROJECT: botcord-backend
-      # The runner's shared kubeconfig current-context may point at the CN cluster;
-      # always name the prod context. Manifests come from the host's aibrary-devops checkout.
-      KUBE_CONTEXT: arn:aws:eks:us-east-1:928112001319:cluster/aibrary
-      K8S_MANIFEST: /www/devops/eks/us-aibrary/prod/botcord-backend/k8s.yaml
-    steps:
-      - name: Apply k8s config
-        run: kubectl --context "$KUBE_CONTEXT" apply -f "$K8S_MANIFEST"
-
-      - name: Rollout restart
-        run: kubectl --context "$KUBE_CONTEXT" rollout restart deployment/$PROJECT -n prod
-
-      - name: Wait for rollout
-        run: |
-          if ! kubectl --context "$KUBE_CONTEXT" rollout status deployment/$PROJECT -n prod --timeout=300s; then
-            echo "❌ Rollout timed out"
-            exit 1
-          fi
-          echo "✅ Rollout complete"
-
-      - name: Check pod status
-        run: |
-          kubectl --context "$KUBE_CONTEXT" get pods -n prod -l app=$PROJECT
-          kubectl --context "$KUBE_CONTEXT" logs -n prod -l app=$PROJECT --tail=20 || true
+          TARGET_ENV: ${{ inputs.env_name }}
+          CANDIDATE_DIGEST: ${{ needs.deploy.outputs.image_digest }}
+        run: python3 backend/scripts/deploy_backend.py --environment "$TARGET_ENV" --image "$ECR_REGISTRY/botlearn-ai/$PROJECT@$CANDIDATE_DIGEST"

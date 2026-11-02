@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import create_engine
-from hub.services.conversation_capture import _validate_postgres_capture, capture_statements
+from hub.services.conversation_capture import _validate_postgres_capture, capture_statements, PROJECTION_TABLES
 from scripts.run_sql_migrations import _database_schema, _sync_dsn
 
 
@@ -28,18 +28,18 @@ def check_or_repair(connection, *, apply=False):
         # Writers can still conflict: arrange a quiet maintenance window.
         tables = sorted({(schema, t) for t in (
             "rooms", "room_members", "message_records", "agents",
-            "conversation_dirty_rooms", "conversation_accounts",
-            "conversation_entries", "conversation_changes",
+            *PROJECTION_TABLES,
         )} | {(user_schema, "users")})
         targets = ", ".join(f"{quote(s)}.{quote(t)}" for s, t in tables)
         connection.exec_driver_sql(f"LOCK TABLE {targets} IN ACCESS EXCLUSIVE MODE")
         for statement in capture_statements("postgresql", user_table=f'{quote(user_schema)}."users"', suffix=suffix):
             connection.exec_driver_sql(statement)
         connection.exec_driver_sql("""
-            INSERT INTO conversation_dirty_rooms (room_id, generation)
-            SELECT room_id, 1 FROM (SELECT room_id FROM rooms WHERE space_id IS NULL
+            INSERT INTO conversation_dirty_rooms (room_id, generation, reasons)
+            SELECT room_id, 1, 8 FROM (SELECT room_id FROM rooms WHERE space_id IS NULL
                 UNION SELECT room_id FROM conversation_entries) AS pending
-            ON CONFLICT (room_id) DO UPDATE SET generation = conversation_dirty_rooms.generation + 1
+            ON CONFLICT (room_id) DO UPDATE SET generation = conversation_dirty_rooms.generation + 1,
+                reasons = conversation_dirty_rooms.reasons | 8
         """)
     _validate_postgres_capture(connection, schema, user_schema, suffix)
 

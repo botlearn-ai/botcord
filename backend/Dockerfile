@@ -10,5 +10,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY hub/ hub/
 COPY app/ app/
 COPY static/ static/
+COPY scripts/ scripts/
+COPY migrations/ migrations/
 
 CMD ["uv", "run", "uvicorn", "hub.main:app", "--host", "0.0.0.0", "--port", "8000"]

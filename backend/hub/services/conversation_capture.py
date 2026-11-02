@@ -9,6 +9,13 @@ import re
 from sqlalchemy import event, text
 
 
+PROJECTION_TABLES = (
+    "conversation_dirty_rooms", "conversation_dirty_messages", "conversation_dirty_readers",
+    "conversation_messages", "conversation_room_summaries", "conversation_accounts",
+    "conversation_entries", "conversation_changes",
+)
+
+
 def capture_statements(dialect: str, *, user_table: str = '"public"."users"', suffix: str = "") -> list[str]:
     statements = []
     sources = {
@@ -38,7 +45,21 @@ def capture_statements(dialect: str, *, user_table: str = '"public"."users"', su
             # WHERE disambiguates SQLite's INSERT SELECT ... ON CONFLICT parser.
             union = " UNION ".join(queries)
             xid = "txid_current()::text" if dialect == "postgresql" else "NULL"
-            body = f"INSERT INTO conversation_dirty_rooms (room_id, generation, writer_xid) SELECT room_id, 1, {xid} FROM ({union}) AS affected WHERE room_id IS NOT NULL ON CONFLICT (room_id) DO UPDATE SET generation = conversation_dirty_rooms.generation + 1, writer_xid = EXCLUDED.writer_xid;"
+            reason = "2" if table == "message_records" else "1"
+            if table == "room_members" and operation == "UPDATE":
+                comparisons = [f"OLD.{c} IS DISTINCT FROM NEW.{c}" if dialect == "postgresql" else f"OLD.{c} IS NOT NEW.{c}"
+                               for c in columns if c != "last_viewed_at"]
+                reason = "CASE WHEN " + " OR ".join(comparisons) + " THEN 1 ELSE 4 END"
+            body = f"INSERT INTO conversation_dirty_rooms (room_id, generation, writer_xid, reasons) SELECT room_id, 1, {xid}, {reason} FROM ({union}) AS affected WHERE room_id IS NOT NULL ON CONFLICT (room_id) DO UPDATE SET generation = conversation_dirty_rooms.generation + 1, writer_xid = EXCLUDED.writer_xid, reasons = conversation_dirty_rooms.reasons | EXCLUDED.reasons;"
+            # Always acquire the room outbox lock before its detail keys. A
+            # projector deleting the room holds that lock until commit, so a
+            # racing writer cannot lose its message/read invalidation.
+            if table == "message_records":
+                for ref in refs:
+                    body += f" INSERT INTO conversation_dirty_messages (room_id, msg_id) SELECT {ref}.room_id, {ref}.msg_id WHERE {ref}.room_id IS NOT NULL AND COALESCE(" + (f"({ref}.envelope_json::jsonb ->> 'type')" if dialect == "postgresql" else f"json_extract(CASE WHEN json_valid({ref}.envelope_json) THEN {ref}.envelope_json ELSE '{{}}' END, '$.type')") + ", 'message') IN ('message', 'system') ON CONFLICT (room_id, msg_id) DO NOTHING;"
+            if table == "room_members":
+                for ref in refs:
+                    body += f" INSERT INTO conversation_dirty_readers (room_id, agent_id) SELECT {ref}.room_id, {ref}.agent_id WHERE {ref}.room_id IS NOT NULL ON CONFLICT (room_id, agent_id) DO NOTHING;"
             if operation == "UPDATE":
                 if dialect == "postgresql":
                     condition = " OR ".join(f"OLD.{c} IS DISTINCT FROM NEW.{c}" for c in columns)
@@ -57,7 +78,7 @@ def capture_statements(dialect: str, *, user_table: str = '"public"."users"', su
     if dialect == "postgresql":
         # These account summaries contain private message previews. They are
         # served only through the authenticated Hub, never Supabase table APIs.
-        for table in ("conversation_dirty_rooms", "conversation_accounts", "conversation_entries", "conversation_changes"):
+        for table in PROJECTION_TABLES:
             statements.append(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
     return statements
 
@@ -124,7 +145,7 @@ def _validate_postgres_capture(connection, schema, user_schema, suffix):
         SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = :schema AND c.relrowsecurity
     """), {"schema": schema}).scalars())
-    if not {"conversation_dirty_rooms", "conversation_accounts", "conversation_entries", "conversation_changes"} <= secured:
+    if not set(PROJECTION_TABLES) <= secured:
         raise RuntimeError("Conversation row level security is missing; see migrations/README.md for the controlled scripts/repair_conversation_capture.py repair procedure")
 
 

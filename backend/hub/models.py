@@ -2882,6 +2882,43 @@ class ConversationDirtyRoom(Base):
     room_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="1")
     writer_xid: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # 1=metadata, 2=messages, 4=read watermark, 8=explicit rebuild.
+    reasons: Mapped[int] = mapped_column(Integer, nullable=False, server_default="8")
+
+
+class ConversationDirtyMessage(Base):
+    __tablename__ = "conversation_dirty_messages"
+    room_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    msg_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+
+
+class ConversationDirtyReader(Base):
+    __tablename__ = "conversation_dirty_readers"
+    room_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+
+
+class ConversationMessage(Base):
+    """One display message per logical ID, independent of delivery fanout."""
+    __tablename__ = "conversation_messages"
+    __table_args__ = (
+        Index("ix_conversation_messages_latest", "room_id", "created_at", "canonical_id"),
+    )
+    room_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    msg_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    canonical_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    sender_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recalled_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ConversationRoomSummary(Base):
+    __tablename__ = "conversation_room_summaries"
+    room_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    last_message_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sender_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_message_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ConversationAccount(Base):
@@ -2906,6 +2943,7 @@ class ConversationEntry(Base):
     activity_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_sender_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    read_member_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
 class ConversationChange(Base):
