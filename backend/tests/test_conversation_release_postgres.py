@@ -14,7 +14,8 @@ from hub.services.conversation_projection import project_pending
 pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(not URL, reason="requires disposable PostgreSQL")]
 
 
-async def test_fixed_gate_upgrades_and_restores_017_capture(database, tmp_path):
+@pytest.mark.parametrize("has_baseline", [True, False])
+async def test_fixed_gate_upgrades_and_restores_017_capture(database, tmp_path, has_baseline):
     engine, sessions, ctx, schema = database
     migrations = Path(__file__).parents[1] / "migrations"
     async with engine.begin() as connection:
@@ -25,7 +26,9 @@ async def test_fixed_gate_upgrades_and_restores_017_capture(database, tmp_path):
         sql = (migrations / "017_conversation_directory.sql").read_text().replace('"public"."users"', f'"{schema}"."users"')
         await raw.driver_connection.execute(sql)
         await connection.execute(text("CREATE TABLE _botcord_schema_migrations(version text PRIMARY KEY)"))
-        await connection.execute(text("INSERT INTO _botcord_schema_migrations VALUES ('017_conversation_directory.sql')"))
+        await connection.execute(text("INSERT INTO _botcord_schema_migrations VALUES ('016_space_knowledge_base.sql')"))
+        if has_baseline:
+            await connection.execute(text("INSERT INTO _botcord_schema_migrations VALUES ('017_conversation_directory.sql')"))
     conn = psycopg2.connect(URL.replace("postgresql+asyncpg://", "postgresql://", 1))
     conn.autocommit = True
     try:
@@ -40,6 +43,10 @@ async def test_fixed_gate_upgrades_and_restores_017_capture(database, tmp_path):
             gate.snapshot(conn, schema, state)
         migration = tmp_path / gate.MIGRATION
         migration.write_text((migrations / gate.MIGRATION).read_text().replace('"public"."users"', f'"{schema}"."users"'))
+        if not has_baseline:
+            baseline = tmp_path / gate.BASELINE
+            baseline.write_text((migrations / gate.BASELINE).read_text().replace('"public"."users"', f'"{schema}"."users"'))
+            gate.apply_migration(conn, baseline)
         gate.apply_migration(conn, migration)
         async with sessions() as db:
             db.sync_session.info["conversation_projecting"] = True
@@ -57,6 +64,7 @@ async def test_fixed_gate_upgrades_and_restores_017_capture(database, tmp_path):
         assert after["functions"] == before["functions"]
         assert after["triggers"] == before["triggers"]
         assert not after["had_migration"]
+        assert after["had_baseline"] == has_baseline
         # Retrying after rollback installs 018 again and retains the epoch.
         gate.apply_migration(conn, migration)
         async with sessions() as db:
@@ -78,7 +86,7 @@ async def test_fixed_gate_refuses_database_without_017_ledger(database):
     try:
         with conn.cursor() as cur:
             cur.execute(f'SET search_path TO "{schema}",public')
-        with pytest.raises(RuntimeError, match="requires migration 017"):
+        with pytest.raises(RuntimeError, match="requires migration 016 or 017"):
             gate.preflight(conn, schema)
     finally:
         conn.close()

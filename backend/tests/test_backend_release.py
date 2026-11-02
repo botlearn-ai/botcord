@@ -32,7 +32,7 @@ def setup_release(monkeypatch, *, migrate=True, fail=None):
 def test_first_upgrade_stops_writers_before_schema_and_promotes_after_backfill(monkeypatch, tmp_path):
     calls, runtime = setup_release(monkeypatch)
     release.deploy(runtime, "new", tmp_path)
-    assert calls == ["gate:new:preflight", "stop", "gate:new:snapshot", "gate:new:apply",
+    assert calls == ["gate:new:preflight", "gate:old:validate", "stop", "gate:new:snapshot", "gate:new:apply",
                      "promote:new", "start", "verify:new"]
 
 
@@ -50,13 +50,13 @@ def test_failed_upgrade_restores_old_capture_and_backfills_before_restart(monkey
     assert calls[-6:] == ["stop", "gate:new:restore", "gate:old:backfill-old", "promote:old", "start", "verify:old"]
 
 
-@pytest.mark.parametrize("failure", ["preflight", "snapshot"])
+@pytest.mark.parametrize("failure", ["preflight", "validate", "snapshot"])
 def test_pre_migration_failures_never_restore_nonexistent_snapshot(monkeypatch, tmp_path, failure):
     calls, runtime = setup_release(monkeypatch, fail=failure)
     with pytest.raises(RuntimeError):
         release.deploy(runtime, "new", tmp_path)
     assert "gate:new:apply" not in calls and "gate:new:restore" not in calls
-    if failure == "preflight":
+    if failure in {"preflight", "validate"}:
         assert "stop" not in calls
     else:
         assert calls[-3:] == ["promote:old", "start", "verify:old"]
@@ -85,3 +85,14 @@ def test_generic_sql_runner_refuses_uncoordinated_018(monkeypatch, tmp_path, cap
         migrations.main()
     assert error.value.code == 1
     assert "coordinated backend deployment gate" in capsys.readouterr().err
+
+
+def test_subprocess_failure_logs_only_safe_gate_diagnostic(monkeypatch, capsys):
+    result = SimpleNamespace(returncode=1, stdout="private-source-value",
+        stderr="private-connection-value\nConversation release gate failed: GateError: Unsupported baseline\n")
+    monkeypatch.setattr(release.subprocess, "run", lambda *args, **kwargs: result)
+    with pytest.raises(RuntimeError):
+        release.run("docker", "run", "candidate", input="private-runtime-config")
+    output = capsys.readouterr()
+    assert "Unsupported baseline" in output.err
+    assert "private" not in output.err + output.out

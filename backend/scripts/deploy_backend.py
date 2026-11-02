@@ -27,6 +27,9 @@ ENV_CODE = "import os,json; print(json.dumps({k:os.environ[k] for k in ('DATABAS
 def run(*args, input=None, timeout=180):
     result = subprocess.run(args, input=input, capture_output=True, text=True, timeout=timeout)
     if result.returncode:
+        for line in result.stderr.splitlines():
+            if line.startswith("Conversation release gate failed:"):
+                print(line, file=sys.stderr, flush=True)
         # stdout/stderr can include runtime values: never echo them in Actions.
         raise RuntimeError(f"Command failed ({result.returncode}): {' '.join(args[:3])}")
     return result.stdout.strip()
@@ -178,6 +181,8 @@ def gate(image, mode, runtime, state):
 def deploy(runtime, image, state):
     result = gate(image, "preflight", runtime, state)
     maintenance = result["needs_migration"]
+    if maintenance:
+        gate(runtime.old_image, "validate", runtime, state)
     changed = False
     snapshot_saved = False
     try:

@@ -18,7 +18,12 @@ ROOT = Path("/app") if Path("/app/hub").is_dir() else Path(__file__).resolve().p
 sys.path.insert(0, str(ROOT))
 
 MIGRATION = "018_incremental_conversation_projection.sql"
+BASELINE = "017_conversation_directory.sql"
 RUNTIME_KEYS = {"DATABASE_URL", "DATABASE_SCHEMA", "JWT_SECRET", "BOTCORD_HUB_CONTROL_PRIVATE_KEY"}
+
+
+class GateError(RuntimeError):
+    """A static, safe-to-log operator diagnostic."""
 
 
 def connect():
@@ -36,7 +41,7 @@ def connect():
             cur.execute(sql.SQL("SET search_path TO {}, public").format(sql.Identifier(schema)))
         cur.execute("SELECT current_schema()")
         if cur.fetchone()[0] != schema:
-            raise RuntimeError("Configured schema is missing; refusing fallback")
+            raise GateError("Configured schema is missing; refusing fallback")
     return conn, schema
 
 
@@ -49,29 +54,36 @@ def preflight(conn, schema):
     with conn.cursor() as cur:
         cur.execute("SELECT version FROM _botcord_schema_migrations")
         versions = {r[0] for r in cur.fetchall()}
-        if "017_conversation_directory.sql" not in versions:
-            raise RuntimeError("This fixed release requires migration 017 already installed")
+        if BASELINE not in versions and "016_space_knowledge_base.sql" not in versions:
+            raise GateError("This fixed release requires migration 016 or 017 already installed")
         if any(v > MIGRATION for v in versions):
-            raise RuntimeError("Database is newer than this release")
+            raise GateError("Database is newer than this release")
         cur.execute("SELECT count(*) FROM rooms WHERE space_id IS NULL AND left(room_id,7) <> 'rm_sdm_'")
         rooms = cur.fetchone()[0]
     # The ledger alone is insufficient after a rollback of capture definitions.
     needs_migration = MIGRATION not in versions
     if not needs_migration:
-        from sqlalchemy import create_engine
-        from scripts.repair_conversation_capture import check_or_repair
-        engine = create_engine(os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1))
         try:
-            with engine.begin() as connection:
-                if os.environ.get("DATABASE_SCHEMA"):
-                    quote = connection.dialect.identifier_preparer.quote_identifier
-                    connection.exec_driver_sql(f"SET LOCAL search_path TO {quote(schema)}, public")
-                check_or_repair(connection)
+            validate_capture(schema)
         except RuntimeError:
             needs_migration = True
-        finally:
-            engine.dispose()
-    return {"schema": schema, "personal_rooms": rooms, "needs_migration": needs_migration}
+    return {"schema": schema, "personal_rooms": rooms, "needs_migration": needs_migration,
+            "needs_017": BASELINE not in versions}
+
+
+def validate_capture(schema):
+    from sqlalchemy import create_engine
+    from hub.services.conversation_capture import _validate_postgres_capture
+    engine = create_engine(os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1))
+    try:
+        with engine.begin() as connection:
+            if os.environ.get("DATABASE_SCHEMA"):
+                quote = connection.dialect.identifier_preparer.quote_identifier
+                connection.exec_driver_sql(f"SET LOCAL search_path TO {quote(schema)}, public")
+            suffix = "_" + hashlib.md5(schema.encode()).hexdigest()[:8]
+            _validate_postgres_capture(connection, schema, "public", suffix)
+    finally:
+        engine.dispose()
 
 
 def snapshot(conn, schema, path):
@@ -91,10 +103,12 @@ def snapshot(conn, schema, path):
             WHERE pn.nspname=%s AND t.tgname=ANY(%s) ORDER BY t.tgname""", (schema, names))
         triggers = cur.fetchall()
         if len(functions) != 15 or len(triggers) != 15:
-            raise RuntimeError("Expected all 15 existing capture functions and triggers")
+            raise GateError("Expected all 15 existing capture functions and triggers")
         cur.execute("SELECT EXISTS(SELECT 1 FROM _botcord_schema_migrations WHERE version=%s)", (MIGRATION,))
         state = {"schema": schema, "functions": functions, "triggers": triggers,
                  "had_migration": cur.fetchone()[0], "epochs": epoch_digest(cur)}
+        cur.execute("SELECT EXISTS(SELECT 1 FROM _botcord_schema_migrations WHERE version=%s)", (BASELINE,))
+        state["had_baseline"] = cur.fetchone()[0]
     # O_EXCL ensures a retry never overwrites the original recovery snapshot.
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as out:
@@ -102,12 +116,14 @@ def snapshot(conn, schema, path):
 
 
 def apply_migration(conn, path):
+    if path.name not in {BASELINE, MIGRATION}:
+        raise GateError("Only migrations 017 and 018 are allowed in this gate")
     sql = path.read_text()
     if not sql.rstrip().endswith("COMMIT;"):
-        raise RuntimeError("Migration must own its transaction")
+        raise GateError("Migration must own its transaction")
     # Ledger and schema commit together; this runs only the fixed migration.
     sql = sql.rstrip()[:-len("COMMIT;")] + (
-        f"INSERT INTO _botcord_schema_migrations(version) VALUES ('{MIGRATION}') "
+        f"INSERT INTO _botcord_schema_migrations(version) VALUES ('{path.name}') "
         "ON CONFLICT DO NOTHING;\nCOMMIT;"
     )
     with conn.cursor() as cur:
@@ -118,7 +134,7 @@ def restore(conn, schema, path):
     from psycopg2 import sql
     state = json.loads(path.read_text())
     if state["schema"] != schema:
-        raise RuntimeError("Recovery schema does not match runtime")
+        raise GateError("Recovery schema does not match runtime")
     conn.autocommit = False
     try:
         with conn.cursor() as cur:
@@ -133,6 +149,8 @@ def restore(conn, schema, path):
                 cur.execute(definition)
             if not state["had_migration"]:
                 cur.execute("DELETE FROM _botcord_schema_migrations WHERE version=%s", (MIGRATION,))
+            if not state["had_baseline"]:
+                cur.execute("DELETE FROM _botcord_schema_migrations WHERE version=%s", (BASELINE,))
             cur.execute("""INSERT INTO conversation_dirty_rooms(room_id,generation)
                 SELECT room_id,1 FROM (SELECT room_id FROM rooms WHERE space_id IS NULL
                     UNION SELECT room_id FROM conversation_entries) p
@@ -175,25 +193,25 @@ def verify(conn, state_path):
         for table in ("conversation_dirty_rooms", "conversation_dirty_messages", "conversation_dirty_readers"):
             cur.execute(f"SELECT count(*) FROM {table}")
             if cur.fetchone()[0]:
-                raise RuntimeError(f"{table} is not drained")
+                raise GateError(f"{table} is not drained")
         cur.execute("""SELECT count(*) FROM rooms r LEFT JOIN conversation_room_summaries s USING(room_id)
             WHERE r.space_id IS NULL AND left(r.room_id,7) <> 'rm_sdm_' AND s.room_id IS NULL""")
         if cur.fetchone()[0]:
-            raise RuntimeError("Personal room summaries are missing")
+            raise GateError("Personal room summaries are missing")
         if epoch_digest(cur) != state["epochs"]:
-            raise RuntimeError("Existing conversation cursor epochs changed")
+            raise GateError("Existing conversation cursor epochs changed")
         cur.execute("SELECT count(*) FROM conversation_messages")
         return {"logical_messages": cur.fetchone()[0], "queues_empty": True, "epochs_preserved": True}
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=("preflight", "snapshot", "apply", "restore", "backfill-old"))
+    parser.add_argument("mode", choices=("preflight", "validate", "snapshot", "apply", "restore", "backfill-old"))
     parser.add_argument("--state", default="/release-state/capture.json")
     args = parser.parse_args()
     runtime = json.load(sys.stdin)
     if not runtime.get("DATABASE_URL") or not runtime.get("BOTCORD_HUB_CONTROL_PRIVATE_KEY"):
-        raise RuntimeError("Runtime database and signing configuration are required")
+        raise GateError("Runtime database and signing configuration are required")
     os.environ.update({k: v for k, v in runtime.items() if k in RUNTIME_KEYS and v})
     if args.mode == "backfill-old":
         asyncio.run(backfill())
@@ -203,6 +221,9 @@ def main():
     try:
         if args.mode == "preflight":
             result = preflight(conn, schema)
+        elif args.mode == "validate":
+            validate_capture(schema)
+            result = {"runtime_capture_verified": True}
         elif args.mode == "snapshot":
             snapshot(conn, schema, path)
             result = {"capture_snapshot_saved": True}
@@ -210,18 +231,13 @@ def main():
             restore(conn, schema, path)
             result = {"capture_restored": True}
         else:
+            with conn.cursor() as cur:
+                cur.execute("SELECT EXISTS(SELECT 1 FROM _botcord_schema_migrations WHERE version=%s)", (BASELINE,))
+                needs_baseline = not cur.fetchone()[0]
+            if needs_baseline:
+                apply_migration(conn, ROOT / "migrations" / BASELINE)
             apply_migration(conn, ROOT / "migrations" / MIGRATION)
-            from scripts.repair_conversation_capture import check_or_repair
-            from sqlalchemy import create_engine
-            engine = create_engine(os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1))
-            try:
-                with engine.begin() as connection:
-                    if os.environ.get("DATABASE_SCHEMA"):
-                        quote = connection.dialect.identifier_preparer.quote_identifier
-                        connection.exec_driver_sql(f"SET LOCAL search_path TO {quote(schema)}, public")
-                    check_or_repair(connection)
-            finally:
-                engine.dispose()
+            validate_capture(schema)
             asyncio.run(backfill())
             result = verify(conn, path)
         print(json.dumps(result), flush=True)
@@ -234,5 +250,6 @@ if __name__ == "__main__":
         main()
     except Exception as exc:
         # Connection/SQL exceptions can contain DSNs or private source values.
-        print(f"Conversation release gate failed: {type(exc).__name__}", file=sys.stderr)
+        detail = f": {exc}" if isinstance(exc, GateError) else ""
+        print(f"Conversation release gate failed: {type(exc).__name__}{detail}", file=sys.stderr)
         sys.exit(1)
