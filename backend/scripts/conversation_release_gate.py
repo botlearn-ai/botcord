@@ -45,9 +45,12 @@ def connect():
     return conn, schema
 
 
-def epoch_digest(cur):
+def epoch_hashes(cur):
     cur.execute("SELECT user_id, epoch FROM conversation_accounts ORDER BY user_id")
-    return hashlib.sha256(json.dumps(cur.fetchall(), default=str).encode()).hexdigest()
+    # Backfill may initialize previously untouched accounts. Preserve each
+    # existing cursor, without rejecting legitimate new accounts or storing IDs.
+    return {hashlib.sha256(str(user_id).encode()).hexdigest():
+            hashlib.sha256(epoch.encode()).hexdigest() for user_id, epoch in cur.fetchall()}
 
 
 def preflight(conn, schema):
@@ -106,7 +109,7 @@ def snapshot(conn, schema, path):
             raise GateError("Expected all 15 existing capture functions and triggers")
         cur.execute("SELECT EXISTS(SELECT 1 FROM _botcord_schema_migrations WHERE version=%s)", (MIGRATION,))
         state = {"schema": schema, "functions": functions, "triggers": triggers,
-                 "had_migration": cur.fetchone()[0], "epochs": epoch_digest(cur)}
+                 "had_migration": cur.fetchone()[0], "epochs": epoch_hashes(cur)}
         cur.execute("SELECT EXISTS(SELECT 1 FROM _botcord_schema_migrations WHERE version=%s)", (BASELINE,))
         state["had_baseline"] = cur.fetchone()[0]
     # O_EXCL ensures a retry never overwrites the original recovery snapshot.
@@ -198,7 +201,8 @@ def verify(conn, state_path):
             WHERE r.space_id IS NULL AND left(r.room_id,7) <> 'rm_sdm_' AND s.room_id IS NULL""")
         if cur.fetchone()[0]:
             raise GateError("Personal room summaries are missing")
-        if epoch_digest(cur) != state["epochs"]:
+        current = epoch_hashes(cur)
+        if any(current.get(account) != epoch for account, epoch in state["epochs"].items()):
             raise GateError("Existing conversation cursor epochs changed")
         cur.execute("SELECT count(*) FROM conversation_messages")
         return {"logical_messages": cur.fetchone()[0], "queues_empty": True, "epochs_preserved": True}

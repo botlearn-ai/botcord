@@ -1,6 +1,7 @@
 """Exercise the exact release gate and recovery DDL in disposable PG schemas."""
 import json
 import os
+import uuid
 from pathlib import Path
 
 import psycopg2
@@ -54,6 +55,17 @@ async def test_fixed_gate_upgrades_and_restores_017_capture(database, tmp_path, 
                 await db.commit()
             await db.commit()
         assert gate.verify(conn, state)["epochs_preserved"]
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO conversation_accounts(user_id,epoch,version,floor) VALUES (%s,'new-account',0,0)", (str(uuid.uuid4()),))
+        assert gate.verify(conn, state)["epochs_preserved"]
+        with conn.cursor() as cur:
+            cur.execute("SELECT epoch FROM conversation_accounts WHERE user_id=%s", (str(ctx.user_id),))
+            original_epoch = cur.fetchone()[0]
+            cur.execute("UPDATE conversation_accounts SET epoch='unexpected-reset' WHERE user_id=%s", (str(ctx.user_id),))
+        with pytest.raises(gate.GateError, match="cursor epochs changed"):
+            gate.verify(conn, state)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE conversation_accounts SET epoch=%s WHERE user_id=%s", (original_epoch, str(ctx.user_id)))
         with conn.cursor() as cur:
             cur.execute("SELECT version FROM _botcord_schema_migrations ORDER BY version")
             assert cur.fetchall()[-1][0] == gate.MIGRATION
