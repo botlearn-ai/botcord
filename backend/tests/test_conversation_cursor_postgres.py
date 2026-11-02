@@ -16,6 +16,7 @@ from app.auth import RequestContext
 from app.routers.conversations import ConversationSyncRequest, sync_conversations
 from hub.models import Base, ConversationAccount, ConversationDirtyRoom, Room, User
 from hub.services.conversation_projection import project_pending
+from hub.services.conversation_capture import PROJECTION_TABLES
 from tests.test_app.test_conversation_sync import add_message, add_room
 
 URL = os.environ.get("CONVERSATION_TEST_DATABASE_URL")
@@ -107,7 +108,7 @@ async def test_rollback_and_raw_sql_recovery_preserve_outbox(database):
 async def test_migration_is_repeatable_and_backfill_preserves_cursors(database):
     engine, sessions, ctx, schema = database
     initial = await sync(sessions, ctx)
-    sql = (Path(__file__).parents[1] / "migrations/017_conversation_directory.sql").read_text()
+    sql = "\n".join((Path(__file__).parents[1] / "migrations" / name).read_text() for name in ("017_conversation_directory.sql", "018_incremental_conversation_projection.sql"))
     sql = sql.replace('"public"."users"', f'"{schema}"."users"')
     async with engine.begin() as conn:
         raw = await conn.get_raw_connection()
@@ -174,6 +175,10 @@ async def test_cursor_query_benchmark(database):
         await conn.execute(text("ANALYZE message_records"))
         await conn.execute(text("ANALYZE conversation_entries"))
         await conn.execute(text("ANALYZE conversation_changes"))
+    async with sessions() as db:
+        db.sync_session.info["conversation_projecting"] = True
+        while await project_pending(db):
+            await db.commit()
     initial = await sync(sessions, ctx)
     assert len(initial["upserts"]) == 100
     statements = []
@@ -223,7 +228,7 @@ async def test_cursor_query_benchmark(database):
 async def test_upgrade_from_old_schema_backfills_and_resets_prior_epoch(database):
     engine, sessions, ctx, schema = database
     initial = await sync(sessions, ctx)
-    sql = (Path(__file__).parents[1] / "migrations/017_conversation_directory.sql").read_text()
+    sql = "\n".join((Path(__file__).parents[1] / "migrations" / name).read_text() for name in ("017_conversation_directory.sql", "018_incremental_conversation_projection.sql"))
     sql = sql.replace('"public"."users"', f'"{schema}"."users"')
     async with engine.begin() as conn:
         await conn.execute(text("DROP TABLE conversation_changes, conversation_entries, conversation_accounts, conversation_dirty_rooms"))
@@ -262,10 +267,10 @@ async def test_private_summaries_are_not_exposed_to_direct_database_clients(data
         await conn.execute(text(f'CREATE ROLE "{role}" NOLOGIN'))
         try:
             await conn.execute(text(f'GRANT USAGE ON SCHEMA "{schema}" TO "{role}"'))
-            await conn.execute(text(f'GRANT SELECT ON conversation_entries, conversation_changes, conversation_accounts, conversation_dirty_rooms TO "{role}"'))
+            await conn.execute(text(f'GRANT SELECT ON {", ".join(PROJECTION_TABLES)} TO "{role}"'))
             assert (await conn.execute(text("SELECT count(*) FROM conversation_entries"))).scalar() == 2
             await conn.execute(text(f'SET LOCAL ROLE "{role}"'))
-            for table in ("conversation_entries", "conversation_changes", "conversation_accounts", "conversation_dirty_rooms"):
+            for table in PROJECTION_TABLES:
                 assert (await conn.execute(text(f"SELECT count(*) FROM {table}"))).scalar() == 0
             await conn.execute(text("RESET ROLE"))
         finally:
@@ -310,7 +315,7 @@ async def test_restart_fails_closed_on_capture_drift_and_migration_repairs(datab
     with pytest.raises(RuntimeError, match="repair_conversation_capture"):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-    sql = (Path(__file__).parents[1] / "migrations/017_conversation_directory.sql").read_text()
+    sql = "\n".join((Path(__file__).parents[1] / "migrations" / name).read_text() for name in ("017_conversation_directory.sql", "018_incremental_conversation_projection.sql"))
     sql = sql.replace('"public"."users"', f'"{schema}"."users"')
     async with engine.begin() as conn:
         raw = await conn.get_raw_connection()

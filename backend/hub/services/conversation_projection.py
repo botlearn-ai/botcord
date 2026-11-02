@@ -1,25 +1,25 @@
-"""Write-side, account-scoped conversation projection and outbox recovery.
+"""Incremental, account-scoped directory projection and durable recovery.
 
-Historical aggregation is restricted to affected rooms during source writes or
-backfill. Normal sync reads persisted entries and never executes this builder.
+Only explicit rebuilds initialize logical history; ordinary writes reconcile
+changed message keys and share a room summary across all affected accounts.
 """
 
 import datetime as dt
 import hashlib
 import json
 
-from sqlalchemy import JSON, case, cast, func, select
+from sqlalchemy import cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import RequestContext
 from app.auth_room import strongest_room_role, room_member_can_invite
 from app.routers.dashboard import (
     _build_member_previews,
-    _preview_for_record,
     load_agent_display_names,
     load_user_display_names,
 )
-from hub.models import Agent, MessageRecord, Room, RoomMember, User
+from hub.models import Agent, Room, RoomMember, User
+from hub.services.conversation_messages import READ, refresh_room, unread_count
 
 def iso(value):
     if value is None:
@@ -31,7 +31,7 @@ def enum_value(value):
     return value.value if hasattr(value, "value") else value
 
 
-async def conversation_summaries(db: AsyncSession, ctx: RequestContext, only_rooms: list[str] | None = None) -> list[dict]:
+async def conversation_summaries(db: AsyncSession, ctx: RequestContext, only_rooms: list[str] | None = None, *, prepared=None, entries=None) -> list[dict]:
     agents = (await db.execute(
         select(Agent.agent_id, Agent.display_name).where(Agent.user_id == ctx.user_id)
         .order_by(Agent.agent_id)
@@ -54,51 +54,21 @@ async def conversation_summaries(db: AsyncSession, ctx: RequestContext, only_roo
         return []
     room_ids = list(rooms)
 
-    # Filter receipts before ranking; only one canonical delivery per logical
-    # message contributes to previews and unread counts. Both operations stay
-    # in SQL instead of loading all historical messages into Python per Bot.
-    if db.bind.dialect.name == "postgresql":
-        message_type = cast(MessageRecord.envelope_json, JSON)["type"].as_string()
-    else:
-        message_type = func.json_extract(
-            case((func.json_valid(MessageRecord.envelope_json), MessageRecord.envelope_json), else_="{}"),
-            "$.type",
-        )
-    canonical_ids = (
-        select(func.min(MessageRecord.id).label("id"))
-        .where(MessageRecord.room_id.in_(room_ids),
-               func.coalesce(message_type, "message").in_(["message", "system"]))
-        .group_by(MessageRecord.room_id, MessageRecord.msg_id).subquery()
-    )
-    # Carry the fields needed for counting into one materialized relation.
-    # An IN(min(id) GROUP BY ...) semijoin combined with the member join can
-    # produce a catastrophically bad nested-loop plan during large backfills.
-    canonical = select(MessageRecord.id, MessageRecord.room_id, MessageRecord.sender_id,
-        MessageRecord.created_at, MessageRecord.recalled_at).join(canonical_ids,
-        canonical_ids.c.id == MessageRecord.id).cte("canonical_conversation_messages")
-    if db.get_bind().dialect.name == "postgresql":
-        canonical = canonical.prefix_with("MATERIALIZED")
-    ranked = select(
-        canonical.c.id,
-        func.row_number().over(partition_by=canonical.c.room_id,
-            order_by=(canonical.c.created_at.desc(), canonical.c.id.desc())).label("rank"),
-    ).subquery()
-    latest = {record.room_id: record for record in (await db.execute(
-        select(MessageRecord).join(ranked, ranked.c.id == MessageRecord.id).where(ranked.c.rank == 1)
-    )).scalars().all()}
-    unread = dict((await db.execute(
-        select(canonical.c.room_id, func.count())
-        .join(RoomMember, (RoomMember.room_id == canonical.c.room_id) & (RoomMember.agent_id == ctx.human_id))
-        .where(canonical.c.recalled_at.is_(None), canonical.c.sender_id != ctx.human_id,
-               (RoomMember.last_viewed_at.is_(None)) | (canonical.c.created_at > RoomMember.last_viewed_at))
-        .group_by(canonical.c.room_id)
-    )).all())
+    # Shared room summaries are prepared once while holding the outbox lock,
+    # never once per account or per delivery copy.
+    if prepared is None:
+        from hub.models import ConversationEntry, ConversationRoomSummary
+        prepared = {rid: (await db.get(ConversationRoomSummary, rid), [], False) for rid in room_ids}
+        if any(value[0] is None for value in prepared.values()):
+            raise RuntimeError("Conversation summaries require projection/backfill first")
+        entries = {e.room_id: e for e in (await db.scalars(select(ConversationEntry)
+            .where(ConversationEntry.user_id == ctx.user_id, ConversationEntry.room_id.in_(room_ids)))).all()}
     counts = dict((await db.execute(
         select(RoomMember.room_id, func.count()).where(RoomMember.room_id.in_(room_ids))
         .group_by(RoomMember.room_id)
     )).all())
     previews = await _build_member_previews(db, room_ids)
-    sender_ids = {record.sender_id for record in latest.values()}
+    sender_ids = {prepared[rid][0].last_sender_id for rid in room_ids if prepared[rid][0].last_sender_id}
     sender_names = await load_agent_display_names(db, {sid for sid in sender_ids if not sid.startswith("hu_")})
     sender_names.update(await load_user_display_names(db, {sid for sid in sender_ids if sid.startswith("hu_")}))
     summaries = []
@@ -113,7 +83,10 @@ async def conversation_summaries(db: AsyncSession, ctx: RequestContext, only_roo
         if room.owner_id == ctx.human_id or room.owner_id in agent_names:
             roles.append("owner")
         role = strongest_room_role(roles) or member.role
-        record = latest.get(rid)
+        room_summary, changes, rebuild = prepared[rid]
+        count = await unread_count(db, rid, ctx.human_id if human_member else None,
+            human_member.last_viewed_at if human_member else None, (entries or {}).get(rid),
+            changes, rebuild, room_summary.last_message_at)
         summary = {
             "room_id": rid, "name": room.name, "description": room.description,
             "owner_id": room.owner_id, "owner_type": enum_value(room.owner_type),
@@ -126,11 +99,11 @@ async def conversation_summaries(db: AsyncSession, ctx: RequestContext, only_roo
             "default_invite": room.default_invite, "max_members": room.max_members,
             "slow_mode_seconds": room.slow_mode_seconds,
             "last_viewed_at": iso(human_member.last_viewed_at) if human_member else None,
-            "last_message_at": iso(record.created_at) if record else None,
-            "last_message_preview": _preview_for_record(record)[1] if record else None,
-            "last_sender_name": sender_names.get(record.sender_id) if record else None,
-            "last_sender_id": record.sender_id if record else None,
-            "has_unread": unread.get(rid, 0) > 0, "unread_count": unread.get(rid, 0),
+            "last_message_at": iso(room_summary.last_message_at),
+            "last_message_preview": room_summary.last_message_preview,
+            "last_sender_name": sender_names.get(room_summary.last_sender_id),
+            "last_sender_id": room_summary.last_sender_id,
+            "has_unread": count > 0, "unread_count": count,
             "members_preview": previews.get(rid, []),
             "_originAgent": bots[0] if observer else None,
             "_originAgents": bots,
@@ -145,25 +118,29 @@ async def conversation_summaries(db: AsyncSession, ctx: RequestContext, only_roo
 
 
 
-# The expensive historical aggregation above is a WRITE-side projection only.
-# Sync endpoints read persisted entries/change rows and never invoke it.
-async def project_pending(db: AsyncSession, *, limit: int = 500, own_transaction: bool = False) -> int:
+# Sync endpoints read persisted entries/change rows and never invoke projection.
+async def project_pending(db: AsyncSession, *, limit: int = 20, own_transaction: bool = False) -> int:
     import uuid
     from sqlalchemy import delete, or_
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-    from hub.models import ConversationAccount, ConversationChange, ConversationDirtyRoom, ConversationEntry
+    from hub.models import ConversationAccount, ConversationChange, ConversationDirtyRoom, ConversationDirtyReader, ConversationEntry
 
-    query = select(ConversationDirtyRoom.room_id)
+    query = select(ConversationDirtyRoom)
     if own_transaction and db.get_bind().dialect.name == "postgresql":
         from sqlalchemy import String
         # A normal send must not pay for unrelated backfill/recovery work.
         # txid is only an ownership tag for this queue row, NEVER a sync cursor.
         query = query.where(ConversationDirtyRoom.writer_xid == cast(func.txid_current(), String))
-    dirty = (await db.execute(query.order_by(ConversationDirtyRoom.room_id)
-        .limit(limit).with_for_update(skip_locked=True))).scalars().all()
-    if not dirty:
+    pending = (await db.execute(query.order_by(ConversationDirtyRoom.room_id)
+        .limit(limit).with_for_update(skip_locked=True).execution_options(populate_existing=True))).scalars().all()
+    if not pending:
         return 0
+    dirty = [row.room_id for row in pending]
+    reasons = {row.room_id: row.reasons for row in pending}
+    readers = (await db.execute(select(ConversationDirtyReader.room_id, ConversationDirtyReader.agent_id)
+        .where(ConversationDirtyReader.room_id.in_(dirty)))).all()
+    prepared = {rid: await refresh_room(db, rid, reasons[rid]) for rid in dirty}
     # Locks remain held until commit. Concurrent source writes update/reinsert
     # this row after our commit, so deleting it here cannot swallow a new event.
     await db.execute(delete(ConversationDirtyRoom).where(ConversationDirtyRoom.room_id.in_(dirty)))
@@ -174,6 +151,9 @@ async def project_pending(db: AsyncSession, *, limit: int = 500, own_transaction
         .order_by(User.id))).scalars().all()
     insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
     for user in users:
+        user_rooms = [rid for rid in dirty if reasons[rid] != READ or (rid, user.human_id) in readers]
+        if not user_rooms:
+            continue
         await db.execute(insert(ConversationAccount).values(user_id=user.id, epoch=uuid.uuid4().hex)
             .on_conflict_do_nothing(index_elements=["user_id"]))
         # This lock is acquired BEFORE reading/advancing the account version.
@@ -184,14 +164,18 @@ async def project_pending(db: AsyncSession, *, limit: int = 500, own_transaction
             .where(ConversationEntry.user_id == user.id, ConversationEntry.room_id.in_(dirty))
             .execution_options(populate_existing=True))).scalars()}
         ctx = RequestContext(user_id=user.id, supabase_user_id=str(user.supabase_user_id), human_id=user.human_id)
-        summaries = {row["room_id"]: row for row in await conversation_summaries(db, ctx, dirty)}
-        for rid in sorted(set(entries) | set(summaries)):
+        human_rooms = set((await db.scalars(select(RoomMember.room_id).where(
+            RoomMember.room_id.in_(user_rooms), RoomMember.agent_id == ctx.human_id))).all())
+        summaries = {row["room_id"]: row for row in await conversation_summaries(db, ctx, user_rooms, prepared=prepared, entries=entries)}
+        for rid in sorted((set(entries) | set(summaries)) & set(user_rooms)):
             old = entries.get(rid)
             payload = summaries.get(rid)
+            read_member_id = ctx.human_id if payload and rid in human_rooms else None
             if old and ((payload is None and old.deleted) or (payload is not None and not old.deleted and old.payload == payload)):
+                old.read_member_id = read_member_id
                 continue
             account.version += 1
-            values = dict(version=account.version, deleted=payload is None, payload=payload or {},
+            values = dict(read_member_id=read_member_id, version=account.version, deleted=payload is None, payload=payload or {},
                 last_sender_id=payload.get("last_sender_id") if payload else None,
                 activity_at=dt.datetime.fromisoformat(payload["last_message_at"]) if payload and payload["last_message_at"] else dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc))
             if old:
@@ -209,6 +193,7 @@ async def project_pending(db: AsyncSession, *, limit: int = 500, own_transaction
                 ConversationChange.version <= account.floor))
             await db.execute(delete(ConversationEntry).where(ConversationEntry.user_id == user.id,
                 ConversationEntry.deleted.is_(True), ConversationEntry.version <= account.floor))
+    await db.execute(delete(ConversationDirtyReader).where(ConversationDirtyReader.room_id.in_(dirty)))
     await db.flush()
     return len(dirty)
 
@@ -218,15 +203,22 @@ async def conversation_projection_loop():
     import asyncio
     import logging
     from hub.database import async_session
+    backoff = 1
     while True:
         try:
             async with async_session() as db:
                 db.sync_session.info["conversation_projecting"] = True
+                if db.get_bind().dialect.name == "postgresql":
+                    from sqlalchemy import text
+                    await db.execute(text("SET LOCAL statement_timeout = '10s'"))
+                    await db.execute(text("SET LOCAL lock_timeout = '5s'"))
                 count = await project_pending(db)
                 await db.commit()
-            await asyncio.sleep(0 if count == 500 else 0.5)
+            backoff = 1
+            await asyncio.sleep(0.1 if count == 20 else 1)
         except asyncio.CancelledError:
             raise
         except Exception:
             logging.getLogger(__name__).exception("Conversation projection failed; outbox retained for retry")
-            await asyncio.sleep(1)
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 30)

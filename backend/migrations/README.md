@@ -40,7 +40,7 @@ without replacing triggers or altering RLS. Fresh databases still install captur
 in the table-creation transaction. Existing installations must match the shipped
 trigger functions, enabled events, schema/search path and RLS flags. A capture
 function change requires a corresponding explicit migration before app rollout.
-This fix adds no migration and accepts the definitions installed by migration 017.
+Migration 018 replaces the 017 definitions with reason-specific capture and logical-message projection. Stop old writers, migrate, backfill with new code, then roll out; mixed versions are not supported. See `../../docs/messages-conversation-sync.md` for validation and rollback.
 
 Before rollout, the authorized database operator can run from `backend/`, with
 the intended `DATABASE_URL` and `DATABASE_SCHEMA`:
@@ -75,3 +75,5 @@ Permission, missing/old capture and other failures remain startup failures.
 This does not serialize concurrent fresh schema creation or replace a controlled
 migration window. The SQL migration workflow remains separate from app deploy;
 the generic runner's file execution and ledger write are not one transaction.
+
+`018_incremental_conversation_projection.sql` 增加消息/阅读明细队列、精简逻辑消息、共享房间摘要及账号阅读主体字段。迁移仅排队回填；必须先完成新版回填再恢复业务流量。

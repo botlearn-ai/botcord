@@ -11,6 +11,11 @@ from sqlalchemy.util import await_only
 
 @event.listens_for(Session, "before_commit")
 def project_before_commit(session):
+    # Releasing a fanout savepoint also emits before_commit. Only the outer
+    # transaction may project the complete logical message, once all copies
+    # have been flushed. Its rollback still rolls back both source and views.
+    if session.in_nested_transaction():
+        return
     if session.info.get("conversation_projection_failed"):
         raise RuntimeError("Conversation projection failed; rollback is required before retry")
     if session.info.get("conversation_projecting"):
