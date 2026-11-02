@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import os from "node:os";
+import { recoverableSend } from "../send-recovery.js";
 import path from "node:path";
 import type { ParsedArgs } from "../args.js";
 import { BotCordClient } from "../client.js";
@@ -78,18 +82,15 @@ Options:
   }
   if (runId && args.flags["type"] && args.flags["type"] !== "message") outputError("Response sends use --type message");
 
-  // Upload files
-  const attachments: MessageAttachment[] = [];
-  for (const filePath of files) {
-    const filename = path.basename(filePath);
-    const uploaded = await client.uploadFile(filePath, filename);
-    attachments.push({
-      filename: uploaded.original_filename,
-      url: uploaded.url,
-      content_type: uploaded.content_type,
-      size_bytes: uploaded.size_bytes,
-    });
-  }
+  const uploadFiles = async (): Promise<MessageAttachment[]> => {
+    const attachments: MessageAttachment[] = [];
+    for (const filePath of files) {
+      const uploaded = await client.uploadFile(filePath, path.basename(filePath));
+      attachments.push({ filename: uploaded.original_filename, url: uploaded.url,
+        content_type: uploaded.content_type, size_bytes: uploaded.size_bytes });
+    }
+    return attachments;
+  };
 
   const replyTo = typeof args.flags["reply-to"] === "string" ? args.flags["reply-to"] : undefined;
   const topic = typeof args.flags["topic"] === "string" ? args.flags["topic"] : undefined;
@@ -99,23 +100,36 @@ Options:
 
   let result;
   if (msgType === "result" || msgType === "error") {
+    const attachments = await uploadFiles();
     result = await client.sendTypedMessage(to, msgType, text, {
       replyTo,
       topic,
       attachments: attachments.length > 0 ? attachments : undefined,
     });
   } else {
-    result = await client.sendMessage(to, text, {
-      messageId: typeof args.flags["message-id"] === "string" ? args.flags["message-id"] : undefined,
-      ...(typeof runId === "string" ? { response: {
-        run_id: runId, responds_to: respondsTo, kind: responseKind as "progress" | "final",
-      } } : {}),
-      replyTo,
-      topic,
-      goal,
-      ttlSec: ttl,
-      attachments: attachments.length > 0 ? attachments : undefined,
-      mentions: mentions.length > 0 ? mentions : undefined,
+    const messageId = typeof args.flags["message-id"] === "string" ? args.flags["message-id"] : undefined;
+    const key = createHash("sha256").update(JSON.stringify({
+      hubUrl, agentId: creds.agentId, to, text, replyTo, topic, goal, ttl, mentions,
+      runId, responseKind, respondsTo, messageId,
+      files: files.map((file) => ({ name: path.basename(file),
+        sha256: createHash("sha256").update(readFileSync(file)).digest("hex") })),
+    })).digest("hex");
+    result = await recoverableSend({
+      directory: path.join(os.homedir(), ".botcord", "send-attempts", creds.agentId),
+      key, messageId, prepare: uploadFiles,
+      status: (id) => client.getMessageStatus(id),
+      send: (id, attachments) => client.sendMessage(to, text, {
+        messageId: id,
+        ...(typeof runId === "string" ? { response: {
+          run_id: runId, responds_to: respondsTo, kind: responseKind as "progress" | "final",
+        } } : {}),
+        replyTo,
+        topic,
+        goal,
+        ttlSec: ttl,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        mentions: mentions.length > 0 ? mentions : undefined,
+      }),
     });
   }
 
