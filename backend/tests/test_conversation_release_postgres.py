@@ -2,6 +2,8 @@
 import json
 import os
 import uuid
+import hashlib
+from types import SimpleNamespace
 from pathlib import Path
 
 import psycopg2
@@ -102,3 +104,16 @@ async def test_fixed_gate_refuses_database_without_017_ledger(database):
             gate.preflight(conn, schema)
     finally:
         conn.close()
+
+
+async def test_legacy_capture_checker_remains_strict_without_installed_helper(database):
+    from hub.services import conversation_capture
+    engine, _, _, schema = database
+    legacy = SimpleNamespace(capture_statements=conversation_capture.capture_statements)
+    validate = gate.capture_validator(legacy)
+    suffix = "_" + hashlib.md5(schema.encode()).hexdigest()[:8]
+    async with engine.begin() as connection:
+        await connection.run_sync(lambda conn: validate(conn, schema, schema, suffix))
+        await connection.execute(text(f'ALTER FUNCTION conversation_rooms_insert{suffix}() IMMUTABLE'))
+        with pytest.raises(RuntimeError, match="capture is missing or outdated"):
+            await connection.run_sync(lambda conn: validate(conn, schema, schema, suffix))
