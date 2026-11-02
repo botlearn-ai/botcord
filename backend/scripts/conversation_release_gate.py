@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -74,9 +75,31 @@ def preflight(conn, schema):
             "needs_017": BASELINE not in versions}
 
 
+def capture_validator(capture):
+    if hasattr(capture, "_validate_postgres_capture"):
+        return capture._validate_postgres_capture
+    # Early 017 images generate capture SQL but predate the read-only checker.
+    # Apply the shipped strict checker to THAT image's expected SQL and tables.
+    # Importing this standalone module does not install or replace any capture.
+    path = Path("/release-capture-validator.py")
+    if not path.exists():
+        path = ROOT / "hub/services/conversation_capture.py"
+    spec = importlib.util.spec_from_file_location("release_capture_validator", path)
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    validator.capture_statements = capture.capture_statements
+    validator.PROJECTION_TABLES = tuple(statement.split()[2] for statement in
+        capture.capture_statements("postgresql") if statement.startswith("ALTER TABLE ")
+        and statement.endswith(" ENABLE ROW LEVEL SECURITY"))
+    if not validator.PROJECTION_TABLES:
+        raise GateError("Legacy image does not declare protected projection tables")
+    return validator._validate_postgres_capture
+
+
 def validate_capture(schema):
     from sqlalchemy import create_engine
-    from hub.services.conversation_capture import _validate_postgres_capture
+    from hub.services import conversation_capture
+    validate = capture_validator(conversation_capture)
     engine = create_engine(os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1))
     try:
         with engine.begin() as connection:
@@ -84,7 +107,7 @@ def validate_capture(schema):
                 quote = connection.dialect.identifier_preparer.quote_identifier
                 connection.exec_driver_sql(f"SET LOCAL search_path TO {quote(schema)}, public")
             suffix = "_" + hashlib.md5(schema.encode()).hexdigest()[:8]
-            _validate_postgres_capture(connection, schema, "public", suffix)
+            validate(connection, schema, "public", suffix)
     finally:
         engine.dispose()
 

@@ -21,6 +21,7 @@ REPO = "928112001319.dkr.ecr.us-east-1.amazonaws.com/botlearn-ai/botcord-backend
 DEVOPS = Path("/www/devops")
 SERVICE = "botcord-backend"
 GATE = Path(__file__).with_name("conversation_release_gate.py").resolve()
+VALIDATOR = GATE.parents[1] / "hub/services/conversation_capture.py"
 ENV_CODE = "import os,json; print(json.dumps({k:os.environ[k] for k in ('DATABASE_URL','DATABASE_SCHEMA','JWT_SECRET','BOTCORD_HUB_CONTROL_PRIVATE_KEY') if k in os.environ}))"
 
 
@@ -167,6 +168,7 @@ def gate(image, mode, runtime, state):
         output = run("docker", "run", "--name", container, "--rm", "--network", "host", "-i",
                      "--mount", f"type=bind,src={state},dst=/release-state",
                      "--mount", f"type=bind,src={GATE},dst=/release-gate.py,readonly",
+                     "--mount", f"type=bind,src={VALIDATOR},dst=/release-capture-validator.py,readonly",
                      image, "/app/.venv/bin/python", "/release-gate.py", mode,
                      input=json.dumps(runtime.env), timeout=1800)
     except BaseException:
