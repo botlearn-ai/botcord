@@ -234,3 +234,27 @@ async def test_read_change_only_projects_reader_account(db_session, seed, monkey
     await db_session.commit()
     assert accounts == [seed["user_id"]]
     assert (await db_session.get(ConversationEntry,(other.id,"rm_inc"))).payload["unread_count"] == 1
+
+
+async def test_excluded_room_never_initializes_personal_history(db_session, seed):
+    from hub.models import ConversationDirtyMessage, ConversationRoomSummary
+    await add_room(db_session, "rm_sdm_excluded", [seed["human_id"]])
+    await db_session.commit()
+    statements, stop = capture_sql(db_session)
+    try:
+        await add_message(db_session, "rm_sdm_excluded", "m", 10)
+        await db_session.commit()
+    finally:
+        stop()
+    assert not any(s.startswith("select") and "from message_records" in s for s in statements)
+    assert await db_session.get(ConversationRoomSummary,"rm_sdm_excluded") is None
+    assert (await db_session.scalars(select(ConversationDirtyMessage))).all() == []
+
+
+async def test_normal_transaction_preserves_existing_directory_batch_size(db_session, seed):
+    for n in range(25):
+        await add_room(db_session, f"rm_batch_{n}", [seed["human_id"]])
+    await db_session.commit()
+    rows = (await db_session.scalars(select(ConversationEntry).where(ConversationEntry.user_id == seed["user_id"]))).all()
+    assert len(rows) == 25
+    assert (await db_session.scalars(select(ConversationDirtyRoom))).all() == []

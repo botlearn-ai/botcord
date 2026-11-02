@@ -125,7 +125,6 @@ async def refresh_room(
         summary.last_message_at = latest.created_at if latest else None
         summary.last_sender_id = latest.sender_id if latest else None
         summary.last_message_preview = latest.preview if latest else None
-    await db.execute(delete(ConversationDirtyMessage).where(ConversationDirtyMessage.room_id == room_id))
     return summary, changes, rebuild
 
 

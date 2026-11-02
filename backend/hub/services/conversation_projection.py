@@ -119,12 +119,12 @@ async def conversation_summaries(db: AsyncSession, ctx: RequestContext, only_roo
 
 
 # Sync endpoints read persisted entries/change rows and never invoke projection.
-async def project_pending(db: AsyncSession, *, limit: int = 20, own_transaction: bool = False) -> int:
+async def project_pending(db: AsyncSession, *, limit: int = 500, own_transaction: bool = False) -> int:
     import uuid
     from sqlalchemy import delete, or_
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-    from hub.models import ConversationAccount, ConversationChange, ConversationDirtyRoom, ConversationDirtyReader, ConversationEntry
+    from hub.models import ConversationAccount, ConversationChange, ConversationDirtyRoom, ConversationDirtyReader, ConversationDirtyMessage, ConversationEntry, ConversationMessage, ConversationRoomSummary
 
     query = select(ConversationDirtyRoom)
     if own_transaction and db.get_bind().dialect.name == "postgresql":
@@ -140,7 +140,15 @@ async def project_pending(db: AsyncSession, *, limit: int = 20, own_transaction:
     reasons = {row.room_id: row.reasons for row in pending}
     readers = (await db.execute(select(ConversationDirtyReader.room_id, ConversationDirtyReader.agent_id)
         .where(ConversationDirtyReader.room_id.in_(dirty)))).all()
-    prepared = {rid: await refresh_room(db, rid, reasons[rid]) for rid in dirty}
+    eligible = set((await db.scalars(select(Room.room_id).where(
+        Room.room_id.in_(dirty), Room.space_id.is_(None), ~Room.room_id.startswith("rm_sdm_")))).all())
+    prepared = {rid: await refresh_room(db, rid, reasons[rid]) for rid in dirty if rid in eligible}
+    excluded = set(dirty) - eligible
+    if excluded:
+        # Team/space rooms and deleted rooms have no personal directory. In
+        # particular, do not initialize their historical message projection.
+        await db.execute(delete(ConversationMessage).where(ConversationMessage.room_id.in_(excluded)))
+        await db.execute(delete(ConversationRoomSummary).where(ConversationRoomSummary.room_id.in_(excluded)))
     # Locks remain held until commit. Concurrent source writes update/reinsert
     # this row after our commit, so deleting it here cannot swallow a new event.
     await db.execute(delete(ConversationDirtyRoom).where(ConversationDirtyRoom.room_id.in_(dirty)))
@@ -193,6 +201,7 @@ async def project_pending(db: AsyncSession, *, limit: int = 20, own_transaction:
                 ConversationChange.version <= account.floor))
             await db.execute(delete(ConversationEntry).where(ConversationEntry.user_id == user.id,
                 ConversationEntry.deleted.is_(True), ConversationEntry.version <= account.floor))
+    await db.execute(delete(ConversationDirtyMessage).where(ConversationDirtyMessage.room_id.in_(dirty)))
     await db.execute(delete(ConversationDirtyReader).where(ConversationDirtyReader.room_id.in_(dirty)))
     await db.flush()
     return len(dirty)
@@ -212,7 +221,7 @@ async def conversation_projection_loop():
                     from sqlalchemy import text
                     await db.execute(text("SET LOCAL statement_timeout = '10s'"))
                     await db.execute(text("SET LOCAL lock_timeout = '5s'"))
-                count = await project_pending(db)
+                count = await project_pending(db, limit=20)
                 await db.commit()
             backoff = 1
             await asyncio.sleep(0.1 if count == 20 else 1)
