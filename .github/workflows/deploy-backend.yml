@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 20
     outputs:
       image_tag: ${{ steps.build.outputs.image_tag }}
-      image_ref: ${{ steps.build.outputs.image_ref }}
+      image_digest: ${{ steps.build.outputs.image_digest }}
       source_sha: ${{ steps.build.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v6
@@ -52,7 +52,7 @@ jobs:
           docker push "$IMAGE"
           DIGEST=$(aws ecr describe-images --region us-east-1 --repository-name "botlearn-ai/$PROJECT" --image-ids "imageTag=sha-$SOURCE_SHA" --query 'imageDetails[0].imageDigest' --output text)
           echo "image_tag=sha-$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-          echo "image_ref=$ECR_REGISTRY/botlearn-ai/$PROJECT@$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
   rollout:
@@ -71,5 +71,5 @@ jobs:
         env:
           DEPLOY_ROOT: ${{ secrets.DEPLOY_ROOT }}
           TARGET_ENV: ${{ inputs.env_name }}
-          CANDIDATE_IMAGE: ${{ needs.deploy.outputs.image_ref }}
-        run: python3 backend/scripts/deploy_backend.py --environment "$TARGET_ENV" --image "$CANDIDATE_IMAGE"
+          CANDIDATE_DIGEST: ${{ needs.deploy.outputs.image_digest }}
+        run: python3 backend/scripts/deploy_backend.py --environment "$TARGET_ENV" --image "$ECR_REGISTRY/botlearn-ai/$PROJECT@$CANDIDATE_DIGEST"
