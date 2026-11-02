@@ -23,6 +23,11 @@ New migrations start fresh from `001_*.sql`.
   `_botcord_schema_migrations`, in lexicographic order.
 - CI: `.github/workflows/db-migrate.yml` (manual dispatch, preview or
   production) runs the same script.
+- Exception: migration 018 is refused by this generic runner. The US backend
+  deploy workflow coordinates stopping old writers, applying 018 and its ledger
+  atomically, backfilling, validating, and restarting. Use `run_migrations=false`
+  for the PR preview and backend release entry points; their backend deployment
+  gate handles 018 automatically using the running Hub's database configuration.
 - Write idempotent SQL (`IF NOT EXISTS` / `IF EXISTS`) — the runner
   records success per file, but reruns after partial failure execute
   the whole file again.
