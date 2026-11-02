@@ -588,19 +588,22 @@ export function createWechatChannel(opts: WechatChannelOptions): ChannelAdapter 
           (POLL_TIMEOUT_S + 10) * 1000,
         );
         markStatus({ lastPollAt: Date.now() });
-        // W3: a successful response (`ret === 0`) is the only signal we
-        // have that the bot token actually authenticates. Promote the
-        // channel to authorized only on that boundary.
-        if (resp.ret === 0) {
-          if (consecutiveTransientFailures > 0) {
-            consecutiveTransientFailures = 0;
-            markStatus({ connected: true, lastError: null, reconnectAttempts: 0 });
-            log.info("wechat poll recovered", { gatewayId: opts.id });
-          }
-          if (!firstPollOk) {
-            firstPollOk = true;
-            markStatus({ connected: true, authorized: true });
-          }
+        // iLink may omit success codes; explicit failures always take precedence.
+        const failedCode = [resp.errcode, resp.ret].find(
+          (code) => code !== undefined && code !== 0,
+        );
+        if (failedCode !== undefined) {
+          firstPollOk = false;
+          markStatus({ connected: false, authorized: false });
+          throw new Error(`Wechat getupdates rejected: ${String(failedCode)}`);
+        }
+        if (resp.ret !== 0 && !(Array.isArray(resp.msgs) && typeof resp.get_updates_buf === "string")) {
+          throw new Error("Invalid Wechat getupdates response");
+        }
+        if (consecutiveTransientFailures > 0 || !firstPollOk) {
+          consecutiveTransientFailures = 0;
+          firstPollOk = true;
+          markStatus({ connected: true, authorized: true, lastError: null, reconnectAttempts: 0 });
         }
         const msgs = Array.isArray(resp.msgs) ? resp.msgs : [];
         // W4: persist the cursor only AFTER all emits return cleanly. If
