@@ -33,7 +33,7 @@ const SIZE: Record<ButtonSize, string> = {
 /** Shared action styling; links retain navigation semantics via LinkButton. */
 export function buttonStyles(variant: ButtonVariant = "secondary", size: ButtonSize = "md", className?: string) {
   return clsx(
-    variant === "row" ? "bc-touch-target transition-colors" : variant === "inline" ? "transition-colors" : "bc-touch-target inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors",
+    variant === "row" ? "bc-touch-target transition-colors" : variant === "inline" ? "transition-colors" : "bc-touch-target inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium transition-colors [&>svg]:shrink-0",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/60 disabled:cursor-not-allowed disabled:opacity-55",
     VARIANT[variant],
     variant !== "row" && variant !== "inline" && SIZE[size],

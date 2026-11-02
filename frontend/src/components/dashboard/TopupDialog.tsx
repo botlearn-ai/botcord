@@ -216,7 +216,7 @@ function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
                       type="button"
                       onClick={() => updateQuantity(quantity - 1)}
                       disabled={quantity <= 1 || submitting}
-                      className="w-10"
+                      className="w-10 px-0!"
                     >
                       -
                     </Button>
@@ -233,7 +233,7 @@ function TopupDialog({ viewer, onClose, onSuccess }: TopupDialogProps) {
                       type="button"
                       onClick={() => updateQuantity(quantity + 1)}
                       disabled={quantity >= 100 || submitting}
-                      className="w-10"
+                      className="w-10 px-0!"
                     >
                       +
                     </Button>
