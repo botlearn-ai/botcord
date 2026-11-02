@@ -122,6 +122,12 @@ def main() -> None:
             print(f"[skip]  {version}")
             continue
 
+        if version == "018_incremental_conversation_projection.sql":
+            print("error: migration 018 requires the coordinated backend deployment gate "
+                  "to stop old writers, backfill and verify before restart. "
+                  "Deploy Backend handles this migration automatically.", file=sys.stderr)
+            sys.exit(1)
+
         print(f"[apply] {version}")
         try:
             _run_psql_file(dsn, DATABASE_SCHEMA, path)
