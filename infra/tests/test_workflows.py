@@ -1,4 +1,7 @@
+import json
+import os
 import pathlib
+import subprocess
 import unittest
 
 
@@ -11,6 +14,29 @@ def workflow(name: str) -> str:
 
 
 class TestDokployWorkflowContracts(unittest.TestCase):
+    def test_vercel_git_integration_skips_only_preview_deployments(self):
+        config = json.loads((ROOT / "frontend" / "vercel.json").read_text())
+        ignore_command = config["ignoreCommand"]
+
+        self.assertEqual(config["framework"], "nextjs")
+        self.assertEqual(config["installCommand"], "pnpm install --ignore-workspace")
+        self.assertEqual(ignore_command, 'test "$VERCEL_ENV" = preview')
+        self.assertNotIn("git", config)
+
+        for vercel_env, expected_returncode in (("preview", 0), ("production", 1)):
+            with self.subTest(vercel_env=vercel_env):
+                env = {**os.environ, "VERCEL_ENV": vercel_env}
+                result = subprocess.run(
+                    ["sh", "-c", ignore_command],
+                    check=False,
+                    env=env,
+                )
+                self.assertEqual(result.returncode, expected_returncode)
+
+        production_workflow = workflow("deploy-frontend.yml")
+        self.assertIn("vercel build --prod", production_workflow)
+        self.assertIn("vercel deploy --prebuilt --prod", production_workflow)
+
     def test_pull_requests_validate_but_only_main_push_deploys(self):
         content = workflow("ci.yml")
 

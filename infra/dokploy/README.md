@@ -64,6 +64,8 @@ SSH 验收，服务账号不授予全局 Docker 权限。Gateway setup `9101` �
 - 原 `deploy-pr-backend-preview.yml` 手工入口改为发布整个 Dokploy 测试环境，
   不再发布旧主机/Vercel Preview，也不执行共享数据库迁移。
 - 生产 `release.yml` 保持原有路径；旧三个 deploy reusable 仅接受 `prod`。
+- Vercel Git 集成的 Preview 构建由 `frontend/vercel.json` 跳过；Production 构建与
+  `vercel deploy --prebuilt --prod` 保留。
 - GitHub variables：`DOKPLOY_URL`、`BOTCORD_TEST_SUPABASE_URL`、
   `BOTCORD_TEST_SUPABASE_ANON_KEY`；secret：`DOKPLOY_AUTH_TOKEN`，镜像沿用 `ECR_REGISTRY`。
 - 应用 runtime secrets 仍只在 Dokploy；GitHub 的 Supabase URL/anon key 只供公开 bundle 构建。
