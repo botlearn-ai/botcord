@@ -11,6 +11,7 @@ import subprocess
 import sys
 import unittest
 import urllib.parse
+import urllib.error
 from contextlib import redirect_stderr
 from unittest import mock
 
@@ -95,6 +96,11 @@ class FakeResponse:
 
     def read(self):
         return self.body
+
+
+class FakeJsonResponse(FakeResponse):
+    def __init__(self, value):
+        self.body = json.dumps(value).encode()
 
 
 class DokployDeployTests(unittest.TestCase):
@@ -221,6 +227,70 @@ class DokployDeployTests(unittest.TestCase):
         self.assertTrue(body["json"]["createEnvFile"])
         self.assertEqual(body["json"]["env"], secret_env)
         self.assertNotIn(secret_env, request.full_url)
+
+    def test_github_get_ref_uses_rest_without_token_in_url(self):
+        io = deploy_module.IO()
+        requests = []
+
+        def open_request(request):
+            requests.append(request)
+            return FakeJsonResponse({"object": {"type": "commit", "sha": SHA}})
+
+        endpoint = f"repos/botlearn-ai/botcord/git/ref/tags/dokploy-test-{SHA}"
+        with mock.patch.dict(os.environ, {"GH_TOKEN": "private-github-token"}):
+            with mock.patch.object(io, "_open", side_effect=open_request):
+                result = io.gh(["api", endpoint])
+        self.assertEqual(result["object"]["sha"], SHA)
+        request = requests[0]
+        self.assertEqual(request.get_method(), "GET")
+        self.assertEqual(
+            request.full_url,
+            f"https://api.github.com/{endpoint}",
+        )
+        self.assertNotIn("private-github-token", request.full_url)
+        self.assertEqual(request.get_header("Authorization"), "Bearer private-github-token")
+
+    def test_github_create_ref_uses_typed_rest_body(self):
+        io = deploy_module.IO()
+        requests = []
+
+        def open_request(request):
+            requests.append(request)
+            return FakeJsonResponse({"object": {"type": "commit", "sha": SHA}})
+
+        args = [
+            "api", "repos/botlearn-ai/botcord/git/refs",
+            "--method", "POST",
+            "-f", f"ref=refs/tags/dokploy-test-{SHA}",
+            "-f", f"sha={SHA}",
+        ]
+        with mock.patch.dict(os.environ, {"GH_TOKEN": "private-github-token"}):
+            with mock.patch.object(io, "_open", side_effect=open_request):
+                io.gh(args)
+        request = requests[0]
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(
+            json.loads(request.data),
+            {"ref": f"refs/tags/dokploy-test-{SHA}", "sha": SHA},
+        )
+        self.assertNotIn("private-github-token", request.full_url)
+
+    def test_github_http_status_maps_without_leaking_token(self):
+        io = deploy_module.IO()
+        endpoint = f"repos/botlearn-ai/botcord/git/ref/tags/dokploy-test-{SHA}"
+        for code, expected in (
+            (404, deploy_module.GitHubRefNotFound),
+            (422, deploy_module.GitHubRefAlreadyExists),
+        ):
+            with self.subTest(code=code):
+                error = urllib.error.HTTPError(
+                    f"https://api.github.com/{endpoint}", code, "error", {}, None
+                )
+                with mock.patch.dict(os.environ, {"GH_TOKEN": "private-github-token"}):
+                    with mock.patch.object(io, "_open", side_effect=error):
+                        with self.assertRaises(expected) as caught:
+                            io.gh(["api", endpoint])
+                self.assertNotIn("private-github-token", str(caught.exception))
 
     def test_existing_immutable_tag_is_verified(self):
         value = {"object": {"type": "commit", "sha": SHA}}

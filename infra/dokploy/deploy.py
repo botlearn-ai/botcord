@@ -218,20 +218,71 @@ class IO:
             raise DeploymentError("Dokploy returned invalid JSON") from exc
 
     def gh(self, args: list[str]) -> Any:
+        token = os.environ.get("GH_TOKEN", "")
+        if not token:
+            raise DeploymentError("GitHub credentials are required")
+        tag_prefix = f"repos/{OWNER}/{REPOSITORY}/git/ref/tags/dokploy-test-"
+        create_endpoint = f"repos/{OWNER}/{REPOSITORY}/git/refs"
+        method = "GET"
+        body = None
+        if (
+            len(args) == 2
+            and args[0] == "api"
+            and args[1].startswith(tag_prefix)
+            and SHA_RE.fullmatch(args[1][len(tag_prefix) :])
+        ):
+            endpoint = args[1]
+        elif (
+            len(args) == 8
+            and args[:2] == ["api", create_endpoint]
+            and args[2:4] == ["--method", "POST"]
+            and args[4] == "-f"
+            and args[6] == "-f"
+        ):
+            endpoint = create_endpoint
+            ref_value = args[5].removeprefix("ref=refs/tags/dokploy-test-")
+            sha_value = args[7].removeprefix("sha=")
+            if (
+                not args[5].startswith("ref=refs/tags/dokploy-test-")
+                or not args[7].startswith("sha=")
+                or not SHA_RE.fullmatch(ref_value)
+                or sha_value != ref_value
+            ):
+                raise DeploymentError("Unsupported GitHub request shape")
+            method = "POST"
+            body = json.dumps(
+                {
+                    "ref": f"refs/tags/dokploy-test-{ref_value}",
+                    "sha": sha_value,
+                },
+                separators=(",", ":"),
+            ).encode()
+        else:
+            raise DeploymentError("Unsupported GitHub request shape")
+        request = urllib.request.Request(
+            f"https://api.github.com/{endpoint}",
+            data=body,
+            method=method,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "Content-Type": "application/json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
         try:
-            result = subprocess.run(
-                ["gh", *args], capture_output=True, text=True, timeout=60
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+            with self._open(request) as response:
+                raw = response.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                raise GitHubRefNotFound("GitHub Compose ref was not found") from None
+            if exc.code == 422:
+                raise GitHubRefAlreadyExists("GitHub Compose ref already exists") from None
+            raise DeploymentError("GitHub Compose ref operation failed") from None
+        except (OSError, TimeoutError, urllib.error.URLError) as exc:
             raise DeploymentError("GitHub Compose ref operation could not complete") from exc
-        if result.returncode != 0:
-            if "HTTP 404" in result.stderr:
-                raise GitHubRefNotFound("GitHub Compose ref was not found")
-            if "HTTP 422" in result.stderr:
-                raise GitHubRefAlreadyExists("GitHub Compose ref already exists")
-            raise DeploymentError("GitHub Compose ref operation failed")
         try:
-            return json.loads(result.stdout) if result.stdout.strip() else None
+            return json.loads(raw)
         except json.JSONDecodeError as exc:
             raise DeploymentError("GitHub returned invalid JSON") from exc
 
