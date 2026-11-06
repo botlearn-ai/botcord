@@ -1,11 +1,11 @@
-name: Deploy Frontend (reusable)
+name: Deploy Frontend Production (reusable)
 
-# Reusable Next.js/Vercel deploy — called by ci.yml (preview) and release.yml (prod).
+# Production Vercel deployment. The Dokploy workflow owns the test environment.
 on:
   workflow_call:
     inputs:
       env_name:
-        description: 'Target environment: preview | prod'
+        description: 'Target environment; only prod is supported'
         required: true
         type: string
       ref:
@@ -14,7 +14,7 @@ on:
         type: string
         default: ''
       alias:
-        description: 'Optional alias domain for the deployment (e.g. preview.botcord.chat)'
+        description: 'Optional production alias domain'
         required: false
         type: string
         default: ''
@@ -34,6 +34,12 @@ jobs:
       run:
         working-directory: frontend
     steps:
+      - name: Reject legacy non-production deployment
+        if: inputs.env_name != 'prod'
+        working-directory: ${{ github.workspace }}
+        run: |
+          echo "deploy-frontend.yml is production-only; test deploys use deploy-dokploy-test.yml" >&2
+          exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref || github.sha }}
@@ -57,10 +63,7 @@ jobs:
 
       - name: Pull Vercel env
         working-directory: ${{ github.workspace }}
-        run: |
-          ENV_FLAG="preview"
-          if [ "${{ inputs.env_name }}" = "prod" ]; then ENV_FLAG="production"; fi
-          vercel pull --yes --environment=$ENV_FLAG --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -76,12 +79,7 @@ jobs:
 
       - name: Vercel build
         working-directory: ${{ github.workspace }}
-        run: |
-          if [ "${{ inputs.env_name }}" = "prod" ]; then
-            vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-          else
-            vercel build --token=${{ secrets.VERCEL_TOKEN }}
-          fi
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
@@ -90,11 +88,7 @@ jobs:
         id: deploy
         working-directory: ${{ github.workspace }}
         run: |
-          if [ "${{ inputs.env_name }}" = "prod" ]; then
-            URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
-          else
-            URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
-          fi
+          URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
           echo "deploy_url=$URL" >> $GITHUB_OUTPUT
           echo "✅ Deployed: $URL"
         env:

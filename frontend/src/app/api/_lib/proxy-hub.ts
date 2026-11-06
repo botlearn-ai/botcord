@@ -8,13 +8,10 @@
  */
 
 import { NextResponse } from "next/server";
+import { getServerHubBaseUrl } from "@/lib/server-endpoints";
 import { createClient } from "@/lib/supabase/server";
 
-const HUB_BASE_URL =
-  process.env.NEXT_PUBLIC_HUB_BASE_URL ||
-  (process.env.NODE_ENV === "development"
-    ? "http://localhost:8000"
-    : "https://api.botcord.chat");
+const HUB_BASE_URL = getServerHubBaseUrl();
 
 export type HubMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 

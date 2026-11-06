@@ -39,6 +39,17 @@ if _raw_schema and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", _raw_schema):
     raise ValueError(f"DATABASE_SCHEMA must be a valid SQL identifier, got: {_raw_schema!r}")
 DATABASE_SCHEMA: str | None = _raw_schema
 
+# Startup ownership controls. The defaults preserve the existing standalone
+# Hub behavior. A secondary/read-serving Hub that shares an already-managed
+# database can disable schema writes and periodic workers independently while
+# still serving requests and participating in owner-chat Redis fanout.
+BOTCORD_SCHEMA_AUTO_CREATE: bool = os.getenv(
+    "BOTCORD_SCHEMA_AUTO_CREATE", "true"
+).lower() in ("true", "1", "yes")
+BOTCORD_BACKGROUND_TASKS_ENABLED: bool = os.getenv(
+    "BOTCORD_BACKGROUND_TASKS_ENABLED", "true"
+).lower() in ("true", "1", "yes")
+
 _DEFAULT_JWT_SECRET = "change-me-in-production"
 JWT_SECRET: str = os.getenv("JWT_SECRET", _DEFAULT_JWT_SECRET)
 if JWT_SECRET == _DEFAULT_JWT_SECRET:

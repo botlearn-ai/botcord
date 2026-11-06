@@ -11,6 +11,7 @@ import NextTopLoader from "nextjs-toploader";
 import Script from "next/script";
 import { geistMono, geistSans } from "@/lib/fonts";
 import { getAppBaseUrl } from "@/lib/share-metadata";
+import { shouldEnableVercelAnalytics } from "@/lib/server-endpoints";
 import { GoogleAnalytics } from "@/components/analytics/GoogleAnalytics";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Toaster } from "@/components/ui/Toast";
@@ -79,7 +80,7 @@ export default function RootLayout({
         {children}
         <ConfirmDialog />
         <Toaster />
-        <Analytics />
+        {shouldEnableVercelAnalytics() ? <Analytics /> : null}
         <GoogleAnalytics />
       </body>
     </html>

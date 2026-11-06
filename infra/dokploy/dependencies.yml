@@ -1,0 +1,43 @@
+# Optional: a NEW isolated database/cache, never a replacement for existing data.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: botcord
+      POSTGRES_DB: botcord
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - botcord_postgres_data:/var/lib/postgresql/data
+    networks:
+      botcord:
+        aliases: [botcord-postgres]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U botcord -d botcord"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    volumes:
+      - botcord_redis_data:/data
+    networks:
+      botcord:
+        aliases: [botcord-redis]
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  botcord_postgres_data:
+  botcord_redis_data:
+networks:
+  botcord:
+    external: true
+    name: ${BOTCORD_NETWORK:?}
