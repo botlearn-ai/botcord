@@ -1,0 +1,30 @@
+# NEXT_PUBLIC_* must also match the values used when building this image.
+services:
+  botcord-frontend:
+    image: ${BOTCORD_FRONTEND_IMAGE:?}
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      HUB_INTERNAL_URL: http://botcord-backend:8000
+      SUPABASE_INTERNAL_URL: ${SUPABASE_INTERNAL_URL:?}
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL:?}
+      SUPABASE_DB_POOL_MAX: ${SUPABASE_DB_POOL_MAX:-5}
+      SUPABASE_DB_PREPARE: "false"
+    expose:
+      - "3000"
+    networks:
+      botcord:
+        aliases: [botcord-frontend]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+networks:
+  botcord:
+    external: true
+    name: ${BOTCORD_NETWORK:?}

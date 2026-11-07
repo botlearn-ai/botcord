@@ -1,0 +1,154 @@
+name: botcord-local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: botcord
+      POSTGRES_USER: botcord
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U botcord -d botcord"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?}"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  botcord-backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://botcord:${POSTGRES_PASSWORD}@postgres:5432/botcord}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_JWT_JWKS_URL: ${SUPABASE_JWT_JWKS_URL:-}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      BIND_PROOF_SECRET: ${BIND_PROOF_SECRET:-}
+      BOTCORD_SCHEMA_AUTO_CREATE: ${BOTCORD_SCHEMA_AUTO_CREATE:-true}
+      BOTCORD_BACKGROUND_TASKS_ENABLED: ${BOTCORD_BACKGROUND_TASKS_ENABLED:-true}
+      BOTCORD_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?}
+      BOTCORD_HUB_CONTROL_PRIVATE_KEY: ${BOTCORD_HUB_CONTROL_PRIVATE_KEY:?}
+      CLOUD_GATEWAY_INGRESS_SECRET: ${CLOUD_GATEWAY_INGRESS_SECRET:?}
+      CLOUD_GATEWAY_INGRESS_BASE_URL: http://botcord-gateway-ingress:9101
+      ENVIRONMENT_TAG: preview
+      HUB_PUBLIC_BASE_URL: http://localhost:18000
+      FRONTEND_BASE_URL: http://localhost:3000
+      FILE_STORAGE_BACKEND: ${FILE_STORAGE_BACKEND:-disk}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-botcord-files}
+      FILE_UPLOAD_DIR: /data/uploads
+      ALLOW_PRIVATE_ENDPOINTS: "false"
+      ENDPOINT_PROBE_ENABLED: "false"
+      CLOUD_AGENT_FEATURE_ENABLED: ${CLOUD_AGENT_FEATURE_ENABLED:-false}
+      CLOUD_AGENT_DEFAULT_PROVIDER: fake
+      BOTLEARN_INTEGRATION_ENABLED: ${BOTLEARN_INTEGRATION_ENABLED:-false}
+      EXPO_PUSH_ENABLED: ${EXPO_PUSH_ENABLED:-false}
+      BETA_GATE_ENABLED: "false"
+      STRIPE_SECRET_KEY: ""
+      STRIPE_WEBHOOK_SECRET: ""
+      STRIPE_TOPUP_PACKAGES_JSON: "[]"
+      RESEND_API_KEY: ""
+      SENTRY_DSN: ""
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["uv", "run", "--no-sync", "uvicorn", "hub.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "uv", "run", "--no-sync", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
+    ports:
+      - "127.0.0.1:18000:8000"
+    volumes:
+      - backend_uploads:/data/uploads
+    restart: unless-stopped
+
+  botcord-gateway-ingress:
+    build:
+      context: ../..
+      dockerfile: packages/gateway-ingress/Dockerfile
+    environment:
+      BOTCORD_INGRESS_HUB_URL: http://botcord-backend:8000
+      BOTCORD_INGRESS_SECRET: ${CLOUD_GATEWAY_INGRESS_SECRET:?}
+      BOTCORD_INGRESS_DATA_DIR: /data
+      BOTCORD_INGRESS_SECRET_DIR: /secrets
+      BOTCORD_INGRESS_HEALTH_HOST: 0.0.0.0
+      BOTCORD_INGRESS_HEALTH_PORT: "9100"
+      BOTCORD_INGRESS_SETUP_HOST: 0.0.0.0
+      BOTCORD_INGRESS_SETUP_PORT: "9101"
+    depends_on:
+      botcord-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9100/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "127.0.0.1:19100:9100"
+    volumes:
+      - gateway_data:/data
+      - gateway_secrets:/secrets
+    restart: unless-stopped
+
+  botcord-frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:18080}
+        NEXT_PUBLIC_HUB_BASE_URL: ${NEXT_PUBLIC_HUB_BASE_URL:-http://localhost:18000}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+        NEXT_PUBLIC_BETA_GATE_ENABLED: "false"
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      HUB_INTERNAL_URL: http://botcord-backend:8000
+      SUPABASE_INTERNAL_URL: ${SUPABASE_INTERNAL_URL:-}
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL:-postgresql://botcord:${POSTGRES_PASSWORD}@postgres:5432/botcord}
+      SUPABASE_DB_POOL_MAX: "5"
+      SUPABASE_DB_PREPARE: "false"
+    depends_on:
+      botcord-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    ports:
+      - "127.0.0.1:18080:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_uploads:
+  gateway_data:
+  gateway_secrets:

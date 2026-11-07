@@ -1,0 +1,38 @@
+services:
+  botcord-gateway-ingress:
+    image: ${BOTCORD_GATEWAY_INGRESS_IMAGE:?}
+    environment:
+      ENVIRONMENT_TAG: ${ENVIRONMENT_TAG:?}
+      BOTCORD_INGRESS_HUB_URL: http://botcord-backend:8000
+      BOTCORD_INGRESS_SECRET: ${CLOUD_GATEWAY_INGRESS_SECRET:?}
+      BOTCORD_INGRESS_DATA_DIR: /data
+      BOTCORD_INGRESS_SECRET_DIR: /secrets
+      BOTCORD_INGRESS_HEALTH_HOST: "0.0.0.0"
+      BOTCORD_INGRESS_HEALTH_PORT: "9100"
+      BOTCORD_INGRESS_SETUP_HOST: "0.0.0.0"
+      BOTCORD_INGRESS_SETUP_PORT: "9101"
+    volumes:
+      - botcord_gateway_ingress_data:/data
+      - botcord_gateway_ingress_secrets:/secrets
+    expose:
+      - "9100"
+    networks:
+      botcord:
+        aliases:
+          - botcord-gateway-ingress
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9100/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  botcord_gateway_ingress_data:
+  botcord_gateway_ingress_secrets:
+
+networks:
+  botcord:
+    external: true
+    name: ${BOTCORD_NETWORK:?}

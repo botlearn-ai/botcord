@@ -1,5 +1,5 @@
 /**
- * [INPUT]: public Hub share endpoint and app URL environment
+ * [INPUT]: internal/public Hub share endpoint and public app URL environment
  * [OUTPUT]: server-side helpers for share-link social metadata and OG image rendering
  * [POS]: shared metadata layer for /share/[shareId], isolated from browser auth API helpers
  */
@@ -27,7 +27,9 @@ export function getAppBaseUrl(): string {
 export async function getShareMetadataData(shareId: string): Promise<ShareMetadataData | null> {
   if (!shareId) return null;
 
-  const hubBaseUrl = normalizeAbsoluteUrl(process.env.NEXT_PUBLIC_HUB_BASE_URL || DEFAULT_HUB_URL);
+  const hubBaseUrl = normalizeAbsoluteUrl(
+    process.env.HUB_INTERNAL_URL || process.env.NEXT_PUBLIC_HUB_BASE_URL || DEFAULT_HUB_URL,
+  );
   const url = `${hubBaseUrl}/api/share/${encodeURIComponent(shareId)}`;
 
   try {

@@ -1,8 +1,6 @@
-name: Deploy Gateway Ingress (reusable)
+name: Deploy Gateway Ingress Production (reusable)
 
-# Reusable gateway-ingress deploy — called by ci.yml (preview) and
-# release.yml (prod). Mirrors deploy-backend.yml: build Docker image,
-# push to ECR, restart the appropriate runtime.
+# Production gateway-ingress deploy. The Dokploy workflow owns test deployment.
 #
 # Build context = repo root because the image bundles the sibling
 # `packages/protocol-core` package.
@@ -10,7 +8,7 @@ on:
   workflow_call:
     inputs:
       env_name:
-        description: 'Target environment: preview | prod'
+        description: 'Target environment; only prod is supported'
         required: true
         type: string
       ref:
@@ -36,6 +34,11 @@ jobs:
     outputs:
       image_tag: ${{ steps.build.outputs.image_tag }}
     steps:
+      - name: Reject legacy non-production deployment
+        if: inputs.env_name != 'prod'
+        run: |
+          echo "deploy-gateway-ingress.yml is production-only; test deploys use deploy-dokploy-test.yml" >&2
+          exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref || github.sha }}
@@ -67,22 +70,6 @@ jobs:
           docker tag $PROJECT:$ENV_NAME $ECR_REGISTRY/$IMAGE_REPOSITORY:$ENV_NAME
           docker push $ECR_REGISTRY/$IMAGE_REPOSITORY:$ENV_NAME
           echo "✅ Pushed $ECR_REGISTRY/$IMAGE_REPOSITORY:$ENV_NAME"
-
-  # ── Restart preview (docker-compose) ─────────────────────────────────────────
-  restart-preview:
-    name: Restart Preview
-    needs: [deploy]
-    if: inputs.env_name == 'preview'
-    runs-on: self-hosted
-    timeout-minutes: 10
-    env:
-      PROJECT: botcord-gateway-ingress
-    steps:
-      - name: docker compose down/up
-        run: |
-          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT/docker-compose.yaml down
-          docker compose -f ${{ secrets.DEPLOY_ROOT }}/$PROJECT/docker-compose.yaml up -d
-          echo "✅ Preview restarted"
 
   # ── Rollout prod (k8s) ───────────────────────────────────────────────────────
   restart-prod:

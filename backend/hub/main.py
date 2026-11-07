@@ -107,7 +107,7 @@ _PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 async def lifespan(app: FastAPI):
     test_db_override = get_db in app.dependency_overrides
 
-    if not test_db_override:
+    if not test_db_override and hub_config.BOTCORD_SCHEMA_AUTO_CREATE:
         from hub.services.schema_startup import prepare_schema
         await prepare_schema(engine, Base.metadata, DATABASE_SCHEMA)
 
@@ -145,26 +145,29 @@ async def lifespan(app: FastAPI):
     access_graph_task = None
     conversation_projection_task = None
     if not test_db_override:
-        from hub.services.conversation_projection import conversation_projection_loop
-        conversation_projection_task = asyncio.create_task(conversation_projection_loop())
-        # Background message expiry loop
-        expiry_task = asyncio.create_task(message_expiry_loop())
-        # Background file cleanup loop
-        cleanup_task = asyncio.create_task(file_cleanup_loop())
-        # Background subscription billing loop
-        subscription_billing_task = asyncio.create_task(subscription_billing_loop())
-        # Background presence cleanup loop
-        presence_task = asyncio.create_task(presence_cleanup_loop())
-        # Background proactive agent schedule loop
-        agent_schedule_task = asyncio.create_task(agent_schedule_loop())
-        # Background Cloud Agent idle sandbox pause loop
-        cloud_agent_idle_task = asyncio.create_task(cloud_agent_idle_pause_loop())
-        # Legacy relation tables -> access graph projection
-        if hub_config.ACCESS_GRAPH_SYNC_INTERVAL_SECONDS > 0:
-            from hub.services.access_graph_sync import access_graph_sync_loop
-            access_graph_task = asyncio.create_task(access_graph_sync_loop())
+        if hub_config.BOTCORD_BACKGROUND_TASKS_ENABLED:
+            from hub.services.conversation_projection import conversation_projection_loop
+            conversation_projection_task = asyncio.create_task(conversation_projection_loop())
+            # Background message expiry loop
+            expiry_task = asyncio.create_task(message_expiry_loop())
+            # Background file cleanup loop
+            cleanup_task = asyncio.create_task(file_cleanup_loop())
+            # Background subscription billing loop
+            subscription_billing_task = asyncio.create_task(subscription_billing_loop())
+            # Background presence cleanup loop
+            presence_task = asyncio.create_task(presence_cleanup_loop())
+            # Background proactive agent schedule loop
+            agent_schedule_task = asyncio.create_task(agent_schedule_loop())
+            # Background Cloud Agent idle sandbox pause loop
+            cloud_agent_idle_task = asyncio.create_task(cloud_agent_idle_pause_loop())
+            # Legacy relation tables -> access graph projection
+            if hub_config.ACCESS_GRAPH_SYNC_INTERVAL_SECONDS > 0:
+                from hub.services.access_graph_sync import access_graph_sync_loop
+                access_graph_task = asyncio.create_task(access_graph_sync_loop())
         # Owner-chat Redis fanout subscriber (multi-instance WS delivery).
-        # No-op start when Redis is disabled.
+        # This remains active when periodic workers are disabled because it is
+        # part of request-time multi-instance WebSocket delivery. No-op start
+        # when Redis is disabled.
         from hub import owner_chat_cache
         if owner_chat_cache.redis_enabled():
             owner_chat_fanout_task = asyncio.create_task(

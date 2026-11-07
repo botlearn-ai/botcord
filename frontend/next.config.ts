@@ -15,6 +15,7 @@ const dynamicPublicDocRewrites = dynamicPublicDocs.map((slug) => ({
 }));
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   outputFileTracingRoot: path.resolve(__dirname),
   env: {
     SHOW_MESSAGE_STATUS: process.env.SHOW_MESSAGE_STATUS ?? process.env.NEXT_PUBLIC_SHOW_MESSAGE_STATUS ?? "true",
