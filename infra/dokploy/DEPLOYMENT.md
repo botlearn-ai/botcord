@@ -2,6 +2,21 @@
 
 Target: [BotCord / production](https://console.botlearn.ai/dashboard/project/5UIS5-vklz4ac_SW1TgtP/environment/5he_zWMNfE-ED_oN47Nc5)
 
+## Test deployment pipeline
+
+All four Compose resources now use GitHub Provider: `botlearn-ai/botcord`, provider
+`DokployForBotLearn`, Auto Deploy disabled. The verified source tag is
+`dokploy-test-6f108dde6bb77fea980558e3e45bb578cad306ee`.
+
+- [Verified complete CI deployment](https://github.com/botlearn-ai/botcord/actions/runs/42201483086)
+- [Verified PR checks](https://github.com/botlearn-ai/botcord/actions/runs/42201491463)
+- [Implementation PR](https://github.com/botlearn-ai/botcord/pull/1130)
+
+Main pushes use this pipeline after checks; PR events do not deploy. The manual PR entry
+now deploys the whole Dokploy test stack. Existing production releases remain unchanged.
+Vercel Git Preview builds are skipped; production builds and CLI releases remain enabled.
+ECR credentials use existing automatic refresh; no additional renewal task was retained.
+
 ## Current scope
 
 - Five running containers: frontend, Hub, Gateway Ingress, PostgreSQL, Redis.
@@ -32,13 +47,16 @@ it deliberately shares the Preview Supabase project.
 
 | Resource | Compose ID | Source/status |
 | --- | --- | --- |
-| `botcord-data` | `H9btOji5YQgfUL4AWycw2` | Raw / done |
-| `botcord-backend` | `Ug07R-0ic81Rm8uHA1SE6` | Raw / done |
-| `botcord-gateway-ingress` | `4cHGyGZLYTEe7dTxtaFIe` | Raw / done |
-| `botcord-frontend` | `amZUZW2R40fAmNop14Zbc` | Raw / done |
+| `botcord-data` | `H9btOji5YQgfUL4AWycw2` | GitHub / done |
+| `botcord-backend` | `Ug07R-0ic81Rm8uHA1SE6` | GitHub / done |
+| `botcord-gateway-ingress` | `4cHGyGZLYTEe7dTxtaFIe` | GitHub / done |
+| `botcord-frontend` | `amZUZW2R40fAmNop14Zbc` | GitHub / done |
 
-Saved Raw manifests matched the files in this directory at verification time. A later Git
-change does not automatically update these resources.
+Each resource clones its path in `infra/dokploy/` from the fixed commit tag. A later Git
+change does not deploy until CI updates the source tag and image digests. The Provider
+migration preserved appNames, runtime environment values, Domains, and volumes.
+
+Latest completed deployment IDs: data `MOSqgoQn42C1wSdJ0gVTp`, backend `WaWe9YOcJX3Ub4n2fHz-T`, gateway `bkIOXCU8nMlx_VzA2fWpQ`, frontend `fRkVJAyVbFkWWhba-PE23`.
 
 ## Verified runtime snapshot
 
@@ -50,25 +68,27 @@ and had no host port bindings. Frontend and Hub each use their Compose default n
 ### Frontend
 
 - Container: `botcord-frontend-hdarg2-botcord-frontend-1`
-- Image: `928112001319.dkr.ecr.us-east-1.amazonaws.com/botlearn-ai/botcord-frontend@sha256:1154bfeeaf177f8df63dbbe0f70f818c21d75153545ce683ac6dda882e487e8b`
-- Runtime imageID: `sha256:a39185a924a4b6a53bea8f0002f4bd2252f19a336824d3a493d9238f8ec0d6a9`
-- Deployment: `U_edjUVBIl1VZ3I5A-ifI` / `done`
+- Image: `928112001319.dkr.ecr.us-east-1.amazonaws.com/botlearn-ai/botcord-frontend@sha256:41d124b70c1b4b964969dbd83b8296fb621a01d12e88f337f351406f54b45487`
+- Runtime imageID: `sha256:33f22600d6f791bf38fde1e565fd304a4c86d7a34dc3dd5ae80f15f565e9f206`
+- Source revision: `6f108dde6bb77fea980558e3e45bb578cad306ee`
 
 ### Hub
 
 - Container: `botcord-backend-trvtoz-botcord-backend-1`
-- Image: `928112001319.dkr.ecr.us-east-1.amazonaws.com/botlearn-ai/botcord-backend@sha256:d60e69a867ef72114a27a7ee3c3278646868e1e2435c93cda45a513d7855699b`
-- Runtime imageID: `sha256:820f6a9e5b320e0f53d1675e663b11cd8f2ff510856c0b0c5d1ee390434eee74`
+- Image: `928112001319.dkr.ecr.us-east-1.amazonaws.com/botlearn-ai/botcord-backend@sha256:bac01e97999f9cf0c6d2daf947f299b170cac643e4fe6119585e3dae5e6605ff`
+- Runtime imageID: `sha256:9babf3a0b538bcbe2cb393503e469982423696ee8e135724fd8d25f0c9ebc060`
 - Volume: `botcord-backend-trvtoz_botcord_uploads` → `/data/uploads`
+- Source revision: `6f108dde6bb77fea980558e3e45bb578cad306ee`
 
 ### Gateway Ingress
 
 - Container: `botcord-gateway-ingress-eymfyp-botcord-gateway-ingress-1`
-- Image: `928112001319.dkr.ecr.us-east-1.amazonaws.com/botlearn-ai/botcord-gateway-ingress@sha256:c07a3695fe9ba623fc1983dcfa09a818b835621ece7f3738c6af0957ac39d641`
-- Runtime imageID: `sha256:b7b6ac1e5ac50c594b4b7f0da8874934c228257b3bfba94e1a7112a6b166db2d`
+- Image: `928112001319.dkr.ecr.us-east-1.amazonaws.com/botlearn-ai/botcord-gateway-ingress@sha256:08eb4937655aadf04fe0346b54d31d5ee6950703d9c60c0536e650e8021360fb`
+- Runtime imageID: `sha256:7135b8d4fda48fce5060aefc9ca7796704fad5456cb934202391c207ce3b9d89`
 - Volumes:
   - `botcord-gateway-ingress-eymfyp_botcord_gateway_ingress_data` → `/data`
   - `botcord-gateway-ingress-eymfyp_botcord_gateway_ingress_secrets` → `/secrets`
+- Source revision: `6f108dde6bb77fea980558e3e45bb578cad306ee`
 
 ### Redis
 
@@ -100,8 +120,12 @@ and had no host port bindings. Frontend and Hub each use their Compose default n
   both Auth and application identity absence were verified.
 - The latest saved remote manifests reported deployment `done` and matched the expected manifests;
   all five containers remained healthy with zero restarts and no host port bindings.
-- Latest verification suites: infrastructure 20 passed; backend/repository suites 48 passed and
-  3 skipped.
+- Latest full local suites: infrastructure 45 passed; backend 1810 passed / 59 skipped;
+  frontend 839 passed / 1 skipped. PR checks and the complete CI deployment also passed.
+- After the CI rebuild, all five containers were independently read back healthy, with zero
+  restarts and no host ports. The three app images carried the expected source revision.
+  Homepage, 21 static assets, healths, exact-origin CORS and canonical auth callback were rechecked.
+  The real-login evidence below predates this equivalent-application-source rebuild.
 
 ## Public-domain activation
 
