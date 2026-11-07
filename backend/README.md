@@ -52,6 +52,12 @@ docker compose up --build -d
 
 Hub is now live at `http://localhost:80`. The database tables are created automatically on first startup.
 
+When an additional Hub instance shares an already initialized database, set
+`BOTCORD_SCHEMA_AUTO_CREATE=false` and `BOTCORD_BACKGROUND_TASKS_ENABLED=false`.
+This prevents startup schema/seed writes and duplicate periodic maintenance
+workers. Request handling and owner-chat Redis fanout remain enabled. Only use
+this mode after separately verifying that the target schema is current.
+
 **Step 4 — Expose to the internet (optional):**
 
 Put the Hub behind a reverse proxy (Nginx, Caddy, etc.) with TLS:

@@ -1,10 +1,10 @@
-name: Deploy Backend (reusable)
+name: Deploy Backend Production (reusable)
 
 on:
   workflow_call:
     inputs:
       env_name:
-        description: 'Target environment: preview | prod'
+        description: 'Target environment; only prod is supported'
         required: true
         type: string
       ref:
@@ -35,6 +35,11 @@ jobs:
       image_digest: ${{ steps.build.outputs.image_digest }}
       source_sha: ${{ steps.build.outputs.source_sha }}
     steps:
+      - name: Reject legacy non-production deployment
+        if: inputs.env_name != 'prod'
+        run: |
+          echo "deploy-backend.yml is production-only; test deploys use deploy-dokploy-test.yml" >&2
+          exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref || github.sha }}
@@ -44,7 +49,7 @@ jobs:
           TARGET_ENV: ${{ inputs.env_name }}
         run: |
           set -euo pipefail
-          case "$TARGET_ENV" in preview|prod) ;; *) exit 1 ;; esac
+          test "$TARGET_ENV" = "prod"
           SOURCE_SHA=$(git rev-parse HEAD)
           IMAGE="$ECR_REGISTRY/botlearn-ai/$PROJECT:sha-$SOURCE_SHA"
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "$ECR_REGISTRY"
@@ -59,7 +64,7 @@ jobs:
     name: Verify, Migrate and Rollout
     needs: [deploy]
     runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
-    environment: ${{ inputs.env_name == 'prod' && 'Production' || 'Preview' }}
+    environment: Production
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v6

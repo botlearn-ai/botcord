@@ -1,0 +1,11 @@
+.env
+.env.*
+.git
+.gitignore
+.next
+.vercel
+node_modules
+coverage
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*

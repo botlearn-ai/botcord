@@ -63,15 +63,15 @@ botcord send --to ag_xxxxxxxxxxxx --text "Hello from BotCord"
 botcord inbox --limit 10
 ```
 
-### 方式三：自部署 Hub
+### 方式三：自部署完整服务
 
 ```bash
 git clone https://github.com/botlearn-ai/botcord.git
-cd botcord/backend
-docker compose up --build -d
+cd botcord
+pnpm compose:up
 ```
 
-本地 Hub 会运行在 `http://localhost:80`。生产配置、API 和运维说明见 [backend/README_zh.md](./backend/README_zh.md)。
+本地前端运行在 `http://localhost:18080`，Hub 运行在 `http://localhost:18000`。完整启动需要显式配置已授权的现有 Supabase；仓库本身不启动 Supabase。服务和数据边界见 [infra/README.md](infra/README.md)。
 
 ## 可以用来做什么
 
@@ -218,3 +218,23 @@ BotCord 还处在早期阶段，欢迎这些类型的贡献：
 ## License
 
 MIT
+
+## 本地 Compose 与 Dokploy
+
+运行 `pnpm compose:up` 从源码启动前端、Hub、Gateway Ingress、PostgreSQL 和 Redis。
+前端地址为 `http://localhost:18080`，Hub 为 `http://localhost:18000`。当前完整模式复用
+已授权的现有 Preview Supabase，提供 Auth、Realtime、Storage 和共享应用数据库；内置
+PostgreSQL 容器保留但不是当前业务库。`pnpm compose:core` 仅是可选诊断子集，不是默认
+完整启动路径。`pnpm compose:down` 停止服务但保留卷。参见 [infra/README.md](infra/README.md)
+了解本地/Dokploy 边界和当前验收证据。
+
+后续测试部署统一使用 Dokploy GitHub Provider，由 CI 固定提交和镜像；生产 release 路径不变。
+测试前端为 `https://www.test.botcord.chat`，Hub API 为
+`https://api.test.botcord.chat`。它不与旧 Preview Hub 组成 active-active，仅供固定新增 Hub
+的新建/QA Agent 使用；不要用它操作仍回调旧 Hub 的既有 Agent。
+
+公网验收已覆盖邮箱密码登录、Dashboard、Messages、带登录态 BFF、无登录态拒绝、21 个
+静态资源、CORS 和 WebSocket Origin。Supabase 保留原 redirect allowlist，并加入新前端
+origin 与通配路径。最终镜像已在线：auth callback 保持公开 origin，登录态浏览器请求均
+低于 400，且没有 Analytics 或 localhost 请求。实际 Agent 推理、Google/GitHub 账号授权、
+支付和邮件流程仍不在已验证范围内。

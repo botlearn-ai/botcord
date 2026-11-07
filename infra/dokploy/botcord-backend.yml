@@ -1,0 +1,48 @@
+# Prebuilt image only. Dokploy must materialize the Compose Environment as .env.
+services:
+  botcord-backend:
+    image: ${BOTCORD_BACKEND_IMAGE:?}
+    command: ["uv", "run", "--no-sync", "uvicorn", "hub.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?}
+      DATABASE_SCHEMA: public
+      SUPABASE_URL: ${SUPABASE_URL:?}
+      # This manifest targets the existing Supabase JWKS deployment.
+      SUPABASE_JWT_JWKS_URL: ${SUPABASE_JWT_JWKS_URL:?}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:?}
+      JWT_SECRET: ${JWT_SECRET:?}
+      BOTCORD_REDIS_URL: ${BOTCORD_REDIS_URL:?}
+      BOTCORD_HUB_CONTROL_PRIVATE_KEY: ${BOTCORD_HUB_CONTROL_PRIVATE_KEY:?}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?}
+      CLOUD_GATEWAY_INGRESS_SECRET: ${CLOUD_GATEWAY_INGRESS_SECRET:?}
+      CLOUD_GATEWAY_INGRESS_BASE_URL: http://botcord-gateway-ingress:9101
+      ENVIRONMENT_TAG: ${ENVIRONMENT_TAG:?}
+      BOTCORD_SCHEMA_AUTO_CREATE: "false"
+      BOTCORD_BACKGROUND_TASKS_ENABLED: "false"
+      FILE_STORAGE_BACKEND: supabase
+      FILE_UPLOAD_DIR: /data/uploads
+    volumes:
+      - botcord_uploads:/data/uploads
+    expose:
+      - "8000"
+    networks:
+      botcord:
+        aliases:
+          - botcord-backend
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  botcord_uploads:
+
+networks:
+  botcord:
+    external: true
+    name: ${BOTCORD_NETWORK:?}

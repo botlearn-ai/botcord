@@ -1,0 +1,200 @@
+name: Deploy Dokploy Test
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit or ref to deploy; defaults to the caller commit"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      DOKPLOY_AUTH_TOKEN:
+        required: true
+      ECR_REGISTRY:
+        required: true
+    outputs:
+      source_sha:
+        description: "Exact deployed source commit"
+        value: ${{ jobs.deploy.outputs.source_sha }}
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Build source ref only; the selected workflow version is trusted deployment control"
+        required: false
+        type: string
+        default: main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: botcord-dokploy-test
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  FRONTEND_URL: https://www.test.botcord.chat
+  API_URL: https://api.test.botcord.chat
+
+jobs:
+  deploy:
+    name: Build and Deploy Test
+    runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
+    timeout-minutes: 120
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+    steps:
+      - name: Checkout requested source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve exact source commit
+        id: source
+        env:
+          REQUESTED_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$REQUESTED_REF"
+          SOURCE_SHA=$(git rev-parse HEAD)
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_TAG=test-$SOURCE_SHA-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+
+      - name: Validate deployment configuration
+        env:
+          DOKPLOY_URL: ${{ vars.DOKPLOY_URL }}
+          DOKPLOY_AUTH_TOKEN: ${{ secrets.DOKPLOY_AUTH_TOKEN }}
+          SUPABASE_URL: ${{ vars.BOTCORD_TEST_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.BOTCORD_TEST_SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          for name in ECR_REGISTRY DOKPLOY_URL DOKPLOY_AUTH_TOKEN SUPABASE_URL SUPABASE_ANON_KEY; do
+            test -n "${!name:-}" || { echo "Missing required deployment setting: $name" >&2; exit 1; }
+          done
+          [[ "$DOKPLOY_URL" =~ ^https:// ]]
+          [[ "$SUPABASE_URL" =~ ^https://[A-Za-z0-9.-]+$ ]]
+          for command in aws docker python3; do
+            command -v "$command" >/dev/null || { echo "Missing required command: $command" >&2; exit 1; }
+          done
+
+      - name: Login to ECR
+        run: |
+          set -euo pipefail
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend
+        id: backend
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ env.ECR_REGISTRY }}/botlearn-ai/botcord-backend:${{ env.IMAGE_TAG }}
+          labels: org.opencontainers.image.revision=${{ steps.source.outputs.source_sha }}
+
+      - name: Build and push gateway ingress
+        id: gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/gateway-ingress/Dockerfile
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ env.ECR_REGISTRY }}/botlearn-ai/botcord-gateway-ingress:${{ env.IMAGE_TAG }}
+          labels: org.opencontainers.image.revision=${{ steps.source.outputs.source_sha }}
+
+      - name: Build and push frontend
+        id: frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ env.ECR_REGISTRY }}/botlearn-ai/botcord-frontend:${{ env.IMAGE_TAG }}
+          labels: org.opencontainers.image.revision=${{ steps.source.outputs.source_sha }}
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ env.FRONTEND_URL }}
+            NEXT_PUBLIC_HUB_BASE_URL=${{ env.API_URL }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ vars.BOTCORD_TEST_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ vars.BOTCORD_TEST_SUPABASE_ANON_KEY }}
+
+      - name: Resolve immutable image references
+        env:
+          BACKEND_DIGEST: ${{ steps.backend.outputs.digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend.outputs.digest }}
+          GATEWAY_DIGEST: ${{ steps.gateway.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for digest in "$BACKEND_DIGEST" "$FRONTEND_DIGEST" "$GATEWAY_DIGEST"; do
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          done
+          {
+            echo "BACKEND_IMAGE=$ECR_REGISTRY/botlearn-ai/botcord-backend@$BACKEND_DIGEST"
+            echo "FRONTEND_IMAGE=$ECR_REGISTRY/botlearn-ai/botcord-frontend@$FRONTEND_DIGEST"
+            echo "GATEWAY_IMAGE=$ECR_REGISTRY/botlearn-ai/botcord-gateway-ingress@$GATEWAY_DIGEST"
+          } >> "$GITHUB_ENV"
+
+      # The requested source may be a PR commit. Deployment orchestration is
+      # always loaded from the operator-selected workflow revision instead.
+      - name: Checkout trusted deployment control
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .deployment-control
+          sparse-checkout: infra/dokploy/deploy.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install Dokploy CLI
+        run: npm install --global @dokploy/cli@0.30.6
+
+      - name: Deploy and verify Dokploy test environment
+        env:
+          DOKPLOY_URL: ${{ vars.DOKPLOY_URL }}
+          DOKPLOY_AUTH_TOKEN: ${{ secrets.DOKPLOY_AUTH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          python3 .deployment-control/infra/dokploy/deploy.py \
+            --sha "$SOURCE_SHA" \
+            --backend-image "$BACKEND_IMAGE" \
+            --frontend-image "$FRONTEND_IMAGE" \
+            --gateway-image "$GATEWAY_IMAGE"
+
+      - name: Deployment summary
+        if: always()
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+        run: |
+          {
+            echo "## BotCord Dokploy Test"
+            echo
+            echo "- Commit: \`$SOURCE_SHA\`"
+            echo "- Frontend: $FRONTEND_URL"
+            echo "- API: $API_URL"
+          } >> "$GITHUB_STEP_SUMMARY"

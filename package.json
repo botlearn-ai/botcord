@@ -8,7 +8,13 @@
     "check:packages": "pnpm build && pnpm test",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm check:packages && changeset publish"
+    "release": "pnpm check:packages && changeset publish",
+    "compose:up": "bash infra/compose/local.sh up",
+    "compose:down": "bash infra/compose/local.sh down",
+    "compose:ps": "bash infra/compose/local.sh ps",
+    "compose:logs": "bash infra/compose/local.sh logs",
+    "infra:check": "python3 -m unittest discover -s infra/tests -v",
+    "compose:core": "bash infra/compose/local.sh core-up"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.10"

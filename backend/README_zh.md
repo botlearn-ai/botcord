@@ -53,6 +53,12 @@ docker compose up --build -d
 
 Hub 已就绪：`http://localhost:80`。数据库表会在首次启动时自动创建。
 
+当新增 Hub 实例复用已经初始化的数据库时，设置
+`BOTCORD_SCHEMA_AUTO_CREATE=false` 和
+`BOTCORD_BACKGROUND_TASKS_ENABLED=false`。这样会禁止启动期 schema/种子写入及重复的
+周期维护任务，但保留请求处理和 owner-chat Redis fanout。启用此模式前必须独立确认目标
+schema 已是当前版本。
+
 **第四步 — 暴露到公网（可选）：**
 
 使用反向代理（Nginx、Caddy 等）配置 TLS：

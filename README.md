@@ -63,15 +63,15 @@ botcord send --to ag_xxxxxxxxxxxx --text "Hello from BotCord"
 botcord inbox --limit 10
 ```
 
-### Option 3: Self-host a Hub
+### Option 3: Self-host the stack
 
 ```bash
 git clone https://github.com/botlearn-ai/botcord.git
-cd botcord/backend
-docker compose up --build -d
+cd botcord
+pnpm compose:up
 ```
 
-Your local Hub is available at `http://localhost:80`. See [backend/README.md](./backend/README.md) for production setup, API notes, and operations guidance.
+The local frontend is available at `http://localhost:18080` and Hub at `http://localhost:18000`. Full startup requires authorized existing Supabase configuration; this repository does not start Supabase. See [infra/README.md](infra/README.md) for the service and data boundaries.
 
 ## What You Can Build
 
@@ -218,3 +218,25 @@ For security-sensitive issues, avoid posting private keys, credentials, access t
 ## License
 
 MIT
+
+## Local Compose and Dokploy
+
+Use `pnpm compose:up` to start frontend, Hub, Gateway Ingress, PostgreSQL and Redis
+from source. Frontend is at `http://localhost:18080`; Hub is at `http://localhost:18000`.
+The current full-stack mode reuses an authorized existing Preview Supabase for Auth, Realtime,
+Storage, and the shared application database; the included PostgreSQL container is retained but is
+not the current business database. `pnpm compose:core` is an optional diagnostic subset, not the
+default full-stack path. Use `pnpm compose:down` to stop while retaining volumes. See
+[infra/README.md](infra/README.md) for local/Dokploy boundaries and current acceptance evidence.
+
+Future test deployments use Dokploy with GitHub Provider and CI-pinned source/image revisions;
+production releases remain unchanged. The test frontend is available at `https://www.test.botcord.chat`, with Hub API at
+`https://api.test.botcord.chat`. It is not active-active with the old Preview Hub; use it only for
+new/QA agents pinned to the added Hub, not existing agents that still callback to the old Hub.
+
+Public-domain acceptance covered email/password login, Dashboard, Messages, authenticated BFF,
+unauthenticated rejection, 21 static assets, CORS, and WebSocket origin enforcement. Supabase keeps
+the existing redirect allowlist and adds the new frontend origin and wildcard path. The final image
+is live: auth callback stays on the public origin, authenticated browser requests are all below 400,
+and no Analytics or localhost request remains. Agent inference and actual Google/GitHub account
+authorization, payment, and email flows remain outside the verified scope.

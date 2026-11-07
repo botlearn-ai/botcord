@@ -1,14 +1,15 @@
 name: CI
 
-# dev + pr flow — lint/test changed packages, deploy preview to backend + frontend
+# Pull requests run validation only. Pushes to main deploy the shared Dokploy test environment.
 on:
   push:
     branches: [main]
-  # pull_request:
-  #   types: [opened, synchronize, reopened]
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -26,6 +27,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       packages: ${{ steps.filter.outputs.packages }}
       gateway_ingress: ${{ steps.filter.outputs.gateway_ingress }}
+      infra: ${{ steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
@@ -35,11 +37,11 @@ jobs:
             backend:
               - 'backend/**'
               - '.github/workflows/ci.yml'
-              - '.github/workflows/deploy-backend.yml'
+              - '.github/workflows/deploy-dokploy-test.yml'
             frontend:
               - 'frontend/**'
               - '.github/workflows/ci.yml'
-              - '.github/workflows/deploy-frontend.yml'
+              - '.github/workflows/deploy-dokploy-test.yml'
             packages:
               - 'cli/**'
               - 'packages/**'
@@ -56,7 +58,11 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'package.json'
               - '.github/workflows/ci.yml'
-              - '.github/workflows/deploy-gateway-ingress.yml'
+              - '.github/workflows/deploy-dokploy-test.yml'
+            infra:
+              - 'infra/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/deploy-dokploy-test.yml'
 
   # ── Backend: pytest ──────────────────────────────────────────────────────────
   backend-ci:
@@ -71,7 +77,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Install deps
         run: uv sync
       - name: Run tests
@@ -90,14 +96,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v5
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.job }}
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-          cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
       # --ignore-workspace: frontend/ is not a workspace member; see deploy-frontend.yml.
       - run: pnpm install --frozen-lockfile --ignore-workspace
       - name: Run vitest
+        env:
+          NODE_OPTIONS: --no-experimental-webstorage
         run: pnpm test -- --run
 
   # ── Packages: protocol-core + cli + daemon build ────────────────────────────
@@ -110,10 +118,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v5
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.job }}
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-          cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - name: Build and test packages
         run: pnpm check:packages
@@ -128,10 +137,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v5
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.job }}
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-          cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - name: Build + test
         run: |
@@ -139,124 +149,44 @@ jobs:
           pnpm --filter @botcord/gateway-ingress build
           pnpm --filter @botcord/gateway-ingress test
 
-  # ── Deploy backend preview (shared across all PRs + main) ────────────────────
-  deploy-backend-preview:
-    name: Deploy Backend (preview)
-    needs: [changes, backend-ci]
-    if: |
-      always() &&
-      needs.changes.outputs.backend == 'true' &&
-      needs.backend-ci.result == 'success'
-    uses: ./.github/workflows/deploy-backend.yml
-    with:
-      env_name: preview
-    secrets: inherit
-
-  # ── Deploy gateway-ingress preview ───────────────────────────────────────────
-  deploy-gateway-ingress-preview:
-    name: Deploy Gateway Ingress (preview)
-    needs: [changes, gateway-ingress-ci]
-    if: |
-      always() &&
-      needs.changes.outputs.gateway_ingress == 'true' &&
-      needs.gateway-ingress-ci.result == 'success'
-    uses: ./.github/workflows/deploy-gateway-ingress.yml
-    with:
-      env_name: preview
-    secrets: inherit
-
-  # ── Deploy frontend preview (per-PR URL; main aliased to preview.botcord.chat) ─
-  deploy-frontend-preview:
-    name: Deploy Frontend (preview)
-    needs: [changes, frontend-ci]
-    if: |
-      always() &&
-      needs.changes.outputs.frontend == 'true' &&
-      needs.frontend-ci.result == 'success'
-    uses: ./.github/workflows/deploy-frontend.yml
-    with:
-      env_name: preview
-      alias: ${{ github.event_name == 'push' && 'preview.botcord.chat' || '' }}
-    secrets: inherit
-
-  # ── Sticky PR comment with preview links ─────────────────────────────────────
-  pr-comment:
-    name: PR Preview Comment
+  infra-ci:
+    name: Infrastructure Contracts
     runs-on: self-hosted
-    needs: [changes, deploy-backend-preview, deploy-frontend-preview, deploy-gateway-ingress-preview]
-    if: always() && github.event_name == 'pull_request'
+    needs: [changes]
+    if: needs.changes.outputs.infra == 'true'
     timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: write
     steps:
-      - name: Post or update preview comment
-        uses: actions/github-script@v9
-        env:
-          FE_URL: ${{ needs.deploy-frontend-preview.outputs.deploy_url }}
-          FE_RESULT: ${{ needs.deploy-frontend-preview.result }}
-          BE_RESULT: ${{ needs.deploy-backend-preview.result }}
-          GW_RESULT: ${{ needs.deploy-gateway-ingress-preview.result }}
-          FE_CHANGED: ${{ needs.changes.outputs.frontend }}
-          BE_CHANGED: ${{ needs.changes.outputs.backend }}
-          GW_CHANGED: ${{ needs.changes.outputs.gateway_ingress }}
-        with:
-          script: |
-            const fmt = (changed, result, extra) => {
-              if (changed !== 'true') return '_no change_';
-              if (result === 'success') return `✅ ${extra || 'deployed'}`;
-              if (result === 'skipped') return '⏭️ skipped';
-              if (result === 'failure') return '❌ failed';
-              return `⚠️ ${result}`;
-            };
-            const feUrl = process.env.FE_URL;
-            const feCell = fmt(
-              process.env.FE_CHANGED,
-              process.env.FE_RESULT,
-              feUrl ? `[${feUrl}](${feUrl})` : 'deployed'
-            );
-            const beCell = fmt(process.env.BE_CHANGED, process.env.BE_RESULT, 'preview restarted');
-            const gwCell = fmt(process.env.GW_CHANGED, process.env.GW_RESULT, 'preview restarted');
+      - uses: actions/checkout@v6
+      - name: Validate infrastructure contracts
+        run: |
+          bash -n infra/compose/local.sh
+          python3 -m unittest discover -s infra/tests -v
 
-            const sha = context.payload.pull_request.head.sha.substring(0, 7);
-            const branch = context.payload.pull_request.head.ref;
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const commitUrl = `${context.payload.pull_request.head.repo.html_url}/commit/${context.payload.pull_request.head.sha}`;
+  deploy-dokploy-test:
+    name: Deploy Dokploy Test
+    needs: [changes, backend-ci, frontend-ci, packages-ci, gateway-ingress-ci, infra-ci]
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      (
+        needs.changes.outputs.backend == 'true' ||
+        needs.changes.outputs.frontend == 'true' ||
+        needs.changes.outputs.gateway_ingress == 'true' ||
+        needs.changes.outputs.infra == 'true'
+      ) &&
+      (needs.backend-ci.result == 'success' || needs.backend-ci.result == 'skipped') &&
+      (needs.frontend-ci.result == 'success' || needs.frontend-ci.result == 'skipped') &&
+      (needs.packages-ci.result == 'success' || needs.packages-ci.result == 'skipped') &&
+      (needs.gateway-ingress-ci.result == 'success' || needs.gateway-ingress-ci.result == 'skipped') &&
+      (needs.infra-ci.result == 'success' || needs.infra-ci.result == 'skipped')
+    permissions:
+      contents: write
+    uses: ./.github/workflows/deploy-dokploy-test.yml
+    with:
+      ref: ${{ github.sha }}
+    secrets: inherit
 
-            const marker = '<!-- botcord-preview-deploy -->';
-            const body = [
-              marker,
-              '## 🚀 Preview Deployment',
-              '',
-              '| Key | Value |',
-              '|---|---|',
-              `| **Branch** | \`${branch}\` |`,
-              `| **Commit** | [\`${sha}\`](${commitUrl}) |`,
-              `| **Frontend** | ${feCell} |`,
-              `| **Backend** | ${beCell} |`,
-              `| **Gateway Ingress** | ${gwCell} |`,
-              `| **Workflow** | [View run](${runUrl}) |`,
-            ].join('\n');
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                comment_id: existing.id, body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner, repo: context.repo.repo,
-                issue_number: context.issue.number, body,
-              });
-            }
-
-  # ── Feishu notification (push + PR) ──────────────────────────────────────────
   notify:
     name: Notify Feishu
     runs-on: self-hosted
@@ -266,10 +196,9 @@ jobs:
       - frontend-ci
       - packages-ci
       - gateway-ingress-ci
-      - deploy-backend-preview
-      - deploy-frontend-preview
-      - deploy-gateway-ingress-preview
-    if: always()
+      - infra-ci
+      - deploy-dokploy-test
+    if: always() && needs.changes.result == 'success'
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
@@ -280,20 +209,19 @@ jobs:
           FE_CI: ${{ needs.frontend-ci.result }}
           PKG_CI: ${{ needs.packages-ci.result }}
           GW_CI: ${{ needs.gateway-ingress-ci.result }}
-          BE_DEPLOY: ${{ needs.deploy-backend-preview.result }}
-          FE_DEPLOY: ${{ needs.deploy-frontend-preview.result }}
-          GW_DEPLOY: ${{ needs.deploy-gateway-ingress-preview.result }}
+          INFRA_CI: ${{ needs.infra-ci.result }}
+          TEST_DEPLOY: ${{ needs.deploy-dokploy-test.result }}
         run: |
           FAIL=0
-          for R in "$BE_CI" "$FE_CI" "$PKG_CI" "$GW_CI" "$BE_DEPLOY" "$FE_DEPLOY" "$GW_DEPLOY"; do
+          for R in "$BE_CI" "$FE_CI" "$PKG_CI" "$GW_CI" "$INFRA_CI" "$TEST_DEPLOY"; do
             if [[ "$R" == "failure" || "$R" == "cancelled" ]]; then FAIL=1; fi
           done
           if [[ $FAIL -eq 0 ]]; then
-            echo "color=green" >> $GITHUB_OUTPUT
-            echo "title=✅ BotCord Preview 部署成功" >> $GITHUB_OUTPUT
+            echo "color=green" >> "$GITHUB_OUTPUT"
+            echo "title=✅ BotCord CI / Dokploy Test 成功" >> "$GITHUB_OUTPUT"
           else
-            echo "color=red" >> $GITHUB_OUTPUT
-            echo "title=❌ BotCord Preview CI / 部署失败" >> $GITHUB_OUTPUT
+            echo "color=red" >> "$GITHUB_OUTPUT"
+            echo "title=❌ BotCord CI / Dokploy Test 失败" >> "$GITHUB_OUTPUT"
           fi
       - uses: ./.github/actions/feishu-notify
         with:
@@ -310,10 +238,10 @@ jobs:
               {"label": "Frontend CI", "value": "${{ needs.frontend-ci.result }}"},
               {"label": "Packages CI", "value": "${{ needs.packages-ci.result }}"},
               {"label": "Gateway Ingress CI", "value": "${{ needs.gateway-ingress-ci.result }}"},
-              {"label": "Backend 部署", "value": "${{ needs.deploy-backend-preview.result }}"},
-              {"label": "Frontend 部署", "value": "${{ needs.deploy-frontend-preview.result }}"},
-              {"label": "Gateway Ingress 部署", "value": "${{ needs.deploy-gateway-ingress-preview.result }}"},
-              {"label": "Frontend URL", "value": "${{ needs.deploy-frontend-preview.outputs.deploy_url || '（未变更）' }}"}
+              {"label": "Infra CI", "value": "${{ needs.infra-ci.result }}"},
+              {"label": "Dokploy Test", "value": "${{ needs.deploy-dokploy-test.result }}"},
+              {"label": "Frontend URL", "value": "https://www.test.botcord.chat"},
+              {"label": "API URL", "value": "https://api.test.botcord.chat"}
             ]
           buttons: |
             [

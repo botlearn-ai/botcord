@@ -1,0 +1,27 @@
+name: Infrastructure contracts
+
+on:
+  pull_request:
+    paths:
+      - infra/**
+      - frontend/Dockerfile
+      - frontend/.dockerignore
+      - frontend/next.config.ts
+      - backend/Dockerfile
+      - packages/gateway-ingress/Dockerfile
+      - .github/workflows/infra-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate Compose contracts without real credentials
+        run: |
+          bash -n infra/compose/local.sh
+          python3 -m unittest discover -s infra/tests -v
