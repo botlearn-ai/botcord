@@ -69,6 +69,8 @@ SSH 验收，服务账号不授予全局 Docker 权限。Gateway setup `9101` �
 - GitHub variables：`DOKPLOY_URL`、`BOTCORD_TEST_SUPABASE_URL`、
   `BOTCORD_TEST_SUPABASE_ANON_KEY`；secret：`DOKPLOY_AUTH_TOKEN`，镜像沿用 `ECR_REGISTRY`。
 - 应用 runtime secrets 仍只在 Dokploy；GitHub 的 Supabase URL/anon key 只供公开 bundle 构建。
+- CI API key 属于独立 member，只开放这四个 Compose；不授予删除或全局 Docker 权限。
+  当前 key 到期日为 2027-11-06，限流 300 次/分钟；到期前更新 GitHub secret 并撤销旧 key。
 - ECR 登录沿用已有自动刷新机制，不保存长期硬编码的 ECR 登录 token，也不增加重复续期任务。
 
 目标 ref 只用于镜像源码构建。控制脚本从所选 workflow 的固定 `github.workflow_sha`

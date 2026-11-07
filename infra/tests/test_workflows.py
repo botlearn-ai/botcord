@@ -46,6 +46,12 @@ class TestDokployWorkflowContracts(unittest.TestCase):
         self.assertIn("github.ref == 'refs/heads/main'", content)
         self.assertIn("uses: ./.github/workflows/deploy-dokploy-test.yml", content)
         self.assertIn("NODE_OPTIONS: --no-experimental-webstorage", content)
+        self.assertEqual(
+            content.count("dest: ${{ runner.temp }}/setup-pnpm-${{ github.job }}"),
+            3,
+        )
+        self.assertNotIn("cache: 'pnpm'", content)
+        self.assertNotIn("cache-dependency-path:", content)
         self.assertIn("python3 -m unittest discover -s infra/tests -v", content)
         self.assertIn("needs.infra-ci.result == 'success'", content)
         self.assertIn("if: always() && needs.changes.result == 'success'", content)
