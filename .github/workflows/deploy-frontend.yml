@@ -1,6 +1,8 @@
 name: Deploy Frontend Production (reusable)
 
-# Production Vercel deployment. The Dokploy workflow owns the test environment.
+# Production EKS delivery is intentionally two-phase. A manual build-only run
+# publishes an immutable candidate. Only after its digest is reviewed in
+# aibrary-devops may a release deploy that exact synchronized manifest.
 on:
   workflow_call:
     inputs:
@@ -9,98 +11,178 @@ on:
         required: true
         type: string
       ref:
-        description: 'Git ref to checkout (default: current SHA)'
+        description: 'Exact source commit expected in the reviewed image'
         required: false
         type: string
         default: ''
       alias:
-        description: 'Optional production alias domain'
+        description: 'Deprecated compatibility input; DNS is managed separately'
         required: false
         type: string
         default: ''
     outputs:
       deploy_url:
-        description: 'Vercel deployment URL'
+        description: 'Canonical production URL'
         value: ${{ jobs.deploy.outputs.deploy_url }}
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Source ref to build or exact source commit to deploy'
+        required: false
+        type: string
+        default: main
+      build_only:
+        description: 'Build and push a candidate without changing EKS'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botcord-frontend-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  IMAGE_REPOSITORY: botlearn-ai/botcord-frontend
 
 jobs:
-  deploy:
-    name: Vercel Deploy
+  reject-non-production:
+    name: Validate Production Request
+    if: inputs.env_name != 'prod' && inputs.env_name != ''
     runs-on: self-hosted
-    timeout-minutes: 20
-    outputs:
-      deploy_url: ${{ steps.deploy.outputs.deploy_url }}
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - name: Reject legacy non-production deployment
-        if: inputs.env_name != 'prod'
-        working-directory: ${{ github.workspace }}
         run: |
           echo "deploy-frontend.yml is production-only; test deploys use deploy-dokploy-test.yml" >&2
           exit 1
+
+  build-candidate:
+    name: Build ARM64 Candidate
+    if: github.event_name == 'workflow_dispatch' && inputs.build_only == true
+    runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
+    environment: FrontendProduction
+    timeout-minutes: 45
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+    steps:
+      - name: Require reviewed workflow control from main
+        run: test "$GITHUB_REF" = "refs/heads/main"
+
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v5
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Resolve exact source commit
+        id: source
+        run: |
+          set -euo pipefail
+          SOURCE_SHA=$(git rev-parse HEAD)
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_TAG=prod-$SOURCE_SHA-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
 
-      - name: Install deps
-        # --ignore-workspace: frontend/ is intentionally NOT a pnpm workspace member
-        # (it has its own pnpm-lock.yaml and is deployed via Vercel). Without this
-        # flag, pnpm walks up to the repo-root pnpm-workspace.yaml and installs
-        # workspace members instead of frontend's own deps, leaving Next.js missing.
-        run: pnpm install --frozen-lockfile --ignore-workspace
-
-      - name: Install Vercel CLI
-        run: pnpm add -g vercel@latest
-
-      - name: Pull Vercel env
-        working-directory: ${{ github.workspace }}
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Validate public production build configuration
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          APP_URL: ${{ vars.BOTCORD_PROD_APP_URL }}
+          HUB_URL: ${{ vars.BOTCORD_PROD_HUB_BASE_URL }}
+          SUPABASE_URL: ${{ vars.BOTCORD_PROD_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.BOTCORD_PROD_SUPABASE_ANON_KEY }}
+          BETA_GATE_ENABLED: ${{ vars.BOTCORD_PROD_BETA_GATE_ENABLED }}
+          SHOW_MESSAGE_STATUS: ${{ vars.BOTCORD_PROD_SHOW_MESSAGE_STATUS }}
+        run: |
+          set -euo pipefail
+          test "$APP_URL" = "https://www.botcord.chat"
+          test "$HUB_URL" = "https://api.botcord.chat"
+          [[ "$SUPABASE_URL" =~ ^https://[A-Za-z0-9.-]+$ ]]
+          test -n "$SUPABASE_ANON_KEY"
+          [[ "$BETA_GATE_ENABLED" =~ ^(true|false)$ ]]
+          [[ "$SHOW_MESSAGE_STATUS" =~ ^(true|false)$ ]]
+          test -n "$ECR_REGISTRY"
 
-      - name: Restore Next.js build cache
-        uses: actions/cache@v5
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+      - uses: docker/setup-qemu-action@v3
         with:
-          path: frontend/.next/cache
-          key: nextjs-${{ inputs.env_name }}-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}-${{ hashFiles('frontend/**/*.ts', 'frontend/**/*.tsx', 'frontend/**/*.scss') }}
-          restore-keys: |
-            nextjs-${{ inputs.env_name }}-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}-
-            nextjs-${{ inputs.env_name }}-${{ runner.os }}-
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Vercel build
-        working-directory: ${{ github.workspace }}
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Build and push immutable candidate
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          labels: org.opencontainers.image.revision=${{ steps.source.outputs.source_sha }}
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ vars.BOTCORD_PROD_APP_URL }}
+            NEXT_PUBLIC_HUB_BASE_URL=${{ vars.BOTCORD_PROD_HUB_BASE_URL }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ vars.BOTCORD_PROD_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ vars.BOTCORD_PROD_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_BETA_GATE_ENABLED=${{ vars.BOTCORD_PROD_BETA_GATE_ENABLED }}
+            NEXT_PUBLIC_GA_ID=${{ vars.BOTCORD_PROD_GA_ID }}
+            SHOW_MESSAGE_STATUS=${{ vars.BOTCORD_PROD_SHOW_MESSAGE_STATUS }}
+
+      - name: Report candidate for DevOps review
+        id: image
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          IMAGE="$ECR_REGISTRY/$IMAGE_REPOSITORY@$DIGEST"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Candidate: $IMAGE"
+          echo "Next: review this exact digest in aibrary-devops; this run does not change EKS or DNS."
 
-      - name: Vercel deploy
+  deploy:
+    name: Deploy Reviewed Candidate to EKS
+    if: >-
+      always() &&
+      needs.reject-non-production.result != 'failure' &&
+      (inputs.env_name == 'prod' || inputs.build_only == false)
+    needs: [reject-non-production]
+    runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
+    environment: FrontendProduction
+    timeout-minutes: 30
+    outputs:
+      deploy_url: ${{ steps.deploy.outputs.deploy_url }}
+    steps:
+      - name: Require reviewed workflow control from main
+        run: test "$GITHUB_REF" = "refs/heads/main"
+
+      - name: Checkout trusted deployment control
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .deployment-control
+          persist-credentials: false
+          sparse-checkout: infra/eks/deploy_frontend.py
+          sparse-checkout-cone-mode: false
+
+      - name: Login to ECR for provenance verification
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+      - name: Deploy synchronized reviewed manifest
         id: deploy
-        working-directory: ${{ github.workspace }}
-        run: |
-          URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
-          echo "deploy_url=$URL" >> $GITHUB_OUTPUT
-          echo "✅ Deployed: $URL"
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      - name: Alias deployment
-        if: inputs.alias != ''
-        working-directory: ${{ github.workspace }}
+          REQUESTED_REF: ${{ inputs.ref || github.sha }}
         run: |
-          vercel alias ${{ steps.deploy.outputs.deploy_url }} ${{ inputs.alias }} --token=${{ secrets.VERCEL_TOKEN }}
-          echo "✅ Aliased to ${{ inputs.alias }}"
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          set -euo pipefail
+          python3 .deployment-control/infra/eks/deploy_frontend.py \
+            --source-sha "$REQUESTED_REF"
+          echo "deploy_url=https://www.botcord.chat" >> "$GITHUB_OUTPUT"

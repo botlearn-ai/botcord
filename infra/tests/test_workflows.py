@@ -14,7 +14,7 @@ def workflow(name: str) -> str:
 
 
 class TestDokployWorkflowContracts(unittest.TestCase):
-    def test_vercel_git_integration_skips_only_preview_deployments(self):
+    def test_vercel_is_retained_for_rollback_but_production_workflow_uses_eks(self):
         config = json.loads((ROOT / "frontend" / "vercel.json").read_text())
         ignore_command = config["ignoreCommand"]
 
@@ -34,8 +34,12 @@ class TestDokployWorkflowContracts(unittest.TestCase):
                 self.assertEqual(result.returncode, expected_returncode)
 
         production_workflow = workflow("deploy-frontend.yml")
-        self.assertIn("vercel build --prod", production_workflow)
-        self.assertIn("vercel deploy --prebuilt --prod", production_workflow)
+        self.assertNotIn("vercel build --prod", production_workflow)
+        self.assertNotIn("vercel deploy --prebuilt --prod", production_workflow)
+        self.assertIn("platforms: linux/arm64", production_workflow)
+        self.assertIn("infra/eks/deploy_frontend.py", production_workflow)
+        self.assertIn("ref: ${{ github.workflow_sha }}", production_workflow)
+        self.assertIn("inputs.env_name == 'prod' || inputs.build_only == false", production_workflow)
 
     def test_pull_requests_validate_but_only_main_push_deploys(self):
         content = workflow("ci.yml")
@@ -167,10 +171,16 @@ class TestDokployWorkflowContracts(unittest.TestCase):
             )
 
         self.assertNotIn("restart-preview:", workflow("deploy-gateway-ingress.yml"))
-        self.assertIn(
-            "working-directory: ${{ github.workspace }}",
-            workflow("deploy-frontend.yml"),
-        )
+        frontend = workflow("deploy-frontend.yml")
+        self.assertIn("BOTCORD_PROD_APP_URL", frontend)
+        self.assertEqual(frontend.count('test "$GITHUB_REF" = "refs/heads/main"'), 2)
+        self.assertIn("Login to ECR for provenance verification", frontend)
+        self.assertIn('[[ "$BETA_GATE_ENABLED" =~ ^(true|false)$ ]]', frontend)
+        self.assertIn('[[ "$SHOW_MESSAGE_STATUS" =~ ^(true|false)$ ]]', frontend)
+        self.assertNotIn("BOTCORD_PROD_BETA_GATE_ENABLED ||", frontend)
+        self.assertNotIn("BOTCORD_PROD_SHOW_MESSAGE_STATUS ||", frontend)
+        self.assertIn("prod-$SOURCE_SHA-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}", frontend)
+        self.assertNotIn("VERCEL_TOKEN", frontend)
 
         release = workflow("release.yml")
         self.assertIn("uses: ./.github/workflows/deploy-backend.yml", release)
