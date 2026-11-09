@@ -35,8 +35,8 @@ private database overlay, and reuse the legacy mounts:
   `/var/backups/botcord-native-db-20261109`. The metadata contains secrets and must not be printed
   or copied into the repository.
 
-The Hub source is fixed to
-`dokploy-test-84ae864a727a3e124f2be827798cd92fec6c746b`. The application image still carries source
+The initial cutover used Hub source
+`dokploy-test-84ae864a727a3e124f2be827798cd92fec6c746b` and retained application image source
 revision `24a42c8a1c5f22312ccdcda94fa118db6ff2f653`; the cutover changed only the Redis hostname and
 added the private database network. The Supabase `DATABASE_URL` and all other environment values
 were preserved exactly. Hub-to-native-Redis DNS and authenticated PING passed. Hub health, the
@@ -58,8 +58,12 @@ No global Docker, deletion, SSH, or Traefik permission was added.
 The deployment controller performs read-only identity and health checks for both Database services,
 then deploys only Hub, Gateway, and frontend. It does not restart or mutate PostgreSQL or Redis.
 PR [#1131](https://github.com/botlearn-ai/botcord/pull/1131) passed 51 infrastructure tests, required
-checks, and review at this cutover checkpoint. Final merge, automatic main deployment, and
-post-CI no-database-restart evidence are tracked in that PR.
+checks, and review, then merged as `3badc85eab8ea82daec3118045fb0e4b9e1c638e`. The first post-cutover
+[automatic main deployment](https://github.com/botlearn-ai/botcord/actions/runs/42565649067) succeeded.
+All three application images carried that revision; PostgreSQL and Redis retained their original
+task identities and StartedAt timestamps with zero restarts. Post-CI Hub-to-Redis authenticated
+PING, public health, static assets, CORS, callback, BFF auth boundary, and preview redirect passed.
+Later deployment evidence is recorded in PR comments rather than rewriting this dated snapshot.
 
 ### Rollback
 
