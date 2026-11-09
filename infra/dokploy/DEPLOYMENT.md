@@ -2,63 +2,77 @@
 
 Target: [BotCord / production](https://console.botlearn.ai/dashboard/project/5UIS5-vklz4ac_SW1TgtP/environment/5he_zWMNfE-ED_oN47Nc5)
 
-## Native Database split — prepared 2026-11-09, not cut over
+## Native Database split — verified 2026-11-09
 
-PostgreSQL and Redis are being separated from the combined `botcord-data` Compose into two
-Dokploy Database services. The resources and private overlay exist, but the new database tasks
-remain idle until the cold cutover is complete. The old data containers and Hub still serve the
-test environment at this checkpoint.
+PostgreSQL and Redis now run as separate Dokploy Database services. The cold cutover preserved the
+original volumes, data, credentials, imageIDs, and single-writer boundary. Supabase remains the
+Hub application database and is not deployed or migrated by this change.
 
-| Resource | ID | appName | Prepared state |
+| Resource | ID | appName | Verified runtime |
 | --- | --- | --- | --- |
-| PostgreSQL Database | `y4SAYkwmTWF-uYkB1Yn5s` | `botcord-postgres-native-5pmi4g` | idle; no external port |
-| Redis Database | `dM0yCFytwg_FAw0nXsEZ6` | `botcord-redis-native-ogq8mr` | idle; no external port |
+| PostgreSQL Database | `y4SAYkwmTWF-uYkB1Yn5s` | `botcord-postgres-native-5pmi4g` | healthy, 0 restarts, no published port |
+| Redis Database | `dM0yCFytwg_FAw0nXsEZ6` | `botcord-redis-native-ogq8mr` | healthy, 0 restarts, no published port |
 | Private overlay | `4Kbb8OeuSSOv1tvzmzHyG` | `botcord-databases` | internal, attachable |
-| Legacy data Compose | `H9btOji5YQgfUL4AWycw2` | `botcord-data-rhhgnk` | still running at this checkpoint |
+| Legacy data Compose | `H9btOji5YQgfUL4AWycw2` | `botcord-data-rhhgnk` | deleted with volumes preserved; API readback 404 |
 
-Both Database services are pinned to Swarm node
-`pcc2py85mdnziaxjn322plfx8`, run one replica, detach from the public Dokploy network, and reuse
-the legacy volumes:
+Both Database services run one task on Swarm node `pcc2py85mdnziaxjn322plfx8`, attach only to the
+private database overlay, and reuse the legacy mounts:
 
 - PostgreSQL: `botcord-data-rhhgnk_botcord_postgres_data` → `/var/lib/postgresql/data`
   - image: `postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab`
+  - imageID: `sha256:c54a696c68013b2f8f42f479e00a2b6ad24c5ef10ee31cdfb8972cec3dad7eb7`, unchanged from the legacy container
 - Redis: `botcord-data-rhhgnk_botcord_redis_data` → `/data`
   - image: `redis:7-alpine@sha256:6ba19c50b56777f5c11c58eff8ddb69d0d5f27ba131cffb63f180ccfd43c66af`
+  - imageID: `sha256:c90c016450904cc9c63d38100c04c72554fcc983e257f1637ab451afaf32da7b`, unchanged from the legacy container
 
-The PostgreSQL volume contains 97 non-system tables. It is retained data, not the current Hub
-business database: `DATABASE_URL` continues to target the existing Preview Supabase. Redis keeps
-its existing password and AOF. Supabase is not deployed or migrated by this change.
+### Data continuity evidence
 
-The repository deployment controller now models only the three application Compose resources.
-Before any application mutation, it read-only verifies each Database ID, appName, environment,
-private network, replica count, node constraint, image digest, exact mount, and one healthy task.
-CI never deploys, restarts, or changes either Database.
+- PostgreSQL still contains 97 non-system tables. Its logical `pg_dump` SHA256 and
+  `pg_control_system` identifier matched before and after cutover.
+- Redis authenticated `PING` succeeded, AOF remained enabled, and the key count remained 0.
+- Each volume has exactly one writer. No legacy data container remains.
+- Root-only cold backups, checksums, and protected rollback metadata are stored on the server at
+  `/var/backups/botcord-native-db-20261109`. The metadata contains secrets and must not be printed
+  or copied into the repository.
 
-The CI member's post-cutover allowlist must contain the three application Compose IDs and the two
-Database IDs, and must exclude the legacy data Compose. A real CI-token probe must prove that the
-old resource is denied and the five intended resources are readable before the old containers are
-stopped. No global Docker, deletion, SSH, or Traefik permission is added.
+The Hub source is fixed to
+`dokploy-test-84ae864a727a3e124f2be827798cd92fec6c746b`. The application image still carries source
+revision `24a42c8a1c5f22312ccdcda94fa118db6ff2f653`; the cutover changed only the Redis hostname and
+added the private database network. The Supabase `DATABASE_URL` and all other environment values
+were preserved exactly. Hub-to-native-Redis DNS and authenticated PING passed. Hub health, the
+public API, frontend, and 21 static assets returned HTTP 200 after restart; exact-origin CORS,
+canonical auth callback, anonymous BFF 401, and the path/query-preserving preview redirect passed.
 
-### Cutover safety gate
+The legacy Compose was fully deleted with `deleteVolumes=false` only after both native services
+passed runtime and data checks. An empty Raw tombstone was not retained because the Dokploy UI
+could still start its old workspace and create concurrent writers. Both named volumes remain and
+are mounted by the healthy native services.
 
-1. Drain GitHub and Dokploy deployment queues.
-2. Stop Hub first and confirm it has exited.
-3. Stop the legacy data Compose; remove only its stopped containers, never its volumes.
-4. Confirm no process uses either volume, then create root-only cold backups and checksums.
-5. Replace the legacy resource with an empty Raw tombstone so it cannot recreate old writers.
-6. Start the two Database services and verify node, imageID, mounts, authentication, health, and
-   exactly one writer for each volume.
-7. Change only the Hub Redis host and database-network setting. Preserve the Supabase
-   `DATABASE_URL` and all other secrets byte-for-byte.
-8. Verify Hub-to-Redis connectivity and all public entry points before merging the CI change.
+### CI boundary and delivery evidence
 
-Rollback uses the reverse single-writer sequence. Do not use `freshVolumes`, `down -v`, or any
-volume cleanup. The legacy manifests are retained only under [`rollback/`](rollback/).
+The CI member now allows exactly the three application Compose resources and two Database
+resources. Before cutover, a real-token probe verified that the legacy resource was denied (401)
+and all five intended resources were readable (200): [workflow run 42564767086](https://github.com/botlearn-ai/botcord/actions/runs/42564767086).
+No global Docker, deletion, SSH, or Traefik permission was added.
+
+The deployment controller performs read-only identity and health checks for both Database services,
+then deploys only Hub, Gateway, and frontend. It does not restart or mutate PostgreSQL or Redis.
+PR [#1131](https://github.com/botlearn-ai/botcord/pull/1131) passed 51 infrastructure tests, required
+checks, and review at this cutover checkpoint. Final merge, automatic main deployment, and
+post-CI no-database-restart evidence are tracked in that PR.
+
+### Rollback
+
+Preserve the single-writer sequence: stop Hub, stop both native Database services, confirm their
+tasks are zero, then recreate the legacy Compose from the protected metadata and repository
+manifest with the saved appName and existing volumes. Restore the old Redis URL only after the
+legacy data containers are healthy. A recreated Compose receives a new resource ID; restoring it
+to the deployment pipeline also requires updating CI permissions and control-code identity.
+Never use `freshVolumes`, `down -v`, or volume cleanup.
 
 The local `infra/compose` topology and production release flow are unchanged. The canonical test
-hosts remain `www.test.botcord.chat` and `api.test.botcord.chat`; `preview.botcord.chat` is the
-only legacy-domain exception and redirects, with path and query preserved, to
-`www.test.botcord.chat`.
+hosts remain `www.test.botcord.chat` and `api.test.botcord.chat`; `preview.botcord.chat` preserves
+path and query while redirecting to `www.test.botcord.chat`.
 
 ---
 

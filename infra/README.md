@@ -24,15 +24,16 @@ pnpm infra:check
 项目的 Auth、Realtime、Storage 和应用数据库。Hub 的 `DATABASE_URL` 不改为 Dokploy
 PostgreSQL；Supabase service-role、JWKS 和 Storage 配置仍仅属于服务端。
 
-远端 PostgreSQL 与 Redis 正从一个 `botcord-data` Compose 拆为两个 Dokploy Database
-服务。两个服务复用原持久卷，不创建空卷：
+远端 PostgreSQL 与 Redis 已从一个 `botcord-data` Compose 拆为两个 Dokploy Database
+服务。两个服务复用原持久卷，没有创建空卷：
 
 - PostgreSQL 原卷包含 97 张非系统表，但它不是当前 Hub 的业务数据库；保留数据不等于
   将业务数据库从 Supabase 迁入 PostgreSQL。
 - Redis 保留原 AOF 数据和密码，并继续供测试环境 Hub 使用。
 
-拆分时必须先停止 Hub，再停止并移除旧 data 容器，确认卷没有使用者并完成冷备份，最后
-才能启动新的 Database 服务。禁止让旧 Compose 和新 Database 同时挂载同一卷。
+切换已按单写顺序完成：先停止 Hub 和旧 data 容器，确认卷没有使用者并完成 root-only
+冷备份，再启动两个 Database。旧 `botcord-data` 资源已在保留卷的前提下删除；当前只有
+两个 Database 挂载原卷。回滚仍必须先停止 Hub 和 Database，禁止并发挂载同一卷。
 
 测试入口为 `https://www.test.botcord.chat` 和 `https://api.test.botcord.chat`。
 `https://preview.botcord.chat` 是唯一的旧域名例外：它保留路径和查询参数，重定向到

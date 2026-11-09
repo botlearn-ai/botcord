@@ -34,31 +34,32 @@ PostgreSQL 卷包含 97 张非系统表，但 Hub 的 `DATABASE_URL` 仍必须�
 Redis 使用原密码并启用 AOF。禁止发布 Database host port，禁止改变卷名、挂载点、固定
 节点或镜像摘要后绕过 CI 身份校验。
 
-旧 `botcord-data` Compose 的 manifest 和变量示例仅保存在 [`rollback/`](rollback/)；它们
-不再是常规部署资源。
+旧 `botcord-data` Compose 资源已使用 `deleteVolumes=false` 删除，API 读回为 404；两个
+原卷仍由健康的 Database 服务挂载。旧 manifest 和变量示例仅保存在
+[`rollback/`](rollback/)，用于必要时重建资源，不再是常规部署资源。
 
-## 数据库拆分状态与切换顺序
+## 数据库拆分验收
 
-两个 Database 资源已创建并配置，但在完成冷切换前保持 idle。旧 `botcord-data` 和 Hub
-仍运行时，不得启动新 Database，因为新旧服务引用同一卷。
+冷切换已完成并验证：
 
-切换按以下顺序执行：
+- PostgreSQL 和 Redis 各有一个 healthy writer、零重启、无 host port，只连接私有
+  `botcord-databases`，并固定在包含原卷的节点。
+- 两个服务的运行时 imageID 与拆分前相同，挂载源和目标保持不变。
+- PostgreSQL 仍有 97 张非系统表；逻辑 `pg_dump` SHA256 和
+  `pg_control_system` identifier 在切换前后相同。
+- Redis 认证 `PING` 成功，AOF 仍启用，key count 在切换前后均为 0。
+- root-only 冷备份和受保护的回滚元数据存于远端
+  `/var/backups/botcord-native-db-20261109`；文档和日志不记录其中的 secrets。
+- Hub 只修改了 Redis 主机和数据库网络。Supabase `DATABASE_URL` 及其他环境变量保持
+  原值，Hub、API 和 frontend 均恢复 healthy/HTTP 200。
 
-1. 确认 PR checks 通过，并确认没有排队或运行中的旧测试部署。
-2. 从 CI member 权限中移除旧 data Compose，只保留三个应用 Compose 和两个 Database
-   的访问权限；使用真实 CI token 验证旧 data 读取被拒绝、新资源读取成功。
-3. 先停止 Hub，确认容器退出，避免 Redis 在切换期间继续读写。
-4. 停止旧 data Compose，移除其 PostgreSQL/Redis 容器但不删除卷；确认没有进程挂载两卷。
-5. 对两个离线卷创建 root-only 冷备份并记录校验和。
-6. 将旧 data Compose 改成空的 Raw tombstone，保持 Auto Deploy 关闭。
-7. 分别启动原生 PostgreSQL 和 Redis，验证单副本、固定节点、镜像、挂载、健康和认证。
-8. 仅更新 Hub 的 Redis 主机和 `BOTCORD_DATABASE_NETWORK`；逐字保留 Supabase
-   `DATABASE_URL` 及其他 secrets，然后启动 Hub。
-9. 验证 Hub 到 Redis、公开 health、frontend 和兼容重定向，再合并并运行 main 自动部署。
+切换时没有保留空 Raw tombstone：Dokploy UI 仍可能从旧工作区重新启动它，造成同卷双写。
+因此在新 Database 验收通过后，旧 Compose 才被完整退役；删除时明确保留了 volumes。
 
-回滚必须反向保持单写：停止 Hub → 停止两个 Database → 确认任务为零 → 恢复旧 data
-Compose → 启动旧 data → 恢复 Hub 的原 Redis 地址。不要使用 `freshVolumes`、`down -v`
-或任何卷清理命令。
+回滚必须反向保持单写：停止 Hub → 停止两个 Database → 确认任务为零 → 使用受保护的
+元数据和仓库 manifest 重建旧 Compose（保留原 appName 和卷）→ 启动旧 data → 恢复 Hub
+的原 Redis 地址。如需恢复 CI 部署，还要将新 Compose ID 加回 member 权限。不要使用
+`freshVolumes`、`down -v` 或任何卷清理命令。
 
 ## 测试发布流程
 
@@ -72,8 +73,10 @@ Compose → 启动旧 data → 恢复 Hub 的原 Redis 地址。不要使用 `fr
 - Vercel Git Preview 构建由 `frontend/vercel.json` 跳过；Production 构建保留。
 - ECR 登录沿用现有自动刷新机制，不保存 12 小时登录凭证或增加重复续期任务。
 
-CI member 的目标权限范围是五个资源：三个应用 Compose 加两个 Database；旧 data Compose
-不在范围内。控制脚本通过资源读取权限和现有 service-read 能力完成检查，不授予全局
+CI member 的权限范围已收敛为五个资源：三个应用 Compose 加两个 Database；已删除的旧
+data Compose 不在范围内。真实 CI token 探测已验证旧 ID 返回 401，五个目标资源均返回
+200（[workflow run 42564767086](https://github.com/botlearn-ai/botcord/actions/runs/42564767086)）。
+控制脚本通过资源读取权限和现有 service-read 能力完成检查，不授予全局
 Docker、删除服务、SSH 或 Traefik 权限，也不使用或输出 Database 环境变量。
 
 GitHub variables：`DOKPLOY_URL`、`BOTCORD_TEST_SUPABASE_URL`、
@@ -121,10 +124,11 @@ dokploy redis one --redisId 'dM0yCFytwg_FAw0nXsEZ6' --json
 
 ## 验收边界
 
-既有公开入口已完成 HTTPS、HTTP 301、Hub health、CORS、登录、Dashboard、Messages、
-BFF、静态资源和 Realtime 的测试环境验收；[`DEPLOYMENT.md`](DEPLOYMENT.md) 保留对应的
-历史证据。Database 拆分尚未完成运行态验收，不能用旧 `botcord-data` 的 healthy 结果
-代表新 Database 已上线。
+两个 Database 的运行态、数据连续性、单写边界和 Hub/API/frontend 已完成切换验收。
+PR [#1131](https://github.com/botlearn-ai/botcord/pull/1131) 的 51 个 infra tests、checks
+和 review 已通过，但尚未合并，main 自动部署也尚未运行；不能将冷切换验收写成 CI 收尾
+已完成。既有入口的登录、Dashboard、Messages、BFF、静态资源和 Realtime 证据保留在
+[`DEPLOYMENT.md`](DEPLOYMENT.md)。
 
 仍未验收实际 Agent 推理闭环、Google/GitHub 账号授权、Stripe/支付、Resend/邮件和其他
 付费集成。测试入口仍是固定新增 Hub 的单 Hub canary，不代表两个 Hub active-active。
