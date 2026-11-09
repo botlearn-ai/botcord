@@ -218,6 +218,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
             section = text.split(f"  {name}:\n", 1)[1].split("\n  #", 1)[0]
             self.assertIn("release-preflight", section.split("    steps:", 1)[0])
         self.assertIn("group: botcord-production-release", text)
+        prepare_job = text.split("  prepare:\n", 1)[1].split("  frontend-candidate:", 1)[0]
+        self.assertIn("runs-on: ubuntu-latest", prepare_job)
+        self.assertNotIn("runs-on: self-hosted", prepare_job)
         self.assertIn("request_review: true", text)
         self.assertNotIn("needs.frontend-candidate.outputs.image", text)
         self.assertIn("preflight_only: true", text)

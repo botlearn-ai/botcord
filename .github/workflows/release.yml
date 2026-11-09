@@ -50,7 +50,8 @@ jobs:
   # ── Resolve publish mode, archive, version ───────────────────────────────────
   prepare:
     name: Prepare Release
-    runs-on: self-hosted
+    # CI includes a deploy-host job; its waiter must never occupy that runner.
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     outputs:
       version: ${{ steps.publish.outputs.version }}
