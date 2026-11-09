@@ -125,9 +125,10 @@ dokploy redis one --redisId 'dM0yCFytwg_FAw0nXsEZ6' --json
 ## 验收边界
 
 两个 Database 的运行态、数据连续性、单写边界和 Hub/API/frontend 已完成切换验收。
-PR [#1131](https://github.com/botlearn-ai/botcord/pull/1131) 的 51 个 infra tests、checks
-和 review 已通过，但尚未合并，main 自动部署也尚未运行；不能将冷切换验收写成 CI 收尾
-已完成。既有入口的登录、Dashboard、Messages、BFF、静态资源和 Realtime 证据保留在
+PR [#1131](https://github.com/botlearn-ai/botcord/pull/1131) 已合并，51 个 infra tests、checks
+和 review 均通过。首次合并后的 [main 自动部署](https://github.com/botlearn-ai/botcord/actions/runs/42565649067)
+成功；两个 Database 的容器身份和 StartedAt 均未变化，确认应用 CI 没有重启数据库。
+既有入口的登录、Dashboard、Messages、BFF、静态资源和 Realtime 证据保留在
 [`DEPLOYMENT.md`](DEPLOYMENT.md)。
 
 仍未验收实际 Agent 推理闭环、Google/GitHub 账号授权、Stripe/支付、Resend/邮件和其他
