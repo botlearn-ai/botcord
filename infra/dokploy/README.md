@@ -1,114 +1,109 @@
 # BotCord on Dokploy
 
-后续测试部署统一使用指定 Dokploy `production` 环境；保留这个既有环境名，不代表生产发布目标。它包含 frontend、Hub、
-Gateway、PostgreSQL 和 Redis 五个容器，但复用既有 Preview Supabase 的 Auth、Realtime、
-Storage 和应用数据库。环境名称不代表数据已与 Preview 隔离。
+后续测试部署统一使用指定 Dokploy `production` 环境；这是既有环境名，不代表生产发布
+目标。frontend、Hub、Gateway 使用三个 Compose 资源，PostgreSQL 和 Redis 使用两个独立
+Database 服务。现有 Preview Supabase 继续提供 Auth、Realtime、Storage 和应用数据库。
 
 公开入口：
 
 - frontend：`https://www.test.botcord.chat`
 - Hub：`https://api.test.botcord.chat`
+- 兼容入口：`https://preview.botcord.chat`，保留路径和查询参数并重定向到 frontend
 
-两个域名均解析到 Dokploy 主机；仅 frontend 和 Hub 通过 HTTPS/Let's Encrypt 公开，
-不发布 host port。Gateway、PostgreSQL 和 Redis 保持私有，不修改旧 EKS/Vercel 入口。
+只有 frontend 和 Hub 通过 HTTPS/Let's Encrypt 公开。Gateway、PostgreSQL 和 Redis
+没有外部端口。production release、旧 EKS/Vercel 入口和本地 [`../compose/`](../compose/README.md)
+拓扑不变。
 
-> **仅限单 Hub canary：**新入口只供固定连接新增 Hub 的新建/QA Agent 使用。不要操作仍
-> 回调旧 Hub 的既有 Agent，不要称为 active-active，也不要声称 owner-chat/status/实时
-> fanout 已跨新旧 Hub 闭环。本轮没有实际执行 Agent 推理闭环。
+## 资源拓扑
 
-## Compose 资源与部署顺序
+| 类型 | 资源 | ID | appName / 路径 | 用途 |
+| --- | --- | --- | --- | --- |
+| Database | `botcord-postgres` | `y4SAYkwmTWF-uYkB1Yn5s` | `botcord-postgres-native-5pmi4g` | 保留原 PostgreSQL 数据；不是当前 Hub 业务数据库 |
+| Database | `botcord-redis` | `dM0yCFytwg_FAw0nXsEZ6` | `botcord-redis-native-ogq8mr` | Hub cache/pubsub，保留 AOF |
+| Compose | `botcord-backend` | `Ug07R-0ic81Rm8uHA1SE6` | `infra/dokploy/botcord-backend.yml` | Hub，连接现有 Supabase DB 和独立 Redis |
+| Compose | `botcord-gateway-ingress` | `4cHGyGZLYTEe7dTxtaFIe` | `infra/dokploy/botcord-gateway-ingress.yml` | 私有 setup/health 与持久 credentials |
+| Compose | `botcord-frontend` | `amZUZW2R40fAmNop14Zbc` | `infra/dokploy/botcord-frontend.yml` | Web、BFF、Supabase Auth/Realtime client |
 
-| Compose Path | 容器 | 用途 |
-| --- | --- | --- |
-| `dependencies.yml` | PostgreSQL 16、Redis 7 | PostgreSQL 保留但当前不用；Redis 供新增 Hub 使用 |
-| `botcord-backend.yml` | Hub | 连接现有 Supabase DB；关闭 schema auto-create 与周期任务 |
-| `botcord-gateway-ingress.yml` | Gateway Ingress | 私有 setup/health 与持久 credentials |
-| `botcord-frontend.yml` | Next.js standalone | Web、BFF、Supabase Auth/Realtime client |
+两个 Database 只连接内部 overlay `botcord-databases`，固定在包含原本地卷的 Swarm 节点，
+各运行一个副本。它们复用以下原卷和挂载点：
 
-顺序为 data → backend → gateway → frontend。CI 每步读回 deployment `done` 和预期
-容器集合 `running/healthy` 后再继续；实际 imageID、重启次数、网络和 mounts 另由管理员
-SSH 验收，服务账号不授予全局 Docker 权限。Gateway setup `9101` 仅供专用
-网络内部调用，不创建公网 Domain。
+- `botcord-data-rhhgnk_botcord_postgres_data` → `/var/lib/postgresql/data`
+- `botcord-data-rhhgnk_botcord_redis_data` → `/data`
 
-## 环境配置
+PostgreSQL 卷包含 97 张非系统表，但 Hub 的 `DATABASE_URL` 仍必须指向现有 Supabase。
+Redis 使用原密码并启用 AOF。禁止发布 Database host port，禁止改变卷名、挂载点、固定
+节点或镜像摘要后绕过 CI 身份校验。
 
-1. 用 Dokploy CLI 核对目标 project/environment，创建或复用专用网络
-   `botcord-production`。
-2. 每个 manifest 对应一个独立 Compose 资源，Provider 使用 GitHub：
-   `botlearn-ai/botcord`、`DokployForBotLearn`，Compose Path 对应上表。
-   CI 将 source 固定为 `dokploy-test-<完整 commit SHA>` tag；关闭 Dokploy Auto Deploy，
-   避免 GitHub push 在测试和镜像构建完成前触发部署。
-3. 分别参考 `dependencies.env.example`、`botcord-backend.env.example`、
-   `botcord-gateway-ingress.env.example` 和 `botcord-frontend.env.example`，只向每个资源
-   注入其拥有的变量，不共享整份 secrets。
-4. Backend 和 frontend 的数据库变量必须指向同一个现有 Supabase 应用数据库；
-   frontend 的 public/server Supabase URL 必须属于同一项目。
-5. 当前实例使用 Supabase JWKS 验签；Backend 必须配置同一项目的 JWKS、service-role、
-   Storage bucket 与 `FILE_STORAGE_BACKEND=supabase`。这些值只属于 server runtime。
-6. Backend 关闭 schema auto-create 和周期任务，由旧 Preview 部署继续持有所有权。
-7. 保留独立 PostgreSQL、Redis、uploads、Gateway `/data` 与 `/secrets` 卷。当前独立
-   PostgreSQL 不承载业务，不能删除或称作业务数据迁移完成。
-8. 新 Hub 使用独立 Redis；已读回 `PING` 且有一个订阅连接。旧 Preview Redis 是
-   `us-east-1` 私网 ElastiCache，香港主机当前不可达，本次不改造它。即使将来共用
-   Redis，进程本地 trace 仍是已知缺口，因此不能据此推断 owner-chat/status 跨 Hub
-   一致。
+旧 `botcord-data` Compose 的 manifest 和变量示例仅保存在 [`rollback/`](rollback/)；它们
+不再是常规部署资源。
 
-所有真实 secrets 只存放于 Dokploy Environment。不要输出 `compose one` 的完整 env，
-不要把 Supabase service-role、数据库密码或签名私钥放入 frontend build args。
+## 数据库拆分状态与切换顺序
+
+两个 Database 资源已创建并配置，但在完成冷切换前保持 idle。旧 `botcord-data` 和 Hub
+仍运行时，不得启动新 Database，因为新旧服务引用同一卷。
+
+切换按以下顺序执行：
+
+1. 确认 PR checks 通过，并确认没有排队或运行中的旧测试部署。
+2. 从 CI member 权限中移除旧 data Compose，只保留三个应用 Compose 和两个 Database
+   的访问权限；使用真实 CI token 验证旧 data 读取被拒绝、新资源读取成功。
+3. 先停止 Hub，确认容器退出，避免 Redis 在切换期间继续读写。
+4. 停止旧 data Compose，移除其 PostgreSQL/Redis 容器但不删除卷；确认没有进程挂载两卷。
+5. 对两个离线卷创建 root-only 冷备份并记录校验和。
+6. 将旧 data Compose 改成空的 Raw tombstone，保持 Auto Deploy 关闭。
+7. 分别启动原生 PostgreSQL 和 Redis，验证单副本、固定节点、镜像、挂载、健康和认证。
+8. 仅更新 Hub 的 Redis 主机和 `BOTCORD_DATABASE_NETWORK`；逐字保留 Supabase
+   `DATABASE_URL` 及其他 secrets，然后启动 Hub。
+9. 验证 Hub 到 Redis、公开 health、frontend 和兼容重定向，再合并并运行 main 自动部署。
+
+回滚必须反向保持单写：停止 Hub → 停止两个 Database → 确认任务为零 → 恢复旧 data
+Compose → 启动旧 data → 恢复 Hub 的原 Redis 地址。不要使用 `freshVolumes`、`down -v`
+或任何卷清理命令。
 
 ## 测试发布流程
 
 - `ci.yml`：PR 只运行检查；`main` push 在测试通过后调用 `deploy-dokploy-test.yml`。
-- `deploy-dokploy-test.yml`：支持手动部署指定 ref，构建三份 ARM64 不可变镜像，
-  再按 data → Hub → Gateway → frontend 发布同一提交的 GitHub Compose 配置。
-- 原 `deploy-pr-backend-preview.yml` 手工入口改为发布整个 Dokploy 测试环境，
-  不再发布旧主机/Vercel Preview，也不执行共享数据库迁移。
-- 生产 `release.yml` 保持原有路径；旧三个 deploy reusable 仅接受 `prod`。
-- Vercel Git 集成的 Preview 构建由 `frontend/vercel.json` 跳过；Production 构建与
-  `vercel deploy --prebuilt --prod` 保留。
-- GitHub variables：`DOKPLOY_URL`、`BOTCORD_TEST_SUPABASE_URL`、
-  `BOTCORD_TEST_SUPABASE_ANON_KEY`；secret：`DOKPLOY_AUTH_TOKEN`，镜像沿用 `ECR_REGISTRY`。
-- 应用 runtime secrets 仍只在 Dokploy；GitHub 的 Supabase URL/anon key 只供公开 bundle 构建。
-- CI API key 属于独立 member，只开放这四个 Compose；不授予删除或全局 Docker 权限。
-  当前 key 到期日为 2027-11-06，限流 300 次/分钟；到期前更新 GitHub secret 并撤销旧 key。
-- ECR 登录沿用已有自动刷新机制，不保存长期硬编码的 ECR 登录 token，也不增加重复续期任务。
+- `deploy-dokploy-test.yml`：构建三份 ARM64 不可变应用镜像。控制脚本先只读校验两个
+  Database 的精确身份和 `running/healthy` 任务，再依次发布 Hub、Gateway、frontend。
+- CI 不部署、重启或修改 PostgreSQL/Redis，也不再更新旧 `botcord-data`。
+- 原 `deploy-pr-backend-preview.yml` 手工入口发布整个 Dokploy 测试应用栈，不执行共享
+  数据库迁移。
+- production `release.yml` 保持原路径；旧 deploy reusable 仅接受 `prod`。
+- Vercel Git Preview 构建由 `frontend/vercel.json` 跳过；Production 构建保留。
+- ECR 登录沿用现有自动刷新机制，不保存 12 小时登录凭证或增加重复续期任务。
 
-目标 ref 只用于镜像源码构建。控制脚本从所选 workflow 的固定 `github.workflow_sha`
-检出至独立 `.deployment-control`；手工触发时应选择受信 workflow 版本，不能将任意 PR
-作为控制代码。初次上线由维护者显式选择已审查的任务分支；合并后默认选 `main`。
+CI member 的目标权限范围是五个资源：三个应用 Compose 加两个 Database；旧 data Compose
+不在范围内。控制脚本通过资源读取权限和现有 service-read 能力完成检查，不授予全局
+Docker、删除服务、SSH 或 Traefik 权限，也不使用或输出 Database 环境变量。
 
-`deploy.py` 先校验实例、资源身份、GitHub Provider、仓库与 Compose Path，再更新镜像变量
-和 source tag。每个资源完成 deployment 与容器健康读回后才继续，最后检查两个 HTTPS
-入口。失败停止后续资源；多资源发布不是原子事务，按上一次 tag/镜像 digest 逐个回退，
-不删除卷。首次 Raw → GitHub 的迁入需要显式 `--adopt-provider`；常规 CI 不允许隐式迁入。
+GitHub variables：`DOKPLOY_URL`、`BOTCORD_TEST_SUPABASE_URL`、
+`BOTCORD_TEST_SUPABASE_ANON_KEY`；secrets：`DOKPLOY_AUTH_TOKEN` 和既有 ECR 配置。
+真实 runtime secrets 只存于 Dokploy。不要输出完整资源对象或把 Supabase service-role、
+数据库密码、Redis 密码、签名私钥放进 CI 日志或 frontend build args。
 
-本次只改测试发布目的地，不关停旧部署、不切换旧域名、不转移既有 Agent，也不接管旧 Hub
-的周期任务。共享数据库的 schema 变更仍需单独评估和执行，不能靠 Hub 自动建表替代迁移。
+目标 ref 只决定镜像源码。控制脚本从所选 workflow 的固定 `github.workflow_sha` 检出至
+独立 `.deployment-control`；手工触发时只选择受信 workflow 版本。CI 将 Compose source
+固定为 `dokploy-test-<完整 commit SHA>` tag，并保持 Auto Deploy 关闭。
 
-## 镜像构建
+## 环境配置
+
+1. Compose Provider 使用 GitHub：`botlearn-ai/botcord`、`DokployForBotLearn`。
+2. 按各自 `.env.example` 将变量注入对应 Compose，不共享整份 secrets。
+3. Backend 和 frontend 使用同一个现有 Supabase 项目；Backend 保持 schema auto-create
+   和周期后台任务关闭。
+4. Backend 同时连接现有 `botcord-production` 与私有 `botcord-databases` 网络；frontend
+   和 Gateway 不连接数据库网络。
+5. Gateway setup `9101` 只供内部调用，不创建公网 Domain。
+
+`deploy.py` 先校验实例、资源身份、Provider、仓库、Compose Path 和两个 Database 的只读
+运行态，再更新三个应用镜像和 source tag。每个应用完成 deployment 与容器健康读回后才
+继续。多资源发布不是原子事务；失败时按上一次 tag/镜像 digest 逐个回退，不删除卷。
+
+## 镜像和访问诊断
 
 目标主机为 `linux/arm64`。Backend、Gateway 与 frontend 使用唯一 tag，部署时固定
-registry digest，不覆盖已有 `preview`/`prod` runtime tag。
-
-```bash
-docker build --provenance=false -f backend/Dockerfile \
-  -t "$BOTCORD_BACKEND_IMAGE" backend
-
-docker build --provenance=false -f packages/gateway-ingress/Dockerfile \
-  -t "$BOTCORD_GATEWAY_INGRESS_IMAGE" .
-
-docker build --provenance=false -f frontend/Dockerfile \
-  --build-arg NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
-  --build-arg NEXT_PUBLIC_HUB_BASE_URL="$NEXT_PUBLIC_HUB_BASE_URL" \
-  --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
-  --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
-  -t "$BOTCORD_FRONTEND_IMAGE" frontend
-```
-
-这些 frontend 参数是浏览器公开配置；服务端 Supabase URL、DB URL、service-role、
-Stripe、绑定签名等均为 runtime-only。公开 URL 或 anon key 变化后必须重建 frontend。
-
-## 访问与读回
+registry digest，不覆盖已有 `preview`/`prod` runtime tag。frontend 的公开 URL、
+Supabase URL 或 anon key 变化后必须重建镜像；服务端 secrets 均为 runtime-only。
 
 ```bash
 python3 infra/dokploy/tunnel.py
@@ -117,32 +112,19 @@ python3 infra/dokploy/tunnel.py
 # Hub      http://localhost:28000
 
 dokploy compose one --composeId '<id>' --json
-dokploy deployment all-by-compose --composeId '<id>' --json
-dokploy docker get-containers --json
+dokploy postgres one --postgresId 'y4SAYkwmTWF-uYkB1Yn5s' --json
+dokploy redis one --redisId 'dM0yCFytwg_FAw0nXsEZ6' --json
 ```
 
-隧道脚本根据当前容器读取 IP，经 `botlearn-test-hk` SSH/SSM 转发到本机；关闭脚本只关闭
-隧道，不停止远端服务，只用于运维诊断。远端 frontend 镜像以内嵌的公开 APP/Hub URL
-构建。frontend 与 Hub 各自接入 Compose default、`botcord-production` 和
-`dokploy-network`；其余服务只接入 `botcord-production`。Traefik 明确使用
-`dokploy-network`。
+隧道只用于运维诊断，关闭脚本不会停止远端服务。不要将命令返回的完整资源对象复制到
+日志或文档，因为其中可能包含环境变量。
 
-## 验收与限制
+## 验收边界
 
-两个 Domain deployment 已完成：HTTPS 有效，HTTP 均以 301 跳转 HTTPS，Hub health 为
-200，精确 frontend Origin 的 CORS 为 200。frontend Let's Encrypt 证书有效期为
-2026-11-06 至 2027-02-04。fresh browser 已验证匿名登录边界、邮箱密码登录、Dashboard、
-Messages、带 cookie BFF 200、无 cookie 401 和 21 个静态资源。57 个登录态请求（含 12 个
-API）均低于 400，page errors、Analytics 和 localhost 请求均为零。auth callback 返回
-公开域名；Supabase redirect allowlist 保留原值并加入新前端 origin 与通配路径。
+既有公开入口已完成 HTTPS、HTTP 301、Hub health、CORS、登录、Dashboard、Messages、
+BFF、静态资源和 Realtime 的测试环境验收；[`DEPLOYMENT.md`](DEPLOYMENT.md) 保留对应的
+历史证据。Database 拆分尚未完成运行态验收，不能用旧 `botcord-data` 的 healthy 结果
+代表新 Database 已上线。
 
-Realtime QA 已成功订阅；Realtime SDK 的 client `send` 返回 error，随后 service-role
-定向 admin broadcast 被接受并由该客户端收到。两条路径必须如实区分。
-
-未验证：实际 Agent 推理闭环、Google/GitHub 账号授权、Stripe/支付、Resend/邮件和其他
-付费集成。
-Gateway 仅完成健康与鉴权边界检查；独立 Redis 与旧 Hub 的跨部署 fanout 尚待核查。
-该部署只能作为固定新增 Hub 的单 Hub canary；既有 Agent 切换、跨 Hub owner-chat/status
-和实际 Agent 推理闭环均未验收。
-
-当前资源 ID、镜像 digest 和时间点快照见 [DEPLOYMENT.md](DEPLOYMENT.md)。
+仍未验收实际 Agent 推理闭环、Google/GitHub 账号授权、Stripe/支付、Resend/邮件和其他
+付费集成。测试入口仍是固定新增 Hub 的单 Hub canary，不代表两个 Hub active-active。
