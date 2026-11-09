@@ -9,6 +9,8 @@ PostgreSQL 和 Redis。CLI、daemon 与 desktop 是客户端或按需进程，�
   PostgreSQL 和 Redis 使用两个独立的 Dokploy Database 服务。仅 frontend 与 Hub 公开。
 - [`dokploy/DEPLOYMENT.md`](dokploy/DEPLOYMENT.md)：当前资源、迁移状态、历史验收证据和
   未覆盖边界。
+- [`eks/`](eks/README.md)：production frontend 的美国区 EKS 两阶段交付控制器；候选
+  镜像必须先经 aibrary-devops 清单评审，发布只应用已同步的不可变 digest。
 
 ```bash
 pnpm compose:up
@@ -37,7 +39,8 @@ PostgreSQL；Supabase service-role、JWKS 和 Storage 配置仍仅属于服务�
 
 测试入口为 `https://www.test.botcord.chat` 和 `https://api.test.botcord.chat`。
 `https://preview.botcord.chat` 是唯一的旧域名例外：它保留路径和查询参数，重定向到
-`https://www.test.botcord.chat`。其他既有 Vercel/EKS 入口和 production release 流程不变。
+`https://www.test.botcord.chat`。测试环境既有 Dokploy 入口不变。production frontend
+从 Vercel 迁往美国区 EKS；迁移期间保留 Vercel 作为回滚入口，DNS 切换是独立操作。
 
 > **Canary 边界：**测试入口只用于固定连接新增 Hub 的新建/QA Agent。共享 Supabase
 > 不会自动补齐两个 Hub 之间的 owner-chat、status 或实时 fanout；本轮也未验收实际

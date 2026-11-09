@@ -1,0 +1,63 @@
+name: Prepare Frontend Production Configuration
+
+# One-time migration only. Existing Secrets are never overwritten.
+on:
+  workflow_dispatch:
+    inputs:
+      create_secret:
+        description: 'Create the dedicated EKS frontend Secret from current Vercel production configuration'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: botcord-frontend-production-configuration
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
+    environment: Production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Require reviewed main
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: test "$WORKFLOW_REF" = refs/heads/main
+      - name: Prepare isolated US kubeconfig
+        if: inputs.create_secret
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = 928112001319
+          KUBECONFIG=$(mktemp "$RUNNER_TEMP/botcord-frontend-kubeconfig.XXXXXX")
+          chmod 600 "$KUBECONFIG"
+          echo "KUBECONFIG=$KUBECONFIG" >> "$GITHUB_ENV"
+          aws eks update-kubeconfig --region us-east-1 --name aibrary --kubeconfig "$KUBECONFIG"
+      - name: Export current production configuration without logging secrets
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          CREATE_SECRET: ${{ inputs.create_secret }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$CREATE_SECRET" = true ]; then args+=(--create-secret); fi
+          python3 infra/eks/prepare_production.py "${args[@]}" --public-output "$RUNNER_TEMP/botcord-production-public.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: botcord-production-public
+          path: ${{ runner.temp }}/botcord-production-public.json
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove temporary configuration
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/botcord-production-public.json"
+          if [ -n "${KUBECONFIG:-}" ]; then rm -f "$KUBECONFIG"; fi
