@@ -40,7 +40,7 @@ def select_environment(payload):
         if entry.get("visibility") == "secret" or ("visibility" not in entry and entry.get("type") in ("sensitive", "secret")):
             raise ValueError(f"Vercel cannot export {key}; provision through the environment secret channel")
         value = entry.get("value")
-        if not isinstance(value, str) or not value.strip():
+        if not isinstance(value, str) or (not value.strip() and key != "NEXT_PUBLIC_GA_ID"):
             raise ValueError(f"Missing exportable value: {key}")
         if any(marker in value.lower() for marker in ("encrypted-placeholder", "redacted", "__fill_me__", "<secret>", "********")):
             raise ValueError(f"Non-exported placeholder: {key}")

@@ -70,6 +70,22 @@ def validate_objects(objects: list[dict[str, Any]]) -> tuple[str, str]:
         if obj.get("metadata", {}).get("namespace") != NAMESPACE:
             raise DeploymentError("every reviewed object must target namespace prod")
 
+    config_map = next(obj for obj in objects if obj["kind"] == "ConfigMap")
+    data = config_map.get("data", {})
+    if data.get("NEXT_PUBLIC_APP_URL") != "https://www.botcord.chat":
+        raise DeploymentError("reviewed ConfigMap has the wrong production app URL")
+    if data.get("NEXT_PUBLIC_HUB_BASE_URL") != "https://api.botcord.chat":
+        raise DeploymentError("reviewed ConfigMap has the wrong production Hub URL")
+    supabase_url = data.get("NEXT_PUBLIC_SUPABASE_URL", "")
+    if not re.fullmatch(r"https://[A-Za-z0-9.-]+", supabase_url):
+        raise DeploymentError("reviewed ConfigMap has an invalid production Supabase URL")
+    public_key = data.get("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
+    if len(public_key) < 16 or "FILL_ME" in public_key or any(c.isspace() for c in public_key):
+        raise DeploymentError("reviewed ConfigMap has a missing or placeholder public key")
+    for name in ("NEXT_PUBLIC_BETA_GATE_ENABLED", "SHOW_MESSAGE_STATUS"):
+        if data.get(name) not in {"true", "false"}:
+            raise DeploymentError(f"reviewed ConfigMap must set {name} to true or false")
+
     deployment = next(obj for obj in objects if obj["kind"] == "Deployment")
     containers = deployment["spec"]["template"]["spec"].get("containers", [])
     if len(containers) != 1 or containers[0].get("name") != SERVICE:
@@ -126,13 +142,35 @@ def verify_candidate(source_sha: str, digest: str) -> None:
         )
     )
     details = result.get("imageDetails", [])
-    expected_prefix = f"prod-{source_sha}-"
+    expected_tag = re.compile(rf"^prod-{re.escape(source_sha)}-[0-9]+-[0-9]+$")
     if len(details) != 1 or not any(
-        tag.startswith(expected_prefix) for tag in details[0].get("imageTags", [])
+        expected_tag.fullmatch(tag) for tag in details[0].get("imageTags", [])
     ):
         raise DeploymentError(
             "reviewed digest is not a production candidate for the requested source commit"
         )
+    image = f"{IMAGE_PREFIX}@{digest}"
+    run("docker", "pull", image)
+    inspection = json.loads(
+        run("docker", "image", "inspect", image, "--format", "{{json .}}")
+    )
+    labels = inspection.get("Config", {}).get("Labels") or {}
+    if (
+        inspection.get("Os") != "linux"
+        or inspection.get("Architecture") != "arm64"
+        or labels.get("org.opencontainers.image.revision") != source_sha
+    ):
+        raise DeploymentError("reviewed image provenance or ARM64 platform does not match")
+
+
+def verify_runtime_secret() -> None:
+    present = run(
+        "kubectl", "--context", KUBE_CONTEXT, "-n", NAMESPACE,
+        "get", "secret", f"{SERVICE}-runtime", "-o",
+        'go-template={{if index .data "SUPABASE_DB_URL"}}present{{end}}',
+    )
+    if present != "present":
+        raise DeploymentError("frontend runtime Secret is missing SUPABASE_DB_URL")
 
 
 def verify_rollout(digest: str) -> str:
@@ -191,6 +229,7 @@ def verify_https(alb_hostname: str) -> None:
         try:
             body = run(
                 "curl", "--fail", "--silent", "--show-error",
+                "--noproxy", "*",
                 "--connect-timeout", "10", "--max-time", "20",
                 "--connect-to", f"www.botcord.chat:443:{alb_hostname}:443",
                 "https://www.botcord.chat/api/health",
@@ -209,6 +248,7 @@ def deploy(source_sha: str) -> None:
         raise DeploymentError("deployment requires an exact 40-character source commit")
     verify_devops_checkout()
     verify_identity()
+    verify_runtime_secret()
     reviewed_hash = hashlib.sha256(MANIFEST.read_bytes()).hexdigest()
     image, digest = render_and_validate_manifest()
     verify_candidate(source_sha, digest)

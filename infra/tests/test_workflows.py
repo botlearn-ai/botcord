@@ -173,6 +173,12 @@ class TestDokployWorkflowContracts(unittest.TestCase):
         self.assertNotIn("restart-preview:", workflow("deploy-gateway-ingress.yml"))
         frontend = workflow("deploy-frontend.yml")
         self.assertIn("BOTCORD_PROD_APP_URL", frontend)
+        self.assertEqual(frontend.count('test "$GITHUB_REF" = "refs/heads/main"'), 2)
+        self.assertIn("Login to ECR for provenance verification", frontend)
+        self.assertIn('[[ "$BETA_GATE_ENABLED" =~ ^(true|false)$ ]]', frontend)
+        self.assertIn('[[ "$SHOW_MESSAGE_STATUS" =~ ^(true|false)$ ]]', frontend)
+        self.assertNotIn("BOTCORD_PROD_BETA_GATE_ENABLED ||", frontend)
+        self.assertNotIn("BOTCORD_PROD_SHOW_MESSAGE_STATUS ||", frontend)
         self.assertIn("prod-$SOURCE_SHA-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}", frontend)
         self.assertNotIn("VERCEL_TOKEN", frontend)
 

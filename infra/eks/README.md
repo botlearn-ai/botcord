@@ -18,9 +18,10 @@ does not change Route 53. Vercel remains the rollback source during cutover.
 
 Required Production environment variables are `BOTCORD_PROD_APP_URL`,
 `BOTCORD_PROD_HUB_BASE_URL`, `BOTCORD_PROD_SUPABASE_URL`, and
-`BOTCORD_PROD_SUPABASE_ANON_KEY`. Optional variables are
-`BOTCORD_PROD_BETA_GATE_ENABLED`, `BOTCORD_PROD_GA_ID`, and
-`BOTCORD_PROD_SHOW_MESSAGE_STATUS`. Database credentials remain in the dedicated
+`BOTCORD_PROD_SUPABASE_ANON_KEY`, `BOTCORD_PROD_BETA_GATE_ENABLED`, and
+`BOTCORD_PROD_SHOW_MESSAGE_STATUS`. The two behavior flags must be the literal
+`true` or `false` so migration cannot silently change production behavior.
+`BOTCORD_PROD_GA_ID` is optional. Database credentials remain in the dedicated
 Kubernetes runtime Secret; they are never image build arguments.
 
 ## First migration from Vercel

@@ -70,6 +70,9 @@ jobs:
       image: ${{ steps.image.outputs.image }}
       source_sha: ${{ steps.source.outputs.source_sha }}
     steps:
+      - name: Require reviewed workflow control from main
+        run: test "$GITHUB_REF" = "refs/heads/main"
+
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref || github.sha }}
@@ -90,12 +93,16 @@ jobs:
           HUB_URL: ${{ vars.BOTCORD_PROD_HUB_BASE_URL }}
           SUPABASE_URL: ${{ vars.BOTCORD_PROD_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ vars.BOTCORD_PROD_SUPABASE_ANON_KEY }}
+          BETA_GATE_ENABLED: ${{ vars.BOTCORD_PROD_BETA_GATE_ENABLED }}
+          SHOW_MESSAGE_STATUS: ${{ vars.BOTCORD_PROD_SHOW_MESSAGE_STATUS }}
         run: |
           set -euo pipefail
           test "$APP_URL" = "https://www.botcord.chat"
           test "$HUB_URL" = "https://api.botcord.chat"
           [[ "$SUPABASE_URL" =~ ^https://[A-Za-z0-9.-]+$ ]]
           test -n "$SUPABASE_ANON_KEY"
+          [[ "$BETA_GATE_ENABLED" =~ ^(true|false)$ ]]
+          [[ "$SHOW_MESSAGE_STATUS" =~ ^(true|false)$ ]]
           test -n "$ECR_REGISTRY"
 
       - name: Login to ECR
@@ -124,9 +131,9 @@ jobs:
             NEXT_PUBLIC_HUB_BASE_URL=${{ vars.BOTCORD_PROD_HUB_BASE_URL }}
             NEXT_PUBLIC_SUPABASE_URL=${{ vars.BOTCORD_PROD_SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ vars.BOTCORD_PROD_SUPABASE_ANON_KEY }}
-            NEXT_PUBLIC_BETA_GATE_ENABLED=${{ vars.BOTCORD_PROD_BETA_GATE_ENABLED || 'false' }}
+            NEXT_PUBLIC_BETA_GATE_ENABLED=${{ vars.BOTCORD_PROD_BETA_GATE_ENABLED }}
             NEXT_PUBLIC_GA_ID=${{ vars.BOTCORD_PROD_GA_ID }}
-            SHOW_MESSAGE_STATUS=${{ vars.BOTCORD_PROD_SHOW_MESSAGE_STATUS || 'false' }}
+            SHOW_MESSAGE_STATUS=${{ vars.BOTCORD_PROD_SHOW_MESSAGE_STATUS }}
 
       - name: Report candidate for DevOps review
         id: image
@@ -153,6 +160,9 @@ jobs:
     outputs:
       deploy_url: ${{ steps.deploy.outputs.deploy_url }}
     steps:
+      - name: Require reviewed workflow control from main
+        run: test "$GITHUB_REF" = "refs/heads/main"
+
       - name: Checkout trusted deployment control
         uses: actions/checkout@v6
         with:
@@ -161,6 +171,11 @@ jobs:
           persist-credentials: false
           sparse-checkout: infra/eks/deploy_frontend.py
           sparse-checkout-cone-mode: false
+
+      - name: Login to ECR for provenance verification
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
       - name: Deploy synchronized reviewed manifest
         id: deploy
