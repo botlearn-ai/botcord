@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -65,6 +66,102 @@ class PreparationTests(unittest.TestCase):
         for data in ({"envs": [], "pagination": {"next": "page2"}}, {"key": "single-variable"}):
             with self.assertRaises(ValueError):
                 prepare.select_environment(data)
+
+    @patch.dict(prepare.os.environ, {
+        "VERCEL_PROJECT_ID": "project-id", "VERCEL_ORG_ID": "team-id",
+        "VERCEL_TOKEN": "private-token",
+    })
+    @patch.object(prepare.urllib.request, "urlopen")
+    def test_ciphertext_list_is_hydrated_from_individual_endpoint(self, urlopen):
+        metadata = {"id": "env-1", "key": "NEXT_PUBLIC_APP_URL",
+                    "value": "ciphertext", "target": ["production"], "type": "encrypted"}
+        detail = {"id": "env-1", "key": "NEXT_PUBLIC_APP_URL",
+                  "value": "https://www.botcord.chat", "type": "encrypted"}
+        urlopen.side_effect = [
+            io.BytesIO(json.dumps({"envs": [metadata], "pagination": {}}).encode()),
+            io.BytesIO(json.dumps(detail).encode()),
+        ]
+        result = prepare.fetch_environment()
+        self.assertEqual(result["envs"][0]["value"], "https://www.botcord.chat")
+        requests = [call.args[0] for call in urlopen.call_args_list]
+        self.assertIn("/v10/projects/project-id/env?teamId=team-id", requests[0].full_url)
+        self.assertIn("/v1/projects/project-id/env/env-1?teamId=team-id", requests[1].full_url)
+        self.assertNotIn("decrypt", requests[0].full_url)
+        self.assertNotIn("private-token", requests[0].full_url)
+
+    @patch.dict(prepare.os.environ, {
+        "VERCEL_PROJECT_ID": "project-id", "VERCEL_ORG_ID": "team-id",
+        "VERCEL_TOKEN": "private-token",
+    })
+    @patch.object(prepare.urllib.request, "urlopen")
+    def test_individual_identity_mismatch_fails(self, urlopen):
+        metadata = {"id": "env-1", "key": "NEXT_PUBLIC_APP_URL",
+                    "target": ["production"], "type": "encrypted"}
+        for detail in (
+            {"id": "wrong", "key": "NEXT_PUBLIC_APP_URL", "value": "x"},
+            {"id": "env-1", "key": "WRONG_KEY", "value": "x"},
+        ):
+            with self.subTest(detail=detail):
+                urlopen.side_effect = [
+                    io.BytesIO(json.dumps({"envs": [metadata], "pagination": {}}).encode()),
+                    io.BytesIO(json.dumps(detail).encode()),
+                ]
+                with self.assertRaisesRegex(ValueError, "Mismatched Vercel environment identity"):
+                    prepare.fetch_environment()
+
+    @patch.dict(prepare.os.environ, {
+        "VERCEL_PROJECT_ID": "project-id", "VERCEL_ORG_ID": "team-id",
+        "VERCEL_TOKEN": "private-token",
+    })
+    @patch.object(prepare.urllib.request, "urlopen")
+    def test_hidden_or_nonexportable_entries_fail_without_detail_leak(self, urlopen):
+        for metadata, detail_calls in (
+            ({"id": "env-1", "key": "SUPABASE_DB_URL", "target": ["production"],
+              "type": "sensitive"}, 1),
+            ({"id": "env-1", "key": "SUPABASE_DB_URL", "target": ["production"],
+              "type": "encrypted"}, 2),
+        ):
+            with self.subTest(metadata=metadata):
+                responses = [io.BytesIO(json.dumps({"envs": [metadata], "pagination": {}}).encode())]
+                if detail_calls == 2:
+                    responses.append(io.BytesIO(json.dumps({
+                        "id": "env-1", "key": "SUPABASE_DB_URL",
+                        "type": "sensitive", "value": None,
+                    }).encode()))
+                urlopen.side_effect = responses
+                with self.assertRaisesRegex(ValueError, "cannot export SUPABASE_DB_URL"):
+                    prepare.fetch_environment()
+                self.assertEqual(urlopen.call_count, detail_calls)
+                urlopen.reset_mock()
+
+    @patch.dict(prepare.os.environ, {
+        "VERCEL_PROJECT_ID": "project-id", "VERCEL_ORG_ID": "team-id",
+        "VERCEL_TOKEN": "private-token",
+    })
+    @patch.object(prepare.urllib.request, "urlopen")
+    def test_individual_unreadable_value_fails(self, urlopen):
+        metadata = {"id": "env-1", "key": "SUPABASE_DB_URL",
+                    "target": ["production"], "type": "encrypted"}
+        urlopen.side_effect = [
+            io.BytesIO(json.dumps({"envs": [metadata], "pagination": {}}).encode()),
+            io.BytesIO(json.dumps({"id": "env-1", "key": "SUPABASE_DB_URL",
+                                   "type": "encrypted", "value": None}).encode()),
+        ]
+        with self.assertRaisesRegex(ValueError, "Missing exportable value"):
+            prepare.fetch_environment()
+
+    @patch.dict(prepare.os.environ, {
+        "VERCEL_PROJECT_ID": "project-id", "VERCEL_ORG_ID": "team-id",
+        "VERCEL_TOKEN": "private-token",
+    })
+    @patch.object(prepare.urllib.request, "urlopen")
+    def test_paginated_list_fails_before_individual_reads(self, urlopen):
+        urlopen.return_value = io.BytesIO(json.dumps({
+            "envs": [], "pagination": {"next": "page-2"}
+        }).encode())
+        with self.assertRaisesRegex(ValueError, "complete snapshot"):
+            prepare.fetch_environment()
+        self.assertEqual(urlopen.call_count, 1)
 
     def test_duplicate_and_wrong_origin_fail(self):
         data = fixture()

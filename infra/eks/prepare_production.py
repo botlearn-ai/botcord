@@ -70,20 +70,75 @@ def select_environment(payload):
     return {key: values[key] for key in PUBLIC_KEYS}, values["SUPABASE_DB_URL"]
 
 
-def fetch_environment():
-    project = os.environ["VERCEL_PROJECT_ID"]
-    team = os.environ["VERCEL_ORG_ID"]
-    query = urllib.parse.urlencode({"teamId": team, "decrypt": "true"})
+def _fetch_json(url):
     request = urllib.request.Request(
-        f"https://api.vercel.com/v10/projects/{urllib.parse.quote(project, safe='')}/env?{query}",
+        url,
         headers={"Authorization": f"Bearer {os.environ['VERCEL_TOKEN']}"},
     )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.load(response)
-    except (urllib.error.URLError, json.JSONDecodeError) as error:
+    except (urllib.error.URLError, json.JSONDecodeError):
         # API error bodies may contain credentials; deliberately do not log them.
         raise RuntimeError("Vercel production configuration export failed") from None
+
+
+def fetch_environment():
+    project = os.environ["VERCEL_PROJECT_ID"]
+    team = os.environ["VERCEL_ORG_ID"]
+    project_path = urllib.parse.quote(project, safe="")
+    query = urllib.parse.urlencode({"teamId": team})
+    listing = _fetch_json(
+        f"https://api.vercel.com/v10/projects/{project_path}/env?{query}"
+    )
+    if listing.get("pagination", {}).get("next"):
+        raise ValueError("Paginated environment export requires a complete snapshot")
+    if not isinstance(listing.get("envs"), list):
+        raise ValueError("Unexpected Vercel environment response")
+
+    allowed = set(PUBLIC_KEYS) | {
+        "SUPABASE_DB_URL",
+        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY",
+        "NEXT_PUBLIC_SHOW_MESSAGE_STATUS",
+    }
+    hydrated = []
+    for metadata in listing["envs"]:
+        if (
+            metadata.get("key") not in allowed
+            or "production" not in (metadata.get("target") or [])
+            or metadata.get("gitBranch")
+        ):
+            continue
+        key = metadata.get("key")
+        if metadata.get("visibility") == "secret" or metadata.get("type") in {
+            "sensitive", "secret"
+        }:
+            raise ValueError(
+                f"Vercel cannot export {key}; provision through the environment secret channel"
+            )
+        env_id = metadata.get("id")
+        if not isinstance(env_id, str) or not env_id:
+            raise ValueError(f"Missing Vercel environment identity: {key}")
+        detail = _fetch_json(
+            f"https://api.vercel.com/v1/projects/{project_path}/env/"
+            f"{urllib.parse.quote(env_id, safe='')}?{query}"
+        )
+        if detail.get("id") != env_id or detail.get("key") != key:
+            raise ValueError(f"Mismatched Vercel environment identity: {key}")
+        if "target" in detail and "production" not in detail.get("target", []):
+            raise ValueError(f"Mismatched Vercel environment target: {key}")
+        if detail.get("visibility") == "secret" or detail.get("type") in {
+            "sensitive", "secret"
+        }:
+            raise ValueError(
+                f"Vercel cannot export {key}; provision through the environment secret channel"
+            )
+        value = detail.get("value")
+        if not isinstance(value, str) or (not value.strip() and key != "NEXT_PUBLIC_GA_ID"):
+            raise ValueError(f"Missing exportable value: {key}")
+        hydrated.append({**metadata, **detail, "id": env_id, "key": key,
+                         "target": metadata["target"], "gitBranch": None})
+    return {"envs": hydrated, "pagination": {}}
 
 
 def create_runtime_secret(database_url):
