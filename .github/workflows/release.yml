@@ -119,7 +119,7 @@ jobs:
     with:
       env_name: prod
       ref: ${{ needs.prepare.outputs.source_sha }}
-      expected_image: ${{ needs.frontend-candidate.outputs.image }}
+      expected_image: ${{ format('928112001319.dkr.ecr.us-east-1.amazonaws.com/botlearn-ai/botcord-frontend@{0}', needs.frontend-candidate.outputs.digest) }}
       preflight_only: true
       candidate_tag: ${{ needs.frontend-candidate.outputs.candidate_tag }}
     secrets: inherit
@@ -204,7 +204,7 @@ jobs:
     with:
       env_name: prod
       ref: ${{ needs.prepare.outputs.source_sha }}
-      expected_image: ${{ needs.frontend-candidate.outputs.image }}
+      expected_image: ${{ format('928112001319.dkr.ecr.us-east-1.amazonaws.com/botlearn-ai/botcord-frontend@{0}', needs.frontend-candidate.outputs.digest) }}
     secrets: inherit
 
   # ── Deploy gateway-ingress prod ─────────────────────────────────────────────

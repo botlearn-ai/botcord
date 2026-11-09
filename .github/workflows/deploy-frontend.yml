@@ -47,9 +47,9 @@ on:
       candidate_tag:
         description: 'Frozen release/rollback discovery marker'
         value: ${{ jobs.build-candidate.outputs.candidate_tag }}
-      image:
-        description: 'Exact production candidate image'
-        value: ${{ jobs.build-candidate.outputs.image }}
+      digest:
+        description: 'Exact production candidate digest (no secret-derived registry in job outputs)'
+        value: ${{ jobs.build-candidate.outputs.digest }}
       source_sha:
         description: 'Frozen candidate source SHA'
         value: ${{ jobs.build-candidate.outputs.source_sha }}
@@ -100,7 +100,7 @@ jobs:
     timeout-minutes: 45
     outputs:
       candidate_tag: ${{ steps.existing.outputs.candidate_tag }}
-      image: ${{ steps.publish.outputs.image || steps.existing.outputs.image || steps.image.outputs.image }}
+      digest: ${{ steps.publish.outputs.digest || steps.existing.outputs.digest || steps.build.outputs.digest }}
       source_sha: ${{ steps.source.outputs.source_sha }}
     steps:
       - name: Require reviewed workflow control from main

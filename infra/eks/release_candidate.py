@@ -208,9 +208,10 @@ def main() -> None:
             if args.image:
                 raise ValueError("frontend_image is only accepted for redeploy/rollback")
             image = ""
-        output(image=image, candidate_tag=tag)
+        output(image=image, digest=image.split("@", 1)[1] if image else "", candidate_tag=tag)
     elif args.command == "publish":
-        output(image=publish(args.source_sha, tag, args.digest), candidate_tag=tag)
+        image = publish(args.source_sha, tag, args.digest)
+        output(image=image, digest=args.digest, candidate_tag=tag)
     else:
         wait_review(args.source_sha, tag, args.image)
 

@@ -219,8 +219,9 @@ class ReleaseWorkflowTests(unittest.TestCase):
             self.assertIn("release-preflight", section.split("    steps:", 1)[0])
         self.assertIn("group: botcord-production-release", text)
         self.assertIn("request_review: true", text)
+        self.assertNotIn("needs.frontend-candidate.outputs.image", text)
         self.assertIn("preflight_only: true", text)
-        self.assertEqual(text.count("expected_image: ${{ needs.frontend-candidate.outputs.image }}"), 2)
+        self.assertEqual(text.count("needs.frontend-candidate.outputs.digest) }}"), 2)
         self.assertIn("actions/download-artifact@v4", text)
         self.assertIn("actions/upload-artifact@v4", text)
         self.assertIn("release_candidate.py ci", text)
@@ -231,6 +232,12 @@ class ReleaseWorkflowTests(unittest.TestCase):
             content = (ROOT / ".github/workflows" / name).read_text()
             self.assertIn(".github/workflows/**", content)
             self.assertIn("bash infra/eks/check_workflows.sh", content)
+
+    def test_all_workflows_get_schema_checks_and_release_lane_shell_lint(self):
+        script = (ROOT / "infra/eks/check_workflows.sh").read_text()
+        self.assertIn('"$binary" -shellcheck=', script)
+        self.assertIn("sha256sum --check", script)
+        self.assertIn(".github/workflows/release.yml", script)
 
     def test_build_reuse_does_not_deploy_and_controls_are_trusted(self):
         text = (ROOT / ".github/workflows/deploy-frontend.yml").read_text()

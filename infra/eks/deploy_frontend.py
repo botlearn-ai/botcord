@@ -45,6 +45,8 @@ class ReviewedCandidate:
     image: str
     digest: str
     manifest: bytes
+    public_verifier: bytes
+    devops_sha: str
 
 
 def run(*args: str, cwd: Path | None = None) -> str:
@@ -117,15 +119,16 @@ def validate_objects(objects: list[dict[str, Any]]) -> tuple[str, str]:
     return image, match.group(1)
 
 
-def verify_devops_checkout() -> None:
+def verify_devops_checkout() -> str:
     reviewed_files = (MANIFEST, PUBLIC_VERIFIER)
     for path in reviewed_files:
         if not path.is_file():
             raise DeploymentError(f"reviewed deployment input missing: {path}")
     run("git", "fetch", "origin", "main", "--quiet", cwd=DEVOPS_ROOT)
-    if run("git", "rev-parse", "HEAD", cwd=DEVOPS_ROOT) != run(
-        "git", "rev-parse", "origin/main", cwd=DEVOPS_ROOT
-    ):
+    head = run("git", "rev-parse", "HEAD", cwd=DEVOPS_ROOT)
+    if not SHA_RE.fullmatch(head):
+        raise DeploymentError("/www/devops HEAD is not an exact commit")
+    if head != run("git", "rev-parse", "origin/main", cwd=DEVOPS_ROOT):
         raise DeploymentError("/www/devops is not synchronized to origin/main")
     relative = tuple(str(path.relative_to(DEVOPS_ROOT)) for path in reviewed_files)
     run("git", "ls-files", "--error-unmatch", "--", *relative, cwd=DEVOPS_ROOT)
@@ -134,6 +137,29 @@ def verify_devops_checkout() -> None:
         cwd=DEVOPS_ROOT,
     ):
         raise DeploymentError("reviewed frontend deployment inputs have local tracked drift")
+    if run("git", "rev-parse", "HEAD", cwd=DEVOPS_ROOT) != head:
+        raise DeploymentError("/www/devops HEAD changed during validation")
+    return head
+
+
+def read_reviewed_file(devops_sha: str, path: Path) -> bytes:
+    relative = path.relative_to(DEVOPS_ROOT)
+    return run_bytes("git", "show", f"{devops_sha}:{relative}", cwd=DEVOPS_ROOT)
+
+
+def verify_frozen_devops_head(devops_sha: str) -> None:
+    if run("git", "rev-parse", "HEAD", cwd=DEVOPS_ROOT) != devops_sha:
+        raise DeploymentError("/www/devops HEAD changed after reviewed preflight")
+
+
+def capture_reviewed_inputs(devops_sha: str) -> tuple[bytes, bytes]:
+    manifest = read_reviewed_file(devops_sha, MANIFEST)
+    public_verifier = read_reviewed_file(devops_sha, PUBLIC_VERIFIER)
+    if MANIFEST.read_bytes() != manifest:
+        raise DeploymentError("reviewed frontend manifest differs from its Git object")
+    if PUBLIC_VERIFIER.read_bytes() != public_verifier:
+        raise DeploymentError("reviewed public verifier differs from its Git object")
+    return manifest, public_verifier
 
 
 def render_and_validate_manifest(manifest_path: Path = MANIFEST) -> tuple[str, str]:
@@ -289,14 +315,10 @@ def verify_https(alb_hostname: str) -> None:
     raise DeploymentError("frontend HTTPS health failed through the new ALB after 5 minutes")
 
 
-def verify_public() -> None:
+def verify_public(devops_sha: str, reviewed_checker: bytes) -> None:
     # Execute the exact checker bytes from the synchronized reviewed commit,
     # never a mutable script path after validation.
-    verify_devops_checkout()
-    relative = str(PUBLIC_VERIFIER.relative_to(DEVOPS_ROOT))
-    reviewed_checker = run_bytes(
-        "git", "show", f"HEAD:{relative}", cwd=DEVOPS_ROOT,
-    )
+    verify_frozen_devops_head(devops_sha)
     if PUBLIC_VERIFIER.read_bytes() != reviewed_checker:
         raise DeploymentError("reviewed public verifier changed during validation")
     with private_snapshot(reviewed_checker, suffix=".py") as snapshot:
@@ -308,28 +330,34 @@ def preflight(source_sha: str, expected_image: str | None = None) -> ReviewedCan
         raise DeploymentError("deployment requires an exact 40-character source commit")
     if expected_image is not None and not IMAGE_RE.fullmatch(expected_image):
         raise DeploymentError("expected image must be the full production ECR digest reference")
-    verify_devops_checkout()
+    devops_sha = verify_devops_checkout()
     verify_identity()
     verify_runtime_secret()
-    reviewed_manifest = MANIFEST.read_bytes()
+    reviewed_manifest, reviewed_checker = capture_reviewed_inputs(devops_sha)
     with private_snapshot(reviewed_manifest, suffix=".yaml") as snapshot:
         image, digest = render_and_validate_manifest(snapshot)
     if expected_image is not None and image != expected_image:
         raise DeploymentError("reviewed manifest does not pin the expected release candidate image")
     verify_candidate(source_sha, digest)
-    if MANIFEST.read_bytes() != reviewed_manifest:
-        raise DeploymentError("reviewed frontend manifest changed during validation")
-    return ReviewedCandidate(image=image, digest=digest, manifest=reviewed_manifest)
+    verify_frozen_devops_head(devops_sha)
+    return ReviewedCandidate(
+        image=image,
+        digest=digest,
+        manifest=reviewed_manifest,
+        public_verifier=reviewed_checker,
+        devops_sha=devops_sha,
+    )
 
 
 def deploy(source_sha: str, expected_image: str | None = None) -> None:
     candidate = preflight(source_sha, expected_image)
+    verify_frozen_devops_head(candidate.devops_sha)
     print(f"Deploying reviewed image {candidate.image}")
     with private_snapshot(candidate.manifest, suffix=".yaml") as snapshot:
         run("kubectl", "--context", KUBE_CONTEXT, "apply", "-f", str(snapshot))
     alb_hostname = verify_rollout(candidate.digest)
     verify_https(alb_hostname)
-    verify_public()
+    verify_public(candidate.devops_sha, candidate.public_verifier)
     print(
         f"Verified {candidate.image} through {alb_hostname} and the public CloudFront distribution"
     )

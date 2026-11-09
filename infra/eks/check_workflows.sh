@@ -20,6 +20,9 @@ else
   tar -xzf "$temp_dir/$archive" -C "$temp_dir" actionlint
   binary="$temp_dir/actionlint"
 fi
+# All workflows get Actions schema/expression validation; shell lint is scoped
+# to this delivery lane because unrelated legacy workflows have existing warnings.
+"$binary" -shellcheck=
 "$binary" \
   .github/workflows/ci.yml \
   .github/workflows/infra-check.yml \
