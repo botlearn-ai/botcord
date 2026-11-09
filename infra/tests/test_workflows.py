@@ -16,22 +16,10 @@ def workflow(name: str) -> str:
 class TestDokployWorkflowContracts(unittest.TestCase):
     def test_vercel_is_retained_for_rollback_but_production_workflow_uses_eks(self):
         config = json.loads((ROOT / "frontend" / "vercel.json").read_text())
-        ignore_command = config["ignoreCommand"]
-
         self.assertEqual(config["framework"], "nextjs")
         self.assertEqual(config["installCommand"], "pnpm install --ignore-workspace")
-        self.assertEqual(ignore_command, 'test "$VERCEL_ENV" = preview')
-        self.assertNotIn("git", config)
-
-        for vercel_env, expected_returncode in (("preview", 0), ("production", 1)):
-            with self.subTest(vercel_env=vercel_env):
-                env = {**os.environ, "VERCEL_ENV": vercel_env}
-                result = subprocess.run(
-                    ["sh", "-c", ignore_command],
-                    check=False,
-                    env=env,
-                )
-                self.assertEqual(result.returncode, expected_returncode)
+        self.assertEqual(config["git"], {"deploymentEnabled": False})
+        self.assertNotIn("ignoreCommand", config)
 
         production_workflow = workflow("deploy-frontend.yml")
         self.assertNotIn("vercel build --prod", production_workflow)
@@ -39,7 +27,7 @@ class TestDokployWorkflowContracts(unittest.TestCase):
         self.assertIn("platforms: linux/arm64", production_workflow)
         self.assertIn("infra/eks/deploy_frontend.py", production_workflow)
         self.assertIn("ref: ${{ github.workflow_sha }}", production_workflow)
-        self.assertIn("inputs.env_name == 'prod' || inputs.build_only == false", production_workflow)
+        self.assertIn("inputs.build_only != true", production_workflow)
 
     def test_pull_requests_validate_but_only_main_push_deploys(self):
         content = workflow("ci.yml")

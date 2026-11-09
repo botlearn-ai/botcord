@@ -21,6 +21,11 @@ on:
         default: 'both'
         type: choice
         options: [both, backend, frontend, all, gateway-ingress]
+      frontend_image:
+        description: 'Optional exact ECR digest for historical frontend rollback; never a mutable tag'
+        required: false
+        default: ''
+        type: string
       run_migrations:
         description: 'Run production DB migrations before deploying'
         required: false
@@ -34,97 +39,117 @@ on:
 permissions:
   contents: write
   deployments: write
+  actions: read
+
+# Serialize the full release, including the reviewed frontend PR wait.
+concurrency:
+  group: botcord-production-release
+  cancel-in-progress: false
 
 jobs:
   # ── Resolve publish mode, archive, version ───────────────────────────────────
   prepare:
     name: Prepare Release
     runs-on: self-hosted
-    timeout-minutes: 5
+    timeout-minutes: 25
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ steps.publish.outputs.version }}
       publish_mode: ${{ steps.publish.outputs.publish_mode }}
       source_branch: ${{ steps.publish.outputs.source_branch }}
       source_sha: ${{ steps.publish.outputs.source_sha }}
       archive_branch: ${{ steps.publish.outputs.archive_branch }}
       deploy_branch: ${{ steps.publish.outputs.deploy_branch }}
     steps:
+      - name: Require reviewed workflow control from main
+        run: test "$GITHUB_REF" = refs/heads/main
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 0
-
-      - name: Resolve source branch + archive
+      - name: Restore frozen release request on rerun
+        if: github.run_attempt != '1'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-request-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-request-${{ github.run_id }}
+      - name: Resolve frozen source, archive and version
         id: publish
-        run: |
-          SOURCE_BRANCH="${{ inputs.source_branch }}"
-          DEPLOY_BRANCH="release/latest"
-          ARCHIVE_BRANCH=""
+        env:
+          SOURCE_BRANCH: ${{ inputs.source_branch }}
+          RELEASE_SNAPSHOT: ${{ runner.temp }}/release-request-${{ github.run_id }}/request.json
+        run: python3 infra/eks/prepare_release.py
+      - name: Preserve release request for reruns
+        if: github.run_attempt == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-request-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-request-${{ github.run_id }}/request.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Require successful CI for the exact source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.publish.outputs.source_sha }}
+        run: python3 infra/eks/release_candidate.py ci --source-sha "$SOURCE_SHA"
+      - name: Archive only the CI-validated frozen source
+        env:
+          SOURCE_BRANCH: ${{ inputs.source_branch }}
+          RELEASE_SNAPSHOT: ${{ runner.temp }}/release-request-${{ github.run_id }}/request.json
+        run: python3 infra/eks/prepare_release.py --archive
 
-          case "${SOURCE_BRANCH}" in
-            main) PUBLISH_MODE="normal" ;;
-            hotfix/*) PUBLISH_MODE="hotfix" ;;
-            release/latest) PUBLISH_MODE="redeploy" ;;
-            release/*) PUBLISH_MODE="rollback" ;;
-            *)
-              echo "❌ Unsupported source_branch: ${SOURCE_BRANCH}"
-              echo "   Allowed: main, hotfix/*, release/latest, release/*"
-              exit 1 ;;
+  frontend-candidate:
+    name: Prepare Frontend Candidate
+    needs: [prepare]
+    if: inputs.targets == 'both' || inputs.targets == 'all' || inputs.targets == 'frontend'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      env_name: prod
+      ref: ${{ needs.prepare.outputs.source_sha }}
+      build_only: true
+      request_review: true
+      publish_mode: ${{ needs.prepare.outputs.publish_mode }}
+      expected_image: ${{ inputs.frontend_image }}
+    secrets: inherit
+
+  frontend-ready:
+    name: Review, Sync and Preflight Frontend
+    needs: [prepare, frontend-candidate]
+    if: inputs.targets == 'both' || inputs.targets == 'all' || inputs.targets == 'frontend'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      env_name: prod
+      ref: ${{ needs.prepare.outputs.source_sha }}
+      expected_image: ${{ needs.frontend-candidate.outputs.image }}
+      preflight_only: true
+      candidate_tag: ${{ needs.frontend-candidate.outputs.candidate_tag }}
+    secrets: inherit
+
+  release-preflight:
+    name: All Production Prerequisites Ready
+    needs: [prepare, frontend-candidate, frontend-ready]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Fail closed before any production migration or rollout
+        env:
+          PREPARE: ${{ needs.prepare.result }}
+          TARGETS: ${{ inputs.targets }}
+          CANDIDATE: ${{ needs.frontend-candidate.result }}
+          FRONTEND: ${{ needs.frontend-ready.result }}
+        run: |
+          set -euo pipefail
+          test "$PREPARE" = success
+          case "$TARGETS" in
+            frontend|both|all) test "$CANDIDATE" = success; test "$FRONTEND" = success ;;
+            backend|gateway-ingress) test "$CANDIDATE" = skipped; test "$FRONTEND" = skipped ;;
+            *) exit 1 ;;
           esac
-
-          if ! git ls-remote --exit-code --heads origin "${SOURCE_BRANCH}" >/dev/null 2>&1; then
-            echo "❌ Source branch does not exist on origin: ${SOURCE_BRANCH}"
-            exit 1
-          fi
-
-          git fetch origin "${SOURCE_BRANCH}" --quiet
-          SOURCE_SHA=$(git rev-parse FETCH_HEAD)
-
-          if [[ "${PUBLISH_MODE}" == "normal" || "${PUBLISH_MODE}" == "hotfix" ]]; then
-            DATE_BASE=$(date -u +%Y-%m-%d)
-            CANDIDATE="release/${DATE_BASE}"
-            SEQ=2
-            while git ls-remote --exit-code --heads origin "${CANDIDATE}" >/dev/null 2>&1; do
-              CANDIDATE="release/${DATE_BASE}-${SEQ}"
-              SEQ=$((SEQ + 1))
-            done
-            ARCHIVE_BRANCH="${CANDIDATE}"
-            git push origin "${SOURCE_SHA}:refs/heads/${ARCHIVE_BRANCH}"
-            echo "✅ Archived at ${ARCHIVE_BRANCH} (${SOURCE_SHA})"
-          fi
-
-          echo "publish_mode=${PUBLISH_MODE}" >> $GITHUB_OUTPUT
-          echo "source_branch=${SOURCE_BRANCH}" >> $GITHUB_OUTPUT
-          echo "source_sha=${SOURCE_SHA}" >> $GITHUB_OUTPUT
-          echo "archive_branch=${ARCHIVE_BRANCH}" >> $GITHUB_OUTPUT
-          echo "deploy_branch=${DEPLOY_BRANCH}" >> $GITHUB_OUTPUT
-          echo "✅ Mode=${PUBLISH_MODE} Source=${SOURCE_BRANCH} SHA=${SOURCE_SHA}"
-
-      - name: Generate version tag
-        id: version
-        run: |
-          YEAR=$(date -u +'%Y'); MONTH=$(date -u +'%-m'); DAY=$(date -u +'%-d')
-          DATE_BASE="${YEAR}.${MONTH}.${DAY}"
-          git fetch --tags --quiet
-          EXISTING=$(git tag -l "v${DATE_BASE}" "v${DATE_BASE}-*" 2>/dev/null | sort -V)
-          if [ -z "$EXISTING" ]; then
-            VERSION="v${DATE_BASE}"
-          else
-            LAST=$(echo "$EXISTING" | sort -V | tail -1)
-            if [ "$LAST" = "v${DATE_BASE}" ]; then
-              VERSION="v${DATE_BASE}-2"
-            else
-              SUFFIX=$(echo "$LAST" | sed "s/v${DATE_BASE}-//")
-              NEXT=$((SUFFIX + 1))
-              VERSION="v${DATE_BASE}-${NEXT}"
-            fi
-          fi
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "✅ Version: ${VERSION}"
 
   # ── Production DB migrations (optional) ──────────────────────────────────────
   migrate-prod:
     name: Migrate (production)
-    needs: [prepare]
+    needs: [prepare, release-preflight]
     if: inputs.run_migrations == true
     runs-on: self-hosted
     environment: Production
@@ -152,10 +177,11 @@ jobs:
   # ── Deploy backend prod ──────────────────────────────────────────────────────
   deploy-backend-prod:
     name: Deploy Backend (prod)
-    needs: [prepare, migrate-prod]
+    needs: [prepare, release-preflight, migrate-prod]
     if: |
       always() &&
       needs.prepare.result == 'success' &&
+      needs.release-preflight.result == 'success' &&
       (needs.migrate-prod.result == 'success' || needs.migrate-prod.result == 'skipped') &&
       (inputs.targets == 'both' || inputs.targets == 'all' || inputs.targets == 'backend')
     uses: ./.github/workflows/deploy-backend.yml
@@ -167,25 +193,29 @@ jobs:
   # ── Deploy frontend prod ─────────────────────────────────────────────────────
   deploy-frontend-prod:
     name: Deploy Frontend (prod)
-    needs: [prepare, migrate-prod]
+    needs: [prepare, release-preflight, frontend-candidate, migrate-prod]
     if: |
       always() &&
       needs.prepare.result == 'success' &&
+      needs.release-preflight.result == 'success' &&
       (needs.migrate-prod.result == 'success' || needs.migrate-prod.result == 'skipped') &&
       (inputs.targets == 'both' || inputs.targets == 'all' || inputs.targets == 'frontend')
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       env_name: prod
       ref: ${{ needs.prepare.outputs.source_sha }}
+      expected_image: ${{ needs.frontend-candidate.outputs.image }}
     secrets: inherit
 
   # ── Deploy gateway-ingress prod ─────────────────────────────────────────────
   deploy-gateway-ingress-prod:
     name: Deploy Gateway Ingress (prod)
-    needs: [prepare]
+    needs: [prepare, release-preflight, migrate-prod]
     if: |
       always() &&
       needs.prepare.result == 'success' &&
+      needs.release-preflight.result == 'success' &&
+      (needs.migrate-prod.result == 'success' || needs.migrate-prod.result == 'skipped') &&
       (inputs.targets == 'both' || inputs.targets == 'all' || inputs.targets == 'gateway-ingress')
     uses: ./.github/workflows/deploy-gateway-ingress.yml
     with:
@@ -212,7 +242,9 @@ jobs:
           fetch-depth: 0
       - name: Update release/latest
         run: |
-          git push origin "${{ needs.prepare.outputs.source_sha }}:refs/heads/${{ needs.prepare.outputs.deploy_branch }}" --force
+          expected=$(git ls-remote origin refs/heads/release/latest | cut -f1)
+          git push origin "${{ needs.prepare.outputs.source_sha }}:refs/heads/release/latest" \
+            --force-with-lease="refs/heads/release/latest:$expected"
           echo "✅ ${{ needs.prepare.outputs.deploy_branch }} → ${{ needs.prepare.outputs.source_sha }}"
 
   # ── GitHub Release + tag ────────────────────────────────────────────────────
@@ -245,8 +277,12 @@ jobs:
       - name: Create and push tag
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
-          git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin "$VERSION"
+          if git rev-parse --verify "refs/tags/$VERSION" >/dev/null 2>&1; then
+            test "$(git rev-parse "$VERSION^{commit}")" = "$(git rev-parse HEAD)"
+          else
+            git tag -a "$VERSION" -m "Release $VERSION"
+            git push origin "$VERSION"
+          fi
           echo "✅ Tagged $VERSION"
 
       - name: Build changelog
@@ -259,12 +295,12 @@ jobs:
           else
             CHANGES=$(git log "${VERSION}" --oneline --no-merges | head -30)
           fi
-          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
           {
             echo "changes<<CHANGELOG_EOF"
             echo "$CHANGES"
             echo "CHANGELOG_EOF"
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release
         uses: actions/github-script@v9
@@ -296,6 +332,15 @@ jobs:
               v.GH_PREV_TAG ? `**Diff:** [${v.GH_PREV_TAG}...${v.GH_VERSION}](https://github.com/${context.repo.owner}/${context.repo.repo}/compare/${v.GH_PREV_TAG}...${v.GH_VERSION})` : null,
             ].filter(Boolean).join('\n');
 
+            try {
+              const existing = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner, repo: context.repo.repo, tag: v.GH_VERSION,
+              });
+              console.log(`Release already published: ${existing.data.html_url}`);
+              return;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
             await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -313,6 +358,9 @@ jobs:
     runs-on: self-hosted
     needs:
       - prepare
+      - frontend-candidate
+      - frontend-ready
+      - release-preflight
       - migrate-prod
       - deploy-backend-prod
       - deploy-frontend-prod
@@ -325,6 +373,7 @@ jobs:
       - uses: actions/checkout@v6
       - id: status
         env:
+          PREFLIGHT: ${{ needs.release-preflight.result }}
           DB: ${{ needs.deploy-backend-prod.result }}
           DF: ${{ needs.deploy-frontend-prod.result }}
           DG: ${{ needs.deploy-gateway-ingress-prod.result }}
@@ -343,15 +392,15 @@ jobs:
             PROMOTE_OK=true
           fi
 
-          if [[ "$BE_OK" == "true" && "$FE_OK" == "true" && "$GW_OK" == "true" && "$PROMOTE_OK" == "true" && "$RELEASE" == "success" ]]; then
-            echo "color=green" >> $GITHUB_OUTPUT
-            echo "title=🚀 BotCord ${VERSION} 发布成功（${MODE}）" >> $GITHUB_OUTPUT
-          elif [[ "$BE_OK" == "true" && "$FE_OK" == "true" && "$GW_OK" == "true" && "$PROMOTE_OK" == "true" ]]; then
-            echo "color=grey" >> $GITHUB_OUTPUT
-            echo "title=⚠️ BotCord ${VERSION} 部署完成（${MODE}，Release 创建失败）" >> $GITHUB_OUTPUT
+          if [[ "$PREFLIGHT" == success && "$BE_OK" == "true" && "$FE_OK" == "true" && "$GW_OK" == "true" && "$PROMOTE_OK" == "true" && "$RELEASE" == "success" ]]; then
+            echo "color=green" >> "$GITHUB_OUTPUT"
+            echo "title=🚀 BotCord ${VERSION} 发布成功（${MODE}）" >> "$GITHUB_OUTPUT"
+          elif [[ "$PREFLIGHT" == success && "$BE_OK" == "true" && "$FE_OK" == "true" && "$GW_OK" == "true" && "$PROMOTE_OK" == "true" ]]; then
+            echo "color=grey" >> "$GITHUB_OUTPUT"
+            echo "title=⚠️ BotCord ${VERSION} 部署完成（${MODE}，Release 创建失败）" >> "$GITHUB_OUTPUT"
           else
-            echo "color=red" >> $GITHUB_OUTPUT
-            echo "title=❌ BotCord ${VERSION} 发布失败（${MODE}）" >> $GITHUB_OUTPUT
+            echo "color=red" >> "$GITHUB_OUTPUT"
+            echo "title=❌ BotCord ${VERSION} 发布失败（${MODE}）" >> "$GITHUB_OUTPUT"
           fi
       - uses: ./.github/actions/feishu-notify
         with:
@@ -368,6 +417,8 @@ jobs:
               {"label": "部署分支", "value": "${{ needs.prepare.outputs.deploy_branch }}"},
               {"label": "操作", "value": "${{ needs.prepare.outputs.source_branch }} → ${{ needs.prepare.outputs.deploy_branch }} (prod)"},
               {"label": "触发者", "value": "${{ github.actor }}"},
+              {"label": "Frontend 评审与预检", "value": "${{ needs.frontend-ready.result }}"},
+              {"label": "发布总预检", "value": "${{ needs.release-preflight.result }}"},
               {"label": "DB 迁移", "value": "${{ needs.migrate-prod.result }}"},
               {"label": "Backend 部署", "value": "${{ needs.deploy-backend-prod.result }}"},
               {"label": "Frontend 部署", "value": "${{ needs.deploy-frontend-prod.result }}"},

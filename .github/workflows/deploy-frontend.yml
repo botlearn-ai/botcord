@@ -1,8 +1,7 @@
 name: Deploy Frontend Production (reusable)
 
-# Production EKS delivery is intentionally two-phase. A manual build-only run
-# publishes an immutable candidate. Only after its digest is reviewed in
-# aibrary-devops may a release deploy that exact synchronized manifest.
+# Release builds a candidate and waits for a reviewed DevOps digest PR + Sync.
+# Manual build-only remains a non-deploying diagnostic/rollback preparation path.
 on:
   workflow_call:
     inputs:
@@ -20,7 +19,40 @@ on:
         required: false
         type: string
         default: ''
+      build_only:
+        description: 'Build candidate without deployment'
+        type: boolean
+        default: false
+      request_review:
+        description: 'Publish the candidate marker consumed by DevOps PR automation'
+        type: boolean
+        default: false
+      preflight_only:
+        description: 'Wait for review/sync and validate without production writes'
+        type: boolean
+        default: false
+      publish_mode:
+        description: 'Frozen release mode; rollback/redeploy reuse artifacts without building'
+        type: string
+        default: normal
+      candidate_tag:
+        description: 'Exact discovery marker selected by candidate preparation'
+        type: string
+        default: ''
+      expected_image:
+        description: 'Exact candidate digest required for preflight/deployment'
+        type: string
+        default: ''
     outputs:
+      candidate_tag:
+        description: 'Frozen release/rollback discovery marker'
+        value: ${{ jobs.build-candidate.outputs.candidate_tag }}
+      image:
+        description: 'Exact production candidate image'
+        value: ${{ jobs.build-candidate.outputs.image }}
+      source_sha:
+        description: 'Frozen candidate source SHA'
+        value: ${{ jobs.build-candidate.outputs.source_sha }}
       deploy_url:
         description: 'Canonical production URL'
         value: ${{ jobs.deploy.outputs.deploy_url }}
@@ -62,12 +94,13 @@ jobs:
 
   build-candidate:
     name: Build ARM64 Candidate
-    if: github.event_name == 'workflow_dispatch' && inputs.build_only == true
+    if: inputs.build_only == true && (inputs.env_name == 'prod' || inputs.env_name == '')
     runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
     environment: FrontendProduction
     timeout-minutes: 45
     outputs:
-      image: ${{ steps.image.outputs.image }}
+      candidate_tag: ${{ steps.existing.outputs.candidate_tag }}
+      image: ${{ steps.publish.outputs.image || steps.existing.outputs.image || steps.image.outputs.image }}
       source_sha: ${{ steps.source.outputs.source_sha }}
     steps:
       - name: Require reviewed workflow control from main
@@ -86,6 +119,14 @@ jobs:
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           echo "IMAGE_TAG=prod-$SOURCE_SHA-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+
+      - name: Checkout trusted candidate control
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .deployment-control
+          persist-credentials: false
+          sparse-checkout: infra/eks
 
       - name: Validate public production build configuration
         env:
@@ -110,13 +151,27 @@ jobs:
           aws ecr get-login-password --region "$AWS_REGION" \
             | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
+      - name: Resolve stable candidate or exact historical artifact
+        if: inputs.request_review
+        id: existing
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          PUBLISH_MODE: ${{ inputs.publish_mode }}
+          EXPECTED_IMAGE: ${{ inputs.expected_image }}
+        run: |
+          python3 .deployment-control/infra/eks/release_candidate.py resolve \
+            --source-sha "$SOURCE_SHA" --mode "$PUBLISH_MODE" --image "$EXPECTED_IMAGE"
+
       - uses: docker/setup-qemu-action@v3
+        if: steps.existing.outputs.image == ''
         with:
           platforms: arm64
       - uses: docker/setup-buildx-action@v3
+        if: steps.existing.outputs.image == ''
 
       - name: Build and push immutable candidate
         id: build
+        if: steps.existing.outputs.image == ''
         uses: docker/build-push-action@v6
         with:
           context: frontend
@@ -125,7 +180,10 @@ jobs:
           push: true
           provenance: false
           tags: ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_REPOSITORY }}:${{ env.IMAGE_TAG }}
-          labels: org.opencontainers.image.revision=${{ steps.source.outputs.source_sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.source_sha }}
+            org.opencontainers.image.source=https://github.com/botlearn-ai/botcord
+            com.botcord.release.run-id=${{ github.run_id }}
           build-args: |
             NEXT_PUBLIC_APP_URL=${{ vars.BOTCORD_PROD_APP_URL }}
             NEXT_PUBLIC_HUB_BASE_URL=${{ vars.BOTCORD_PROD_HUB_BASE_URL }}
@@ -136,6 +194,7 @@ jobs:
             SHOW_MESSAGE_STATUS=${{ vars.BOTCORD_PROD_SHOW_MESSAGE_STATUS }}
 
       - name: Report candidate for DevOps review
+        if: steps.existing.outputs.image == ''
         id: image
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -147,16 +206,42 @@ jobs:
           echo "Candidate: $IMAGE"
           echo "Next: review this exact digest in aibrary-devops; this run does not change EKS or DNS."
 
+      - name: Request reviewed DevOps image PR
+        if: inputs.request_review && steps.existing.outputs.image == ''
+        id: publish
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: python3 .deployment-control/infra/eks/release_candidate.py publish --source-sha "$SOURCE_SHA" --digest "$DIGEST"
+
+      - name: Candidate summary
+        env:
+          IMAGE: ${{ steps.publish.outputs.image || steps.existing.outputs.image || steps.image.outputs.image }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          REQUEST_REVIEW: ${{ inputs.request_review }}
+        run: |
+          {
+            echo "### Frontend candidate"
+            echo "Source: $SOURCE_SHA"
+            echo "Image: $IMAGE"
+            if [ "$REQUEST_REVIEW" = true ]; then
+              echo 'DevOps discovers this release candidate automatically; review the generated PR:'
+              echo 'https://github.com/readai-team/aibrary-devops/pulls'
+              echo 'No production changes occur until review, Sync, and preflight succeed.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deploy:
     name: Deploy Reviewed Candidate to EKS
     if: >-
       always() &&
       needs.reject-non-production.result != 'failure' &&
-      (inputs.env_name == 'prod' || inputs.build_only == false)
+      inputs.build_only != true &&
+      (inputs.env_name == 'prod' || github.event_name == 'workflow_dispatch')
     needs: [reject-non-production]
     runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
     environment: FrontendProduction
-    timeout-minutes: 30
+    timeout-minutes: 150
     outputs:
       deploy_url: ${{ steps.deploy.outputs.deploy_url }}
     steps:
@@ -169,20 +254,45 @@ jobs:
           ref: ${{ github.workflow_sha }}
           path: .deployment-control
           persist-credentials: false
-          sparse-checkout: infra/eks/deploy_frontend.py
+          sparse-checkout: infra/eks
+
+      - name: Resolve manual or frozen deployment source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          path: .source
+          persist-credentials: false
+          sparse-checkout: README.md
           sparse-checkout-cone-mode: false
+      - name: Capture exact deployment source
+        id: source
+        run: echo "source_sha=$(git -C .source rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Login to ECR for provenance verification
         run: |
           aws ecr get-login-password --region "$AWS_REGION" \
             | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
-      - name: Deploy synchronized reviewed manifest
+      - name: Wait for exact reviewed candidate and DevOps sync
+        if: inputs.preflight_only
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
+          EXPECTED_IMAGE: ${{ inputs.expected_image }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+        run: |
+          python3 .deployment-control/infra/eks/release_candidate.py wait \
+            --source-sha "$SOURCE_SHA" --image "$EXPECTED_IMAGE" --candidate-tag "$CANDIDATE_TAG"
+
+      - name: Preflight or deploy synchronized reviewed manifest
         id: deploy
         env:
-          REQUESTED_REF: ${{ inputs.ref || github.sha }}
+          REQUESTED_REF: ${{ steps.source.outputs.source_sha }}
+          EXPECTED_IMAGE: ${{ inputs.expected_image }}
+          PREFLIGHT_ONLY: ${{ inputs.preflight_only }}
         run: |
           set -euo pipefail
-          python3 .deployment-control/infra/eks/deploy_frontend.py \
-            --source-sha "$REQUESTED_REF"
+          args=(--source-sha "$REQUESTED_REF")
+          if [ -n "$EXPECTED_IMAGE" ]; then args+=(--expected-image "$EXPECTED_IMAGE"); fi
+          if [ "$PREFLIGHT_ONLY" = true ]; then args+=(--preflight-only); fi
+          python3 .deployment-control/infra/eks/deploy_frontend.py "${args[@]}"
           echo "deploy_url=https://www.botcord.chat" >> "$GITHUB_OUTPUT"
