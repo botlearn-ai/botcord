@@ -16,7 +16,7 @@ After rollout it proves every Pod is Ready on the reviewed digest and checks
 `https://www.botcord.chat/api/health` through the new ALB with real TLS SNI. It
 does not change Route 53. Vercel remains the rollback source during cutover.
 
-Required Production environment variables are `BOTCORD_PROD_APP_URL`,
+Required `FrontendProduction` environment variables are `BOTCORD_PROD_APP_URL`,
 `BOTCORD_PROD_HUB_BASE_URL`, `BOTCORD_PROD_SUPABASE_URL`, and
 `BOTCORD_PROD_SUPABASE_ANON_KEY`, `BOTCORD_PROD_BETA_GATE_ENABLED`, and
 `BOTCORD_PROD_SHOW_MESSAGE_STATUS`. The two behavior flags must be the literal
@@ -25,6 +25,10 @@ Required Production environment variables are `BOTCORD_PROD_APP_URL`,
 Kubernetes runtime Secret; they are never image build arguments.
 
 ## First migration from Vercel
+
+Use the dedicated GitHub environment `FrontendProduction`, with a custom
+deployment branch policy allowing only `main`. The shared `Production`
+environment used by backend releases remains unchanged.
 
 Before building, run **Prepare Frontend Production Configuration** from reviewed
 `main` with `create_secret=true`. It uses the existing Vercel credentials to

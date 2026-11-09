@@ -20,7 +20,7 @@ concurrency:
 jobs:
   prepare:
     runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
-    environment: Production
+    environment: FrontendProduction
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6

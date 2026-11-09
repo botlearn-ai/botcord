@@ -64,7 +64,7 @@ jobs:
     name: Build ARM64 Candidate
     if: github.event_name == 'workflow_dispatch' && inputs.build_only == true
     runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
-    environment: Production
+    environment: FrontendProduction
     timeout-minutes: 45
     outputs:
       image: ${{ steps.image.outputs.image }}
@@ -155,7 +155,7 @@ jobs:
       (inputs.env_name == 'prod' || inputs.build_only == false)
     needs: [reject-non-production]
     runs-on: [self-hosted, deploy-host, us-east-1, botlearn-runner-us]
-    environment: Production
+    environment: FrontendProduction
     timeout-minutes: 30
     outputs:
       deploy_url: ${{ steps.deploy.outputs.deploy_url }}
