@@ -56,7 +56,7 @@ def select_environment(payload):
     for key, expected in (("NEXT_PUBLIC_APP_URL", "https://www.botcord.chat"),
                           ("NEXT_PUBLIC_HUB_BASE_URL", "https://api.botcord.chat")):
         if values[key].rstrip("/") != expected:
-            raise ValueError(f"Unexpected production origin: {key}")
+            raise ValueError(f"Unexpected production origin: {key}; hostname={urllib.parse.urlparse(values[key]).hostname}; surrounding_whitespace={values[key] != values[key].strip()}")
     if urllib.parse.urlparse(values["NEXT_PUBLIC_SUPABASE_URL"]).scheme != "https":
         raise ValueError("Production Supabase URL must use HTTPS")
     if not re.fullmatch(r"(?:sb_publishable_[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)", values["NEXT_PUBLIC_SUPABASE_ANON_KEY"]):
