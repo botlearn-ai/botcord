@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import pathlib
+import subprocess
 import unittest
 from unittest import mock
 
@@ -127,6 +128,36 @@ class TestFrontendEksController(unittest.TestCase):
         self.assertIn(
             "www.botcord.chat:443:new-alb.example.com:443",
             args,
+        )
+
+    def test_https_verification_can_succeed_after_twelve_transient_failures(self):
+        response = json.dumps({"status": "ok", "service": "botcord-web"})
+        transient = subprocess.CalledProcessError(22, ["curl"])
+        with (
+            mock.patch.object(
+                deploy_frontend, "run",
+                side_effect=[transient] * 15 + [response],
+            ) as run,
+            mock.patch.object(deploy_frontend.time, "sleep") as sleep,
+        ):
+            deploy_frontend.verify_https("new-alb.example.com")
+        self.assertEqual(run.call_count, 16)
+        self.assertEqual(sleep.call_count, 15)
+        sleep.assert_called_with(deploy_frontend.HTTPS_HEALTH_RETRY_SECONDS)
+
+    def test_https_verification_fails_after_bounded_five_minute_budget(self):
+        transient = subprocess.CalledProcessError(22, ["curl"])
+        with (
+            mock.patch.object(deploy_frontend, "run", side_effect=transient) as run,
+            mock.patch.object(deploy_frontend.time, "sleep") as sleep,
+            self.assertRaisesRegex(deploy_frontend.DeploymentError, "after 5 minutes"),
+        ):
+            deploy_frontend.verify_https("new-alb.example.com")
+        self.assertEqual(run.call_count, deploy_frontend.HTTPS_HEALTH_ATTEMPTS)
+        self.assertEqual(sleep.call_count, deploy_frontend.HTTPS_HEALTH_ATTEMPTS - 1)
+        self.assertGreaterEqual(
+            sleep.call_count * deploy_frontend.HTTPS_HEALTH_RETRY_SECONDS,
+            300,
         )
 
 

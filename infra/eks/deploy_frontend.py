@@ -29,6 +29,8 @@ ALLOWED_OBJECTS = {
     ("Service", SERVICE),
     ("Ingress", f"{SERVICE}-ingress"),
 }
+HTTPS_HEALTH_ATTEMPTS = 31
+HTTPS_HEALTH_RETRY_SECONDS = 10
 
 
 class DeploymentError(RuntimeError):
@@ -225,7 +227,7 @@ def verify_rollout(digest: str) -> str:
 
 
 def verify_https(alb_hostname: str) -> None:
-    for _ in range(12):
+    for attempt in range(HTTPS_HEALTH_ATTEMPTS):
         try:
             body = run(
                 "curl", "--fail", "--silent", "--show-error",
@@ -239,8 +241,9 @@ def verify_https(alb_hostname: str) -> None:
                 return
         except (subprocess.CalledProcessError, json.JSONDecodeError):
             pass
-        time.sleep(10)
-    raise DeploymentError("frontend HTTPS health failed through the new ALB")
+        if attempt + 1 < HTTPS_HEALTH_ATTEMPTS:
+            time.sleep(HTTPS_HEALTH_RETRY_SECONDS)
+    raise DeploymentError("frontend HTTPS health failed through the new ALB after 5 minutes")
 
 
 def deploy(source_sha: str) -> None:
