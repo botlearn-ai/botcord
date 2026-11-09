@@ -9,7 +9,9 @@ on:
       - frontend/next.config.ts
       - backend/Dockerfile
       - packages/gateway-ingress/Dockerfile
-      - .github/workflows/infra-check.yml
+      - .github/workflows/**
+      - .github/actionlint.yaml
+      - frontend/vercel.json
   workflow_dispatch:
 
 permissions:
@@ -24,4 +26,5 @@ jobs:
       - name: Validate Compose contracts without real credentials
         run: |
           bash -n infra/compose/local.sh
+          bash infra/eks/check_workflows.sh
           python3 -m unittest discover -s infra/tests -v

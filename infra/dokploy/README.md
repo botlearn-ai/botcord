@@ -69,8 +69,8 @@ Redis 使用原密码并启用 AOF。禁止发布 Database host port，禁止改
 - CI 不部署、重启或修改 PostgreSQL/Redis，也不再更新旧 `botcord-data`。
 - 原 `deploy-pr-backend-preview.yml` 手工入口发布整个 Dokploy 测试应用栈，不执行共享
   数据库迁移。
-- production `release.yml` 保持原路径；旧 deploy reusable 仅接受 `prod`。
-- Vercel Git Preview 构建由 `frontend/vercel.json` 跳过；Production 构建保留。
+- production 前端使用 [EKS Release 链路](../eks/README.md)；deploy reusable 仅接受 `prod`。
+- Vercel Git 自动部署已由 `frontend/vercel.json` 关闭；保留现有部署与手工 CLI 回滚。
 - ECR 登录沿用现有自动刷新机制，不保存 12 小时登录凭证或增加重复续期任务。
 
 CI member 的权限范围已收敛为五个资源：三个应用 Compose 加两个 Database；已删除的旧

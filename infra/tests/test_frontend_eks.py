@@ -1,17 +1,23 @@
+import contextlib
+import io
 import importlib.util
 import json
 import pathlib
 import subprocess
+import sys
 import unittest
 from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "infra/eks/deploy_frontend.py"
+sys.path.insert(0, str(SCRIPT.parent))
 SPEC = importlib.util.spec_from_file_location("deploy_frontend", SCRIPT)
 deploy_frontend = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
+sys.modules[SPEC.name] = deploy_frontend
 SPEC.loader.exec_module(deploy_frontend)
+DEVOPS_SHA = "f" * 40
 
 
 def manifest_objects(image: str):
@@ -98,24 +104,237 @@ class TestFrontendEksController(unittest.TestCase):
     def test_deploy_validates_gates_before_apply(self):
         sha = "d" * 40
         calls = []
+
+        def record_run(*args, **kwargs):
+            calls.append(args[3])
+            if args[3] == "apply":
+                snapshot = pathlib.Path(args[-1])
+                self.assertNotEqual(snapshot, deploy_frontend.MANIFEST)
+                self.assertEqual(snapshot.read_bytes(), b"reviewed")
+                self.assertEqual(snapshot.stat().st_mode & 0o777, 0o600)
+            return ""
+
         with (
-            mock.patch.object(deploy_frontend, "verify_devops_checkout", side_effect=lambda: calls.append("checkout")),
+            mock.patch.object(
+                deploy_frontend,
+                "verify_devops_checkout",
+                side_effect=lambda: calls.append("checkout") or DEVOPS_SHA,
+            ),
             mock.patch.object(deploy_frontend, "verify_identity", side_effect=lambda: calls.append("identity")),
             mock.patch.object(deploy_frontend, "verify_runtime_secret", side_effect=lambda: calls.append("secret")),
+            mock.patch.object(
+                deploy_frontend,
+                "capture_reviewed_inputs",
+                return_value=(b"reviewed", b"reviewed checker\n"),
+            ),
             mock.patch.object(deploy_frontend, "render_and_validate_manifest", return_value=(self.image, self.digest)),
             mock.patch.object(deploy_frontend, "verify_candidate", side_effect=lambda *_: calls.append("candidate")),
+            mock.patch.object(
+                deploy_frontend,
+                "verify_frozen_devops_head",
+                side_effect=lambda *_: calls.append("frozen"),
+            ),
             mock.patch.object(deploy_frontend, "MANIFEST", mock.Mock(read_bytes=mock.Mock(return_value=b"reviewed"))),
-            mock.patch.object(deploy_frontend, "run", side_effect=lambda *args, **kwargs: calls.append(args[3]) or ""),
+            mock.patch.object(deploy_frontend, "run", side_effect=record_run),
             mock.patch.object(deploy_frontend, "verify_rollout", return_value="new-alb.example.com"),
             mock.patch.object(deploy_frontend, "verify_https", side_effect=lambda *_: calls.append("https")),
+            mock.patch.object(
+                deploy_frontend,
+                "verify_public",
+                side_effect=lambda *_: calls.append("public"),
+            ),
         ):
             deploy_frontend.deploy(sha)
-        self.assertEqual(calls, ["checkout", "identity", "secret", "candidate", "apply", "https"])
+        self.assertEqual(
+            calls,
+            [
+                "checkout", "identity", "secret", "candidate", "frozen", "frozen",
+                "apply", "https", "public",
+            ],
+        )
+
+    def test_preflight_is_read_only_and_returns_exact_reviewed_image(self):
+        sha = "d" * 40
+        with (
+            mock.patch.object(deploy_frontend, "verify_devops_checkout", return_value=DEVOPS_SHA),
+            mock.patch.object(deploy_frontend, "verify_identity"),
+            mock.patch.object(deploy_frontend, "verify_runtime_secret"),
+            mock.patch.object(
+                deploy_frontend,
+                "capture_reviewed_inputs",
+                return_value=(b"reviewed", b"reviewed checker\n"),
+            ),
+            mock.patch.object(
+                deploy_frontend,
+                "render_and_validate_manifest",
+                return_value=(self.image, self.digest),
+            ),
+            mock.patch.object(deploy_frontend, "verify_candidate"),
+            mock.patch.object(deploy_frontend, "verify_frozen_devops_head"),
+            mock.patch.object(
+                deploy_frontend,
+                "MANIFEST",
+                mock.Mock(read_bytes=mock.Mock(return_value=b"reviewed")),
+            ),
+            mock.patch.object(deploy_frontend, "run") as run,
+        ):
+            result = deploy_frontend.preflight(sha, self.image)
+        self.assertEqual(result.image, self.image)
+        self.assertEqual(result.digest, self.digest)
+        self.assertEqual(result.manifest, b"reviewed")
+        self.assertEqual(result.public_verifier, b"reviewed checker\n")
+        self.assertEqual(result.devops_sha, DEVOPS_SHA)
+        run.assert_not_called()
+
+    def test_private_snapshot_is_exact_and_removed(self):
+        contents = b"apiVersion: v1\nkind: ConfigMap\n"
+        with deploy_frontend.private_snapshot(contents, suffix=".yaml") as snapshot:
+            self.assertTrue(snapshot.is_file())
+            self.assertEqual(snapshot.read_bytes(), contents)
+            self.assertEqual(snapshot.stat().st_mode & 0o777, 0o600)
+            captured = snapshot
+        self.assertFalse(captured.exists())
+
+    def test_preflight_rejects_a_different_reviewed_candidate(self):
+        sha = "d" * 40
+        expected = f"{deploy_frontend.IMAGE_PREFIX}@sha256:" + "e" * 64
+        with (
+            mock.patch.object(deploy_frontend, "verify_devops_checkout", return_value=DEVOPS_SHA),
+            mock.patch.object(deploy_frontend, "verify_identity"),
+            mock.patch.object(deploy_frontend, "verify_runtime_secret"),
+            mock.patch.object(
+                deploy_frontend,
+                "capture_reviewed_inputs",
+                return_value=(b"reviewed", b"reviewed checker\n"),
+            ),
+            mock.patch.object(
+                deploy_frontend,
+                "render_and_validate_manifest",
+                return_value=(self.image, self.digest),
+            ),
+            mock.patch.object(deploy_frontend, "verify_candidate") as candidate,
+            mock.patch.object(deploy_frontend, "verify_frozen_devops_head"),
+            mock.patch.object(
+                deploy_frontend,
+                "MANIFEST",
+                mock.Mock(read_bytes=mock.Mock(return_value=b"reviewed")),
+            ),
+            self.assertRaisesRegex(deploy_frontend.DeploymentError, "expected release candidate"),
+        ):
+            deploy_frontend.preflight(sha, expected)
+        candidate.assert_not_called()
+
+    def test_capture_refuses_worktree_bytes_that_differ_from_reviewed_git_objects(self):
+        with (
+            mock.patch.object(
+                deploy_frontend,
+                "read_reviewed_file",
+                side_effect=[b"reviewed manifest", b"reviewed checker"],
+            ),
+            mock.patch.object(
+                deploy_frontend,
+                "MANIFEST",
+                mock.Mock(read_bytes=mock.Mock(return_value=b"raced worktree manifest")),
+            ),
+            mock.patch.object(
+                deploy_frontend,
+                "PUBLIC_VERIFIER",
+                mock.Mock(read_bytes=mock.Mock(return_value=b"reviewed checker")),
+            ),
+            self.assertRaisesRegex(deploy_frontend.DeploymentError, "differs from its Git object"),
+        ):
+            deploy_frontend.capture_reviewed_inputs(DEVOPS_SHA)
+
+    def test_capture_refuses_checker_bytes_that_differ_from_reviewed_git_object(self):
+        with (
+            mock.patch.object(
+                deploy_frontend,
+                "read_reviewed_file",
+                side_effect=[b"reviewed manifest", b"reviewed checker"],
+            ),
+            mock.patch.object(
+                deploy_frontend,
+                "MANIFEST",
+                mock.Mock(read_bytes=mock.Mock(return_value=b"reviewed manifest")),
+            ),
+            mock.patch.object(
+                deploy_frontend,
+                "PUBLIC_VERIFIER",
+                mock.Mock(read_bytes=mock.Mock(return_value=b"raced checker")),
+            ),
+            self.assertRaisesRegex(deploy_frontend.DeploymentError, "differs from its Git object"),
+        ):
+            deploy_frontend.capture_reviewed_inputs(DEVOPS_SHA)
+
+    def test_frozen_devops_head_must_match_before_apply(self):
+        with (
+            mock.patch.object(
+                deploy_frontend,
+                "run",
+                return_value="e" * 40,
+            ),
+            self.assertRaisesRegex(deploy_frontend.DeploymentError, "changed after reviewed preflight"),
+        ):
+            deploy_frontend.verify_frozen_devops_head(DEVOPS_SHA)
+
+    def test_preflight_only_cli_prints_machine_readable_exact_image(self):
+        sha = "d" * 40
+        output = io.StringIO()
+        candidate = deploy_frontend.ReviewedCandidate(
+            image=self.image,
+            digest=self.digest,
+            manifest=b"reviewed",
+            public_verifier=b"reviewed checker\n",
+            devops_sha=DEVOPS_SHA,
+        )
+        with (
+            mock.patch.object(
+                sys,
+                "argv",
+                [
+                    str(SCRIPT),
+                    "--source-sha", sha,
+                    "--expected-image", self.image,
+                    "--preflight-only",
+                ],
+            ),
+            mock.patch.object(deploy_frontend, "preflight", return_value=candidate) as preflight,
+            mock.patch.object(deploy_frontend, "deploy") as deploy,
+            contextlib.redirect_stdout(output),
+        ):
+            deploy_frontend.main()
+        preflight.assert_called_once_with(sha, self.image)
+        deploy.assert_not_called()
+        self.assertEqual(
+            output.getvalue().splitlines(),
+            [f"image={self.image}", f"digest={self.digest}"],
+        )
+
+    def test_deploy_cli_passes_the_expected_image_gate(self):
+        sha = "d" * 40
+        with (
+            mock.patch.object(
+                sys,
+                "argv",
+                [str(SCRIPT), "--source-sha", sha, "--expected-image", self.image],
+            ),
+            mock.patch.object(deploy_frontend, "preflight") as preflight,
+            mock.patch.object(deploy_frontend, "deploy") as deploy,
+        ):
+            deploy_frontend.main()
+        preflight.assert_not_called()
+        deploy.assert_called_once_with(sha, self.image)
 
     def test_invalid_source_sha_stops_before_external_call(self):
         with mock.patch.object(deploy_frontend, "verify_devops_checkout") as checkout:
             with self.assertRaises(deploy_frontend.DeploymentError):
                 deploy_frontend.deploy("main")
+        checkout.assert_not_called()
+
+    def test_malformed_expected_image_stops_before_external_call(self):
+        with mock.patch.object(deploy_frontend, "verify_devops_checkout") as checkout:
+            with self.assertRaisesRegex(deploy_frontend.DeploymentError, "full production ECR"):
+                deploy_frontend.preflight("d" * 40, "example.invalid/frontend:latest")
         checkout.assert_not_called()
 
     def test_https_verification_bypasses_proxy_and_preserves_sni(self):
@@ -159,6 +378,56 @@ class TestFrontendEksController(unittest.TestCase):
             sleep.call_count * deploy_frontend.HTTPS_HEALTH_RETRY_SECONDS,
             300,
         )
+
+    def test_public_verification_uses_reviewed_devops_checker(self):
+        snapshots = []
+
+        def record_run(*args, **kwargs):
+            snapshot = pathlib.Path(args[1])
+            self.assertNotEqual(snapshot, deploy_frontend.PUBLIC_VERIFIER)
+            self.assertEqual(snapshot.read_bytes(), b"reviewed checker\n")
+            self.assertEqual(snapshot.stat().st_mode & 0o777, 0o600)
+            snapshots.append(snapshot)
+            return ""
+
+        with (
+            mock.patch.object(
+                deploy_frontend,
+                "verify_frozen_devops_head",
+            ) as frozen,
+            mock.patch.object(
+                deploy_frontend,
+                "PUBLIC_VERIFIER",
+                mock.Mock(
+                    read_bytes=mock.Mock(return_value=b"reviewed checker\n"),
+                ),
+            ),
+            mock.patch.object(deploy_frontend, "run", side_effect=record_run) as run,
+        ):
+            deploy_frontend.verify_public(DEVOPS_SHA, b"reviewed checker\n")
+        frozen.assert_called_once_with(DEVOPS_SHA)
+        run.assert_called_once()
+        self.assertEqual(len(snapshots), 1)
+        self.assertFalse(snapshots[0].exists())
+
+    def test_public_verification_refuses_checker_drift_before_execution(self):
+        with (
+            mock.patch.object(
+                deploy_frontend,
+                "verify_frozen_devops_head",
+            ),
+            mock.patch.object(
+                deploy_frontend,
+                "PUBLIC_VERIFIER",
+                mock.Mock(
+                    read_bytes=mock.Mock(return_value=b"changed checker\n"),
+                ),
+            ),
+            mock.patch.object(deploy_frontend, "run") as run,
+            self.assertRaisesRegex(deploy_frontend.DeploymentError, "changed during validation"),
+        ):
+            deploy_frontend.verify_public(DEVOPS_SHA, b"reviewed checker\n")
+        run.assert_not_called()
 
 
 if __name__ == "__main__":

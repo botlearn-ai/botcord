@@ -95,8 +95,9 @@ All four Compose resources now use GitHub Provider: `botlearn-ai/botcord`, provi
 - [Implementation PR](https://github.com/botlearn-ai/botcord/pull/1130)
 
 Main pushes use this pipeline after checks; PR events do not deploy. The manual PR entry
-now deploys the whole Dokploy test stack. Existing production releases remain unchanged.
-Vercel Git Preview builds are skipped; production builds and CLI releases remain enabled.
+now deploys the whole Dokploy test stack. Production frontend delivery uses the
+[reviewed EKS Release pipeline](../eks/README.md). Vercel Git deployments are
+disabled; existing deployments and deliberate CLI rollback remain available.
 ECR credentials use existing automatic refresh; no additional renewal task was retained.
 
 ## Scope at that snapshot

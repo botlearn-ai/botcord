@@ -1,5 +1,7 @@
 {
   "framework": "nextjs",
   "installCommand": "pnpm install --ignore-workspace",
-  "ignoreCommand": "test \"$VERCEL_ENV\" = preview"
+  "git": {
+    "deploymentEnabled": false
+  }
 }
