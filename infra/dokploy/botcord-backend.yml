@@ -31,6 +31,7 @@ services:
       botcord:
         aliases:
           - botcord-backend
+      databases:
     healthcheck:
       test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
       interval: 15s
@@ -46,3 +47,6 @@ networks:
   botcord:
     external: true
     name: ${BOTCORD_NETWORK:?}
+  databases:
+    external: true
+    name: ${BOTCORD_DATABASE_NETWORK:?}

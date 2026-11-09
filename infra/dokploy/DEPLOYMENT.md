@@ -1,4 +1,82 @@
-# Dokploy deployment — 2026-11-06
+# Dokploy deployment record
+
+Target: [BotCord / production](https://console.botlearn.ai/dashboard/project/5UIS5-vklz4ac_SW1TgtP/environment/5he_zWMNfE-ED_oN47Nc5)
+
+## Native Database split — verified 2026-11-09
+
+PostgreSQL and Redis now run as separate Dokploy Database services. The cold cutover preserved the
+original volumes, data, credentials, imageIDs, and single-writer boundary. Supabase remains the
+Hub application database and is not deployed or migrated by this change.
+
+| Resource | ID | appName | Verified runtime |
+| --- | --- | --- | --- |
+| PostgreSQL Database | `y4SAYkwmTWF-uYkB1Yn5s` | `botcord-postgres-native-5pmi4g` | healthy, 0 restarts, no published port |
+| Redis Database | `dM0yCFytwg_FAw0nXsEZ6` | `botcord-redis-native-ogq8mr` | healthy, 0 restarts, no published port |
+| Private overlay | `4Kbb8OeuSSOv1tvzmzHyG` | `botcord-databases` | internal, attachable |
+| Legacy data Compose | `H9btOji5YQgfUL4AWycw2` | `botcord-data-rhhgnk` | deleted with volumes preserved; API readback 404 |
+
+Both Database services run one task on Swarm node `pcc2py85mdnziaxjn322plfx8`, attach only to the
+private database overlay, and reuse the legacy mounts:
+
+- PostgreSQL: `botcord-data-rhhgnk_botcord_postgres_data` → `/var/lib/postgresql/data`
+  - image: `postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab`
+  - imageID: `sha256:c54a696c68013b2f8f42f479e00a2b6ad24c5ef10ee31cdfb8972cec3dad7eb7`, unchanged from the legacy container
+- Redis: `botcord-data-rhhgnk_botcord_redis_data` → `/data`
+  - image: `redis:7-alpine@sha256:6ba19c50b56777f5c11c58eff8ddb69d0d5f27ba131cffb63f180ccfd43c66af`
+  - imageID: `sha256:c90c016450904cc9c63d38100c04c72554fcc983e257f1637ab451afaf32da7b`, unchanged from the legacy container
+
+### Data continuity evidence
+
+- PostgreSQL still contains 97 non-system tables. Its logical `pg_dump` SHA256 and
+  `pg_control_system` identifier matched before and after cutover.
+- Redis authenticated `PING` succeeded, AOF remained enabled, and the key count remained 0.
+- Each volume has exactly one writer. No legacy data container remains.
+- Root-only cold backups, checksums, and protected rollback metadata are stored on the server at
+  `/var/backups/botcord-native-db-20261109`. The metadata contains secrets and must not be printed
+  or copied into the repository.
+
+The Hub source is fixed to
+`dokploy-test-84ae864a727a3e124f2be827798cd92fec6c746b`. The application image still carries source
+revision `24a42c8a1c5f22312ccdcda94fa118db6ff2f653`; the cutover changed only the Redis hostname and
+added the private database network. The Supabase `DATABASE_URL` and all other environment values
+were preserved exactly. Hub-to-native-Redis DNS and authenticated PING passed. Hub health, the
+public API, frontend, and 21 static assets returned HTTP 200 after restart; exact-origin CORS,
+canonical auth callback, anonymous BFF 401, and the path/query-preserving preview redirect passed.
+
+The legacy Compose was fully deleted with `deleteVolumes=false` only after both native services
+passed runtime and data checks. An empty Raw tombstone was not retained because the Dokploy UI
+could still start its old workspace and create concurrent writers. Both named volumes remain and
+are mounted by the healthy native services.
+
+### CI boundary and delivery evidence
+
+The CI member now allows exactly the three application Compose resources and two Database
+resources. Before cutover, a real-token probe verified that the legacy resource was denied (401)
+and all five intended resources were readable (200): [workflow run 42564767086](https://github.com/botlearn-ai/botcord/actions/runs/42564767086).
+No global Docker, deletion, SSH, or Traefik permission was added.
+
+The deployment controller performs read-only identity and health checks for both Database services,
+then deploys only Hub, Gateway, and frontend. It does not restart or mutate PostgreSQL or Redis.
+PR [#1131](https://github.com/botlearn-ai/botcord/pull/1131) passed 51 infrastructure tests, required
+checks, and review at this cutover checkpoint. Final merge, automatic main deployment, and
+post-CI no-database-restart evidence are tracked in that PR.
+
+### Rollback
+
+Preserve the single-writer sequence: stop Hub, stop both native Database services, confirm their
+tasks are zero, then recreate the legacy Compose from the protected metadata and repository
+manifest with the saved appName and existing volumes. Restore the old Redis URL only after the
+legacy data containers are healthy. A recreated Compose receives a new resource ID; restoring it
+to the deployment pipeline also requires updating CI permissions and control-code identity.
+Never use `freshVolumes`, `down -v`, or volume cleanup.
+
+The local `infra/compose` topology and production release flow are unchanged. The canonical test
+hosts remain `www.test.botcord.chat` and `api.test.botcord.chat`; `preview.botcord.chat` preserves
+path and query while redirecting to `www.test.botcord.chat`.
+
+---
+
+# Historical accepted snapshot — 2026-11-06
 
 Target: [BotCord / production](https://console.botlearn.ai/dashboard/project/5UIS5-vklz4ac_SW1TgtP/environment/5he_zWMNfE-ED_oN47Nc5)
 
@@ -17,7 +95,7 @@ now deploys the whole Dokploy test stack. Existing production releases remain un
 Vercel Git Preview builds are skipped; production builds and CLI releases remain enabled.
 ECR credentials use existing automatic refresh; no additional renewal task was retained.
 
-## Current scope
+## Scope at that snapshot
 
 - Five running containers: frontend, Hub, Gateway Ingress, PostgreSQL, Redis.
 - Existing Preview Supabase is reused for Auth, Realtime, Storage, and the application DB;
@@ -43,7 +121,7 @@ it deliberately shares the Preview Supabase project.
 > active-active: owner-chat flows, status, and realtime fanout are not interoperable across the
 > two Hubs, and no agent-inference workflow was executed in this acceptance run.
 
-## Compose resources
+## Compose resources at that snapshot
 
 | Resource | Compose ID | Source/status |
 | --- | --- | --- |
@@ -106,7 +184,7 @@ and had no host port bindings. Frontend and Hub each use their Compose default n
 - Image: `postgres:16-alpine`
 - Runtime imageID: `sha256:c54a696c68013b2f8f42f479e00a2b6ad24c5ef10ee31cdfb8972cec3dad7eb7`
 - Volume: `botcord-data-rhhgnk_botcord_postgres_data` → `/var/lib/postgresql/data`
-- Current role: retained only; not used by frontend/Hub as the business DB.
+- Role at that snapshot: retained only; not used by frontend/Hub as the business DB.
 
 ## Acceptance evidence
 

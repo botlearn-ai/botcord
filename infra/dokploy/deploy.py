@@ -25,6 +25,8 @@ OWNER = "botlearn-ai"
 REPOSITORY = "botcord"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 IMAGE_RE = re.compile(r"^\S+@sha256:[0-9a-f]{64}$")
+DATABASE_NETWORK_ID = "4Kbb8OeuSSOv1tvzmzHyG"
+DATABASE_NODE_CONSTRAINT = "node.id==pcc2py85mdnziaxjn322plfx8"
 
 
 @dataclass(frozen=True)
@@ -37,14 +39,18 @@ class Resource:
     image_key: str | None = None
 
 
+@dataclass(frozen=True)
+class NativeDatabase:
+    name: str
+    kind: str
+    service_id: str
+    app_name: str
+    docker_image: str
+    volume_source: str
+    volume_target: str
+
+
 RESOURCES = (
-    Resource(
-        "data",
-        "H9btOji5YQgfUL4AWycw2",
-        "botcord-data-rhhgnk",
-        "infra/dokploy/dependencies.yml",
-        ("postgres", "redis"),
-    ),
     Resource(
         "backend",
         "Ug07R-0ic81Rm8uHA1SE6",
@@ -68,6 +74,27 @@ RESOURCES = (
         "infra/dokploy/botcord-frontend.yml",
         ("botcord-frontend",),
         "BOTCORD_FRONTEND_IMAGE",
+    ),
+)
+
+NATIVE_DATABASES = (
+    NativeDatabase(
+        "postgres",
+        "postgres",
+        "y4SAYkwmTWF-uYkB1Yn5s",
+        "botcord-postgres-native-5pmi4g",
+        "postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
+        "botcord-data-rhhgnk_botcord_postgres_data",
+        "/var/lib/postgresql/data",
+    ),
+    NativeDatabase(
+        "redis",
+        "redis",
+        "dM0yCFytwg_FAw0nXsEZ6",
+        "botcord-redis-native-ogq8mr",
+        "redis:7-alpine@sha256:6ba19c50b56777f5c11c58eff8ddb69d0d5f27ba131cffb63f180ccfd43c66af",
+        "botcord-data-rhhgnk_botcord_redis_data",
+        "/data",
     ),
 )
 
@@ -180,6 +207,13 @@ class IO:
         return self._trpc("compose.update", payload, method="POST")
 
     def cli(self, args: list[str]) -> Any:
+        for kind in ("postgres", "redis"):
+            if args[:2] == [kind, "one"]:
+                id_flag = f"--{kind}Id"
+                values = self._pairs(args[2:], {id_flag})
+                return self._trpc(
+                    f"{kind}.one", {f"{kind}Id": values[id_flag]}, method="GET"
+                )
         if args[:2] == ["compose", "one"]:
             values = self._pairs(args[2:], {"--composeId"})
             return self._trpc(
@@ -193,13 +227,18 @@ class IO:
                 method="GET",
             )
         if args[:2] == ["docker", "get-containers-by-app-name-match"]:
-            values = self._pairs(args[2:], {"--appType", "--appName"})
+            allowed = (
+                {"--appName"}
+                if len(args) == 4
+                else {"--appType", "--appName"}
+            )
+            values = self._pairs(args[2:], allowed)
+            payload = {"appName": values["--appName"]}
+            if "--appType" in values:
+                payload["appType"] = values["--appType"]
             return self._trpc(
                 "docker.getContainersByAppNameMatch",
-                {
-                    "appType": values["--appType"],
-                    "appName": values["--appName"],
-                },
+                payload,
                 method="GET",
             )
         if args[:2] == ["compose", "update"]:
@@ -362,6 +401,79 @@ def validate_identity(resource: Resource, value: Any, adopt_provider: bool) -> N
         raise DeploymentError(f"{resource.name}: GitHub Provider identity mismatch")
 
 
+def validate_native_database_identity(
+    database: NativeDatabase, value: Any
+) -> None:
+    if not isinstance(value, dict):
+        raise DeploymentError(f"{database.name}: invalid native database")
+    environment = value.get("environment") or {}
+    placement = value.get("placementSwarm") or {}
+    mounts = value.get("mounts")
+    mount = mounts[0] if isinstance(mounts, list) and len(mounts) == 1 else {}
+    if (
+        value.get(f"{database.kind}Id") != database.service_id
+        or value.get("appName") != database.app_name
+        or value.get("environmentId") != ENVIRONMENT_ID
+        or environment.get("projectId") != PROJECT_ID
+        or value.get("externalPort") is not None
+        or value.get("detachDokployNetwork") is not True
+        or value.get("networkIds") != [DATABASE_NETWORK_ID]
+        or type(value.get("replicas")) is not int
+        or value.get("replicas") != 1
+        or not isinstance(placement, dict)
+        or placement.get("Constraints") != [DATABASE_NODE_CONSTRAINT]
+        or value.get("dockerImage") != database.docker_image
+        or not isinstance(mount, dict)
+        or mount.get("type") != "volume"
+        or mount.get("volumeName") != database.volume_source
+        or mount.get("mountPath") != database.volume_target
+    ):
+        raise DeploymentError(f"{database.name}: native database identity mismatch")
+
+
+def verify_native_database_runtime(io: IO, database: NativeDatabase) -> None:
+    containers = io.cli(
+        [
+            "docker",
+            "get-containers-by-app-name-match",
+            "--appName",
+            database.app_name,
+        ]
+    )
+    if not isinstance(containers, list) or any(
+        not isinstance(item, dict) for item in containers
+    ):
+        raise DeploymentError(f"{database.name}: native database runtime mismatch")
+    expected_name = re.compile(rf"^{re.escape(database.app_name)}\.1\.[a-z0-9]+$")
+    matching = [
+        item
+        for item in containers
+        if isinstance(item.get("name"), str)
+        and expected_name.fullmatch(item["name"])
+        and item.get("state") not in {"dead", "exited"}
+    ]
+    if len(matching) != 1:
+        raise DeploymentError(f"{database.name}: native database runtime mismatch")
+    container = matching[0]
+    status = container.get("status") or ""
+    if (
+        container.get("state") != "running"
+        or not isinstance(status, str)
+        or "(healthy)" not in status
+        or "unhealthy" in status
+    ):
+        raise DeploymentError(f"{database.name}: native database container unhealthy")
+
+
+def verify_native_databases(io: IO) -> None:
+    for database in NATIVE_DATABASES:
+        value = io.cli(
+            [database.kind, "one", f"--{database.kind}Id", database.service_id]
+        )
+        validate_native_database_identity(database, value)
+        verify_native_database_runtime(io, database)
+
+
 def _deployment_ids(io: IO, resource: Resource) -> set[str]:
     records = io.cli(
         ["deployment", "all-by-compose", "--composeId", resource.compose_id]
@@ -482,6 +594,9 @@ def deploy(
     for resource in RESOURCES:
         if resource.image_key is not None:
             merge_env("", resource.image_key, images.get(resource.name))
+    # Native databases are provisioned independently. CI must only verify their
+    # exact private identities and healthy tasks; it never mutates or deploys them.
+    verify_native_databases(io)
     branch = compose_ref(sha)
     previous: dict[str, Any] = {}
 

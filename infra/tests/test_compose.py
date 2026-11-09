@@ -11,10 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 DOKPLOY = ROOT / "infra/dokploy"
 VALUES = {
     "BOTCORD_NETWORK": "botcord-test",
+    "BOTCORD_DATABASE_NETWORK": "botcord-databases-test",
     "BOTCORD_BACKEND_IMAGE": "example.invalid/botcord-backend:sha-test",
     "BOTCORD_GATEWAY_INGRESS_IMAGE": "example.invalid/botcord-gateway-ingress:sha-test",
-    "POSTGRES_PASSWORD": "test-password",
-    "REDIS_PASSWORD": "test-redis-password",
     "ENVIRONMENT_TAG": "prod",
     "BOTCORD_FRONTEND_IMAGE": "example.invalid/botcord-frontend:sha-test",
     "SUPABASE_INTERNAL_URL": "http://supabase-test:8000",
@@ -34,6 +33,16 @@ VALUES = {
 
 
 class ComposeContracts(unittest.TestCase):
+    def test_active_remote_manifests_only_contain_applications(self):
+        self.assertEqual(
+            sorted(path.name for path in DOKPLOY.glob("*.yml")),
+            [
+                "botcord-backend.yml",
+                "botcord-frontend.yml",
+                "botcord-gateway-ingress.yml",
+            ],
+        )
+
     def render(self, filename, missing=None):
         # Use a temporary copy so real local/Dokploy .env secrets cannot leak.
         with tempfile.TemporaryDirectory() as directory:
@@ -55,7 +64,7 @@ class ComposeContracts(unittest.TestCase):
             return json.loads(result.stdout)
 
     def test_remote_services_have_healthchecks_and_no_host_ports_or_builds(self):
-        for filename in ("botcord-backend.yml", "botcord-gateway-ingress.yml", "dependencies.yml", "botcord-frontend.yml"):
+        for filename in ("botcord-backend.yml", "botcord-gateway-ingress.yml", "botcord-frontend.yml"):
             with self.subTest(filename=filename):
                 config = self.render(filename)
                 for service in config["services"].values():
@@ -77,7 +86,12 @@ class ComposeContracts(unittest.TestCase):
         self.assertEqual(service["environment"]["DATABASE_SCHEMA"], "public")
         self.assertEqual(service["environment"]["FILE_STORAGE_BACKEND"], "supabase")
         self.assertIn("/data/uploads", [v["target"] for v in service["volumes"]])
-        self.assertEqual(set(service["networks"]), {"botcord"})
+        self.assertEqual(set(service["networks"]), {"botcord", "databases"})
+        config = self.render("botcord-backend.yml")
+        self.assertTrue(config["networks"]["databases"]["external"])
+        self.assertEqual(
+            config["networks"]["databases"]["name"], "botcord-databases-test"
+        )
 
     def test_ingress_secret_volume_and_private_setup_contract(self):
         service = self.render("botcord-gateway-ingress.yml")["services"]["botcord-gateway-ingress"]
@@ -99,13 +113,12 @@ class ComposeContracts(unittest.TestCase):
         for key in ("DATABASE_URL", "SUPABASE_URL", "SUPABASE_JWT_JWKS_URL",
                     "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_STORAGE_BUCKET",
                     "JWT_SECRET", "BOTCORD_REDIS_URL", "BOTCORD_HUB_CONTROL_PRIVATE_KEY",
-                    "INTERNAL_API_SECRET", "CLOUD_GATEWAY_INGRESS_SECRET", "BOTCORD_BACKEND_IMAGE", "BOTCORD_NETWORK"):
+                    "INTERNAL_API_SECRET", "CLOUD_GATEWAY_INGRESS_SECRET", "BOTCORD_BACKEND_IMAGE",
+                    "BOTCORD_NETWORK", "BOTCORD_DATABASE_NETWORK"):
             with self.subTest(key=key):
                 self.render("botcord-backend.yml", missing=key)
         self.render("botcord-gateway-ingress.yml", missing="CLOUD_GATEWAY_INGRESS_SECRET")
         self.render("botcord-frontend.yml", missing="SUPABASE_INTERNAL_URL")
-        self.render("dependencies.yml", missing="POSTGRES_PASSWORD")
-        self.render("dependencies.yml", missing="REDIS_PASSWORD")
         self.render("botcord-backend.yml", missing="ENVIRONMENT_TAG")
 
 
