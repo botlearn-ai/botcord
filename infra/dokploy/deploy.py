@@ -79,15 +79,6 @@ RESOURCES = (
 
 NATIVE_DATABASES = (
     NativeDatabase(
-        "postgres",
-        "postgres",
-        "y4SAYkwmTWF-uYkB1Yn5s",
-        "botcord-postgres-native-5pmi4g",
-        "postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab",
-        "botcord-data-rhhgnk_botcord_postgres_data",
-        "/var/lib/postgresql/data",
-    ),
-    NativeDatabase(
         "redis",
         "redis",
         "dM0yCFytwg_FAw0nXsEZ6",
@@ -207,7 +198,7 @@ class IO:
         return self._trpc("compose.update", payload, method="POST")
 
     def cli(self, args: list[str]) -> Any:
-        for kind in ("postgres", "redis"):
+        for kind in ("redis",):
             if args[:2] == [kind, "one"]:
                 id_flag = f"--{kind}Id"
                 values = self._pairs(args[2:], {id_flag})

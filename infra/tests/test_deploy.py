@@ -138,6 +138,15 @@ class DokployDeployTests(unittest.TestCase):
             ["backend", "gateway", "frontend"],
         )
 
+    def test_only_redis_remains_a_native_deployment_prerequisite(self):
+        self.assertEqual(
+            [
+                (database.name, database.kind)
+                for database in deploy_module.NATIVE_DATABASES
+            ],
+            [("redis", "redis")],
+        )
+
     def test_identity_mismatch_is_rejected(self):
         target = resource("backend")
         for field, bad in (
@@ -189,7 +198,7 @@ class DokployDeployTests(unittest.TestCase):
                         "node.role==worker",
                     ],
                 }},
-                {"dockerImage": "postgres:16-alpine"},
+                {"dockerImage": "redis:7-alpine"},
                 {"mounts": []},
                 {"mounts": [{
                     "type": "volume",
@@ -283,26 +292,24 @@ class DokployDeployTests(unittest.TestCase):
         with mock.patch.dict(os.environ, env, clear=False):
             with mock.patch.object(io, "_open", side_effect=open_request):
                 io.cli(["redis", "one", "--redisId", "example"])
-                io.cli(["postgres", "one", "--postgresId", "example"])
                 io.cli([
                     "docker", "get-containers-by-app-name-match",
-                    "--appName", "botcord-postgres-native-5pmi4g",
+                    "--appName", "botcord-redis-native-ogq8mr",
                 ])
         self.assertEqual(
-            [request.get_method() for request in requests], ["GET", "GET", "GET"]
+            [request.get_method() for request in requests], ["GET", "GET"]
         )
         self.assertEqual(
             [urllib.parse.urlparse(request.full_url).path for request in requests],
             [
                 "/api/trpc/redis.one",
-                "/api/trpc/postgres.one",
                 "/api/trpc/docker.getContainersByAppNameMatch",
             ],
         )
         query = urllib.parse.parse_qs(urllib.parse.urlparse(requests[-1].full_url).query)
         self.assertEqual(
             json.loads(query["input"][0]),
-            {"json": {"appName": "botcord-postgres-native-5pmi4g"}},
+            {"json": {"appName": "botcord-redis-native-ogq8mr"}},
         )
 
     def test_native_preflight_failure_prevents_all_mutations(self):
@@ -312,9 +319,9 @@ class DokployDeployTests(unittest.TestCase):
 
             def cli(self, args):
                 self.calls.append(args)
-                if args[:2] == ["postgres", "one"]:
+                if args[:2] == ["redis", "one"]:
                     return native_value(
-                        deploy_module.NATIVE_DATABASES[0], externalPort=5432
+                        deploy_module.NATIVE_DATABASES[0], externalPort=6379
                     )
                 raise AssertionError(f"unexpected call after native failure: {args}")
 
@@ -340,7 +347,7 @@ class DokployDeployTests(unittest.TestCase):
         self.assertEqual(
             fake.calls,
             [[
-                "postgres", "one", "--postgresId",
+                "redis", "one", "--redisId",
                 deploy_module.NATIVE_DATABASES[0].service_id,
             ]],
         )
