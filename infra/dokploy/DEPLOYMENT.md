@@ -1,8 +1,16 @@
 # Dokploy deployment record
 
+## Current topology after PostgreSQL retirement — 2026-11-12
+
+The standalone PostgreSQL resource was unused by Hub and frontend: both continue to use Preview
+Supabase for the application database. It is retired from the active Dokploy topology and from CI
+preflight checks. Redis remains the only native Database dependency. The local `infra/compose`
+PostgreSQL is unchanged. The dated sections below are retained as historical migration and recovery
+evidence, not as the current resource inventory or normal rollback procedure.
+
 Target: [BotCord / production](https://console.botlearn.ai/dashboard/project/5UIS5-vklz4ac_SW1TgtP/environment/5he_zWMNfE-ED_oN47Nc5)
 
-## Native Database split — verified 2026-11-09
+## Historical Native Database split — verified 2026-11-09
 
 PostgreSQL and Redis now run as separate Dokploy Database services. The cold cutover preserved the
 original volumes, data, credentials, imageIDs, and single-writer boundary. Supabase remains the
@@ -65,13 +73,15 @@ task identities and StartedAt timestamps with zero restarts. Post-CI Hub-to-Redi
 PING, public health, static assets, CORS, callback, BFF auth boundary, and preview redirect passed.
 Later deployment evidence is recorded in PR comments rather than rewriting this dated snapshot.
 
-### Rollback
+### Historical rollback procedure (archived)
 
-Preserve the single-writer sequence: stop Hub, stop both native Database services, confirm their
-tasks are zero, then recreate the legacy Compose from the protected metadata and repository
-manifest with the saved appName and existing volumes. Restore the old Redis URL only after the
-legacy data containers are healthy. A recreated Compose receives a new resource ID; restoring it
-to the deployment pipeline also requires updating CI permissions and control-code identity.
+This procedure is not a normal application rollback and must not recreate the retired PostgreSQL
+without a separate data-recovery review. Preserve the single-writer sequence: stop Hub, stop both
+native Database services, confirm their tasks are zero, then recreate the legacy Compose from the
+protected metadata and repository manifest with the saved appName and existing volumes. Restore
+the old Redis URL only after the legacy data containers are healthy. A recreated Compose receives
+a new resource ID; restoring it to the deployment pipeline also requires updating CI permissions
+and control-code identity.
 Never use `freshVolumes`, `down -v`, or volume cleanup.
 
 The local `infra/compose` topology and production release flow are unchanged. The canonical test
