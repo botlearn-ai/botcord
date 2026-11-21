@@ -61,7 +61,20 @@ async def _noop_publish_agent_realtime_event(db, event):
 
 import hub.routers.hub as _hub_router  # noqa: E402
 
+async def _noop_ephemeral_publish(event):
+    return None
+
+
+_publish_agent_realtime_event = _hub_router._publish_agent_realtime_event
+_publish_ephemeral_agent_realtime_event = _hub_router._publish_ephemeral_agent_realtime_event
 _hub_router._publish_agent_realtime_event = _noop_publish_agent_realtime_event
+_hub_router._publish_ephemeral_agent_realtime_event = _noop_ephemeral_publish
+
+
+@pytest.fixture
+def real_realtime_publisher(monkeypatch):
+    monkeypatch.setattr(_hub_router, "_publish_agent_realtime_event", _publish_agent_realtime_event)
+    monkeypatch.setattr(_hub_router, "_publish_ephemeral_agent_realtime_event", _publish_ephemeral_agent_realtime_event)
 
 
 @pytest.fixture(autouse=True)
