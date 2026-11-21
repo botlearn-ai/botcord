@@ -23,7 +23,7 @@ from hub.i18n import I18nHTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from sqlalchemy.orm import selectinload
 
 from hub.auth import (
@@ -42,7 +42,7 @@ from hub.constants import INBOX_PROCESSING_LEASE_SECONDS
 from hub.validators import normalize_file_url
 from hub.crypto import check_timestamp, verify_envelope_sig, verify_payload_hash
 from hub.dashboard_message_shaping import load_user_display_names
-from hub.database import async_session, get_db
+from hub.database import async_session, engine, get_db
 from hub.dm_room_names import build_dm_room_name
 from hub.services import presence as presence_service
 from hub.services.expo_push import schedule_message_push
@@ -368,7 +368,7 @@ def build_contact_event(
 
 
 async def _publish_agent_realtime_event(
-    db: AsyncSession,
+    db: AsyncSession | AsyncConnection,
     event: dict[str, Any],
 ) -> None:
     with send_diagnostics.stage("publish", receiver_id=event.get("agent_id"),
@@ -398,6 +398,13 @@ async def _publish_agent_realtime_event(
                 exc,
                 exc_info=True,
             )
+
+
+async def _publish_ephemeral_agent_realtime_event(event: dict[str, Any]) -> None:
+    # This transaction only calls realtime.send. A Core connection keeps it
+    # separate from application writes and their ORM projection hooks.
+    async with engine.connect() as connection:
+        await _publish_agent_realtime_event(connection, event)
 
 
 async def _collect_presence_observers(
@@ -464,31 +471,31 @@ async def broadcast_status_changed(snapshot) -> None:
         async with async_session() as db:
             observers = await _collect_presence_observers(db, subject)
             owner_hu_id = await _resolve_owner_human_id(db, subject)
-            targets = observers | {subject}
-            if owner_hu_id:
-                targets.add(owner_hu_id)
-            for target in targets:
-                is_owner = target == subject or (
-                    owner_hu_id is not None and target == owner_hu_id
+        targets = observers | {subject}
+        if owner_hu_id:
+            targets.add(owner_hu_id)
+        for target in targets:
+            is_owner = target == subject or (
+                owner_hu_id is not None and target == owner_hu_id
+            )
+            payload = snapshot.for_observer(is_owner=is_owner)
+            event = build_agent_realtime_event(
+                type="agent_status_changed",
+                agent_id=target,
+                ext={
+                    "subject_agent_id": subject,
+                    "version": snapshot.version,
+                    "status": payload,
+                },
+                created_at=event_time,
+            )
+            try:
+                await _publish_ephemeral_agent_realtime_event(event)
+            except Exception as exc:
+                logger.warning(
+                    "presence publish failed subject=%s target=%s err=%s",
+                    subject, target, exc,
                 )
-                payload = snapshot.for_observer(is_owner=is_owner)
-                event = build_agent_realtime_event(
-                    type="agent_status_changed",
-                    agent_id=target,
-                    ext={
-                        "subject_agent_id": subject,
-                        "version": snapshot.version,
-                        "status": payload,
-                    },
-                    created_at=event_time,
-                )
-                try:
-                    await _publish_agent_realtime_event(db, event)
-                except Exception as exc:
-                    logger.warning(
-                        "presence publish failed subject=%s target=%s err=%s",
-                        subject, target, exc,
-                    )
     except Exception as exc:
         logger.error(
             "broadcast_status_changed failed subject=%s err=%s",
@@ -2666,16 +2673,20 @@ async def _broadcast_message_status_reaction(
         )
         recipient_ids.update(owner_rows.scalars().all())
 
+    room_id = room.room_id
+    # Authentication, room loading and recipient lookup only read from this
+    # request session. Return its checkout before starting the publish fanout.
+    await db.rollback()
     for recipient_id in recipient_ids:
         event = build_agent_realtime_event(
             type="message_status_reaction",
             agent_id=recipient_id,
-            room_id=room.room_id,
+            room_id=room_id,
             hub_msg_id=payload.get("msg_id") if isinstance(payload.get("msg_id"), str) else None,
             ext=payload,
         )
         try:
-            await _publish_agent_realtime_event(db, event)
+            await _publish_ephemeral_agent_realtime_event(event)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "message status reaction realtime publish failed for %s: %s",

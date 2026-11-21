@@ -550,10 +550,10 @@ async def test_status_reaction_realtime_includes_owned_agent_human_watcher(
 
     published: list[dict] = []
 
-    async def fake_publish(_db: AsyncSession, event: dict):
+    async def fake_publish(event: dict):
         published.append(event)
 
-    monkeypatch.setattr(hub_router, "_publish_agent_realtime_event", fake_publish)
+    monkeypatch.setattr(hub_router, "_publish_ephemeral_agent_realtime_event", fake_publish)
 
     room = await db_session.scalar(
         select(Room)
@@ -589,7 +589,7 @@ async def test_status_reaction_realtime_includes_owned_agent_human_watcher(
     recipients = {event["agent_id"] for event in published}
     assert recipients == {seed["agent1"], owner_human_id}
     assert {event["type"] for event in published} == {"message_status_reaction"}
-    assert all(event["room_id"] == room.room_id for event in published)
+    assert all(event["room_id"] == "rm_priv0001" for event in published)
     assert {event["hub_msg_id"] for event in published} == {"m_rm_msg000"}
 
 
@@ -601,10 +601,10 @@ async def test_status_reaction_realtime_skips_muted_agent_owner_human(
 
     published: list[dict] = []
 
-    async def fake_publish(_db: AsyncSession, event: dict):
+    async def fake_publish(event: dict):
         published.append(event)
 
-    monkeypatch.setattr(hub_router, "_publish_agent_realtime_event", fake_publish)
+    monkeypatch.setattr(hub_router, "_publish_ephemeral_agent_realtime_event", fake_publish)
     room = await db_session.scalar(
         select(Room)
         .where(Room.room_id == "rm_priv0001")
@@ -639,10 +639,10 @@ async def test_status_reaction_realtime_clear_includes_hub_msg_id(
 
     published: list[dict] = []
 
-    async def fake_publish(_db: AsyncSession, event: dict):
+    async def fake_publish(event: dict):
         published.append(event)
 
-    monkeypatch.setattr(hub_router, "_publish_agent_realtime_event", fake_publish)
+    monkeypatch.setattr(hub_router, "_publish_ephemeral_agent_realtime_event", fake_publish)
     room = await db_session.scalar(
         select(Room)
         .where(Room.room_id == "rm_priv0001")
