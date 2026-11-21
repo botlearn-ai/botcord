@@ -22,6 +22,8 @@ from hub.request_observability import request_id_for
 from hub.i18n import I18nHTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1552,13 +1554,10 @@ async def _send_room_message(
 
     await record_response(db, envelope, room_id)
 
+    insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
     with send_diagnostics.stage("room.fanout_write_and_attention"):
-        for receiver_id in receivers:
-            hub_msg_id = generate_hub_msg_id()
-            if first_hub_msg_id is None:
-                first_hub_msg_id = hub_msg_id
-            receiver_hub_msg_ids[receiver_id] = hub_msg_id
-
+        # Concurrent copies attempt the recipient keys in the same order.
+        for receiver_id in sorted(receivers):
             is_mentioned = bool(mentioned_set) and (
                 receiver_id in mentioned_set or "@all" in mentioned_set
             )
@@ -1569,8 +1568,8 @@ async def _send_room_message(
             _is_owner_chat_human_delivery = (
                 is_owner_chat and receiver_id in owner_chat_human_receivers
             )
-            record = MessageRecord(
-                hub_msg_id=hub_msg_id,
+            statement = insert(MessageRecord).values(
+                hub_msg_id=generate_hub_msg_id(),
                 msg_id=envelope.msg_id,
                 sender_id=envelope.from_,
                 receiver_id=receiver_id,
@@ -1588,22 +1587,23 @@ async def _send_room_message(
                 mentioned=is_mentioned,
                 reply_to_msg_id=reply_to_msg_id,
             )
-            try:
-                async with db.begin_nested():
-                    db.add(record)
-                    await db.flush()
-            except IntegrityError:
+            statement = statement.on_conflict_do_nothing(
+                index_elements=[MessageRecord.msg_id, MessageRecord.receiver_id],
+            ).returning(MessageRecord.hub_msg_id)
+            hub_msg_id = (await db.execute(statement)).scalar_one_or_none()
+            if hub_msg_id is None:
+                # At READ COMMITTED, this statement sees the concurrent insert
+                # that may have won after the INSERT took its own snapshot.
                 result = await db.execute(
-                    select(MessageRecord).where(
+                    select(MessageRecord.hub_msg_id).where(
                         MessageRecord.msg_id == envelope.msg_id,
                         MessageRecord.receiver_id == receiver_id,
                     )
                 )
-                existing = result.scalar_one()
-                if first_hub_msg_id is None:
-                    first_hub_msg_id = existing.hub_msg_id
-                receiver_hub_msg_ids[receiver_id] = existing.hub_msg_id
-                continue
+                hub_msg_id = result.scalar_one()
+            if first_hub_msg_id is None:
+                first_hub_msg_id = hub_msg_id
+            receiver_hub_msg_ids[receiver_id] = hub_msg_id
 
         # Event 1 (room fan-out): stamp every cloud-hosted receiver whose
         # attention policy would actually wake the runtime. Self-delivery and
